@@ -1,0 +1,16 @@
+Location Data Sources & Licenses:
+---------------------------------
+1. Japan Municipalities (japan_cities.json):
+   - Source: Code 4 Fukui (localgovjp)
+   - URL: https://github.com/code4fukui/localgovjp
+   - License: Creative Commons Attribution 4.0 International (CC BY 4.0)
+
+2. World Countries (countries.json):
+   - Source: dr5hn/countries-states-cities-database
+   - URL: https://github.com/dr5hn/countries-states-cities-database
+   - License: Open Database License (ODbL) / CC BY 4.0
+
+3. World Cities & Admin Regions (world_cities.json):
+   - Source: GeoNames (cities15000, admin1CodesASCII)
+   - URL: https://www.geonames.org
+   - License: Creative Commons Attribution 4.0 International (CC BY 4.0)

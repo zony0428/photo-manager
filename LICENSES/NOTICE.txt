@@ -1,0 +1,166 @@
+================================================================================
+  Photo Manager - オープンソースソフトウェア利用に関する通知
+================================================================================
+
+本ソフトウェア「Photo Manager」は、以下のオープンソースソフトウェアを利用して
+構築されています。各ソフトウェアの著作権およびライセンス条件は、それぞれの
+ライセンスファイルに記載されています。
+
+本フォルダ (LICENSES/) 内の各ファイルに、原文のライセンス全文を収録しています。
+
+--------------------------------------------------------------------------------
+  直接利用しているライブラリ一覧
+--------------------------------------------------------------------------------
+
+■ Python 3.11
+  - 著作権: Copyright (c) Python Software Foundation
+  - ライセンス: PSF License Agreement
+  - ファイル: LICENSE.Python
+  - URL: https://www.python.org/
+
+■ FastAPI 0.141
+  - 著作権: Copyright (c) Sebastián Ramírez
+  - ライセンス: MIT License
+  - ファイル: LICENSE.FastAPI
+  - URL: https://fastapi.tiangolo.com/
+
+■ Uvicorn 0.53
+  - 著作権: Copyright (c) encode
+  - ライセンス: BSD 3-Clause License
+  - ファイル: LICENSE.Uvicorn
+  - URL: https://www.uvicorn.org/
+
+■ Pillow (PIL Fork) 12.3
+  - 著作権: Copyright (c) Jeffrey A. Clark and contributors
+  - ライセンス: HPND License (MIT-CMU)
+  - ファイル: LICENSE.Pillow
+  - URL: https://python-pillow.org/
+
+■ rawpy 0.27
+  - 著作権: Copyright (c) Maik Riechert
+  - ライセンス: MIT License
+  - ファイル: LICENSE.rawpy
+  - URL: https://github.com/letmaik/rawpy
+
+■ LibRaw (rawpy 内蔵ネイティブライブラリ)
+  - 著作権: Copyright (c) LibRaw LLC
+  - ライセンス: LGPL 2.1 または CDDL 1.0（デュアルライセンス・選択可）
+  - ファイル: LICENSE.LibRaw
+  - URL: https://www.libraw.org/
+  - 備考: 本ソフトウェアでは LibRaw を動的リンクライブラリ (DLL) として
+          利用しており、LibRaw 自体のソースコードを改変していません。
+          LGPL 2.1 の条件に基づき、ユーザーは pip install rawpy コマンドで
+          LibRaw ライブラリを自由に差し替えることが可能です。
+
+■ NumPy 2.4
+  - 著作権: Copyright (c) NumPy Developers
+  - ライセンス: BSD 3-Clause License
+  - ファイル: LICENSE.NumPy
+  - URL: https://numpy.org/
+
+■ Pydantic 2.13
+  - 著作権: Copyright (c) Samuel Colvin
+  - ライセンス: MIT License
+  - ファイル: LICENSE.Pydantic
+  - URL: https://docs.pydantic.dev/
+
+■ Starlette 1.6
+  - 著作権: Copyright (c) encode
+  - ライセンス: BSD 3-Clause License
+  - ファイル: LICENSE.Starlette
+  - URL: https://www.starlette.io/
+
+■ Click 8.5
+  - 著作権: Copyright (c) Pallets
+  - ライセンス: BSD 3-Clause License
+  - ファイル: LICENSE.Click
+  - URL: https://click.palletsprojects.com/
+
+■ AnyIO 4.15
+  - 著作権: Copyright (c) Alex Grönholm
+  - ライセンス: MIT License
+  - ファイル: LICENSE.AnyIO
+  - URL: https://anyio.readthedocs.io/
+
+■ h11 0.16
+  - 著作権: Copyright (c) Nathaniel J. Smith
+  - ライセンス: MIT License
+  - ファイル: LICENSE.h11
+  - URL: https://h11.readthedocs.io/
+
+■ pystray 0.19
+  - 著作権: Copyright (c) Moses Palmér
+  - ライセンス: LGPL 3.0 / GPL 3.0（デュアルライセンス・LGPL適用）
+  - ファイル: LICENSE.pystray
+  - URL: https://github.com/moses-palmer/pystray
+  - 備考: Windowsタスクトレイ常駐管理に使用。
+
+■ six 1.17
+  - 著作権: Copyright (c) Benjamin Peterson
+  - ライセンス: MIT License
+  - ファイル: LICENSE.six
+  - URL: https://github.com/benjaminp/six
+
+■ ONNX Runtime 1.30
+  - 著作権: Copyright (c) Microsoft Corporation
+  - ライセンス: MIT License
+  - ファイル: LICENSE.onnxruntime
+  - URL: https://onnxruntime.ai/
+  - 備考: AI自動タグ付け機能の推論エンジン（CPU最適化・完全ローカル動作）に使用。
+
+■ sql.js 1.10.3
+  - 著作権: Copyright (c) Ophir LOJKINE and sql.js contributors
+  - ライセンス: MIT License
+  - ファイル: LICENSE.sqljs
+  - URL: https://sql.js.org/
+  - 備考: モバイル画面（Android等）でのオフラインSQLiteデータベース（library.db）直接読み込みに使用。
+
+
+--------------------------------------------------------------------------------
+  ウェブフォント（CDN経由で使用・同梱なし）
+--------------------------------------------------------------------------------
+
+■ Inter / Outfit / Shippori Mincho
+  - ライセンス: SIL Open Font License 1.1
+  - 配信元: Google Fonts (https://fonts.google.com/)
+  - 備考: インターネット接続時にCDNから読み込みます。
+          フォントファイルは本ソフトウェアに同梱されていません。
+
+--------------------------------------------------------------------------------
+  地図ライブラリ（CDN経由で使用・同梱なし）
+--------------------------------------------------------------------------------
+
+■ Leaflet.js 1.9.4
+  - 著作権: Copyright (c) Volodymyr Agafonkin
+  - ライセンス: BSD 2-Clause License
+  - URL: https://leafletjs.com/
+  - 備考: GPS位置情報のミニマップ表示に使用。
+          インターネット接続時にCDNから読み込みます。
+          ライブラリ本体は本ソフトウェアに同梱されていません。
+
+■ OpenStreetMap タイルデータ
+  - 著作権: © OpenStreetMap contributors
+  - ライセンス: ODbL (Open Data Commons Open Database License)
+  - URL: https://www.openstreetmap.org/copyright
+  - 備考: 地図表示に使用するタイル画像の提供元です。
+
+--------------------------------------------------------------------------------
+  オフライン逆ジオコーディング（位置情報）データ（server/geocoder/data/）
+--------------------------------------------------------------------------------
+
+■ 日本国内市区町村データ (japan_cities.json)
+  - 提供元: Code for Fukui (localgovjp)
+  - ライセンス: Creative Commons Attribution 4.0 International (CC BY 4.0)
+  - URL: https://github.com/code4fukui/localgovjp
+
+■ 世界各国データ (countries.json)
+  - 提供元: dr5hn / countries-states-cities-database
+  - ライセンス: Open Database License (ODbL) / CC BY 4.0
+  - URL: https://github.com/dr5hn/countries-states-cities-database
+
+■ 世界主要都市・行政区画データ (world_cities.json)
+  - 提供元: GeoNames (cities15000, admin1CodesASCII)
+  - ライセンス: Creative Commons Attribution 4.0 International (CC BY 4.0)
+  - URL: https://www.geonames.org/
+
+================================================================================

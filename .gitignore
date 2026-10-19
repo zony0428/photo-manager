@@ -1,0 +1,49 @@
+# Python キャッシュ
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyd
+
+# ポータブルPython環境（setup_portable_python.bat で自動ダウンロード可能）
+python/
+python_embed.zip
+
+# ログ・一時作業ファイル
+*.log
+scratch/
+uploads/
+carry/
+
+# ユーザーデータ・データベース・サムネイル（個人写真情報）
+cache/
+.cache/
+*.db-wal
+*.db-shm
+
+# AI推論モデル（サイズが大きいためGit管理外）
+models/
+
+# ユーザー写真・テストインポート用フォルダ
+import/
+take_out/
+photos/
+
+# ビルド成果物・配布パッケージ（未署名exeやautorun.infによるクラウド誤検知防止のためBuild.batで現地生成）
+dist/
+*.zip
+PhotoManager.exe
+autorun.inf
+
+# エディタ・IDE固有設定・バックアップ
+.vscode/
+.idea/
+*.swp
+*.swo
+*.bak
+*.backup
+*.orig_backup
+
+# OS固有
+Thumbs.db
+Desktop.ini
+

@@ -1,0 +1,61 @@
+================================================================================
+  Photo Manager - ライセンスについて (License Notice)
+================================================================================
+
+【日本語】
+1. Photo Manager 本体のソースコードについて:
+   本ソフトウェア（Photo Manager 固有のソースコード・スクリプト・UIテンプレート）は、
+   下記の「MIT License」のもとで公開されています。
+   個人的な開発物ですので、作者から特別な要求は何もありません。無保証であることだけ
+   ご了承の上、ご自由にお使い・改造・再配布してください。
+
+2. 【重要】内包・利用している外部パッケージ類のライセンス遵守について:
+   本ソフトウェアを改変・再配布・パッケージングして利用する場合は、
+   **内包・利用しているサードパーティ製パッケージおよびデータセットのライセンス条件は
+   絶対に守ってください！**
+   各パッケージのライセンス一覧および原文は `LICENSES/NOTICE.txt` および
+   `LICENSES/` フォルダ内に収録されています。
+
+   特に以下の点にご注意ください：
+   - RAW現像ライブラリ「LibRaw」（`rawpy` 内蔵）は LGPL 2.1（または CDDL 1.0）です。
+     動的リンク（DLL）のまま利用し、`PyInstaller --onefile` 等で単一実行ファイルへ
+     静的結合・改変密閉しないようにしてください（配布時は `LICENSES/` フォルダを同梱してください）。
+   - オフライン位置情報（逆ジオコーディング）データ（`server/geocoder/data/`）は
+     CC BY 4.0 / ODbL ライセンスに基づいています。出典表記（`NOTICE.txt`）を削除しないでください。
+
+--------------------------------------------------------------------------------
+[English]
+1. Photo Manager Source Code:
+   The original source code of Photo Manager is licensed under the MIT License below.
+   You are free to use, modify, and redistribute it without any special demands from
+   the author (provided "AS IS", without warranty of any kind).
+
+2. [IMPORTANT] Third-Party Packages & Data Licenses:
+   If you modify, redistribute, or bundle this software, **you MUST strictly comply
+   with the licenses of all bundled/used third-party packages and datasets!**
+   Please see `LICENSES/NOTICE.txt` and the `LICENSES/` directory for full details
+   (including LGPL 2.1 requirements for LibRaw/rawpy and CC BY 4.0 / ODbL attribution
+   for offline geocoding data).
+================================================================================
+
+MIT License
+
+Copyright (c) 2026 Photo Manager Contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
