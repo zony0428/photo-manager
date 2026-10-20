@@ -141,6 +141,10 @@
     } else {
       imgEl.style.filter = 'none';
     }
+
+    if (typeof window.updateAdjustHistogram === 'function') {
+      window.updateAdjustHistogram(imgEl, adjustState);
+    }
   }
 
   /**
@@ -514,6 +518,10 @@
     cropBoxEl.style.top = `${Math.max(0, y)}px`;
     cropBoxEl.style.width = `${Math.max(20, w)}px`;
     cropBoxEl.style.height = `${Math.max(20, h)}px`;
+
+    if (typeof window.updateAdjustHistogram === 'function') {
+      window.updateAdjustHistogram(imgEl, adjustState);
+    }
   }
 
   /**

@@ -73,6 +73,9 @@ from .database import (
     cleanup_invalid_zero_gps,
     backfill_photo_locations,
     get_location_tree_summary,
+    get_location_heatmap_data,
+    get_lab_karte_data,
+    get_random_unrated_folder,
     cleanup_missing_upload_photos,
     delete_photo_by_id,
     delete_photos_by_ids,
@@ -114,6 +117,7 @@ from .folder_tree import (
 from .version import get_version, get_version_info, __version__
 from .exporter import (
     run_smart_export,
+    run_contact_sheet_export,
     pick_folder_dialog,
     open_folder_in_windows_explorer,
     DEFAULT_TAKEOUT_DIR,
@@ -343,6 +347,11 @@ def api_get_photos(
     year_month: Optional[str] = None,
     year_months: Optional[str] = None,
     cameras: Optional[str] = None,
+    exclude_cameras: Optional[str] = None,
+    excluded_cameras: Optional[str] = None,
+    lenses: Optional[str] = None,
+    exclude_lenses: Optional[str] = None,
+    excluded_lenses: Optional[str] = None,
     ratings: Optional[str] = None,
     search: Optional[str] = None,
     include_tags: Optional[str] = None,
@@ -358,8 +367,12 @@ def api_get_photos(
     state: Optional[str] = None,
     city: Optional[str] = None,
     no_location: bool = False,
+    lab_filter: Optional[str] = None,
+    on_this_day: Optional[str] = None,
+    focal_range: Optional[str] = None,
+    aperture_range: Optional[str] = None,
 ):
-    """写真一覧を取得する（タグの含む/除外排他検索、年月OR条件、カメラ機種OR条件、場所階層絞り込み、ブラケットスタック表示、重複抽出対応）"""
+    """写真一覧を取得する（タグの含む/除外排他検索、年月OR条件、カメラ・レンズ含む/除外条件、場所階層絞り込み、ラボ分析フィルタ、ブラケットスタック表示、重複抽出対応）"""
     if missing_only:
         photos = get_missing_photos()
         return _fast_json({"photos": photos, "count": len(photos)})
@@ -368,6 +381,11 @@ def api_get_photos(
     exc_list = [t.strip() for t in exclude_tags.split(",") if t.strip()] if exclude_tags else None
     ym_list = [y.strip() for y in year_months.split(",") if y.strip()] if year_months else None
     cam_list = [c.strip() for c in cameras.split(",") if c.strip()] if cameras else None
+    raw_ex_cams = excluded_cameras or exclude_cameras
+    ex_cam_list = [c.strip() for c in raw_ex_cams.split(",") if c.strip()] if raw_ex_cams else None
+    lens_list = [l.strip() for l in lenses.split(",") if l.strip()] if lenses else None
+    raw_ex_lenses = excluded_lenses or exclude_lenses
+    ex_lens_list = [l.strip() for l in raw_ex_lenses.split(",") if l.strip()] if raw_ex_lenses else None
     ratings_list = [int(r.strip()) for r in ratings.split(",") if r.strip()] if ratings else None
 
     photos = get_photos(
@@ -375,6 +393,9 @@ def api_get_photos(
         year_month=year_month,
         year_months=ym_list,
         cameras=cam_list,
+        excluded_cameras=ex_cam_list,
+        lenses=lens_list,
+        excluded_lenses=ex_lens_list,
         ratings=ratings_list,
         search=search,
         included_tags=inc_list,
@@ -389,6 +410,10 @@ def api_get_photos(
         state=state,
         city=city,
         no_location_only=no_location,
+        lab_filter=lab_filter,
+        on_this_day=on_this_day,
+        focal_range=focal_range,
+        aperture_range=aperture_range,
     )
 
     # ポータブル運用・オフライン状態判定および実体消失判定（ディレクトリ単位の os.scandir キャッシュでI/O高速化）
@@ -1270,6 +1295,31 @@ def api_get_locations_tree():
     return _fast_json(data)
 
 
+@app.get("/api/locations/heatmap")
+def api_get_locations_heatmap(
+    date_filter: Optional[str] = None,
+    date: Optional[str] = None,
+):
+    """ジオタグ47都道府県制覇マップ・ヒートマップ・撮影軌跡（フォトラリー）用の集計データを取得する"""
+    target_date = date_filter or date
+    data = get_location_heatmap_data(date_filter=target_date)
+    return _fast_json(data)
+
+
+@app.get("/api/lab/karte")
+def api_get_lab_karte(today_mmdd: Optional[str] = None):
+    """パーソナル撮影ラボ＆機材相性カルテ（歩留まりランキング・焦点距離/F値統計・太陽高度別枚数・時間帯分布）を取得する"""
+    data = get_lab_karte_data(today_mmdd=today_mmdd)
+    return _fast_json(data)
+
+
+@app.get("/api/lab/random-unrated-folder")
+def api_get_random_unrated_folder():
+    """未整理（評価: 可）の写真が残っているフォルダをランダムに1つ抽選して返す（未整理フォルダ発掘ガチャ用）"""
+    data = get_random_unrated_folder()
+    return _fast_json(data)
+
+
 @app.get("/api/timeline")
 def api_get_timeline():
     """年・月ごとの写真枚数集計を取得する"""
@@ -1972,6 +2022,16 @@ class SmartExportRequest(BaseModel):
     open_folder_after: bool = True
 
 
+class ContactSheetExportRequest(BaseModel):
+    photo_ids: List[int]
+    title: Optional[str] = "Contact Sheet"
+    theme: str = "darkroom"
+    columns: int = 5
+    destination_dir: Optional[str] = None
+    destination: Optional[str] = None
+    open_after: bool = True
+
+
 class PickFolderRequest(BaseModel):
     initial_dir: Optional[str] = None
 
@@ -2002,6 +2062,21 @@ def api_smart_export(req: SmartExportRequest):
     if req.open_folder_after and result.get("destination"):
         open_folder_in_windows_explorer(Path(result["destination"]))
 
+    return _fast_json(result)
+
+
+@app.post("/api/export/contact-sheet")
+def api_export_contact_sheet(req: ContactSheetExportRequest):
+    """
+    ベタ焼き（コンタクトシート）単一HTML出力を実行する。
+    """
+    if not req.photo_ids:
+        raise HTTPException(status_code=400, detail="コンタクトシートに出力する写真が選択されていません")
+
+    opts = req.model_dump() if hasattr(req, "model_dump") else req.dict()
+    result = run_contact_sheet_export(opts)
+    if result.get("status") == "error":
+        raise HTTPException(status_code=400, detail=result.get("message") or "コンタクトシート出力エラー")
     return _fast_json(result)
 
 

@@ -1,5 +1,7 @@
 # 📷 Photo Manager
 
+**[ 🇯🇵 日本語 (Japanese) ](README.md) | [ 🇺🇸 English ](README_EN.md)**
+
 **Picasa / Tiat にインスパイアされた、RAW・一般画像向けのローカル高速写真ビューア ＆ 選別（セレクト）ツール**
 
 大量の写真（JPEG / PNG / WebP / HEIC および各社一眼カメラの RAW データ）を、元のフォルダ構造やファイルを1バイトも傷つけずに、待ち時間ゼロで軽快に閲覧・選別・整理できる Windows 向けスタンドアロンアプリケーションです。

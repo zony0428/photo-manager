@@ -665,18 +665,54 @@ def remove_folder_photos(directory_path: str, recursive: bool = True) -> Dict[st
 
 
 def get_cameras_summary() -> List[Dict[str, Any]]:
-    """カメラ機種ごとの写真枚数集計を取得する"""
+    """
+    カメラ機種ごと・配下レンズごとの写真枚数集計（2階層ツリー）を取得する。
+    lens_model が NULL または空文字のレコードは "__NONE__"（「レンズ情報なし」）としてまとめる。
+    """
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
             """
-            SELECT camera_model, COUNT(*) as count
+            SELECT camera_model,
+                   CASE
+                       WHEN lens_model IS NULL OR TRIM(lens_model) = '' THEN '__NONE__'
+                       ELSE TRIM(lens_model)
+                   END AS norm_lens,
+                   COUNT(*) AS cnt
             FROM photos
-            WHERE camera_model IS NOT NULL AND camera_model != ''
-            GROUP BY camera_model
-            ORDER BY count DESC, camera_model ASC
+            WHERE (is_unlinked IS NULL OR is_unlinked = 0)
+              AND camera_model IS NOT NULL AND camera_model != ''
+              AND NOT (is_raw = 1 AND paired_raw_path IS NOT NULL)
+            GROUP BY camera_model, norm_lens
+            ORDER BY camera_model ASC, cnt DESC
             """
         )
         rows = cursor.fetchall()
-        return [dict(row) for row in rows]
+
+        cam_map: Dict[str, Dict[str, Any]] = {}
+        for r in rows:
+            cam = r["camera_model"]
+            lens = r["norm_lens"]
+            cnt = int(r["cnt"] or 0)
+            if cam not in cam_map:
+                cam_map[cam] = {
+                    "camera_model": cam,
+                    "count": 0,
+                    "lenses": [],
+                }
+            cam_map[cam]["count"] += cnt
+            cam_map[cam]["lenses"].append({
+                "lens_model": lens,
+                "label": "レンズ情報なし" if lens == "__NONE__" else lens,
+                "count": cnt,
+            })
+
+        result = list(cam_map.values())
+        for cam_obj in result:
+            cam_obj["lenses"].sort(
+                key=lambda x: (0 if x["lens_model"] != "__NONE__" else 1, -x["count"], x["lens_model"])
+            )
+        result.sort(key=lambda x: (-x["count"], x["camera_model"]))
+        return result
+
 

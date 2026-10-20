@@ -22,7 +22,9 @@
 
 ---
 
-## フロントエンド・モジュール構成 (v1.40〜)
+## フロントエンド・モジュール構成 (JS / CSS)
+
+### JavaScript モジュール (`frontend/js/`)
 | モジュール | 役割・担当機能 |
 |---|---|
 | `frontend/js/common.js` | 定数、`state`、`elements`、汎用ヘルパー（`showToast`, `escapeHtml` 等）、テーマ制御、ハートビート、ペインリサイズ、共通モーダル（ヘルプ・終了・スマホ連携） |
@@ -30,10 +32,31 @@
 | `frontend/js/inspector.js` | 右ペイン、単一写真EXIF詳細、露出タグ、地図・MiniMap、GPS候補モーダル、一括タグ編集 |
 | `frontend/js/lightbox.js` | 全画面プレビュー、ズーム・パン、スタック切替バー、フィルムストリップ、ライトボックス内タグ/評価 |
 | `frontend/js/folder_tree.js` | 左ペイン階層フォルダツリー（遅延展開、ショートカット、接続/未接続分離、除外/通常切替、右クリックメニュー、パス直接入力、スキャン進捗、DBメンテナンスモーダル） |
+| `frontend/js/location_tree.js` | 左ペインジオタグ階層ツリー（国 ＞ 都道府県 ＞ 市区町村） |
+| `frontend/js/location_map.js` | 47都道府県 撮影制覇白地図（インラインSVG）・撮影密度ヒートマップ・撮影さんぽ軌跡ライン (`#locationMapModal`) |
+| `frontend/js/lab.js` | 左ペイン「🧪 ラボ」セクション（太陽高度抽出・手ブレ注意・歴代の今日・未整理ガチャ）＆ 勝ちレンズ・得意設定カルテ (`#labKarteModal`) |
+| `frontend/js/compare.js` | Side-by-Side 2枚並列比較ビュー（同期ズーム＆パン・トーナメント勝ち抜き選別・`V`キー） |
+| `frontend/js/histogram.js` | オンデマンドRGB・輝度ヒストグラム（インスペクタ・ライトボックス・画像調整・2枚比較連動・`H`キー） |
+| `frontend/js/adjust.js` | 非破壊画像調整モーダル（回転・水平傾き補正・アスペクト比クロップ・EV露出/コントラスト/彩度） |
+| `frontend/js/takeout.js` | スマート・テイクアウト（高機能一括画像書き出し）＆ ベタ焼き（コンタクトシート）HTML出力 |
 | `frontend/js/presets.js` | フィルタプリセットの保存・適用・チップ描画・削除 |
 | `frontend/js/slideshow.js` | フルスクリーンスライドショービューア（ダブルバッファ切替、自動再生、シャッフル） |
-| `frontend/js/app.js` | コアオーケストレータ: 初期化、データ取得、サイドバー描画、写真グリッド描画、キーボードショートカット |
+| `frontend/js/app.js` | コアオーケストレータ: 初期化、データ取得、サイドバー描画（タイムライン・カメラ＆レンズ階層ツリー・タグ）、写真グリッド描画、キーボードショートカット |
 | `frontend/js/mobile.js` | スマホ専用画面（`mobile.html` / `/m`）のコントローラ: PC直結モード・WebAssembly (`sql.js`) ローカルDB直接読込モード、片手4段階選別、差分JSON出力/同期 |
+
+### CSS モジュール (`frontend/css/` — カスケード順序通りに `<link>` 読込)
+| スタイルシート | 役割・担当コンポーネント |
+|---|---|
+| `frontend/css/style.css` | テーマ変数（和紙 `paper` / 夜墨 `sumi`）、リセット、上部ヘッダーツールバー、左サイドバー（アコーディオン、タイムライン、フォルダツリー、タグツリー、カラーパレット） |
+| `frontend/css/grid-lightbox.css` | メインコンテンツエリア、写真グリッド（標準・びっしり・マウント・クリーン表示）、スキャンモーダル、ライトボックス全画面ビュー |
+| `frontend/css/selection-menu.css` | マルチ選択チェックボックス、右クリックコンテキストメニュー、下部フローティング選択バー |
+| `frontend/css/inspector.css` | 右インスペクタ・ペイン、露出ブラケット・連写スタックバー、RAWバッジ、GPSミニマップ、評価フィルタトグル |
+| `frontend/css/modals-features.css` | 保存済みプリセット、フルスクリーンスライドショー、AI自動タグ、ヘルプモーダル (`#helpModal`)、終了確認、グローバルスキャン進捗フッター、重複ドッグイヤー、場所ツリー、非破壊画像調整モーダル、スマート・テイクアウトモーダル |
+| `frontend/css/lab-map.css` | カメラ・レンズ2階層ツリー、ラボセクション、勝ちレンズカルテ (`#labKarteModal`)、47都道府県制覇マップ・ヒートマップ・さんぽ軌跡 (`#locationMapModal`)、ベタ焼きトリガー |
+| `frontend/css/histogram.css` | オンデマンドRGB・輝度ヒストグラムウィジェット |
+| `frontend/css/compare.css` | 2枚並列比較ビュー (`#compareModal`) |
+| `frontend/css/ui-unify.css` | UI形状3分類（器=`2px`、操作=`5px`、表示ピル=`999px`）＆ 操作3タイプ（単発A・トグルB・択一セレクトC）統一ルール |
+| `frontend/css/mobile.css` | スマホ専用画面 (`mobile.html` / `PhotoManager_Mobile.html`) 用スタイル |
 
 ---
 

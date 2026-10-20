@@ -132,6 +132,7 @@ def initialize_database() -> None:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_photos_directory_nocase ON photos(directory_path COLLATE NOCASE)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_photos_rating ON photos(rating)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_photos_camera_model ON photos(camera_model)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_photos_camera_lens ON photos(camera_model, lens_model)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_photos_stack_id ON photos(stack_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_photos_name_size ON photos(file_name, file_size)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_photos_gps_date ON photos(date_taken) WHERE latitude IS NOT NULL")

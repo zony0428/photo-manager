@@ -452,8 +452,171 @@ class TestCoreRegression(unittest.TestCase):
         self.assertIn("cache/library.db", html)
         self.assertNotIn(".cache/library.db", html)
 
+    def test_08_camera_lens_tree_lab_heatmap_and_contact_sheet(self) -> None:
+        """カメラ・レンズ階層排他検索、ラボ分析・太陽高度・手ブレ抽出、47都道府県白地図ヒートマップ、ベタ焼きHTML出力の総合検証"""
+        from server.database import (
+            get_cameras_summary,
+            get_lab_karte_data,
+            get_location_heatmap_data,
+            get_random_unrated_folder,
+            save_thumbnail,
+        )
+        from server.exporter import run_contact_sheet_export
+
+        # 1. テスト写真データの登録（カメラ2種、レンズ3種、ゴールデンアワー、手ブレ危険、ジオタグ付き）
+        p1 = upsert_photo({
+            "file_path": r"C:\Photos\Trip_Tokyo\DSC0001.JPG",
+            "directory_path": r"C:\Photos\Trip_Tokyo",
+            "file_name": "DSC0001.JPG",
+            "file_size": 3000000,
+            "date_taken": "2026:10:20 16:45:00",  # 東京の10月20日16:45は日没直前（ゴールデンアワー）
+            "width": 6000,
+            "height": 4000,
+            "camera_model": "SONY ILCE-7RM5",
+            "lens_model": "FE 24-70mm F2.8 GM II",
+            "focal_length": 35.0,
+            "f_number": 2.8,
+            "shutter_speed": "1/250",
+            "iso": 100,
+            "latitude": 35.6895,
+            "longitude": 139.6917,
+            "country": "日本",
+            "state": "東京都",
+            "city": "新宿区",
+            "rating": 2,  # 優
+        })
+        p2 = upsert_photo({
+            "file_path": r"C:\Photos\Trip_Tokyo\DSC0002.JPG",
+            "directory_path": r"C:\Photos\Trip_Tokyo",
+            "file_name": "DSC0002.JPG",
+            "file_size": 3200000,
+            "date_taken": "2026:10:20 21:15:00",  # 夜間 + 200mmで1/30秒（手ブレ危険: 200 * (1/30) = 6.67 >= 1.0）
+            "width": 6000,
+            "height": 4000,
+            "camera_model": "SONY ILCE-7RM5",
+            "lens_model": "FE 70-200mm F2.8 GM OSS II",
+            "focal_length": 200.0,
+            "f_number": 2.8,
+            "shutter_speed": "1/30",
+            "iso": 3200,
+            "latitude": 35.6900,
+            "longitude": 139.7000,
+            "country": "日本",
+            "state": "東京",  # 表記ゆれ（「東京都」に正規化されること）
+            "city": "新宿区",
+            "rating": 0,  # 未整理(可)
+        })
+        p3 = upsert_photo({
+            "file_path": r"C:\Photos\Trip_Kyoto\IMG_0100.JPG",
+            "directory_path": r"C:\Photos\Trip_Kyoto",
+            "file_name": "IMG_0100.JPG",
+            "file_size": 2800000,
+            "date_taken": "2025:05:10 11:30:00",
+            "width": 5000,
+            "height": 3333,
+            "camera_model": "RICOH GR IIIx",
+            "lens_model": None,  # レンズ情報なし (__NONE__)
+            "focal_length": 40.0,
+            "f_number": 5.6,
+            "shutter_speed": "1/500",
+            "iso": 200,
+            "latitude": 35.0116,
+            "longitude": 135.7681,
+            "country": "日本",
+            "state": "京都府",
+            "city": "京都市",
+            "rating": 1,  # 良
+        })
+        update_rating(p1, 2)
+        update_rating(p3, 1)
+
+        # 2. カメラ＆レンズ階層ツリー集計の検証
+        cams = get_cameras_summary()
+        self.assertEqual(len(cams), 2)
+        sony_cam = next(c for c in cams if c["camera_model"] == "SONY ILCE-7RM5")
+        self.assertEqual(sony_cam["count"], 2)
+        self.assertEqual(len(sony_cam["lenses"]), 2)
+        ricoh_cam = next(c for c in cams if c["camera_model"] == "RICOH GR IIIx")
+        self.assertEqual(ricoh_cam["lenses"][0]["lens_model"], "__NONE__")
+
+        # 3. カメラ・レンズ排他検索 ([+] 含む / [-] 除外) の検証
+        # SONY を含み、70-200mm を除外 -> p1 のみヒット
+        res_cam_excl_lens = get_photos(
+            cameras=["SONY ILCE-7RM5"],
+            excluded_lenses=["SONY ILCE-7RM5::FE 70-200mm F2.8 GM OSS II"],
+        )
+        self.assertEqual([p["id"] for p in res_cam_excl_lens], [p1])
+
+        # レンズ情報なし (__NONE__) で絞り込み -> p3 のみヒット
+        res_none_lens = get_photos(lenses=["RICOH GR IIIx::__NONE__"])
+        self.assertEqual([p["id"] for p in res_none_lens], [p3])
+
+        # 4. ラボ特殊フィルタ（手ブレ危険・ゴールデンアワー・夜景・歴代の今日・焦点距離/F値レンジ）の検証
+        res_shake = get_photos(lab_filter="shake_risk")
+        self.assertEqual([p["id"] for p in res_shake], [p2])
+
+        res_golden = get_photos(lab_filter="golden_hour")
+        self.assertEqual([p["id"] for p in res_golden], [p1])
+
+        res_night = get_photos(lab_filter="night")
+        self.assertEqual([p["id"] for p in res_night], [p2])
+
+        res_otd = get_photos(on_this_day="10-20")
+        self.assertEqual(sorted([p["id"] for p in res_otd]), sorted([p1, p2]))
+
+        res_focal = get_photos(focal_range="135.1-300")
+        self.assertEqual([p["id"] for p in res_focal], [p2])
+
+        res_aperture = get_photos(aperture_range="0.7-2.8")
+        self.assertEqual(sorted([p["id"] for p in res_aperture]), sorted([p1, p2]))
+
+        # 5. 47都道府県制覇白地図＆ヒートマップ＆撮影軌跡APIの検証
+        heatmap = get_location_heatmap_data()
+        self.assertEqual(heatmap["conquered_prefectures_count"], 2)  # 東京都・京都府
+        pref_names = {p["prefecture"] for p in heatmap["prefectures"]}
+        self.assertEqual(pref_names, {"東京都", "京都府"})
+        self.assertEqual(heatmap["total_geotagged"], 3)
+        self.assertGreaterEqual(len(heatmap["grid_points"]), 2)
+        self.assertGreaterEqual(len(heatmap["trajectory_points"]), 3)
+
+        # 6. ラボカルテ＆未整理フォルダ発掘ガチャの検証
+        karte = get_lab_karte_data(today_mmdd="10-20")
+        self.assertEqual(karte["summary"]["total_photos"], 3)
+        self.assertEqual(karte["summary"]["excellent_count"], 1)
+        self.assertEqual(karte["summary"]["shake_risk_count"], 1)
+        self.assertEqual(karte["summary"]["on_this_day_count"], 2)
+        self.assertGreaterEqual(len(karte["lenses"]), 2)
+
+        gacha = get_random_unrated_folder()
+        self.assertTrue(gacha["found"])
+        self.assertEqual(gacha["folder_path"], r"C:\Photos\Trip_Tokyo")
+        self.assertEqual(gacha["unrated_count"], 1)
+
+        # 7. ベタ焼き（コンタクトシート）HTML出力の検証
+        # ダミーWebPバイナリを保存
+        save_thumbnail(p1, b"RIFF\x1a\x00\x00\x00WEBPVP8 \x0e\x00\x00\x000\x01\x00\x9d\x01*\x01\x00\x01\x00\x02\x004%\xa4\x00\x03p\x00\xfe\xfb\x94\x00\x00", 160, 120)
+        with tempfile.TemporaryDirectory() as cs_dir:
+            cs_res = run_contact_sheet_export({
+                "photo_ids": [p1, p2, p3],
+                "title": "Test Contact Sheet",
+                "theme": "darkroom",
+                "columns": 5,
+                "destination_dir": cs_dir,
+                "open_after": False,
+            })
+            self.assertEqual(cs_res["status"], "ok")
+            self.assertEqual(cs_res["exported_count"], 3)
+            out_html_path = Path(cs_res["output_path"])
+            self.assertTrue(out_html_path.exists())
+            html_text = out_html_path.read_text(encoding="utf-8")
+            self.assertIn("Test Contact Sheet", html_text)
+            self.assertIn("DSC0001.JPG", html_text)
+            self.assertIn("FE 24-70mm F2.8 GM II", html_text)
+            self.assertIn("data:image/webp;base64,", html_text)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
 

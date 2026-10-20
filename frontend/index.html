@@ -13,7 +13,15 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&family=Shippori+Mincho:wght@400;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=2.35">
+  <link rel="stylesheet" href="/css/style.css?v=2.38">
+  <link rel="stylesheet" href="/css/grid-lightbox.css?v=2.38">
+  <link rel="stylesheet" href="/css/selection-menu.css?v=2.38">
+  <link rel="stylesheet" href="/css/inspector.css?v=2.38">
+  <link rel="stylesheet" href="/css/modals-features.css?v=2.38">
+  <link rel="stylesheet" href="/css/lab-map.css?v=2.38">
+  <link rel="stylesheet" href="/css/histogram.css?v=2.38">
+  <link rel="stylesheet" href="/css/compare.css?v=2.38">
+  <link rel="stylesheet" href="/css/ui-unify.css?v=2.38">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
@@ -56,7 +64,7 @@
         <div class="logo">
           <span class="hinomaru-disc" title="Hinomaru Ink"></span>
           <span class="logo-text">PHOTO<span>MANAGER</span></span>
-          <span class="app-version" id="appVersion" title="v2.35 (最終更新: 2026-10-19 14:38)">v2.35</span>
+          <span class="app-version" id="appVersion" title="v2.38 (最終更新: 2026-10-20 22:35)">v2.38</span>
         </div>
 
 
@@ -375,6 +383,7 @@
               <div class="location-toolbar" id="locationToolbar">
                 <div class="location-toolbar-group">
                   <button class="btn-mini-text" id="reloadLocationTreeBtn" title="ジオタグツリーを再読み込み">🔄</button>
+                  <button class="btn-mini-text" id="openLocationMapModalBtn" title="47都道府県 撮影制覇白地図・撮影密度ヒートマップ・撮影さんぽ軌跡を開く">🗾 制覇マップ</button>
                 </div>
                 <div class="location-toolbar-group">
                   <button class="btn-mini-text" id="expandAllLocationsBtn" title="すべての地域を展開">展開</button>
@@ -414,22 +423,34 @@
             </div>
           </div>
 
-          <!-- セクション 5: 📷 カメラ機種 -->
+          <!-- セクション 6: 📷 カメラ・レンズ -->
           <div class="accordion-item" data-section="camera" id="accordionItem-camera">
             <div class="accordion-header" data-section="camera">
               <span class="accordion-arrow">▶</span>
               <span class="accordion-icon">📷</span>
-              <span class="accordion-title">カメラ機種</span>
-              <span class="badge-sub" title="カメラ機種をクリックしてOR条件で絞り込み可能">複数選択可</span>
+              <span class="accordion-title">カメラ・レンズ</span>
+              <span class="badge-sub">排他検索可</span>
             </div>
             <div class="accordion-body">
-              <ul class="nav-list" id="cameraList">
-                <li class="empty-hint">読み込み中...</li>
+              <div class="tag-filter-mode-bar" id="cameraFilterModeBar">
+                <span class="tag-mode-hint">クリックで [+]含む ➜ [-]除外 ➜ 解除</span>
+              </div>
+              <div class="location-toolbar" id="cameraToolbar">
+                <div class="location-toolbar-group">
+                  <button class="btn-mini-text" id="reloadCameraTreeBtn" title="カメラ・レンズ一覧を再読み込み">🔄</button>
+                </div>
+                <div class="location-toolbar-group">
+                  <button class="btn-mini-text" id="expandAllCamerasBtn" title="すべてのレンズ一覧を展開">展開</button>
+                  <button class="btn-mini-text" id="collapseAllCamerasBtn" title="すべてのレンズ一覧を折りたたむ">閉じる</button>
+                </div>
+              </div>
+              <ul class="nav-list camera-tree-list" id="cameraList">
+                <li class="empty-hint">スキャン後に表示</li>
               </ul>
             </div>
           </div>
 
-          <!-- セクション 6: 🔍 ファイル名検索 -->
+          <!-- セクション 7: 🔍 ファイル名検索 -->
           <div class="accordion-item" data-section="search" id="accordionItem-search">
             <div class="accordion-header" data-section="search">
               <span class="accordion-arrow">▶</span>
@@ -447,6 +468,63 @@
               </div>
               <div style="font-size: 0.78rem; color: var(--text-dim); margin-top: 10px; line-height: 1.5;">
                 入力したキーワードを含むファイル名を即座に絞り込み表示します。
+              </div>
+            </div>
+          </div>
+
+          <!-- 8. ラボ（実験室：分析・発掘・特殊抽出） -->
+          <div class="accordion-item" data-section="lab" id="accordionItem-lab">
+            <div class="accordion-header" data-section="lab">
+              <span class="accordion-arrow">▶</span>
+              <span class="accordion-icon">🧪</span>
+              <span class="accordion-title">ラボ</span>
+              <span class="badge-sub">分析・発掘</span>
+            </div>
+            <div class="accordion-body">
+              <div class="lab-sidebar-panel">
+                <div class="lab-action-group" style="display: flex; flex-direction: column; gap: 6px;">
+                  <button type="button" class="btn btn-secondary btn-sm" id="openLabKarteModalBtn" style="width: 100%; justify-content: center; gap: 6px; font-weight: 600;" title="これまでの評価から勝ちレンズ・黄金の焦点距離・F値・時間帯を診断します">
+                    <span>🏆</span> <span>勝ちレンズ・得意設定カルテ</span>
+                  </button>
+                  <div style="display: flex; gap: 6px;">
+                    <button type="button" class="btn btn-secondary btn-sm" id="labGachaBtn" style="flex: 1; justify-content: center; gap: 4px;" title="未整理（評価：可）の写真が残っているフォルダをランダムに1つ引き当てます">
+                      <span>🎲</span> <span>未整理ガチャ</span>
+                    </button>
+                    <button type="button" class="btn btn-secondary btn-sm" id="labOpenCompareBtn" style="flex: 1; justify-content: center; gap: 4px;" title="選択した2枚の写真を並べて同期ズーム＆Exif比較 (Vキー)">
+                      <span>⚖️</span> <span>2枚比較 (V)</span>
+                    </button>
+                  </div>
+                  <button type="button" class="btn btn-secondary btn-sm" id="labOpenMapShortcutBtn" onclick="if(window.openLocationMapModal) window.openLocationMapModal('whitemap');" style="width: 100%; justify-content: center; gap: 6px;" title="47都道府県 撮影制覇白地図・撮影密度ヒートマップ・撮影さんぽ軌跡を開く">
+                    <span>🗾</span> <span>47都道府県 制覇白地図</span>
+                  </button>
+                </div>
+
+                <!-- 🎂 歴代の今日 (On This Day) -->
+                <div class="lab-otd-box">
+                  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+                    <span class="lab-section-label">🎂 歴代の今日・記念日</span>
+                    <button type="button" class="btn-mini-text" id="labOnThisDayTodayBtn" title="今日の日付に戻す">今日</button>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 4px;">
+                    <select id="labOnThisDayMonth" class="form-select-sm" style="flex: 1;" title="月を選択"></select>
+                    <select id="labOnThisDayDay" class="form-select-sm" style="flex: 1;" title="日を選択"></select>
+                    <button type="button" class="btn btn-secondary btn-xs" id="labOnThisDayBtn" data-lab-action="on-this-day" title="指定した月日の歴代写真を抽出・解除">🎂 抽出</button>
+                  </div>
+                </div>
+
+                <!-- 🌅 太陽高度・露出ラボ抽出 -->
+                <div style="display: flex; flex-direction: column; gap: 5px;">
+                  <div style="display: flex; align-items: center; justify-content: space-between;">
+                    <span class="lab-section-label">🔭 太陽高度・露出ラボ抽出</span>
+                    <button type="button" class="btn-mini-text" id="clearLabFilterBtn" style="display: none;" title="ラボの絞り込み条件をすべて解除">クリア</button>
+                  </div>
+                  <div class="lab-filter-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
+                    <button type="button" class="btn btn-secondary btn-xs lab-filter-btn" id="labBtnGoldenHour" data-lab-filter="golden_hour" title="太陽高度 -4°〜+6° のドラマチックな光（朝焼け・夕焼け）で撮影した写真を抽出">🌅 マジックアワー</button>
+                    <button type="button" class="btn btn-secondary btn-xs lab-filter-btn" id="labBtnBlueHour" data-lab-filter="blue_hour" title="太陽高度 -8°〜-4° の静謐な蒼い薄明時間帯の写真を抽出">🌌 ブルーアワー</button>
+                    <button type="button" class="btn btn-secondary btn-xs lab-filter-btn" id="labBtnNight" data-lab-filter="night" title="太陽高度 -8°未満の夜景・星景写真を抽出">🌃 夜景・星景</button>
+                    <button type="button" class="btn btn-secondary btn-xs lab-filter-btn" id="labBtnShakeRisk" data-lab-filter="shake_risk" title="シャッター速度 < 1/焦点距離 秒 の微ブレ危険領域にある写真を抽出">⚠️ 手ブレ注意</button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -1045,69 +1123,78 @@
 
           <div class="help-card" style="margin-top: 14px;">
             <h4>5. 複数の写真をまとめて操作する ＆ 絞り込み検索</h4>
-            <p><strong>👥 複数選択:</strong> <kbd>Ctrl</kbd>+クリックで追加選択、<kbd>Shift</kbd>+クリックで範囲選択、<kbd>Ctrl</kbd>+<kbd>A</kbd> で全選択できます。選ぶと<strong>画面下部に黒い操作バー</strong>が現れ、まとめて評価付け・タグ付け・回転・書き出しが行えます。</p>
-            <p><strong>🔍 写真を探す:</strong> 左サイドバーの「📅 撮影年月」「📷 カメラ機種」や、上部の「文字検索ボックス」で絞り込めます。元に戻すときは左サイドバー一番上の <strong>「🖼️ すべての写真」</strong> または <strong>「↺ 絞り込み解除」</strong> を押してください。</p>
+            <p><strong>👥 複数選択:</strong> <kbd>Ctrl</kbd>+クリックで追加選択、<kbd>Shift</kbd>+クリックで範囲選択、<kbd>Ctrl</kbd>+<kbd>A</kbd> で全選択できます。選ぶと<strong>画面下部に黒い操作バー</strong>が現れ、まとめて評価付け・タグ付け・回転・書き出し・<strong>「⚖️ 2枚比較」</strong>が行えます。</p>
+            <p><strong>🔍 写真を探す:</strong> 左サイドバーの「📅 タイムライン」「📷 カメラ・レンズ（機種＞レンズ階層ツリー＆<code>[+]</code>含む/<code>[-]</code>除外検索）」「🧪 ラボ」や、「🔍 ファイル名検索」で自在に絞り込めます。元に戻すときは左サイドバー一番上の <strong>「🖼️ すべての写真」</strong> または <strong>「🔄 フィルタ全解除」</strong> を押してください。</p>
           </div>
         </div>
 
         <!-- タブ2: 🔵 Advance編 (応用・便利機能) -->
         <div class="help-tab-content" id="helpTab-advance">
           <div class="help-card">
-            <h4>1. 連写・露出ブラケット・重複写真をまとめる（スタック機能）</h4>
+            <h4>1. 連写・露出ブラケット・重複写真をまとめる（スタック機能）＆ ⚖️ 2枚並べて比較</h4>
             <p>上部ツールバーの <strong>「スタック」</strong> ボタンがONのとき、「連写」「露出ブラケット（AEB）」「別フォルダにある同一写真の重複コピー」を自動で1つの束にまとめ、代表の1枚だけを表示します。</p>
             <ul>
               <li><strong>束の中身を見比べる:</strong> ライトボックス（<kbd>Space</kbd>）を開き、<kbd>↑</kbd> / <kbd>↓</kbd> キーや下部のミニサムネイルバーで比較できます。</li>
+              <li><strong>⚖️ 2枚並べて比較（同期ズーム＆パン）:</strong> 写真を2枚選んで下部バー（または右クリック）の <strong>「⚖️ 2枚比較」</strong>、あるいはライトボックス上部の <strong>「⚖️ 隣と比較」</strong> を押すと、左右に並べて<strong>連動ズーム＆ドラッグ移動</strong>でピントや描写を厳密に見比べられます。Exifの差分もハイライト表示され、左写真は <kbd>1</kbd>〜<kbd>4</kbd>、右写真は <kbd>Shift</kbd>+<kbd>1</kbd>〜<kbd>4</kbd> で即座に評価付けできます。</li>
               <li><strong>代表（表紙）を変える:</strong> 気に入ったコマを表示して、右インスペクタやライトボックスの <strong>「👑 代表に設定」</strong> を押します。</li>
               <li><strong>📋 重複写真の確認:</strong> 別フォルダに同じ写真がある場合はサムネイル右上角に「折り目マーク」が付きます。左サイドバー「クイックアクセス」の <strong>「📋 重複のある写真」</strong> から一覧でき、右インスペクタで保存先フォルダを確認・整理できます。</li>
             </ul>
           </div>
 
           <div class="help-card" style="margin-top: 14px;">
-            <h4>2. 階層タグ・色ラベル・ローカルAI自動分類</h4>
+            <h4>2. 階層タグ・色ラベル・ローカルAI自動分類 ＆ 📷 カメラ・レンズ排他検索</h4>
             <p><strong>🏷️ 階層タグ:</strong> タグ入力時に <code>旅行/2026北海道/小樽</code> のように <code>/</code> で区切ると、左サイドバーで親子ツリーとして整理されます（タグ右端の <code>＋</code> ボタンから子タグの追加も可能）。</p>
-            <p><strong>🎨 色合い（12色パレット）:</strong> 右インスペクタの「🎨 色合い」で写真にイメージ色を登録し、左サイドバーの「🎨 色合い」から色別に絞り込めます。</p>
+            <p><strong>🎨 色合い（12色パレット）:</strong> 右インスペクタの「🎨 色合い」で写真にイメージ色を登録し、左サイドバーの「🎨 カラー」から色別に絞り込めます。</p>
             <p><strong>🤖 ローカルAI自動タグ付け:</strong> 左サイドバーのフォルダを右クリック → <strong>「🤖 AIタグ付け」</strong> を選ぶと、ネット通信なしでパソコン内のAIが「青空」「海」「猫」「料理」「夜景」などのタグを自動付与します。</p>
-            <p><strong>🔍 含む <code>[+]</code> と除外 <code>[-]</code>:</strong> 左サイドバーのタグ一覧で <code>[+]</code> を押すとそのタグを含む写真、<code>[-]</code> を押すとそのタグを除外した写真に絞り込めます。</p>
+            <p><strong>📷 カメラ・レンズ階層ツリー ＆ <code>[+]</code> / <code>[-]</code> 排他検索:</strong> タグだけでなく「📷 カメラ・レンズ」でも、カメラ本体の下に装着レンズが階層表示され、クリックするたびに <strong><code>[+]</code> 含む ➜ <code>[-]</code> 除外 ➜ 解除</strong> を切り替えられます（「特定のカメラ・レンズで撮った写真だけを除外する」といった高度な絞り込みが可能）。</p>
           </div>
 
           <div class="help-card" style="margin-top: 14px;">
-            <h4>3. 傾き補正・切り抜き（クロップ）・明るさ微調整（完全非破壊）</h4>
+            <h4>3. 傾き補正・切り抜き・明るさ微調整 ＆ 📊 リアルタイムヒストグラム（完全非破壊）</h4>
             <p>写真を選んで <strong><kbd>C</kbd> キー</strong>（またはライトボックス上部の <strong>「✂」ボタン</strong>）を押すと、元ファイルを一切傷つけずに画面上で以下の調整ができます：</p>
             <ul>
               <li><strong>切り抜き（アスペクト比）:</strong> 元の比率、1:1、16:9、4:3、3:2、自由サイズから選んで構図を調整（三分割ガイド線付き）。</li>
               <li><strong>📐 傾き補正（水平出し）:</strong> <code>-15°</code>〜<code>+15°</code> の範囲で斜めの水平線をまっすぐに補正（周囲に黒い余白が出ないよう自動で内側を切り抜きます）。</li>
-              <li><strong>☀️ 明るさ・コントラスト・彩度:</strong> カメラの露出補正感覚（<code>-2.0EV</code>〜<code>+2.0EV</code>、1/3段ステップ）で明るさや色味を微調整。</li>
+              <li><strong>☀️ 明るさ・コントラスト・彩度 ＆ 📊 リアルタイムトーン波形:</strong> カメラの露出補正感覚（<code>-2.0EV</code>〜<code>+2.0EV</code>、1/3段ステップ）で明るさや色味を微調整すると、上部の <strong>📊 リアルタイムヒストグラム（RGB・輝度波形）</strong> が連動して変化し、白飛びや黒つぶれを防ぎながら追い込めます（右インスペクタの「ℹ️ 詳細情報」タブでも常時ヒストグラムを確認できます）。</li>
             </ul>
             <p class="help-tip">💡 いつでも「↺ リセット」ボタンから撮影時の初期状態に100%戻せます。</p>
           </div>
 
           <div class="help-card" style="margin-top: 14px;">
-            <h4>4. 撮影場所（ジオタグ）ツリー ＆ 📍 スマホGPS準用</h4>
+            <h4>4. 撮影場所（ジオタグ）ツリー・🗾 47都道府県制覇マップ ＆ 📍 スマホGPS準用</h4>
             <p><strong>🗺️ 場所ツリー:</strong> GPS情報付き写真は、左サイドバー「🗺️ ジオタグ」から「国 ＞ 都道府県 ＞ 市区町村」の階層で絞り込めます。</p>
-            <p><strong>📍 スマホから位置情報をコピー（スマホGPS準用）:</strong> GPSのない一眼カメラの写真でも、前後1時間以内に撮ったスマホ写真がライブラリにあれば位置情報を引き継げます。</p>
+            <p><strong>🗾 47都道府県 撮影制覇白地図・ヒートマップ・👣 撮影さんぽ軌跡:</strong> 左サイドバー「🗺️ ジオタグ」内の <strong>「🗾 制覇マップ」</strong> ボタンを押すと、以下の3つの地図分析モードを楽しめます：</p>
             <ul>
-              <li><strong>1枚ずつ比較して付ける:</strong> 右インスペクタの <strong>「📍 スマホGPS準用」</strong> を押し、前後のスマホ写真候補を見比べて選択。</li>
-              <li><strong>複数枚にまとめて付ける:</strong> 写真を複数選んで画面下部バーの <strong>「📍 ジオタグ準用」</strong> を押すと、最も時刻が近い位置情報を一括セットします。</li>
+              <li><strong>🗾 47都道府県 制覇白地図:</strong> 撮影したことがある都道府県が撮影枚数に応じて色分けされ、制覇率（○/47都道府県）を表示。県をクリックするとその県の写真だけを即座に一覧抽出できます。</li>
+              <li><strong>🔥 撮影密度ヒートマップ ＆ 👣 撮影さんぽ軌跡ライン:</strong> よく撮影に訪れるスポットがヒートマップで浮かび上がり、さらに日付を選ぶとその日に歩いた撮影ルートを時系列の赤い破線（さんぽ軌跡）で地図上に再現します。</li>
+            </ul>
+            <p><strong>📍 スマホから位置情報をコピー（スマホGPS準用）:</strong> GPSのない一眼カメラの写真でも、前後1時間以内に撮ったスマホ写真がライブラリにあれば、右インスペクタの「📍 スマホGPS準用」や下部バーの「📍 ジオタグ準用」から位置情報を引き継げます。</p>
+          </div>
+
+          <div class="help-card" style="margin-top: 14px;">
+            <h4>5. 📤 スマート・テイクアウト ＆ 🎞️ ベタ焼き（コンタクトシート）HTML出力</h4>
+            <p>画面下部バー（または右クリック）の <strong>「📤 テイクアウト」</strong> から、用途に合わせて2種類の出力が選べます（元ファイルは無傷のまま維持）：</p>
+            <ul>
+              <li><strong>⚡ スマート・テイクアウト:</strong> 非破壊で行った回転・傾き・切り抜き・明るさ調整の焼き込み、GPS/向きのExif同期、長辺リサイズ（4K / SNS最適 / フルHD等）、撮影秒数順の連番リネーム、SNS公開用のExifプライバシー消去を一括適用して別フォルダへ書き出します。</li>
+              <li><strong>🎞️ ベタ焼きHTML出力（暗室コンタクトシート）:</strong> 選んだ写真を昔ながらの暗室ネガフィルムシート風（または和紙風）の単一HTMLファイルとして出力します。ブラウザで開いて写真をクリックすると<strong>赤鉛筆の「⭕（マル）」チェック</strong>を付けられ、そのままA4サイズ等での美しい一覧印刷にも対応しています。</li>
             </ul>
           </div>
 
           <div class="help-card" style="margin-top: 14px;">
-            <h4>5. 用途別にまとめて書き出す（📤 スマート・テイクアウト）</h4>
-            <p>選んだ写真をSNS投稿用・印刷用・受け渡し用として別フォルダへ一括出力します。画面下部バーの <strong>「📤 テイクアウト」＞「⚡ スマート・テイクアウト...」</strong> から以下の処理を同時に行えます（元ファイルは無傷のまま維持）：</p>
+            <h4>6. 🧪 ラボ（実験室）：🏆 勝ちレンズカルテ・🌅 太陽高度抽出・🎂 歴代の今日・🎲 未整理ガチャ</h4>
+            <p>左サイドバーの <strong>「🧪 ラボ」</strong> セクションでは、写真ライブラリを多角的に分析・発掘する実験室ツールを使えます：</p>
             <ul>
-              <li>アプリ上で行った<strong>回転・傾き・切り抜き・明るさ調整の焼き込み</strong></li>
-              <li>アプリ上で準用・変更した<strong>位置情報（GPS）や回転向きのExif反映</strong></li>
-              <li><strong>長辺リサイズ</strong>（オリジナル / 4K 3840px / SNS最適 2048px / フルHD 1920px 等）</li>
-              <li>複数カメラの写真も撮影時刻順に並べる<strong>連番リネーム（001_...）</strong></li>
-              <li>SNS公開時に安心な<strong>Exifプライバシー消去</strong>（位置情報のみ消去 / 撮影機材消去 / すべて消去 等）</li>
+              <li><strong>🏆 勝ちレンズ・得意設定カルテ:</strong> これまでの評価（優・良）データから、歩留まり（高評価率）が高い「相性抜群の勝ちレンズランキング」や、自分が得意とする「黄金の焦点距離・F値・撮影時間帯」を自動診断します。</li>
+              <li><strong>🔭 太陽高度・露出ラボ抽出:</strong> 撮影日時と緯度・経度から太陽の角度を自動計算し、ドラマチックな朝夕の <strong>「🌅 マジックアワー（太陽高度 -4°〜+6°）」</strong>、静謐な薄明の <strong>「🌌 ブルーアワー（-8°〜-4°）」</strong>、<strong>「🌃 夜景・星景（-8°未満）」</strong>、さらにシャッター速度が <code>1/焦点距離 秒</code> より遅い <strong>「⚠️ 手ブレ注意」</strong> の写真をワンクリックで抽出します。</li>
+              <li><strong>🎂 歴代の今日・記念日 ＆ 🎲 未整理ガチャ:</strong> 「過去の同じ月日（今日や記念日）に撮った写真」を一発で振り返る機能や、まだ選別していない（評価：可）写真が残っているフォルダをランダムに1つ引き当てる「🎲 未整理ガチャ」で楽しく整理を進められます。</li>
             </ul>
           </div>
 
           <div class="help-card" style="margin-top: 14px;">
-            <h4>6. 検索プリセット保存・外部ソフト連携・DBメンテナンス</h4>
-            <p><strong>💾 プリセット保存:</strong> よく使う絞り込み条件は、左サイドバー「💾 プリセット」の <code>＋ 保存</code> で名前を付けて登録し、ワンクリックで呼び出せます。</p>
-            <p><strong>📁 外部ソフト連携 ＆ 🔄 サムネイル更新:</strong> 右インスペクタ上部の <code>📁</code> でエクスプローラーを開き、<code>🖼️</code> で既定ソフトで開けます。外部ソフトで編集した後は、写真を右クリック →「🔄 サムネイルの更新」で表示を最新化できます。</p>
-            <p><strong>🧹 DB最適化:</strong> 左サイドバー「📁 フォルダ」上部の <code>🧹 DB最適化</code> で、自動バックアップを取りつつデータベース容量をスリム化できます。</p>
+            <h4>7. 検索プリセット保存・外部ソフト連携・DBメンテナンス</h4>
+            <p><strong>💾 プリセット保存:</strong> よく使う絞り込み条件は、左サイドバー「⚡ クイックアクセス」内の保存フォームで名前を付けて登録し、ワンクリックで呼び出せます。</p>
+            <p><strong>📁 外部ソフト連携 ＆ 🔄 サムネイル更新:</strong> 右インスペクタ上部の <code>📁</code> でエクスプローラーを開き、<code>🖼️</code> で既定ソフトで開けます。外部ソフトで編集した後は、写真を右クリック →「🔄 サムネイルを更新」で表示を最新化できます。</p>
+            <p><strong>⚙️ DBメンテナンス:</strong> 左サイドバー「📁 フォルダ」上部の <code>⚙️</code> ボタンで、世代バックアップを取りつつデータベース容量を最適化（VACUUM）できます。</p>
           </div>
         </div>
 
@@ -1173,6 +1260,8 @@
                 <tr><td><kbd>0</kbd> / <kbd>4</kbd></td><td>選択中の写真の <strong>評価を取り消す（⚪ 可）</strong></td></tr>
                 <tr><td><kbd>R</kbd> / <kbd>L</kbd></td><td>選択中の写真を <strong>右へ90度(<kbd>R</kbd>) / 左へ90度(<kbd>L</kbd>) 回転</strong>（非破壊）</td></tr>
                 <tr><td><kbd>C</kbd></td><td>選択中の写真の <strong>切り抜き・傾き・明るさ調整画面</strong> を開く（非破壊）</td></tr>
+                <tr><td><kbd>V</kbd></td><td><strong>⚖️ 2枚並べて比較（Side-by-Side）</strong> を開く（同期ズーム・勝ち抜き選別）</td></tr>
+                <tr><td><kbd>H</kbd></td><td><strong>📊 RGB・輝度ヒストグラム</strong> の表示 / 非表示を切り替え</td></tr>
                 <tr><td><kbd>I</kbd></td><td>写真上の文字・バッジ表示を隠す / 表示する（クリーンモード切替）</td></tr>
                 <tr><td><kbd>[</kbd> / <kbd>B</kbd></td><td>左サイドバーの表示 / 非表示を切り替え</td></tr>
                 <tr><td><kbd>D</kbd></td><td>右インスペクタ（詳細パネル）の表示 / 非表示を切り替え</td></tr>
@@ -1184,22 +1273,25 @@
           </div>
 
           <div class="help-section" style="margin-top: 18px;">
-            <h3 class="help-section-title">ライトボックス（全画面拡大）でのショートカット</h3>
+            <h3 class="help-section-title">ライトボックス（全画面拡大）＆ 2枚比較画面でのショートカット</h3>
             <table class="help-table">
               <thead>
                 <tr><th style="width: 170px;">キー / 操作</th><th>機能・アクション</th></tr>
               </thead>
               <tbody>
-                <tr><td><kbd>←</kbd> / <kbd>→</kbd></td><td><strong>前後の写真・スタックへ移動（フィルムビュー左右）</strong></td></tr>
+                <tr><td><kbd>←</kbd> / <kbd>→</kbd></td><td><strong>前後の写真・スタックへ移動（2枚比較時は右ペインBの候補切替）</strong></td></tr>
                 <tr><td><kbd>↑</kbd> / <kbd>↓</kbd></td><td><strong>連写 / ブラケット / 重複写真のスタック内切替</strong><br>（露出ブラケット時: <kbd>↑</kbd> で明るいEV+ / <kbd>↓</kbd> で暗いEV-、連写・重複時: <kbd>↑</kbd> で時間戻り / <kbd>↓</kbd> で時間進み）</td></tr>
-                <tr><td><kbd>1</kbd> / <kbd>2</kbd> / <kbd>3</kbd> / <kbd>0</kbd></td><td>表示中の写真に <strong>優(<kbd>1</kbd>) / 良(<kbd>2</kbd>) / 棄(<kbd>3</kbd>) / 可(<kbd>0</kbd>)</strong> を設定</td></tr>
+                <tr><td><kbd>1</kbd> / <kbd>2</kbd> / <kbd>3</kbd> / <kbd>0</kbd></td><td>表示中の写真（2枚比較時は選択中ペイン）に <strong>優(<kbd>1</kbd>) / 良(<kbd>2</kbd>) / 棄(<kbd>3</kbd>) / 可(<kbd>0</kbd>・<kbd>4</kbd>)</strong> を設定</td></tr>
+                <tr><td><kbd>V</kbd></td><td>ライトボックスから <strong>⚖️ 2枚並べて比較（Side-by-Side）</strong> を開く / 閉じる</td></tr>
+                <tr><td><kbd>W</kbd> / <kbd>S</kbd></td><td>【⚖️ 2枚比較時】<kbd>W</kbd> で<strong>右(B)を左(A:基準)に昇格して次へ</strong> ／ <kbd>S</kbd> で<strong>左右入れ替え</strong></td></tr>
+                <tr><td><kbd>H</kbd></td><td><strong>📊 RGB・輝度ヒストグラム</strong> の表示 / 非表示を切り替え（2枚比較時は左右同時表示）</td></tr>
                 <tr><td><kbd>X</kbd></td><td><strong>🗑️ 棄（ボツ）</strong> 評価のON / OFFトグル</td></tr>
                 <tr><td><kbd>R</kbd> / <kbd>L</kbd></td><td>表示中の写真を <strong>右へ90度(<kbd>R</kbd>) / 左へ90度(<kbd>L</kbd>) 回転</strong>（非破壊）</td></tr>
                 <tr><td><kbd>C</kbd></td><td>表示中の写真の <strong>切り抜き・傾き・明るさ調整画面</strong> を開く（非破壊）</td></tr>
-                <tr><td><kbd>マウスホイール</kbd></td><td>画像上: <strong>カーソル位置を中心に拡大縮小 (100%〜400%)</strong><br>連写バー上: <strong>スタック内のコマ送り</strong> ／ 下部フィルム帯上: <strong>写真送り</strong></td></tr>
+                <tr><td><kbd>マウスホイール</kbd></td><td>画像上: <strong>カーソル位置を中心に拡大縮小 (100%〜400% / 2枚比較時は左右同期ズーム)</strong><br>連写バー上: <strong>スタック内のコマ送り</strong> ／ 下部フィルム帯上: <strong>写真送り</strong></td></tr>
                 <tr><td><kbd>ダブルクリック</kbd></td><td>拡大 (200%) ⇔ 等倍 (100%) をワンタッチ切替</td></tr>
-                <tr><td><kbd>ドラッグ</kbd></td><td>拡大中の表示位置を移動（パン移動）</td></tr>
-                <tr><td><kbd>Space</kbd> / <kbd>Esc</kbd></td><td>ライトボックスを閉じて一覧画面に戻る</td></tr>
+                <tr><td><kbd>ドラッグ</kbd></td><td>拡大中の表示位置を移動（パン移動 / 2枚比較時は左右同期パン、<kbd>Alt</kbd>+ドラッグで片側のみ移動）</td></tr>
+                <tr><td><kbd>Space</kbd> / <kbd>Esc</kbd></td><td>ライトボックス / 2枚比較画面を閉じて一覧画面に戻る</td></tr>
               </tbody>
             </table>
           </div>
@@ -1905,6 +1997,7 @@
         <div class="rating-widget" id="lightboxRatingWidget">
           <span class="rating-btn rating-btn-excellent" data-rating="2" title="優 (1)">優</span>
           <span class="rating-btn rating-btn-good" data-rating="1" title="良 (2)">良</span>
+          <span class="rating-btn rating-btn-normal" data-rating="0" title="可 (0 / 4)">可</span>
           <span class="rating-btn rating-btn-discard" data-rating="-1" title="棄 (3 / X)">棄</span>
         </div>
         <button class="icon-action-btn" id="lightboxRotateLeftBtn" title="反時計回りに90°回転 (L)">
@@ -2031,6 +2124,13 @@
             <span style="font-size: 0.68rem; color: var(--text-muted);">回転・クロップ・Exif制御</span>
           </div>
           <span style="font-size: 0.85rem; color: var(--accent-primary);">⚙</span>
+        </div>
+        <div class="context-submenu-item context-import-action contact-sheet-trigger-action" id="contextTriggerContactSheetBtn" title="選択した写真を暗室ネガシート風のスタンドアロンHTML（ベタ焼き）として出力します">
+          <span style="font-size: 1.1rem;">🎞️</span>
+          <div style="display: flex; flex-direction: column; flex: 1;">
+            <span style="font-size: 0.82rem; font-weight: 700;">ベタ焼きHTML出力...</span>
+            <span style="font-size: 0.68rem; color: var(--text-muted, #4a4843);">暗室コンタクトシート・A4印刷対応</span>
+          </div>
         </div>
         <div class="context-menu-divider" style="margin: 4px 0;"></div>
         <div class="submenu-create-input">
@@ -2258,6 +2358,13 @@
               </div>
               <span style="font-size: 0.85rem; color: var(--accent-primary);">⚙</span>
             </div>
+            <div class="floating-popover-action-item context-import-action contact-sheet-trigger-action" id="floatingTriggerContactSheetBtn" title="選択した写真を暗室ネガシート風のスタンドアロンHTML（ベタ焼き）として出力します">
+              <span style="font-size: 1.1rem;">🎞️</span>
+              <div style="display: flex; flex-direction: column; flex: 1;">
+                <span style="font-size: 0.82rem; font-weight: 700;">ベタ焼きHTML出力...</span>
+                <span style="font-size: 0.68rem; color: var(--text-muted, #4a4843);">暗室コンタクトシート・A4印刷対応</span>
+              </div>
+            </div>
             <div class="popover-input-group">
               <input type="text" id="floatingImportFolderInput" placeholder="新規フォルダ名..." autocomplete="off">
               <button class="btn btn-primary btn-xs" id="floatingConfirmImportFolderBtn" title="フォルダを作成して選択中のJPGをコピー">作成&送信</button>
@@ -2335,16 +2442,20 @@
     </div>
   </div>
 
-  <script src="/js/common.js?v=2.35"></script>
-  <script src="/js/selection.js?v=2.35"></script>
-  <script src="/js/inspector.js?v=2.35"></script>
-  <script src="/js/lightbox.js?v=2.35"></script>
-  <script src="/js/adjust.js?v=2.35"></script>
-  <script src="/js/takeout.js?v=2.35"></script>
-  <script src="/js/presets.js?v=2.35"></script>
-  <script src="/js/slideshow.js?v=2.35"></script>
-  <script src="/js/location_tree.js?v=2.35"></script>
-  <script src="/js/folder_tree.js?v=2.35"></script>
-  <script src="/js/app.js?v=2.35"></script>
+  <script src="/js/common.js?v=2.38"></script>
+  <script src="/js/selection.js?v=2.38"></script>
+  <script src="/js/inspector.js?v=2.38"></script>
+  <script src="/js/lightbox.js?v=2.38"></script>
+  <script src="/js/adjust.js?v=2.38"></script>
+  <script src="/js/histogram.js?v=2.38"></script>
+  <script src="/js/compare.js?v=2.38"></script>
+  <script src="/js/takeout.js?v=2.38"></script>
+  <script src="/js/presets.js?v=2.38"></script>
+  <script src="/js/slideshow.js?v=2.38"></script>
+  <script src="/js/location_tree.js?v=2.38"></script>
+  <script src="/js/folder_tree.js?v=2.38"></script>
+  <script src="/js/location_map.js?v=2.38"></script>
+  <script src="/js/lab.js?v=2.38"></script>
+  <script src="/js/app.js?v=2.38"></script>
 </body>
 </html>

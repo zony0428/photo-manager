@@ -205,6 +205,9 @@ function showSingleInspector(photo) {
   // プレビューサムネイル
   elements.inspectorThumb.src = getThumbnailUrl(photo);
   elements.inspectorThumb.style.transform = '';
+  if (elements.inspectorThumb.complete && typeof window.refreshInspectorHistogram === 'function') {
+    window.refreshInspectorHistogram();
+  }
 
   elements.inspectorPreviewWrapper.onclick = () => {
     const idx = state.photos.findIndex(p => p.id === photo.id);
@@ -414,6 +417,9 @@ function showSingleInspector(photo) {
           // 上部の固定プレビュー画像とタイトルを即時更新
           if (elements.inspectorThumb) {
             elements.inspectorThumb.src = getThumbnailUrl(sp);
+            if (elements.inspectorThumb.complete && typeof window.refreshInspectorHistogram === 'function') {
+              window.refreshInspectorHistogram();
+            }
           }
           if (elements.inspectorTitle) {
             elements.inspectorTitle.textContent = sp.file_name;

@@ -1,0 +1,542 @@
+/**
+ * Photo Manager - Side-by-Side 2枚並列比較ビュー (compare.css)
+ * 同時シンクロ・ズーム＆パン、トーナメント勝ち抜き入れ替え、左右独立評価、RGBヒストグラム同時比較。
+ */
+
+.compare-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 9500;
+  background: #0b0b0d;
+  color: #eceae4;
+  display: flex;
+  flex-direction: column;
+  user-select: none;
+  animation: compareFadeIn 0.16s ease-out;
+}
+
+@keyframes compareFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* =========================================================================
+   1. 上部ヘッダーバー
+   ========================================================================= */
+
+.compare-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: #141417;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.compare-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.compare-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #ffffff;
+  white-space: nowrap;
+}
+
+.compare-source-badge {
+  font-size: 0.73rem;
+  font-weight: 600;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: rgba(225, 77, 42, 0.18);
+  border: 1px solid rgba(225, 77, 42, 0.45);
+  color: #ffb4a2;
+  white-space: nowrap;
+}
+
+.compare-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.compare-sync-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 5px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.compare-sync-group-label {
+  font-size: 0.71rem;
+  font-weight: 600;
+  color: #9a968e;
+  padding: 0 4px 0 3px;
+  user-select: none;
+}
+
+.compare-tool-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 11px;
+  border-radius: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
+  color: #d6d3cb;
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.14s ease;
+  white-space: nowrap;
+}
+
+.compare-sync-group .compare-tool-btn {
+  padding: 4px 9px;
+}
+
+.compare-tool-btn:hover {
+  background: rgba(255, 255, 255, 0.13);
+  border-color: rgba(255, 255, 255, 0.3);
+  color: #ffffff;
+}
+
+.compare-tool-btn.active {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: rgba(56, 189, 248, 0.65);
+  color: #7dd3fc;
+}
+
+.compare-tool-btn.is-hist.active {
+  background: rgba(225, 77, 42, 0.22);
+  border-color: var(--accent-primary, #e14d2a);
+  color: #ffb4a2;
+}
+
+.compare-tool-btn.is-promote:hover {
+  background: rgba(245, 158, 11, 0.18);
+  border-color: rgba(245, 158, 11, 0.55);
+  color: #fde68a;
+}
+
+.compare-zoom-readout {
+  font-family: 'Inter', monospace;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 4px 9px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #eceae4;
+  cursor: pointer;
+  min-width: 54px;
+  text-align: center;
+}
+
+.compare-zoom-readout:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.compare-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.compare-shortcut-hint {
+  font-size: 0.71rem;
+  color: rgba(236, 234, 228, 0.55);
+  white-space: nowrap;
+}
+
+@media (max-width: 1180px) {
+  .compare-shortcut-hint {
+    display: none;
+  }
+}
+
+.compare-close-btn {
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #eceae4;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  font-size: 1.25rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.14s ease;
+}
+
+.compare-close-btn:hover {
+  background: rgba(239, 68, 68, 0.25);
+  border-color: #ef4444;
+  color: #ffffff;
+}
+
+/* =========================================================================
+   2. 中央左右2分割ステージ (A: 基準 / B: 比較候補)
+   ========================================================================= */
+
+.compare-stage-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  background: rgba(255, 255, 255, 0.12);
+  position: relative;
+}
+
+.compare-pane {
+  position: relative;
+  background: #0d0d10;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 2px solid transparent;
+  transition: border-color 0.14s ease;
+}
+
+.compare-pane.is-active-target[data-side="A"] {
+  border-color: rgba(245, 158, 11, 0.65);
+}
+
+.compare-pane.is-active-target[data-side="B"] {
+  border-color: rgba(225, 77, 42, 0.75);
+}
+
+/* ペイン上部情報＆評価バー */
+.compare-pane-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: rgba(20, 20, 24, 0.92);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  gap: 8px;
+  z-index: 10;
+  flex-shrink: 0;
+}
+
+.compare-pane-meta {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.compare-slot-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.compare-slot-badge.slot-a {
+  background: rgba(245, 158, 11, 0.2);
+  border: 1px solid rgba(245, 158, 11, 0.55);
+  color: #fcd34d;
+}
+
+.compare-slot-badge.slot-b {
+  background: rgba(225, 77, 42, 0.22);
+  border: 1px solid rgba(225, 77, 42, 0.55);
+  color: #ffb4a2;
+}
+
+.compare-filename {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.compare-exif-pills {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+
+.compare-exif-pill {
+  font-size: 0.67rem;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #cbd5e1;
+  white-space: nowrap;
+  font-family: 'Inter', monospace;
+}
+
+.compare-exif-pill.is-ev-plus {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fcd34d;
+}
+
+.compare-exif-pill.is-ev-minus {
+  background: rgba(56, 189, 248, 0.2);
+  color: #7dd3fc;
+}
+
+.compare-pane-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.compare-rate-group {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.compare-rate-btn {
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.05);
+  color: #cbd5e1;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.compare-rate-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+}
+
+.compare-rate-btn[data-rating="2"].active {
+  background: #e14d2a;
+  border-color: #ff785a;
+  color: #ffffff;
+}
+
+.compare-rate-btn[data-rating="1"].active {
+  background: #2563eb;
+  border-color: #60a5fa;
+  color: #ffffff;
+}
+
+.compare-rate-btn[data-rating="0"].active {
+  background: rgba(255, 255, 255, 0.24);
+  border-color: rgba(255, 255, 255, 0.5);
+  color: #ffffff;
+}
+
+.compare-rate-btn[data-rating="-1"].active {
+  background: #475569;
+  border-color: #94a3b8;
+  color: #f8fafc;
+}
+
+/* 画像表示ビューポート */
+.compare-viewport {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+}
+
+.compare-viewport:active {
+  cursor: grabbing;
+}
+
+.compare-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  transform-origin: center center;
+  will-change: transform;
+  pointer-events: none;
+}
+
+.compare-pane.is-discarded-photo .compare-img {
+  opacity: 0.55;
+}
+
+/* ペイン内のヒストグラムオーバーレイ */
+.compare-hist-overlay {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 232px;
+  z-index: 20;
+  background: rgba(14, 14, 18, 0.84);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 7px;
+  padding: 6px 8px 5px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+}
+
+/* ペイン下部のターゲット案内ピル */
+.compare-active-indicator {
+  position: absolute;
+  bottom: 10px;
+  left: 12px;
+  z-index: 15;
+  font-size: 0.68rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(15, 15, 18, 0.76);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: rgba(236, 234, 228, 0.65);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.14s ease;
+}
+
+.compare-pane.is-active-target .compare-active-indicator {
+  opacity: 1;
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+/* =========================================================================
+   3. 下部フィルムストリップ（候補一覧バー）
+   ========================================================================= */
+
+.compare-footer {
+  background: #141417;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 6px 14px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.compare-footer-guide {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.7rem;
+  color: rgba(236, 234, 228, 0.65);
+}
+
+.compare-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 3px 2px 4px;
+  scrollbar-width: thin;
+}
+
+.compare-strip-item {
+  position: relative;
+  width: 78px;
+  height: 58px;
+  border-radius: 5px;
+  overflow: hidden;
+  flex-shrink: 0;
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  background: #1e1e24;
+  cursor: pointer;
+  transition: all 0.14s ease;
+}
+
+.compare-strip-item:hover {
+  border-color: rgba(255, 255, 255, 0.45);
+  transform: translateY(-1px);
+}
+
+.compare-strip-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.compare-strip-item.is-slot-a {
+  border-color: #f59e0b;
+  box-shadow: 0 0 0 1px #f59e0b, 0 3px 10px rgba(245, 158, 11, 0.35);
+}
+
+.compare-strip-item.is-slot-b {
+  border-color: #e14d2a;
+  box-shadow: 0 0 0 1px #e14d2a, 0 3px 10px rgba(225, 77, 42, 0.4);
+}
+
+.compare-strip-slot-tag {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  font-size: 0.6rem;
+  font-weight: 800;
+  padding: 1px 4px;
+  border-radius: 3px;
+  line-height: 1.1;
+  color: #ffffff;
+}
+
+.compare-strip-slot-tag.tag-a {
+  background: #d97706;
+}
+
+.compare-strip-slot-tag.tag-b {
+  background: #e14d2a;
+}
+
+.compare-strip-sub-label {
+  position: absolute;
+  bottom: 0;
+  inset-inline: 0;
+  background: rgba(0, 0, 0, 0.72);
+  color: #f1f5f9;
+  font-size: 0.6rem;
+  font-weight: 600;
+  text-align: center;
+  padding: 1px 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.compare-strip-rate-dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  font-size: 0.58rem;
+  font-weight: 800;
+  padding: 1px 4px;
+  border-radius: 3px;
+  line-height: 1.1;
+}
+
+.compare-strip-rate-dot.r-2 { background: #e14d2a; color: #fff; }
+.compare-strip-rate-dot.r-1 { background: #2563eb; color: #fff; }
+.compare-strip-rate-dot.r--1 { background: #475569; color: #cbd5e1; }

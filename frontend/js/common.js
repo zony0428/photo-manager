@@ -51,7 +51,11 @@ const state = {
   availableTags: [],        // 利用可能なタグ一覧
   selectedYearMonths: new Set(), // タイムライン複数選択（OR条件）用Set
   expandedTimelineYears: new Set(), // 展開されたタイムライン年集合 (デフォルトはすべて閉じた状態)
-  selectedCameras: new Set(),    // カメラ機種複数選択（OR条件）用Set
+  selectedCameras: new Set(),    // カメラ機種複数選択（OR条件）用Set (後方互換)
+  cameraFilters: new Map(),      // カメラ名 -> 'include' | 'exclude' (3ステート管理)
+  lensFilters: new Map(),        // "CameraModel::LensModel" または "LensModel" -> 'include' | 'exclude'
+  expandedCameras: new Set(),    // 展開されたカメラツリー機種名集合
+  selectedLenses: new Set(),     // レンズ選択（OR条件）用Set
   availableCameras: [],          // 利用可能なカメラ機種一覧
   selectedPhotoIds: new Set(), // マルチ選択中の写真IDセット
   lastSelectedIndex: -1,       // Shift範囲選択用インデックス
@@ -69,6 +73,12 @@ const state = {
   tagSourceFilter: 'manual',  // タグ種別フィルタ ('manual' | 'ai' | 'all')
   tagSearchQuery: '',      // タグ一覧のテキスト検索クエリ (Enter確定)
   inspectorActiveTab: localStorage.getItem('pm_inspector_tab') || 'tags', // インスペクタの選択中タブ ('tags' | 'exif' | 'map')
+  labFilter: null,             // ラボフィルタ ('shake_risk' | 'golden_hour' | 'blue_hour' | 'magic_all' | 'night' | null)
+  onThisDay: null,             // 歴代の今日フィルタ ('MM-DD' | null)
+  focalRange: null,            // 焦点距離帯フィルタ ('ultra_wide' | 'wide' | 'standard' | 'short_tele' | 'telephoto' | 'super_tele' | null)
+  focalRangeLabel: null,       // 焦点距離帯の表示ラベル
+  apertureRange: null,         // F値帯フィルタ ('f1_4' | 'f2_0' | 'f2_8' | 'f4_0' | 'f5_6' | 'f8_0' | 'f11_plus' | null)
+  apertureRangeLabel: null,    // F値帯の表示ラベル
 };
 
 

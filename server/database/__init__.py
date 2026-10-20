@@ -12,6 +12,7 @@ from .connection import (
     CACHE_DIR,
     DB_PATH,
     _local_db,
+    calc_solar_altitude,
     get_connection,
     close_thread_connection,
     switch_database_path,
@@ -20,7 +21,7 @@ from .connection import (
 # スキーマ・マイグレーション
 from .schema import initialize_database
 
-# 写真 CRUD・同期・GPS
+# 写真 CRUD・同期・GPS・ラボ分析
 from .photos import (
     upsert_photo,
     upsert_photos_batch,
@@ -60,6 +61,9 @@ from .photos import (
     cleanup_invalid_zero_gps,
     backfill_photo_locations,
     get_location_tree_summary,
+    get_location_heatmap_data,
+    get_lab_karte_data,
+    get_random_unrated_folder,
 )
 
 # タグ管理

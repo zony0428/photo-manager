@@ -15,6 +15,20 @@ function getCurrentFilterState() {
     });
   }
 
+  const cameraFiltersObj = {};
+  if (state.cameraFilters) {
+    state.cameraFilters.forEach((val, key) => {
+      cameraFiltersObj[key] = val;
+    });
+  }
+
+  const lensFiltersObj = {};
+  if (state.lensFilters) {
+    state.lensFilters.forEach((val, key) => {
+      lensFiltersObj[key] = val;
+    });
+  }
+
   return {
     currentFilter: state.currentFilter ? { ...state.currentFilter } : { type: 'all', value: null },
     ratingFilter: Array.from(state.ratingFilter || []),
@@ -24,6 +38,15 @@ function getCurrentFilterState() {
     connectionFilter: state.connectionFilter || 'all',
     selectedYearMonths: Array.from(state.selectedYearMonths || []),
     selectedCameras: Array.from(state.selectedCameras || []),
+    selectedLenses: Array.from(state.selectedLenses || []),
+    cameraFilters: cameraFiltersObj,
+    lensFilters: lensFiltersObj,
+    labFilter: state.labFilter || null,
+    onThisDay: state.onThisDay || null,
+    focalRange: state.focalRange || null,
+    focalRangeLabel: state.focalRangeLabel || null,
+    apertureRange: state.apertureRange || null,
+    apertureRangeLabel: state.apertureRangeLabel || null,
     isStacked: state.isStacked !== undefined ? state.isStacked : true,
     tagFilters: tagFiltersObj,
   };
@@ -50,11 +73,45 @@ function renderPresetCurrentChips() {
     });
   }
 
-  // 3. cameras
-  if (state.selectedCameras && state.selectedCameras.size > 0) {
+  // 3. cameras & lenses
+  if (state.cameraFilters && state.cameraFilters.size > 0) {
+    state.cameraFilters.forEach((mode, cam) => {
+      const prefix = mode === 'include' ? '+' : '\u2212';
+      chips.push({ icon: '\u{1F4F7}', label: `${prefix}${cam}` });
+    });
+  } else if (state.selectedCameras && state.selectedCameras.size > 0) {
     Array.from(state.selectedCameras).sort().forEach(cam => {
       chips.push({ icon: '\u{1F4F7}', label: cam });
     });
+  }
+
+  if (state.lensFilters && state.lensFilters.size > 0) {
+    state.lensFilters.forEach((mode, lensKey) => {
+      const prefix = mode === 'include' ? '+' : '\u2212';
+      const displayLens = lensKey.includes('::') ? lensKey.split('::')[1] : lensKey;
+      chips.push({ icon: '\u{1F52D}', label: `${prefix}${displayLens}` });
+    });
+  }
+
+  // 3b. lab filters
+  if (state.labFilter) {
+    const labNames = {
+      golden_hour: 'マジックアワー',
+      blue_hour: 'ブルーアワー',
+      magic_all: 'マジック＋ブルー',
+      night: '夜景・星景',
+      shake_risk: '手ブレ注意',
+    };
+    chips.push({ icon: '\u{1F9EA}', label: labNames[state.labFilter] || state.labFilter });
+  }
+  if (state.onThisDay) {
+    chips.push({ icon: '\u{1F382}', label: state.onThisDay });
+  }
+  if (state.focalRange) {
+    chips.push({ icon: '\u{1F52D}', label: state.focalRangeLabel || state.focalRange });
+  }
+  if (state.apertureRange) {
+    chips.push({ icon: '\u{1F4A0}', label: state.apertureRangeLabel || state.apertureRange });
   }
 
   // 4. tags
@@ -136,8 +193,37 @@ function renderFilterPresetsList() {
     if (f.selectedYearMonths && f.selectedYearMonths.length > 0) {
       condBadges.push(`\u{1F4C5} ${escapeHtml(f.selectedYearMonths.join(', '))}`);
     }
-    if (f.selectedCameras && f.selectedCameras.length > 0) {
+    if (f.cameraFilters && Object.keys(f.cameraFilters).length > 0) {
+      const cams = Object.keys(f.cameraFilters).map(c => (f.cameraFilters[c] === 'include' ? `+${c}` : `\u2212${c}`));
+      condBadges.push(`\u{1F4F7} ${escapeHtml(cams.join(' '))}`);
+    } else if (f.selectedCameras && f.selectedCameras.length > 0) {
       condBadges.push(`\u{1F4F7} ${escapeHtml(f.selectedCameras.join(', '))}`);
+    }
+    if (f.lensFilters && Object.keys(f.lensFilters).length > 0) {
+      const lenses = Object.keys(f.lensFilters).map(k => {
+        const name = k.includes('::') ? k.split('::')[1] : k;
+        return f.lensFilters[k] === 'include' ? `+${name}` : `\u2212${name}`;
+      });
+      condBadges.push(`\u{1F52D} ${escapeHtml(lenses.join(' '))}`);
+    }
+    if (f.labFilter) {
+      const labNames = {
+        golden_hour: 'マジックアワー',
+        blue_hour: 'ブルーアワー',
+        magic_all: 'マジック＋ブルー',
+        night: '夜景・星景',
+        shake_risk: '手ブレ注意',
+      };
+      condBadges.push(`\u{1F9EA} ${escapeHtml(labNames[f.labFilter] || f.labFilter)}`);
+    }
+    if (f.onThisDay) {
+      condBadges.push(`\u{1F382} ${escapeHtml(f.onThisDay)}`);
+    }
+    if (f.focalRange) {
+      condBadges.push(`\u{1F52D} ${escapeHtml(f.focalRangeLabel || f.focalRange)}`);
+    }
+    if (f.apertureRange) {
+      condBadges.push(`\u{1F4A0} ${escapeHtml(f.apertureRangeLabel || f.apertureRange)}`);
     }
     if (f.tagFilters) {
       const tags = Object.keys(f.tagFilters).map(t => (f.tagFilters[t] === 'include' ? `+${t}` : `\u2212${t}`));
@@ -284,9 +370,38 @@ function applyFilterPreset(preset) {
   state.selectedYearMonths = new Set(f.selectedYearMonths || []);
   if (typeof updateTimelineActiveClasses === 'function') updateTimelineActiveClasses();
 
-  // 5. cameras
+  // 5. cameras & lenses
   state.selectedCameras = new Set(f.selectedCameras || []);
+  state.selectedLenses = new Set(f.selectedLenses || []);
+  if (state.cameraFilters) state.cameraFilters.clear();
+  if (f.cameraFilters && state.cameraFilters) {
+    Object.entries(f.cameraFilters).forEach(([cam, mode]) => {
+      state.cameraFilters.set(cam, mode);
+      if (mode === 'include') state.selectedCameras.add(cam);
+    });
+  } else if (f.selectedCameras && state.cameraFilters) {
+    f.selectedCameras.forEach(cam => state.cameraFilters.set(cam, 'include'));
+  }
+
+  if (state.lensFilters) state.lensFilters.clear();
+  if (f.lensFilters && state.lensFilters) {
+    Object.entries(f.lensFilters).forEach(([lensKey, mode]) => {
+      state.lensFilters.set(lensKey, mode);
+      if (mode === 'include') state.selectedLenses.add(lensKey);
+    });
+  }
   if (typeof updateCameraActiveClasses === 'function') updateCameraActiveClasses();
+
+  // 5b. lab filters
+  state.labFilter = f.labFilter || null;
+  state.onThisDay = f.onThisDay || null;
+  state.focalRange = f.focalRange || null;
+  state.focalRangeLabel = f.focalRangeLabel || null;
+  state.apertureRange = f.apertureRange || null;
+  state.apertureRangeLabel = f.apertureRangeLabel || null;
+  if (typeof window.updateLabUIState === 'function') {
+    window.updateLabUIState();
+  }
 
   // 6. connection
   state.connectionFilter = f.connectionFilter || 'all';

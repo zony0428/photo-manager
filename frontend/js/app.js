@@ -186,10 +186,63 @@ async function fetchPhotos() {
       params.append('year_month', state.currentFilter.value);
     }
 
+    // カメラ機種フィルタ（3ステート: 含む / 除外 ＋ 後方互換 selectedCameras）
+    const includeCams = new Set();
+    const excludeCams = new Set();
+    if (state.cameraFilters && state.cameraFilters.size > 0) {
+      state.cameraFilters.forEach((mode, cam) => {
+        if (mode === 'include') includeCams.add(cam);
+        else if (mode === 'exclude') excludeCams.add(cam);
+      });
+    }
     if (state.selectedCameras && state.selectedCameras.size > 0) {
-      params.append('cameras', Array.from(state.selectedCameras).join(','));
-    } else if (state.currentFilter.type === 'camera' && state.currentFilter.value) {
-      params.append('cameras', state.currentFilter.value);
+      state.selectedCameras.forEach(cam => {
+        if (!excludeCams.has(cam)) includeCams.add(cam);
+      });
+    }
+    if (state.currentFilter.type === 'camera' && state.currentFilter.value) {
+      includeCams.add(state.currentFilter.value);
+    }
+    if (includeCams.size > 0) {
+      params.append('cameras', Array.from(includeCams).join(','));
+    }
+    if (excludeCams.size > 0) {
+      params.append('excluded_cameras', Array.from(excludeCams).join(','));
+    }
+
+    // レンズフィルタ（3ステート: 含む / 除外）
+    const includeLenses = new Set();
+    const excludeLenses = new Set();
+    if (state.lensFilters && state.lensFilters.size > 0) {
+      state.lensFilters.forEach((mode, lensKey) => {
+        if (mode === 'include') includeLenses.add(lensKey);
+        else if (mode === 'exclude') excludeLenses.add(lensKey);
+      });
+    }
+    if (state.selectedLenses && state.selectedLenses.size > 0) {
+      state.selectedLenses.forEach(lensKey => {
+        if (!excludeLenses.has(lensKey)) includeLenses.add(lensKey);
+      });
+    }
+    if (includeLenses.size > 0) {
+      params.append('lenses', Array.from(includeLenses).join(','));
+    }
+    if (excludeLenses.size > 0) {
+      params.append('excluded_lenses', Array.from(excludeLenses).join(','));
+    }
+
+    // ラボ抽出フィルタ（太陽高度・手ブレ注意・歴代の今日・焦点距離帯・F値帯）
+    if (state.labFilter) {
+      params.append('lab_filter', state.labFilter);
+    }
+    if (state.onThisDay) {
+      params.append('on_this_day', state.onThisDay);
+    }
+    if (state.focalRange) {
+      params.append('focal_range', state.focalRange);
+    }
+    if (state.apertureRange) {
+      params.append('aperture_range', state.apertureRange);
     }
     
     if (state.ratingFilter && state.ratingFilter.size > 0) {
@@ -465,9 +518,15 @@ function updateTimelineFilterState() {
   state.untaggedOnly = false;
   elements.untaggedNavItem.classList.remove('active');
 
-  // カメラ・フォルダ選択を確実にリセット（排他化）
-  if (state.selectedCameras && state.selectedCameras.size > 0) {
+  // カメラ・レンズ・フォルダ選択を確実にリセット（排他化）
+  if ((state.selectedCameras && state.selectedCameras.size > 0) ||
+      (state.cameraFilters && state.cameraFilters.size > 0) ||
+      (state.lensFilters && state.lensFilters.size > 0) ||
+      (state.selectedLenses && state.selectedLenses.size > 0)) {
     state.selectedCameras.clear();
+    if (state.cameraFilters) state.cameraFilters.clear();
+    if (state.lensFilters) state.lensFilters.clear();
+    if (state.selectedLenses) state.selectedLenses.clear();
     updateCameraActiveClasses();
   }
   if (elements.folderList) {
@@ -497,10 +556,13 @@ function updateTimelineFilterState() {
  */
 function updateTimelineActiveClasses() {
   const hasSelection = state.selectedYearMonths.size > 0;
+  const hasCamOrLens = (state.selectedCameras && state.selectedCameras.size > 0) ||
+    (state.cameraFilters && state.cameraFilters.size > 0) ||
+    (state.lensFilters && state.lensFilters.size > 0);
 
   // 「すべての写真」のアクティブ表示切替
   document.querySelectorAll('.sidebar [data-filter-type="all"]').forEach(el => {
-    if (!hasSelection && state.currentFilter.type === 'all' && state.selectedCameras.size === 0) {
+    if (!hasSelection && state.currentFilter.type === 'all' && !hasCamOrLens) {
       el.classList.add('active');
     } else {
       el.classList.remove('active');
@@ -536,24 +598,65 @@ function updateTimelineActiveClasses() {
 }
 
 /**
- * カメラ機種情報の取得と描画
+ * カメラツリー操作ツールバー（再読み込み・全展開・全折りたたみ）のイベント登録
+ */
+function initCameraToolbarEvents() {
+  const reloadBtn = document.getElementById('reloadCameraTreeBtn');
+  if (reloadBtn && !reloadBtn.dataset.bound) {
+    reloadBtn.dataset.bound = '1';
+    reloadBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      fetchCameras();
+    });
+  }
+
+  const expandBtn = document.getElementById('expandAllCamerasBtn');
+  if (expandBtn && !expandBtn.dataset.bound) {
+    expandBtn.dataset.bound = '1';
+    expandBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!state.expandedCameras) state.expandedCameras = new Set();
+      (state.availableCameras || []).forEach(item => {
+        if (item.lenses && item.lenses.length > 0) {
+          state.expandedCameras.add(item.camera_model);
+        }
+      });
+      renderCameras(state.availableCameras);
+    });
+  }
+
+  const collapseBtn = document.getElementById('collapseAllCamerasBtn');
+  if (collapseBtn && !collapseBtn.dataset.bound) {
+    collapseBtn.dataset.bound = '1';
+    collapseBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (state.expandedCameras) state.expandedCameras.clear();
+      renderCameras(state.availableCameras);
+    });
+  }
+}
+
+/**
+ * カメラ機種・レンズ階層情報の取得と描画
  */
 async function fetchCameras() {
+  initCameraToolbarEvents();
   try {
     const response = await fetch('/api/cameras');
     if (!response.ok) throw new Error('カメラ一覧取得失敗');
     const data = await response.json();
-    state.availableCameras = data.cameras;
-    renderCameras(data.cameras);
+    state.availableCameras = data.cameras || [];
+    renderCameras(state.availableCameras);
   } catch (error) {
     console.error('カメラ一覧読み込みエラー:', error);
   }
 }
 
 /**
- * カメラ機種リストの描画 (複数選択・OR条件対応)
+ * カメラ機種＆レンズ2階層ツリーの描画 (3ステート排他選択対応)
  */
 function renderCameras(cameraItems) {
+  initCameraToolbarEvents();
   if (!elements.cameraList) return;
 
   if (!cameraItems || cameraItems.length === 0) {
@@ -561,44 +664,139 @@ function renderCameras(cameraItems) {
     return;
   }
 
+  if (!state.expandedCameras) state.expandedCameras = new Set();
+  if (!state.cameraFilters) state.cameraFilters = new Map();
+  if (!state.lensFilters) state.lensFilters = new Map();
+
   elements.cameraList.innerHTML = '';
   cameraItems.forEach(item => {
-    const li = document.createElement('li');
-    li.className = 'nav-item';
-    if (state.selectedCameras && state.selectedCameras.has(item.camera_model)) {
-      li.classList.add('active');
-    }
-    li.dataset.filterType = 'camera';
-    li.dataset.filterValue = item.camera_model;
+    const camModel = item.camera_model;
+    const lenses = Array.isArray(item.lenses) ? item.lenses : [];
+    const hasLenses = lenses.length > 0;
 
-    li.innerHTML = `
+    // 子レンズにフィルタが適用されているかチェック
+    const hasActiveChildLens = lenses.some(l => state.lensFilters.has(`${camModel}::${l.lens_model}`));
+    const isExpanded = state.expandedCameras.has(camModel) || hasActiveChildLens;
+
+    const groupLi = document.createElement('li');
+    groupLi.className = 'camera-tree-group';
+    groupLi.dataset.cameraGroup = camModel;
+
+    const camMode = state.cameraFilters.get(camModel) || (state.selectedCameras.has(camModel) ? 'include' : null);
+    const rowDiv = document.createElement('div');
+    rowDiv.className = 'nav-item camera-tree-item';
+    if (camMode === 'include') rowDiv.classList.add('active', 'include');
+    else if (camMode === 'exclude') rowDiv.classList.add('exclude');
+    rowDiv.dataset.filterType = 'camera';
+    rowDiv.dataset.filterValue = camModel;
+    rowDiv.dataset.camera = camModel;
+
+    const badgeText = camMode === 'include' ? '[+]' : (camMode === 'exclude' ? '[-]' : '');
+    const expanderChar = hasLenses ? (isExpanded ? '▼' : '▶') : '•';
+
+    rowDiv.innerHTML = `
+      <span class="camera-tree-expander ${hasLenses ? '' : 'empty'}" data-camera="${escapeHtml(camModel)}" title="${hasLenses ? 'レンズ一覧を展開/折りたたみ' : ''}">${expanderChar}</span>
       <span class="nav-icon">📷</span>
-      <span class="nav-text" title="${escapeHtml(item.camera_model)}">${escapeHtml(item.camera_model)}</span>
+      <span class="nav-text" title="${escapeHtml(camModel)}">${escapeHtml(camModel)}</span>
+      <span class="camera-state-badge">${badgeText}</span>
       <span class="nav-count">${item.count}</span>
     `;
 
-    li.addEventListener('click', () => {
-      toggleCameraFilter(item.camera_model);
+    // エキスパンダ矢印のクリック（フィルタを発火させずに子レンズ一覧を開閉）
+    const expanderEl = rowDiv.querySelector('.camera-tree-expander');
+    if (expanderEl && hasLenses) {
+      expanderEl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const subList = groupLi.querySelector('.camera-lens-sublist');
+        const currentlyExpanded = state.expandedCameras.has(camModel) || (subList && subList.style.display !== 'none');
+        if (currentlyExpanded) {
+          state.expandedCameras.delete(camModel);
+          if (subList) subList.style.display = 'none';
+          expanderEl.textContent = '▶';
+        } else {
+          state.expandedCameras.add(camModel);
+          if (subList) subList.style.display = 'block';
+          expanderEl.textContent = '▼';
+        }
+      });
+    }
+
+    // カメラ親行クリックで3ステート遷移 (解除 -> [+]含む -> [-]除外 -> 解除)
+    rowDiv.addEventListener('click', (e) => {
+      if (e.target.closest('.camera-tree-expander') && hasLenses) return;
+      toggleCameraFilter(camModel);
     });
 
-    elements.cameraList.appendChild(li);
+    groupLi.appendChild(rowDiv);
+
+    // 子レンズ一覧の構築
+    if (hasLenses) {
+      const subUl = document.createElement('ul');
+      subUl.className = 'camera-lens-sublist';
+      subUl.style.display = isExpanded ? 'block' : 'none';
+
+      lenses.forEach(lens => {
+        const lensModel = lens.lens_model;
+        const lensLabel = lens.label || lensModel;
+        const lensKey = `${camModel}::${lensModel}`;
+        const lensMode = state.lensFilters.get(lensKey) || state.lensFilters.get(lensModel) || null;
+        const lensBadge = lensMode === 'include' ? '[+]' : (lensMode === 'exclude' ? '[-]' : '');
+
+        const lensLi = document.createElement('li');
+        lensLi.className = 'nav-item camera-lens-item';
+        if (lensMode === 'include') lensLi.classList.add('active', 'include');
+        else if (lensMode === 'exclude') lensLi.classList.add('exclude');
+        lensLi.dataset.lensKey = lensKey;
+        lensLi.dataset.camera = camModel;
+        lensLi.dataset.lens = lensModel;
+        lensLi.dataset.lensLabel = lensLabel;
+
+        lensLi.innerHTML = `
+          <span class="lens-tree-icon">🔭</span>
+          <span class="nav-text lens-nav-text" title="${escapeHtml(camModel)} / ${escapeHtml(lensModel)}">${escapeHtml(lensLabel)}</span>
+          <span class="camera-state-badge">${lensBadge}</span>
+          <span class="nav-count">${lens.count}</span>
+        `;
+
+        lensLi.addEventListener('click', (e) => {
+          e.stopPropagation();
+          toggleLensFilter(lensKey, lensLabel);
+        });
+
+        subUl.appendChild(lensLi);
+      });
+
+      groupLi.appendChild(subUl);
+    }
+
+    elements.cameraList.appendChild(groupLi);
   });
+
+  updateCameraActiveClasses();
 }
 
 /**
- * カメラ機種のトグル選択処理 (複数選択 / OR条件フィルタ)
+ * カメラ・レンズフィルタ状態から selectedCameras / selectedLenses およびビュータイトルを同期する内部ヘルパー
  */
-function toggleCameraFilter(cameraModel) {
-  if (state.selectedCameras.has(cameraModel)) {
-    state.selectedCameras.delete(cameraModel);
-  } else {
-    state.selectedCameras.add(cameraModel);
+function syncCameraAndLensFilterTitle() {
+  state.selectedCameras.clear();
+  if (state.cameraFilters) {
+    state.cameraFilters.forEach((mode, cam) => {
+      if (mode === 'include') state.selectedCameras.add(cam);
+    });
+  }
+
+  state.selectedLenses.clear();
+  if (state.lensFilters) {
+    state.lensFilters.forEach((mode, key) => {
+      if (mode === 'include') state.selectedLenses.add(key);
+    });
   }
 
   state.untaggedOnly = false;
-  elements.untaggedNavItem.classList.remove('active');
+  if (elements.untaggedNavItem) elements.untaggedNavItem.classList.remove('active');
 
-  // タイムライン・フォルダ選択を確実にリセット（排他化）
+  // タイムライン・フォルダ選択をリセット
   if (state.selectedYearMonths && state.selectedYearMonths.size > 0) {
     state.selectedYearMonths.clear();
     updateTimelineActiveClasses();
@@ -607,20 +805,26 @@ function toggleCameraFilter(cameraModel) {
     elements.folderList.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
   }
 
-  const count = state.selectedCameras.size;
-  if (count === 0) {
+  const camCount = state.cameraFilters ? state.cameraFilters.size : 0;
+  const lensCount = state.lensFilters ? state.lensFilters.size : 0;
+
+  if (camCount === 0 && lensCount === 0) {
     if (state.currentFilter.type === 'cameras' || state.currentFilter.type === 'camera') {
       state.currentFilter = { type: 'all', value: null };
       elements.viewTitle.textContent = 'すべての写真';
     }
-  } else if (count === 1) {
-    const singleCam = Array.from(state.selectedCameras)[0];
-    state.currentFilter = { type: 'camera', value: singleCam };
-    elements.viewTitle.textContent = `📷 ${singleCam}`;
+  } else if (lensCount === 1 && camCount === 0) {
+    const [lensKey, mode] = Array.from(state.lensFilters.entries())[0];
+    const displayName = lensKey.includes('::') ? lensKey.split('::')[1] : lensKey;
+    state.currentFilter = { type: 'cameras', value: [lensKey] };
+    elements.viewTitle.textContent = mode === 'exclude' ? `🔭 除外: ${displayName}` : `🔭 ${displayName}`;
+  } else if (camCount === 1 && lensCount === 0) {
+    const [singleCam, mode] = Array.from(state.cameraFilters.entries())[0];
+    state.currentFilter = { type: 'camera', value: mode === 'include' ? singleCam : null };
+    elements.viewTitle.textContent = mode === 'exclude' ? `📷 除外: ${singleCam}` : `📷 ${singleCam}`;
   } else {
-    const sortedCams = Array.from(state.selectedCameras).sort();
-    state.currentFilter = { type: 'cameras', value: sortedCams };
-    elements.viewTitle.textContent = `📷 複数カメラ (${count}機種: ${sortedCams.join(', ')})`;
+    state.currentFilter = { type: 'cameras', value: Array.from(state.selectedCameras) };
+    elements.viewTitle.textContent = `📷 カメラ・レンズ絞り込み (${camCount + lensCount}件)`;
   }
 
   updateCameraActiveClasses();
@@ -628,19 +832,121 @@ function toggleCameraFilter(cameraModel) {
 }
 
 /**
- * カメラリストのアクティブ表示更新
+ * カメラ機種の3ステートトグル選択処理 (解除 -> [+]含む -> [-]除外 -> 解除)
+ */
+function toggleCameraFilter(cameraModel, forceRemove = false) {
+  if (!state.cameraFilters) state.cameraFilters = new Map();
+  const current = state.cameraFilters.get(cameraModel) || (state.selectedCameras.has(cameraModel) ? 'include' : null);
+
+  if (forceRemove) {
+    state.cameraFilters.delete(cameraModel);
+  } else if (!current) {
+    state.cameraFilters.set(cameraModel, 'include');
+  } else if (current === 'include') {
+    state.cameraFilters.set(cameraModel, 'exclude');
+  } else {
+    state.cameraFilters.delete(cameraModel);
+  }
+
+  syncCameraAndLensFilterTitle();
+}
+
+/**
+ * レンズの3ステートトグル選択処理 (解除 -> [+]含む -> [-]除外 -> 解除)
+ */
+function toggleLensFilter(lensKey, label, forceRemove = false) {
+  if (!state.lensFilters) state.lensFilters = new Map();
+  const current = state.lensFilters.get(lensKey) || null;
+
+  if (forceRemove) {
+    state.lensFilters.delete(lensKey);
+  } else if (!current) {
+    state.lensFilters.set(lensKey, 'include');
+  } else if (current === 'include') {
+    state.lensFilters.set(lensKey, 'exclude');
+  } else {
+    state.lensFilters.delete(lensKey);
+  }
+
+  syncCameraAndLensFilterTitle();
+}
+
+/**
+ * 外部モジュール（ラボの勝ちレンズカルテ等）から特定レンズで一発抽出するグローバル関数
+ */
+function selectLensFilter(filterKey, label) {
+  if (!filterKey) return;
+  if (!state.cameraFilters) state.cameraFilters = new Map();
+  if (!state.lensFilters) state.lensFilters = new Map();
+  if (!state.expandedCameras) state.expandedCameras = new Set();
+
+  state.cameraFilters.clear();
+  state.selectedCameras.clear();
+  state.lensFilters.clear();
+  state.selectedLenses.clear();
+
+  state.lensFilters.set(filterKey, 'include');
+  state.selectedLenses.add(filterKey);
+
+  if (filterKey.includes('::')) {
+    const camModel = filterKey.split('::')[0];
+    if (camModel) state.expandedCameras.add(camModel);
+  }
+
+  renderCameras(state.availableCameras);
+  syncCameraAndLensFilterTitle();
+  if (label && elements.viewTitle) {
+    elements.viewTitle.textContent = `🔭 ${label}`;
+  }
+}
+window.selectLensFilter = selectLensFilter;
+window.renderCameras = renderCameras;
+
+/**
+ * カメラ・レンズツリーのアクティブ表示（include / exclude クラスとバッジ）およびアコーディオン状態更新
  */
 function updateCameraActiveClasses() {
+  const camAccordion = document.getElementById('accordionItem-camera');
+  const hasCamFilter = Boolean(
+    (state.cameraFilters && state.cameraFilters.size > 0) ||
+    (state.lensFilters && state.lensFilters.size > 0) ||
+    (state.selectedCameras && state.selectedCameras.size > 0)
+  );
+  if (camAccordion) {
+    camAccordion.classList.toggle('has-filter', hasCamFilter);
+  }
+
   if (!elements.cameraList) return;
-  elements.cameraList.querySelectorAll('.nav-item').forEach(el => {
-    const cam = el.dataset.filterValue;
-    if (cam && state.selectedCameras.has(cam)) {
-      el.classList.add('active');
-    } else {
-      el.classList.remove('active');
+
+  // カメラ親行の更新
+  elements.cameraList.querySelectorAll('.camera-tree-item').forEach(el => {
+    const cam = el.dataset.camera || el.dataset.filterValue;
+    const mode = (state.cameraFilters && state.cameraFilters.get(cam)) ||
+      (state.selectedCameras && state.selectedCameras.has(cam) ? 'include' : null);
+    el.classList.toggle('active', mode === 'include');
+    el.classList.toggle('include', mode === 'include');
+    el.classList.toggle('exclude', mode === 'exclude');
+    const badge = el.querySelector('.camera-state-badge');
+    if (badge) {
+      badge.textContent = mode === 'include' ? '[+]' : (mode === 'exclude' ? '[-]' : '');
+    }
+  });
+
+  // 子レンズ行の更新
+  elements.cameraList.querySelectorAll('.camera-lens-item').forEach(el => {
+    const lensKey = el.dataset.lensKey;
+    const lensModel = el.dataset.lens;
+    const mode = (state.lensFilters && (state.lensFilters.get(lensKey) || state.lensFilters.get(lensModel))) || null;
+    el.classList.toggle('active', mode === 'include');
+    el.classList.toggle('include', mode === 'include');
+    el.classList.toggle('exclude', mode === 'exclude');
+    const badge = el.querySelector('.camera-state-badge');
+    if (badge) {
+      badge.textContent = mode === 'include' ? '[+]' : (mode === 'exclude' ? '[-]' : '');
     }
   });
 }
+window.updateCameraActiveClasses = updateCameraActiveClasses;
 
 /**
  * ディレクトリパス一覧から階層ツリー構造を構築する
@@ -1840,13 +2146,88 @@ function renderActiveFilterChips() {
     });
   }
 
-  // 3. カメラ機種 (OR条件)
+  // 3. カメラ機種 & レンズ (3ステート排他対応)
+  const handledCams = new Set();
+  if (state.cameraFilters && state.cameraFilters.size > 0) {
+    state.cameraFilters.forEach((mode, cam) => {
+      handledCams.add(cam);
+      const prefix = mode === 'include' ? '[+] ' : '[-] ';
+      const chipClass = mode === 'include' ? 'chip-tag-include' : 'chip-tag-exclude';
+      createChip('📷', `${prefix}${cam}`, () => {
+        toggleCameraFilter(cam, true);
+      }, chipClass);
+    });
+  }
   if (state.selectedCameras && state.selectedCameras.size > 0) {
     Array.from(state.selectedCameras).sort().forEach(cam => {
-      createChip('📷', cam, () => {
-        toggleCameraFilter(cam);
-      });
+      if (handledCams.has(cam)) return;
+      createChip('📷', `[+] ${cam}`, () => {
+        state.selectedCameras.delete(cam);
+        toggleCameraFilter(cam, true);
+      }, 'chip-tag-include');
     });
+  }
+
+  if (state.lensFilters && state.lensFilters.size > 0) {
+    state.lensFilters.forEach((mode, lensKey) => {
+      const prefix = mode === 'include' ? '[+] ' : '[-] ';
+      const chipClass = mode === 'include' ? 'chip-tag-include' : 'chip-tag-exclude';
+      const displayName = lensKey.includes('::') ? lensKey.replace('::', ' / ') : lensKey;
+      createChip('🔭', `${prefix}${displayName}`, () => {
+        toggleLensFilter(lensKey, displayName, true);
+      }, chipClass);
+    });
+  }
+
+  // 3b. ラボ抽出フィルタ (太陽高度・手ブレ注意・歴代の今日・焦点距離帯・F値帯)
+  if (state.labFilter) {
+    const labLabels = {
+      golden_hour: 'マジックアワー',
+      blue_hour: 'ブルーアワー',
+      magic_all: 'マジック＋ブルーアワー',
+      night: '夜景・星景',
+      shake_risk: '手ブレ注意',
+    };
+    const labIcons = {
+      golden_hour: '🌅',
+      blue_hour: '🌌',
+      magic_all: '🌅',
+      night: '🌃',
+      shake_risk: '⚠️',
+    };
+    createChip(labIcons[state.labFilter] || '🧪', labLabels[state.labFilter] || state.labFilter, () => {
+      state.labFilter = null;
+      if (typeof window.updateLabUIState === 'function') window.updateLabUIState();
+      fetchPhotos();
+    }, 'chip-tag-include');
+  }
+
+  if (state.onThisDay) {
+    const parts = String(state.onThisDay).split('-');
+    const otdLabel = parts.length === 2 ? `歴代の ${parseInt(parts[0], 10)}月${parseInt(parts[1], 10)}日` : `歴代の今日: ${state.onThisDay}`;
+    createChip('🎂', otdLabel, () => {
+      state.onThisDay = null;
+      if (typeof window.updateLabUIState === 'function') window.updateLabUIState();
+      fetchPhotos();
+    }, 'chip-tag-include');
+  }
+
+  if (state.focalRange) {
+    createChip('🔭', `焦点距離: ${state.focalRangeLabel || state.focalRange}`, () => {
+      state.focalRange = null;
+      state.focalRangeLabel = null;
+      if (typeof window.updateLabUIState === 'function') window.updateLabUIState();
+      fetchPhotos();
+    }, 'chip-tag-include');
+  }
+
+  if (state.apertureRange) {
+    createChip('💠', `F値: ${state.apertureRangeLabel || state.apertureRange}`, () => {
+      state.apertureRange = null;
+      state.apertureRangeLabel = null;
+      if (typeof window.updateLabUIState === 'function') window.updateLabUIState();
+      fetchPhotos();
+    }, 'chip-tag-include');
   }
 
   // 4. タグ (3ステート)
@@ -1914,6 +2295,22 @@ function renderActiveFilterChips() {
         if (typeof clearLocationFilter === 'function') clearLocationFilter();
       });
     }
+  }
+
+  // アコーディオンヘッダーのフィルタ適用状態（has-filter）同期
+  const camAccordion = document.getElementById('accordionItem-camera');
+  if (camAccordion) {
+    const hasCam = Boolean(
+      (state.cameraFilters && state.cameraFilters.size > 0) ||
+      (state.lensFilters && state.lensFilters.size > 0) ||
+      (state.selectedCameras && state.selectedCameras.size > 0)
+    );
+    camAccordion.classList.toggle('has-filter', hasCam);
+  }
+  const labAccordion = document.getElementById('accordionItem-lab');
+  if (labAccordion) {
+    const hasLab = Boolean(state.labFilter || state.onThisDay || state.focalRange || state.apertureRange);
+    labAccordion.classList.toggle('has-filter', hasLab);
   }
 
   // すべて解除ボタンとサイドバーリセットボタンの表示制御
@@ -2068,6 +2465,18 @@ function resetAllFilters() {
   state.tagFilters.clear();
   state.selectedYearMonths.clear();
   state.selectedCameras.clear();
+  if (state.cameraFilters) state.cameraFilters.clear();
+  if (state.lensFilters) state.lensFilters.clear();
+  if (state.selectedLenses) state.selectedLenses.clear();
+  state.labFilter = null;
+  state.onThisDay = null;
+  state.focalRange = null;
+  state.focalRangeLabel = null;
+  state.apertureRange = null;
+  state.apertureRangeLabel = null;
+  if (typeof window.updateLabUIState === 'function') {
+    window.updateLabUIState();
+  }
   state.untaggedOnly = false;
   state.connectionFilter = 'all';
   state.onlineOnly = false;
@@ -2150,9 +2559,16 @@ function setFilter(type, value, titleText) {
 
   if (type !== 'camera' && type !== 'cameras') {
     state.selectedCameras.clear();
+    if (state.cameraFilters) state.cameraFilters.clear();
+    if (state.lensFilters) state.lensFilters.clear();
+    if (state.selectedLenses) state.selectedLenses.clear();
   } else if (type === 'camera' && value) {
     state.selectedCameras.clear();
     state.selectedCameras.add(value);
+    if (state.cameraFilters) {
+      state.cameraFilters.clear();
+      state.cameraFilters.set(value, 'include');
+    }
   }
 
   // ジオタグフィルタのリセット（フォルダやクイックアクセス等への移動時）
@@ -3717,4 +4133,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (typeof initLightboxEvents === 'function') initLightboxEvents();
   if (typeof initScannerModalEvents === 'function') initScannerModalEvents();
   if (typeof initLocationTree === 'function') initLocationTree();
+  if (typeof window.initLocationMapModal === 'function') window.initLocationMapModal();
+  if (typeof window.initLabSection === 'function') window.initLabSection();
+  if (typeof window.initCompareModal === 'function') window.initCompareModal();
 });

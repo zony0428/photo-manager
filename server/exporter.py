@@ -3,7 +3,10 @@
 元画像ファイルを一切破壊せず、回転・クロップ・リサイズ・リネーム・Exif選択消去を一括適用して出力する。
 """
 
+import base64
+import html
 import io
+import json
 import os
 import re
 import shutil
@@ -13,9 +16,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from PIL import Image, ImageOps
 
-from .database import get_photo_by_id
+from .database import get_photo_by_id, get_thumbnails_batch
 from .raw_loader import extract_raw_full_preview, is_raw_file
-from .scanner import apply_photo_adjustments_pil, resolve_portable_path
+from .scanner import apply_photo_adjustments_pil, ensure_thumbnail, resolve_portable_path
 
 # プロジェクトルート基準のテイクアウト基本保存先
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -575,4 +578,749 @@ if ($res -eq [System.Windows.Forms.DialogResult]::OK) {{
     except Exception as e:
         print(f"[WARN] フォルダ選択ダイアログ呼び出し失敗: {e}")
         return None
+
+
+def _format_exif_summary(p: Dict[str, Any]) -> str:
+    """コンタクトシートのコマ下部表示用のExif短縮文字列を生成する"""
+    parts: List[str] = []
+    fl = p.get("focal_length")
+    if fl is not None:
+        try:
+            fl_f = float(fl)
+            parts.append(f"{int(fl_f)}mm" if fl_f.is_integer() else f"{fl_f:.1f}mm")
+        except Exception:
+            pass
+    fn = p.get("f_number")
+    if fn is not None:
+        try:
+            parts.append(f"F{float(fn):.1f}".replace(".0", ""))
+        except Exception:
+            pass
+    ss = p.get("shutter_speed")
+    if ss:
+        s_str = str(ss).strip()
+        if not s_str.endswith("s"):
+            s_str += "s"
+        parts.append(s_str)
+    iso = p.get("iso")
+    if iso:
+        parts.append(f"ISO{iso}")
+    return " · ".join(parts) if parts else "Exif情報なし"
+
+
+def run_contact_sheet_export(req: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    選択された写真群から完全スタンドアロン単一HTMLのベタ焼き（コンタクトシート）を生成して出力する。
+    暗室ネガシート / 和紙プリントのテーマ切替、手書き風赤鉛筆（グリースペンシル）⭕マーク、
+    拡大ルーペモーダル、A4印刷/PDF最適化CSSをすべて1ファイルに内蔵する。
+    """
+    photo_ids = req.get("photo_ids") or []
+    if not photo_ids:
+        return {"status": "error", "message": "コンタクトシートに出力する写真が選択されていません"}
+
+    title_raw = (req.get("title") or "").strip() or "Photo Manager Contact Sheet"
+    theme = (req.get("theme") or "darkroom").strip().lower()
+    if theme not in ("darkroom", "washi"):
+        theme = "darkroom"
+    try:
+        columns = int(req.get("columns") or 5)
+    except Exception:
+        columns = 5
+    if columns not in (4, 5, 6):
+        columns = 5
+
+    dest_dir_str = (req.get("destination_dir") or req.get("destination") or "").strip()
+    if dest_dir_str:
+        dest_dir = Path(dest_dir_str).resolve()
+    else:
+        dest_dir = DEFAULT_TAKEOUT_DIR
+
+    try:
+        dest_dir.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        return {"status": "error", "message": f"出力先フォルダの作成に失敗しました: {e}"}
+
+    open_after = bool(req.get("open_after", True))
+
+    # 1. 写真メタデータの取得と時系列昇順ソート
+    photos: List[Dict[str, Any]] = []
+    for pid in photo_ids:
+        try:
+            p = get_photo_by_id(int(pid))
+            if p:
+                photos.append(p)
+        except Exception as e:
+            print(f"[WARN] コンタクトシート用写真取得スキップ (ID={pid}): {e}")
+
+    if not photos:
+        return {"status": "error", "message": "有効な写真データが見つかりませんでした"}
+
+    def _sort_key(item: Dict[str, Any]):
+        dt = item.get("date_taken") or ""
+        fn = item.get("file_name") or ""
+        pid = item.get("id") or 0
+        return (dt, fn, pid)
+
+    photos.sort(key=_sort_key)
+
+    # 2. WebPサムネイルの一括取得（未生成時はオンデマンド生成フォールバック）
+    valid_ids = [p["id"] for p in photos]
+    thumb_map = get_thumbnails_batch(valid_ids)
+
+    # 撮影日範囲と優枚数の集計
+    dates = [str(p["date_taken"])[:10].replace(":", "-") for p in photos if p.get("date_taken") and len(str(p["date_taken"])) >= 10]
+    if dates:
+        min_date, max_date = min(dates), max(dates)
+        date_range_str = min_date if min_date == max_date else f"{min_date} 〜 {max_date}"
+    else:
+        date_range_str = datetime.now().strftime("%Y-%m-%d")
+
+    initial_picks = sum(1 for p in photos if int(p.get("rating") or 0) == 2)
+
+    # 3. 各コマのHTMLカードおよびルーペ用JSONデータの構築
+    cards_html_list: List[str] = []
+    viewer_items: List[Dict[str, Any]] = []
+
+    for idx, p in enumerate(photos):
+        pid = p["id"]
+        frame_no = f"#{idx + 1:02d}A"
+        file_name = str(p.get("file_name") or f"photo_{pid}")
+        date_taken = str(p.get("date_taken") or "")
+        cam_model = str(p.get("camera_model") or "")
+        lens_model = str(p.get("lens_model") or "")
+        rating = int(p.get("rating") or 0)
+        is_pick = (rating == 2)
+        exif_line = _format_exif_summary(p)
+        gear_line = " / ".join([x for x in (cam_model, lens_model) if x and x != "不明"]) or "Camera"
+
+        thumb_info = thumb_map.get(pid)
+        thumb_bytes = thumb_info["data"] if thumb_info else None
+        if not thumb_bytes and p.get("file_path"):
+            try:
+                thumb_bytes = ensure_thumbnail(pid, p["file_path"])
+            except Exception as e:
+                print(f"[WARN] コンタクトシート用サムネイル生成フォールバック失敗 (ID={pid}): {e}")
+
+        if thumb_bytes:
+            b64_str = base64.b64encode(thumb_bytes).decode("ascii")
+            data_uri = f"data:image/webp;base64,{b64_str}"
+        else:
+            data_uri = ""
+
+        esc_fn = html.escape(file_name)
+        esc_dt = html.escape(date_taken)
+        esc_exif = html.escape(exif_line)
+        esc_gear = html.escape(gear_line)
+        pick_cls = " is-picked" if is_pick else ""
+
+        viewer_items.append({
+            "index": idx,
+            "frame": frame_no,
+            "file_name": file_name,
+            "date_taken": date_taken,
+            "exif": exif_line,
+            "gear": gear_line,
+            "rating": rating,
+            "picked": is_pick,
+            "src": data_uri,
+        })
+
+        card_html = f"""
+        <article class="film-frame{pick_cls}" data-index="{idx}" data-picked="{'1' if is_pick else '0'}">
+            <div class="sprocket-row top" aria-hidden="true">
+                <span></span><span></span><span></span><span></span><span></span><span></span>
+            </div>
+            <div class="frame-header">
+                <span class="frame-num">{frame_no}</span>
+                <span class="frame-gear" title="{esc_gear}">{esc_gear}</span>
+                <button type="button" class="grease-toggle-btn" onclick="togglePick(event, {idx})" title="赤鉛筆（グリースペンシル）丸印をON/OFF">⭕</button>
+            </div>
+            <div class="frame-stage" onclick="openLoupe({idx})">
+                <img src="{data_uri}" alt="{esc_fn}" loading="lazy">
+                <svg class="grease-circle-svg" viewBox="0 0 120 120" preserveAspectRatio="none" aria-hidden="true">
+                    <path d="M 22,58 C 18,26 48,12 78,16 C 106,20 114,52 104,82 C 94,108 54,114 28,96 C 12,84 14,50 30,32" />
+                </svg>
+            </div>
+            <div class="frame-meta">
+                <div class="meta-filename" title="{esc_fn}">{esc_fn}</div>
+                <div class="meta-exif">{esc_exif}</div>
+                <div class="meta-date">{esc_dt}</div>
+            </div>
+            <div class="sprocket-row bottom" aria-hidden="true">
+                <span></span><span></span><span></span><span></span><span></span><span></span>
+            </div>
+        </article>
+        """
+        cards_html_list.append(card_html)
+
+    esc_title = html.escape(title_raw)
+    esc_date_range = html.escape(date_range_str)
+    viewer_json = json.dumps(viewer_items, ensure_ascii=False)
+    generated_at = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    html_content = f"""<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{esc_title} - Contact Sheet</title>
+<style>
+:root {{
+    --cols: {columns};
+    --bg-page: #111214;
+    --bg-bar: #1b1d21;
+    --bg-frame: #08090a;
+    --border-frame: #2c2f36;
+    --text-main: #f1f3f5;
+    --text-sub: #adb5bd;
+    --text-amber: #f59f00;
+    --sprocket-color: #25282e;
+    --accent-red: #e03131;
+}}
+body.theme-washi {{
+    --bg-page: #f7f4eb;
+    --bg-bar: #ede8da;
+    --bg-frame: #ffffff;
+    --border-frame: #d8d0c0;
+    --text-main: #2b2927;
+    --text-sub: #6c665f;
+    --text-amber: #b45309;
+    --sprocket-color: #e6dfd1;
+    --accent-red: #c92a2a;
+}}
+* {{
+    box-sizing: border-box;
+}}
+body {{
+    margin: 0;
+    padding: 0;
+    background: var(--bg-page);
+    color: var(--text-main);
+    font-family: "Segoe UI", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", Meiryo, sans-serif;
+    transition: background 0.2s ease, color 0.2s ease;
+}}
+.control-bar {{
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: var(--bg-bar);
+    border-bottom: 1px solid var(--border-frame);
+    padding: 12px 24px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+}}
+.sheet-header-info {{
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}}
+.sheet-title {{
+    font-size: 1.25rem;
+    font-weight: 700;
+    margin: 0;
+    padding: 2px 6px;
+    border-radius: 4px;
+    outline: none;
+    border: 1px dashed transparent;
+}}
+.sheet-title:hover, .sheet-title:focus {{
+    border-color: var(--text-amber);
+    background: rgba(255, 255, 255, 0.05);
+}}
+.sheet-subtitle {{
+    font-size: 0.82rem;
+    color: var(--text-sub);
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+}}
+.control-actions {{
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}}
+.ctrl-group {{
+    display: inline-flex;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--border-frame);
+    border-radius: 6px;
+    overflow: hidden;
+}}
+body.theme-washi .ctrl-group {{
+    background: rgba(255, 255, 255, 0.6);
+}}
+.ctrl-btn {{
+    background: transparent;
+    color: var(--text-main);
+    border: none;
+    padding: 6px 11px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: background 0.15s;
+}}
+.ctrl-btn:hover {{
+    background: rgba(255, 255, 255, 0.1);
+}}
+.ctrl-btn.active {{
+    background: var(--accent-red);
+    color: #fff;
+    font-weight: 600;
+}}
+.print-btn {{
+    background: var(--accent-red);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 7px 14px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+}}
+.print-btn:hover {{
+    filter: brightness(1.1);
+}}
+.sheet-container {{
+    max-width: 1680px;
+    margin: 0 auto;
+    padding: 20px 24px 48px;
+}}
+.print-sheet-banner {{
+    display: none;
+    margin-bottom: 14px;
+    border-bottom: 2px solid var(--border-frame);
+    padding-bottom: 8px;
+}}
+.contact-grid {{
+    display: grid;
+    grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
+    gap: 14px;
+}}
+.film-frame {{
+    background: var(--bg-frame);
+    border: 1px solid var(--border-frame);
+    border-radius: 6px;
+    padding: 6px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    position: relative;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}}
+.film-frame:hover {{
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+}}
+body.filter-picked-only .film-frame[data-picked="0"] {{
+    display: none !important;
+}}
+.sprocket-row {{
+    display: flex;
+    justify-content: space-between;
+    padding: 2px 4px;
+}}
+.sprocket-row span {{
+    display: inline-block;
+    width: 12px;
+    height: 7px;
+    border-radius: 2px;
+    background: var(--sprocket-color);
+}}
+.frame-header {{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-family: "Consolas", "Courier New", monospace;
+    font-size: 0.75rem;
+    color: var(--text-amber);
+    gap: 6px;
+}}
+.frame-num {{
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}}
+.frame-gear {{
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-sub);
+    font-size: 0.7rem;
+}}
+.grease-toggle-btn {{
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 0.85rem;
+    padding: 0 2px;
+    opacity: 0.35;
+    transition: opacity 0.15s, transform 0.15s;
+}}
+.film-frame.is-picked .grease-toggle-btn,
+.grease-toggle-btn:hover {{
+    opacity: 1;
+    transform: scale(1.15);
+}}
+.frame-stage {{
+    position: relative;
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    background: rgba(0, 0, 0, 0.35);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    cursor: zoom-in;
+    border-radius: 3px;
+}}
+body.theme-washi .frame-stage {{
+    background: #f1eee6;
+}}
+.frame-stage img {{
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    display: block;
+}}
+.grease-circle-svg {{
+    position: absolute;
+    inset: 6%;
+    width: 88%;
+    height: 88%;
+    pointer-events: none;
+    opacity: 0;
+    transform: scale(0.92);
+    transition: opacity 0.18s ease, transform 0.18s ease;
+}}
+.grease-circle-svg path {{
+    fill: none;
+    stroke: #ff2b2b;
+    stroke-width: 4.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.55));
+}}
+.film-frame.is-picked .grease-circle-svg {{
+    opacity: 0.92;
+    transform: scale(1);
+}}
+.frame-meta {{
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding-top: 2px;
+}}
+.meta-filename {{
+    font-size: 0.76rem;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}}
+.meta-exif {{
+    font-size: 0.7rem;
+    color: var(--text-amber);
+    font-family: "Consolas", monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}}
+.meta-date {{
+    font-size: 0.68rem;
+    color: var(--text-sub);
+}}
+/* 拡大ルーペモーダル */
+.loupe-modal {{
+    position: fixed;
+    inset: 0;
+    z-index: 500;
+    background: rgba(0, 0, 0, 0.88);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+}}
+.loupe-modal.open {{
+    display: flex;
+}}
+.loupe-dialog {{
+    background: #181a1e;
+    color: #f1f3f5;
+    border: 1px solid #343840;
+    border-radius: 10px;
+    max-width: 960px;
+    width: 100%;
+    padding: 18px 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.65);
+}}
+.loupe-top {{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}}
+.loupe-stage {{
+    position: relative;
+    height: 62vh;
+    background: #0b0c0e;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    overflow: hidden;
+}}
+.loupe-stage img {{
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+}}
+.loupe-nav-btn {{
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(0, 0, 0, 0.6);
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    font-size: 1.1rem;
+    cursor: pointer;
+}}
+.loupe-nav-btn.prev {{ left: 12px; }}
+.loupe-nav-btn.next {{ right: 12px; }}
+.loupe-bottom {{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+    font-size: 0.85rem;
+}}
+@media print {{
+    @page {{
+        size: A4 landscape;
+        margin: 10mm;
+    }}
+    .control-bar, .loupe-modal, .grease-toggle-btn {{
+        display: none !important;
+    }}
+    .print-sheet-banner {{
+        display: flex !important;
+        justify-content: space-between;
+        align-items: baseline;
+    }}
+    .sheet-container {{
+        padding: 0;
+        max-width: none;
+    }}
+    .contact-grid {{
+        gap: 8px;
+    }}
+    .film-frame {{
+        box-shadow: none !important;
+        transform: none !important;
+    }}
+}}
+</style>
+</head>
+<body class="theme-{theme}">
+    <header class="control-bar">
+        <div class="sheet-header-info">
+            <h1 id="sheetTitle" class="sheet-title" contenteditable="true" spellcheck="false" title="クリックしてタイトルを編集できます">{esc_title}</h1>
+            <div class="sheet-subtitle">
+                <span>📅 撮影日: {esc_date_range}</span>
+                <span>🎞️ 総コマ数: <strong>{len(photos)}</strong>枚</span>
+                <span>⭕ 優(ピック): <strong id="pickCountBadge">{initial_picks}</strong>枚</span>
+                <span>🕒 出力: {generated_at}</span>
+            </div>
+        </div>
+        <div class="control-actions">
+            <div class="ctrl-group" role="group" aria-label="テーマ切替">
+                <button type="button" class="ctrl-btn {'active' if theme == 'darkroom' else ''}" id="btnThemeDark" onclick="setTheme('darkroom')">🌙 暗室ネガシート</button>
+                <button type="button" class="ctrl-btn {'active' if theme == 'washi' else ''}" id="btnThemeWashi" onclick="setTheme('washi')">☀️ 和紙プリント</button>
+            </div>
+            <div class="ctrl-group" role="group" aria-label="列数切替">
+                <button type="button" class="ctrl-btn {'active' if columns == 4 else ''}" id="btnCol4" onclick="setColumns(4)">4列</button>
+                <button type="button" class="ctrl-btn {'active' if columns == 5 else ''}" id="btnCol5" onclick="setColumns(5)">5列</button>
+                <button type="button" class="ctrl-btn {'active' if columns == 6 else ''}" id="btnCol6" onclick="setColumns(6)">6列</button>
+            </div>
+            <div class="ctrl-group" role="group" aria-label="フィルタ切替">
+                <button type="button" class="ctrl-btn active" id="btnFilterAll" onclick="setPickFilter(false)">すべて表示</button>
+                <button type="button" class="ctrl-btn" id="btnFilterPicked" onclick="setPickFilter(true)">⭕ 優(ピック)のみ表示</button>
+            </div>
+            <button type="button" class="print-btn" onclick="window.print()">🖨️ 印刷 / PDF保存</button>
+        </div>
+    </header>
+
+    <main class="sheet-container">
+        <div class="print-sheet-banner">
+            <strong id="printBannerTitle" style="font-size:1.2rem;">{esc_title}</strong>
+            <span style="font-size:0.82rem;">{esc_date_range} / 全{len(photos)}コマ (Photo Manager Contact Sheet)</span>
+        </div>
+        <section class="contact-grid" id="contactGrid">
+            {"".join(cards_html_list)}
+        </section>
+    </main>
+
+    <div class="loupe-modal" id="loupeModal" onclick="if(event.target===this)closeLoupe()">
+        <div class="loupe-dialog">
+            <div class="loupe-top">
+                <div>
+                    <strong id="loupeFrameNo" style="color:var(--text-amber);margin-right:8px;">#01A</strong>
+                    <span id="loupeFileName" style="font-weight:600;"></span>
+                </div>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <button type="button" class="ctrl-btn" id="loupePickBtn" onclick="toggleCurrentLoupePick()" style="border:1px solid #444;border-radius:6px;">⭕ 赤丸マーク切替</button>
+                    <button type="button" class="ctrl-btn" onclick="closeLoupe()" style="border:1px solid #444;border-radius:6px;">✕ 閉じる (Esc)</button>
+                </div>
+            </div>
+            <div class="loupe-stage">
+                <button type="button" class="loupe-nav-btn prev" onclick="stepLoupe(-1)" title="前のコマ (←)">‹</button>
+                <img id="loupeImg" src="" alt="">
+                <button type="button" class="loupe-nav-btn next" onclick="stepLoupe(1)" title="次のコマ (→)">›</button>
+            </div>
+            <div class="loupe-bottom">
+                <span id="loupeExif" style="color:var(--text-amber);font-family:monospace;"></span>
+                <span id="loupeGear" style="color:#adb5bd;"></span>
+                <span id="loupeDate" style="color:#adb5bd;"></span>
+            </div>
+        </div>
+    </div>
+
+<script>
+const ITEMS = {viewer_json};
+let currentLoupeIdx = 0;
+
+const titleEl = document.getElementById('sheetTitle');
+const printTitleEl = document.getElementById('printBannerTitle');
+if (titleEl && printTitleEl) {{
+    titleEl.addEventListener('input', () => {{
+        printTitleEl.textContent = titleEl.textContent;
+        document.title = titleEl.textContent + ' - Contact Sheet';
+    }});
+}}
+
+function setTheme(theme) {{
+    document.body.classList.remove('theme-darkroom', 'theme-washi');
+    document.body.classList.add('theme-' + theme);
+    document.getElementById('btnThemeDark').classList.toggle('active', theme === 'darkroom');
+    document.getElementById('btnThemeWashi').classList.toggle('active', theme === 'washi');
+}}
+
+function setColumns(cols) {{
+    document.documentElement.style.setProperty('--cols', String(cols));
+    [4, 5, 6].forEach(c => {{
+        const btn = document.getElementById('btnCol' + c);
+        if (btn) btn.classList.toggle('active', c === cols);
+    }});
+}}
+
+function setPickFilter(pickedOnly) {{
+    document.body.classList.toggle('filter-picked-only', !!pickedOnly);
+    document.getElementById('btnFilterAll').classList.toggle('active', !pickedOnly);
+    document.getElementById('btnFilterPicked').classList.toggle('active', !!pickedOnly);
+}}
+
+function updatePickCount() {{
+    const count = ITEMS.filter(it => it.picked).length;
+    const badge = document.getElementById('pickCountBadge');
+    if (badge) badge.textContent = String(count);
+}}
+
+function togglePick(ev, idx) {{
+    if (ev) ev.stopPropagation();
+    const item = ITEMS[idx];
+    if (!item) return;
+    item.picked = !item.picked;
+    const card = document.querySelector('.film-frame[data-index="' + idx + '"]');
+    if (card) {{
+        card.classList.toggle('is-picked', item.picked);
+        card.setAttribute('data-picked', item.picked ? '1' : '0');
+    }}
+    updatePickCount();
+    if (document.getElementById('loupeModal').classList.contains('open') && currentLoupeIdx === idx) {{
+        renderLoupe(idx);
+    }}
+}}
+
+function openLoupe(idx) {{
+    currentLoupeIdx = idx;
+    renderLoupe(idx);
+    document.getElementById('loupeModal').classList.add('open');
+}}
+
+function closeLoupe() {{
+    document.getElementById('loupeModal').classList.remove('open');
+}}
+
+function renderLoupe(idx) {{
+    const item = ITEMS[idx];
+    if (!item) return;
+    document.getElementById('loupeFrameNo').textContent = item.frame;
+    document.getElementById('loupeFileName').textContent = item.file_name;
+    document.getElementById('loupeImg').src = item.src;
+    document.getElementById('loupeExif').textContent = item.exif;
+    document.getElementById('loupeGear').textContent = item.gear;
+    document.getElementById('loupeDate').textContent = item.date_taken;
+    const pickBtn = document.getElementById('loupePickBtn');
+    if (pickBtn) {{
+        pickBtn.classList.toggle('active', !!item.picked);
+        pickBtn.textContent = item.picked ? '⭕ 赤丸マーク ON' : '⭕ 赤丸マーク OFF';
+    }}
+}}
+
+function toggleCurrentLoupePick() {{
+    togglePick(null, currentLoupeIdx);
+}}
+
+function stepLoupe(delta) {{
+    const nextIdx = (currentLoupeIdx + delta + ITEMS.length) % ITEMS.length;
+    currentLoupeIdx = nextIdx;
+    renderLoupe(nextIdx);
+}}
+
+document.addEventListener('keydown', (e) => {{
+    const modal = document.getElementById('loupeModal');
+    if (!modal || !modal.classList.contains('open')) return;
+    if (e.key === 'Escape') closeLoupe();
+    else if (e.key === 'ArrowLeft') stepLoupe(-1);
+    else if (e.key === 'ArrowRight') stepLoupe(1);
+}});
+</script>
+</body>
+</html>
+"""
+
+    timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_path = dest_dir / f"ContactSheet_{timestamp_str}.html"
+    try:
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write(html_content)
+    except Exception as e:
+        return {"status": "error", "message": f"コンタクトシートHTMLの書き込みに失敗しました: {e}"}
+
+    if open_after:
+        try:
+            os.startfile(str(output_path))
+        except Exception as e:
+            print(f"[WARN] コンタクトシートHTMLの自動オープン失敗 ({output_path}): {e}")
+
+    return {
+        "status": "ok",
+        "output_path": str(output_path),
+        "file_name": output_path.name,
+        "destination": str(dest_dir),
+        "exported_count": len(photos),
+    }
+
 

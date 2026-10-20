@@ -1,0 +1,802 @@
+/* ==========================================================================
+   v2.26 新機能群スタイル (カメラ・レンズ2階層ツリー / ラボ＆カルテ / 制覇マップ / 2枚比較 / RGBヒストグラム)
+   ========================================================================== */
+
+/* --- 1. カメラ・レンズ 2階層ツリー & 3ステート ([+]含む / [-]除外) --- */
+.camera-tree-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.camera-tree-group {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.camera-tree-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  border: 1px solid transparent;
+}
+
+.camera-tree-item:hover {
+  background: var(--bg-hover, rgba(0, 0, 0, 0.06));
+}
+
+[data-theme="sumi"] .camera-tree-item:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.camera-tree-expander {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  font-size: 0.68rem;
+  color: var(--text-muted, #68655e);
+  border-radius: 3px;
+  flex-shrink: 0;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.camera-tree-expander:not(.empty):hover {
+  color: var(--accent-primary, #e14d2a);
+  background: rgba(225, 77, 42, 0.12);
+}
+
+.camera-tree-expander.empty {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.camera-state-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  font-family: var(--font-mono, monospace);
+  margin-left: auto;
+  padding: 0 3px;
+  flex-shrink: 0;
+}
+
+.camera-tree-item .nav-count,
+.camera-lens-item .nav-count {
+  margin-left: 2px;
+}
+
+/* カメラ・レンズ 3ステート強調 (include / exclude) */
+.camera-tree-item.include,
+.camera-lens-item.include {
+  background: rgba(225, 77, 42, 0.14);
+  border-color: rgba(225, 77, 42, 0.42);
+  color: var(--accent-primary, #e14d2a);
+  font-weight: 600;
+}
+
+[data-theme="sumi"] .camera-tree-item.include,
+[data-theme="sumi"] .camera-lens-item.include {
+  background: rgba(225, 77, 42, 0.22);
+  border-color: rgba(225, 77, 42, 0.5);
+  color: #ff7a59;
+}
+
+.camera-tree-item.exclude,
+.camera-lens-item.exclude {
+  background: rgba(100, 116, 139, 0.14);
+  border-color: rgba(100, 116, 139, 0.4);
+  color: var(--text-muted, #64748b);
+  text-decoration: line-through;
+}
+
+.camera-tree-item.exclude .camera-state-badge,
+.camera-lens-item.exclude .camera-state-badge {
+  color: var(--danger, #dc2626);
+  text-decoration: none;
+}
+
+/* 子レンズサブリスト */
+.camera-lens-sublist {
+  list-style: none;
+  margin: 2px 0 4px 14px;
+  padding: 0 0 0 8px;
+  border-left: 1px dashed var(--border-soft, #bcb7aa);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+[data-theme="sumi"] .camera-lens-sublist {
+  border-left-color: rgba(255, 255, 255, 0.14);
+}
+
+.camera-lens-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 7px;
+  font-size: 0.78rem;
+  border-radius: 4px;
+  cursor: pointer;
+  user-select: none;
+  border: 1px solid transparent;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.camera-lens-item:hover {
+  background: var(--bg-hover, rgba(0, 0, 0, 0.05));
+}
+
+[data-theme="sumi"] .camera-lens-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.lens-tree-icon {
+  font-size: 0.78rem;
+  flex-shrink: 0;
+}
+
+.lens-nav-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+/* --- 2. ラボ (サイドバーパネル: 情報枠と操作ボタンの明確な区別) --- */
+.lab-sidebar-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 2px;
+}
+
+/* 非インタラクティブ情報枠: 歴代の今日ボックス（ボタンと誤認させないフラット枠） */
+.lab-otd-box {
+  background: var(--bg-primary, #e4e2da);
+  border: 1px dashed var(--border-soft, #bcb7aa);
+  border-radius: 6px;
+  padding: 8px 9px;
+  cursor: default;
+}
+
+[data-theme="sumi"] .lab-otd-box {
+  background: rgba(0, 0, 0, 0.22);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.lab-section-label {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--text-secondary, #494741);
+  cursor: default;
+  user-select: none;
+}
+
+[data-theme="sumi"] .lab-section-label {
+  color: var(--text-secondary, #a8a29e);
+}
+
+.form-select-sm {
+  padding: 3px 6px;
+  font-size: 0.76rem;
+  border-radius: 4px;
+  border: 1px solid var(--border-soft, #bcb7aa);
+  background: var(--bg-secondary, #d9d6cc);
+  color: var(--text-primary, #1f1e1b);
+  cursor: pointer;
+}
+
+[data-theme="sumi"] .form-select-sm {
+  background: #262626;
+  border-color: rgba(255, 255, 255, 0.16);
+  color: #f5f5f4;
+}
+
+/* インタラクティブ抽出ボタン: 押せることが一目でわかる立体・ホバー強調 */
+.lab-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 5px;
+  cursor: pointer;
+  border: 1px solid var(--border-soft, #bcb7aa);
+  background: var(--bg-secondary, #d9d6cc);
+  color: var(--text-primary, #1f1e1b);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  transition: transform 0.12s ease, background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.lab-filter-btn:hover {
+  transform: translateY(-1px);
+  border-color: var(--accent-primary, #e14d2a);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.12);
+}
+
+[data-theme="sumi"] .lab-filter-btn {
+  background: #292929;
+  border-color: rgba(255, 255, 255, 0.15);
+  color: #e7e5e4;
+}
+
+[data-theme="sumi"] .lab-filter-btn:hover {
+  background: #333333;
+  border-color: var(--accent-primary, #e14d2a);
+}
+
+.lab-filter-btn.active,
+#labOnThisDayBtn.active {
+  background: var(--accent-primary, #e14d2a) !important;
+  border-color: var(--accent-primary, #e14d2a) !important;
+  color: #ffffff !important;
+  box-shadow: 0 2px 6px rgba(225, 77, 42, 0.35);
+}
+
+/* --- 3. タブ切り替え共通（囲み枠なし・アンダーライン方式） --- */
+.map-modal-tabs,
+.lab-modal-tabs {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--border-soft, #bcb7aa);
+  background: transparent;
+}
+
+[data-theme="sumi"] .map-modal-tabs,
+[data-theme="sumi"] .lab-modal-tabs {
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+.map-tab-btn,
+.lab-tab-btn {
+  appearance: none;
+  background: transparent !important;
+  border: none !important;
+  border-bottom: 2px solid transparent !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: 10px 4px;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--text-muted, #68655e);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.map-tab-btn:hover,
+.lab-tab-btn:hover {
+  color: var(--text-primary, #1f1e1b);
+  background: transparent !important;
+}
+
+[data-theme="sumi"] .map-tab-btn:hover,
+[data-theme="sumi"] .lab-tab-btn:hover {
+  color: #f5f5f4;
+}
+
+.map-tab-btn.active,
+.lab-tab-btn.active {
+  color: var(--accent-primary, #e14d2a) !important;
+  border-bottom: 2px solid var(--accent-primary, #e14d2a) !important;
+  background: transparent !important;
+}
+
+/* --- 4. 勝ちレンズ・得意設定カルテモーダル --- */
+.lab-modal-card {
+  width: min(980px, 94vw);
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.lab-modal-body {
+  padding: 16px 22px 22px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.lab-summary-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+/* 非インタラクティブ統計表示枠（ボタンと区別するため影なし・フラット） */
+.lab-stat-box {
+  background: var(--bg-primary, #e4e2da);
+  border: 1px dashed var(--border-soft, #bcb7aa);
+  border-radius: 6px;
+  padding: 9px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  cursor: default;
+}
+
+[data-theme="sumi"] .lab-stat-box {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.lab-stat-label {
+  font-size: 0.72rem;
+  color: var(--text-muted, #68655e);
+}
+
+.lab-stat-value {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-primary, #1f1e1b);
+}
+
+[data-theme="sumi"] .lab-stat-value {
+  color: #f5f5f4;
+}
+
+.lab-insight-banner {
+  background: rgba(225, 77, 42, 0.1);
+  border-left: 3px solid var(--accent-primary, #e14d2a);
+  padding: 9px 13px;
+  border-radius: 4px;
+  font-size: 0.83rem;
+  margin-bottom: 14px;
+  color: var(--text-primary, #1f1e1b);
+  cursor: default;
+}
+
+[data-theme="sumi"] .lab-insight-banner {
+  background: rgba(225, 77, 42, 0.16);
+  color: #f5f5f4;
+}
+
+.lab-lens-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* クリックで絞り込めるインタラクティブカード */
+.lab-lens-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 7px;
+  background: var(--bg-secondary, #d9d6cc);
+  border: 1px solid var(--border-soft, #bcb7aa);
+  cursor: pointer;
+  transition: transform 0.12s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.lab-lens-card:hover {
+  transform: translateY(-1px);
+  border-color: var(--accent-primary, #e14d2a);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.12);
+}
+
+[data-theme="sumi"] .lab-lens-card {
+  background: #242424;
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.lab-lens-rank {
+  font-size: 1.1rem;
+  font-weight: 800;
+  min-width: 34px;
+  text-align: center;
+}
+
+.lab-lens-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.lab-lens-title {
+  font-size: 0.88rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.lab-lens-bar-track,
+.lab-bar-track {
+  height: 8px;
+  background: var(--bg-tertiary, #cecabf);
+  border-radius: 4px;
+  overflow: hidden;
+  flex: 1;
+}
+
+[data-theme="sumi"] .lab-lens-bar-track,
+[data-theme="sumi"] .lab-bar-track {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.lab-lens-bar-fill,
+.lab-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #e14d2a, #f59e0b);
+  border-radius: 4px;
+}
+
+.lab-bar-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lab-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: var(--bg-secondary, #d9d6cc);
+  border: 1px solid var(--border-soft, #bcb7aa);
+  cursor: pointer;
+  transition: border-color 0.15s ease, transform 0.12s ease;
+}
+
+.lab-bar-row:hover {
+  border-color: var(--accent-primary, #e14d2a);
+  transform: translateX(2px);
+}
+
+[data-theme="sumi"] .lab-bar-row {
+  background: #242424;
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.lab-bar-label {
+  width: 140px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.lab-bar-meta {
+  width: 150px;
+  text-align: right;
+  font-size: 0.78rem;
+  color: var(--text-secondary, #494741);
+  flex-shrink: 0;
+}
+
+[data-theme="sumi"] .lab-bar-meta {
+  color: #a8a29e;
+}
+
+/* --- 5. 47都道府県 制覇白地図・ヒートマップ・さんぽ軌跡モーダル --- */
+.location-map-modal-card {
+  width: min(1060px, 95vw);
+  height: min(820px, 90vh);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.location-map-modal-body {
+  padding: 14px 20px 18px;
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.whitemap-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.whitemap-region-box {
+  background: var(--bg-primary, #e4e2da);
+  border: 1px solid var(--border-soft, #bcb7aa);
+  border-radius: 7px;
+  padding: 10px 12px;
+}
+
+[data-theme="sumi"] .whitemap-region-box {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.whitemap-region-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-secondary, #494741);
+  margin-bottom: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px dashed var(--border-soft, #bcb7aa);
+  cursor: default;
+}
+
+[data-theme="sumi"] .whitemap-region-title {
+  color: #a8a29e;
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+.whitemap-pref-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+  gap: 6px;
+}
+
+.pref-tile {
+  padding: 6px 8px;
+  border-radius: 5px;
+  font-size: 0.78rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+/* 制覇済み都道府県タイル（クリックで写真一覧を抽出可能） */
+.pref-tile.conquered {
+  background: rgba(225, 77, 42, 0.14);
+  border: 1px solid rgba(225, 77, 42, 0.45);
+  color: var(--text-primary, #1f1e1b);
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.12s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.pref-tile.conquered:hover {
+  transform: translateY(-1px);
+  background: rgba(225, 77, 42, 0.24);
+  box-shadow: 0 2px 6px rgba(225, 77, 42, 0.22);
+}
+
+[data-theme="sumi"] .pref-tile.conquered {
+  color: #f5f5f4;
+  background: rgba(225, 77, 42, 0.22);
+}
+
+/* 未訪問都道府県タイル（非インタラクティブ表示） */
+.pref-tile.unvisited {
+  background: transparent;
+  border: 1px dashed var(--border-soft, #bcb7aa);
+  color: var(--text-muted, #8c887f);
+  opacity: 0.65;
+  cursor: default;
+}
+
+[data-theme="sumi"] .pref-tile.unvisited {
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #78716c;
+}
+
+#locationLeafletContainer {
+  width: 100%;
+  flex: 1;
+  min-height: 440px;
+  border-radius: 8px;
+  border: 1px solid var(--border-soft, #bcb7aa);
+  overflow: hidden;
+}
+
+/* --- 6. 2枚並列比較ビューワ (Side-by-Side Compare Modal) --- */
+.compare-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 3200;
+  background: rgba(15, 15, 15, 0.96);
+  color: #f5f5f4;
+  display: flex;
+  flex-direction: column;
+  user-select: none;
+}
+
+.compare-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 18px;
+  background: rgba(0, 0, 0, 0.55);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  gap: 12px;
+}
+
+.compare-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.compare-body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 8px;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.compare-pane {
+  display: flex;
+  flex-direction: column;
+  background: #141414;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  overflow: hidden;
+  position: relative;
+  min-height: 0;
+}
+
+.compare-pane.active-pane {
+  border-color: var(--accent-primary, #e14d2a);
+  box-shadow: 0 0 0 1px rgba(225, 77, 42, 0.45);
+}
+
+.compare-pane-header,
+.compare-pane-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: rgba(0, 0, 0, 0.45);
+  font-size: 0.8rem;
+  gap: 8px;
+}
+
+.compare-canvas-wrap {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  background: #0d0d0d;
+}
+
+.compare-canvas-wrap:active {
+  cursor: grabbing;
+}
+
+.compare-photo-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  transform-origin: center center;
+  will-change: transform;
+  pointer-events: none;
+}
+
+.compare-diff-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 7px 16px;
+  background: rgba(0, 0, 0, 0.65);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 0.78rem;
+  flex-wrap: wrap;
+  cursor: default;
+}
+
+.compare-diff-item {
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #d6d3d1;
+}
+
+.compare-diff-item.is-diff {
+  background: rgba(245, 158, 11, 0.18);
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  color: #fde68a;
+  font-weight: 600;
+}
+
+.btn-compare-ready {
+  border-color: var(--accent-primary, #e14d2a) !important;
+  color: var(--accent-primary, #e14d2a) !important;
+  font-weight: 700;
+}
+
+/* --- 7. リアルタイム RGB＋輝度ヒストグラム & 白飛び・黒潰れ警告 --- */
+/* 非インタラクティブ情報カード（ボタンと区別するためフラット枠・cursor:default） */
+.inspector-histogram-card,
+.adjust-histogram-box {
+  background: var(--bg-primary, #e4e2da);
+  border: 1px solid var(--border-soft, #bcb7aa);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-top: 8px;
+  cursor: default;
+}
+
+[data-theme="sumi"] .inspector-histogram-card,
+[data-theme="sumi"] .adjust-histogram-box {
+  background: rgba(0, 0, 0, 0.35);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.histogram-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 5px;
+  font-size: 0.72rem;
+  color: var(--text-secondary, #494741);
+}
+
+[data-theme="sumi"] .histogram-header {
+  color: #a8a29e;
+}
+
+.histogram-clip-indicators {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.clip-badge {
+  font-size: 0.68rem;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: rgba(120, 113, 108, 0.15);
+  color: var(--text-muted, #68655e);
+  cursor: default;
+}
+
+.clip-badge.active.shadow-clip {
+  background: rgba(59, 130, 246, 0.22);
+  color: #60a5fa;
+  font-weight: 700;
+}
+
+.clip-badge.active.highlight-clip {
+  background: rgba(239, 68, 68, 0.24);
+  color: #f87171;
+  font-weight: 700;
+}
+
+.histogram-canvas-wrap {
+  width: 100%;
+  height: 76px;
+  background: #141413;
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+
+#inspectorHistogramCanvas,
+#adjustHistogramCanvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+
+
+
+

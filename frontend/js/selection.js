@@ -1278,6 +1278,31 @@ function initSelectionEvents() {
       refreshSelectedThumbnails();
     });
   }
+
+  // コンタクトシート（ベタ焼きHTML）出力ボタン（フォールバック連携）
+  const floatingContactBtn = document.getElementById('floatingTriggerContactSheetBtn');
+  if (floatingContactBtn && !floatingContactBtn.dataset.boundSelection) {
+    floatingContactBtn.dataset.boundSelection = '1';
+    floatingContactBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeAllFloatingPopovers();
+      if (typeof window.exportContactSheetHtml === 'function') {
+        window.exportContactSheetHtml(Array.from(state.selectedPhotoIds));
+      }
+    });
+  }
+
+  const contextContactBtn = document.getElementById('contextTriggerContactSheetBtn');
+  if (contextContactBtn && !contextContactBtn.dataset.boundSelection) {
+    contextContactBtn.dataset.boundSelection = '1';
+    contextContactBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeContextMenu();
+      if (typeof window.exportContactSheetHtml === 'function') {
+        window.exportContactSheetHtml(Array.from(state.selectedPhotoIds));
+      }
+    });
+  }
 }
 
 /**

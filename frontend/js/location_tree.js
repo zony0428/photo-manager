@@ -34,6 +34,16 @@ function initLocationTree() {
     });
   }
 
+  const mapModalBtn = document.getElementById('openLocationMapModalBtn');
+  if (mapModalBtn) {
+    mapModalBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (typeof window.openLocationMapModal === 'function') {
+        window.openLocationMapModal('whitemap');
+      }
+    });
+  }
+
   const noLocItem = document.getElementById('noLocationNavItem');
   if (noLocItem) {
     noLocItem.addEventListener('click', () => {

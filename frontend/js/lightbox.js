@@ -65,6 +65,9 @@ function updateLightboxContent(photo) {
   if (elements.lightboxImage.getAttribute('src') !== viewSrc) {
     elements.lightboxImage.src = viewSrc;
   }
+  if (elements.lightboxImage.complete && typeof window.refreshLightboxHistogram === 'function') {
+    window.refreshLightboxHistogram();
+  }
   state.currentRotation = (typeof hasBakedViewAdjustments === 'function' && hasBakedViewAdjustments(photo)) ? 0 : (photo.rotation || 0);
   applyLightboxTransform();
 
@@ -680,10 +683,11 @@ async function triggerAiTagForSinglePhoto(photoId, btnElement) {
  * ライトボックス評価ウィジェットの更新
  */
 function updateLightboxRating(rating) {
+  const curRating = rating || 0;
   const btns = elements.lightboxRatingWidget.querySelectorAll('.rating-btn');
   btns.forEach(btn => {
     const ratingVal = parseInt(btn.dataset.rating, 10);
-    btn.classList.toggle('active', ratingVal === rating);
+    btn.classList.toggle('active', ratingVal === curRating);
   });
 }
 
@@ -1342,6 +1346,7 @@ function initLightboxEvents() {
       if (elements.exifDrawer) {
         const isHidden = elements.exifDrawer.style.display === 'none' || !elements.exifDrawer.style.display;
         elements.exifDrawer.style.display = isHidden ? 'block' : 'none';
+        elements.toggleExifBtn.classList.toggle('active', isHidden);
       }
     });
   }

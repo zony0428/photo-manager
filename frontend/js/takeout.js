@@ -565,6 +565,25 @@
       });
     }
 
+    // ベタ焼きHTML（コンタクトシート）出力トリガーボタン
+    const floatingContactSheetBtn = document.getElementById('floatingTriggerContactSheetBtn');
+    if (floatingContactSheetBtn) {
+      floatingContactSheetBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (typeof closeAllFloatingPopovers === 'function') closeAllFloatingPopovers();
+        exportContactSheetHtml();
+      });
+    }
+
+    const contextContactSheetBtn = document.getElementById('contextTriggerContactSheetBtn');
+    if (contextContactSheetBtn) {
+      contextContactSheetBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (typeof closeContextMenu === 'function') closeContextMenu();
+        exportContactSheetHtml();
+      });
+    }
+
     // キーボードショートカット (Escで閉じる)
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && modalEl && modalEl.style.display === 'flex') {
@@ -572,6 +591,66 @@
         closeSmartTakeoutModal();
       }
     });
+  }
+
+  /**
+   * 選択中の写真（または引数で指定された写真IDリスト）から自己完結型ベタ焼きHTML（コンタクトシート）を生成して出力する
+   * @param {number[]} [photoIds] - 対象写真ID配列（省略時は選択中またはライトボックス表示中の写真）
+   */
+  async function exportContactSheetHtml(photoIds) {
+    let targetIds = [];
+    if (Array.isArray(photoIds) && photoIds.length > 0) {
+      targetIds = photoIds;
+    } else if (typeof state !== 'undefined' && state.selectedPhotoIds && state.selectedPhotoIds.size > 0) {
+      targetIds = Array.from(state.selectedPhotoIds);
+    } else if (typeof getCurrentLightboxPhoto === 'function') {
+      const current = getCurrentLightboxPhoto();
+      if (current && current.id) {
+        targetIds = [current.id];
+      }
+    }
+
+    if (targetIds.length === 0) {
+      if (typeof showToast === 'function') {
+        showToast('コンタクトシートに出力する写真を選択してください', 'warning');
+      }
+      return;
+    }
+
+    if (typeof closeAllFloatingPopovers === 'function') closeAllFloatingPopovers();
+    if (typeof closeContextMenu === 'function') closeContextMenu();
+
+    if (typeof showToast === 'function') {
+      showToast('🎞️ ベタ焼きHTML（コンタクトシート）を生成中...', 'info', 2000);
+    }
+
+    try {
+      const response = await fetch('/api/export/contact-sheet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          photo_ids: targetIds,
+          title: 'Photo Manager Contact Sheet',
+          theme: 'darkroom',
+          columns: 5,
+          open_after: true
+        })
+      });
+
+      const res = await response.json();
+      if (!response.ok || res.status !== 'ok') {
+        throw new Error(res.detail || res.message || `HTTP Error ${response.status}`);
+      }
+
+      if (typeof showToast === 'function') {
+        showToast(`🎞️ ベタ焼きHTML（${res.exported_count}枚）を take_out に出力しました`, 'success', 4000);
+      }
+    } catch (err) {
+      console.error('コンタクトシートHTML出力エラー:', err);
+      if (typeof showToast === 'function') {
+        showToast(`❌ コンタクトシート出力に失敗しました: ${err.message}`, 'error', 4000);
+      }
+    }
   }
 
   // 初期化実行
@@ -584,5 +663,6 @@
   // グローバル公開
   window.openSmartTakeoutModal = openSmartTakeoutModal;
   window.closeSmartTakeoutModal = closeSmartTakeoutModal;
+  window.exportContactSheetHtml = exportContactSheetHtml;
 
 })();
