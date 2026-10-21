@@ -372,7 +372,10 @@
       ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
       ctx.font = '11px Inter, sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('画像読み込み中...', cssW / 2, cssH / 2 + 4);
+      const loadingText = (window.pmI18n && typeof window.pmI18n.translateString === 'function' && window.pmI18n.getLang() === 'en')
+        ? window.pmI18n.translateString('画像読み込み中...')
+        : '画像読み込み中...';
+      ctx.fillText(loadingText, cssW / 2, cssH / 2 + 4);
       ctx.restore();
       return;
     }

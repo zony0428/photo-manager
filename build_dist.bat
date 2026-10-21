@@ -172,6 +172,10 @@ if exist "%SRC%README.md" (
     echo        README.md
     copy /y "%SRC%README.md" "%DIST%\README.md" >nul 2>&1
 )
+if exist "%SRC%README_EN.md" (
+    echo        README_EN.md
+    copy /y "%SRC%README_EN.md" "%DIST%\README_EN.md" >nul 2>&1
+)
 if exist "%SRC%MANUAL.md" (
     echo        MANUAL.md
     copy /y "%SRC%MANUAL.md" "%DIST%\MANUAL.md" >nul 2>&1

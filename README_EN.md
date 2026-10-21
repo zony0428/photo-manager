@@ -19,9 +19,9 @@ Thank you for visiting this repository! Before using or exploring this project, 
 * 🤖 **100% "Vibe Coding" — Built Entirely by Asking AI!**
   * Every single line of code in this app was generated via **100% Vibe Coding (asking AI to write it)**. **I (the author) have ZERO knowledge of how the code inside actually works!** lol
   * So please don't ask me technical questions like *"How does line X work?"* — I genuinely have no idea!
-* 🇯🇵 **The UI is Japanese-Only & My English Skill is ZERO! 🌍**
+* 🇯🇵 **One-Click `🇯🇵 JP` ⇄ `🇺🇸 EN` English UI Included! (Though My Own English Skill is ZERO! 🌍)**
   * I am a Japanese developer with **zero English skills**! If you talk to me in English, I will rely 100% on machine translation and will probably sound like a slightly weird person lol.
-  * Also, **the app's UI is currently in Japanese only!** However, since the UI runs in an Edge/Chrome `--app` window (HTML/JS) and is released under the MIT License, feel free to ask your favorite AI to translate the UI into English if you'd like!
+  * **Good news: The app now includes a real-time `🇯🇵 JP` ⇄ `🇺🇸 EN` language toggle button at the top-left!** Clicking it switches the entire UI, tooltips, and the built-in Help Manual into English on the fly (including playful photography terms like **`Washi / Urusi`** themes, **`Ex / Gd / Nm / Rj`** ratings, **`Lens Shaker`** camera-shake detector, **`Betayaki`** darkroom contact sheets, and **`Gacha`** random folder picker—all 100% AI-translated, of course! lol).
 * 🛠️ **Personal Hobby Project (About Feature Requests & Issues)**
   * This software is built for my own personal photography workflow.
   * While I happily read feature requests and bug reports for reference, **whether they actually get implemented or fixed depends entirely on the AI's mood!** Please enjoy it with a *"lucky if it works for me as-is"* mindset.
@@ -46,19 +46,26 @@ When downloading this software from GitHub Releases and launching it for the fir
 
 ## ✨ Key Features
 
-1. **🔍 Obsessive "Exclusive Search (Exclude Filter `[-]`) "**
-   * When filtering by tags/albums, you can not only include `[+]` a tag, but also **exclude `[-]` specific tags**.
+1. **🔍 Obsessive "Exclusive Search (Exclude Filter `[-]`)" for Tags & Camera/Lens Tree**
+   * When filtering by tags/albums or the **Camera Body > Mounted Lens tree**, you can not only include `[+]` an item, but also **exclude `[-]` specific tags, cameras, or lenses**.
    * Combined with folder and date filters, this makes it super easy to find **"photos you forgot to add to an album"**!
 2. **🛡️ 100% Non-Destructive (Never touches a single byte of your original files)**
-   * Rotating, cropping, straightening, adjusting exposure/color in the Lab, or marking photos as "Rejected" never alters or deletes your original files on disk.
+   * Rotating, cropping, horizon leveling, adjusting exposure/color, or marking photos as "Rj (Reject)" never alters or deletes your original files on disk.
 3. **🔒 100% Offline & Privacy-First**
-   * Your photos are never uploaded to any cloud. AI auto-tagging & semantic similarity search (ONNX Runtime / CLIP) and reverse geocoding (GPS to Country / Prefecture / City) run completely locally on your PC.
-4. **⚡ Fast One-Handed Culling, Burst Stacking & Map Visualization**
-   * **4-Tier Rating**: Cull tens of thousands of photos using just number keys (`1`: Best / `2`: Good / `3`: Reject / `0`: Unrated). Rejected photos hide immediately from the grid.
-   * **Smart Burst, Exposure Bracketing (AEB) & Duplicate Stacking**: Automatically groups continuous bursts, exposure brackets, and duplicate files across folders. Compare EV+ / EV- brackets or burst shots instantly with `↑` / `↓` keys in the lightbox.
-   * **Location Map & 47-Prefecture Conquest Map**: Visualize photo locations, GPS route tracks, and your travel footprint on an interactive map.
-   * **Smart Takeout (Batch Export)**: Batch-export your selected best shots with non-destructive Lab edits baked in, custom resizing, contact sheets, offline HTML galleries, and Exif privacy stripping.
-5. **🔌 USB Portable & 📱 Smartphone Offline Culling (`PhotoManager_Mobile.html`)**
+   * Your photos are never uploaded to any cloud. AI auto-tagging (ONNX Runtime / CLIP) and reverse geocoding (GPS to Country / Prefecture / City) run completely locally on your PC.
+4. **⚡ Fast One-Handed Culling, ⚖️ 2-Up Duel Comparison & 📊 Live RGB Histogram**
+   * **4-Tier Rating (`Ex / Gd / Nm / Rj`)**: Cull tens of thousands of photos using just number keys (`1`: Ex / `2`: Gd / `3`: Rj / `0`: Nm). Rejected photos hide immediately from the grid.
+   * **Smart Burst, Exposure Bracketing (AEB) & Duplicate Stacking**: Automatically groups continuous bursts, exposure brackets, and duplicate files across folders. Compare EV+ / EV- brackets or burst shots instantly with `↑` / `↓` keys in Lightbox.
+   * **⚖️ 2-Up Side-by-Side Duel & 📊 Live Histogram**: Compare two photos side-by-side with **synchronized zoom & pan**, highlight Exif differences, and run knockout selection (`W` to crown Right as the new champion). Includes a real-time RGB & Luminance waveform histogram (`H` key).
+   * **📤 Smart Takeout & 🎞️ Betayaki Contact Sheet HTML**: Batch-export selected shots with non-destructive edits baked in, custom resizing, chronological renaming, and Exif privacy stripping—or generate a classic darkroom negative contact sheet HTML (`Betayaki`) with interactive red grease-pencil `⭕` marks and A4 print support.
+5. **🧪 Photography Lab & 🗾 47-Prefecture Conquest Map / Walk Trajectory**
+   * **🏆 Winning Lens & Sweet-Spot Chart**: Automatically analyzes your `Ex` / `Gd` keeper rates to rank your best-performing lenses and sweet-spot focal lengths, apertures, and shooting hours.
+   * **🌅 Solar Elevation Lab & ⚠️ "Lens Shaker" Detector**: Computes sun angle from timestamp & GPS to filter Golden Hour, Blue Hour, and Night/Astro shots, plus one-click extraction of slow-shutter camera-shake risks (`< 1/focal_length sec`).
+   * **🗾 47-Prefecture Conquest Map, Heatmap & 👣 Walk Trajectory**: Visualize your travel footprint across Japan, shooting density heatmaps, and chronological photo-walk routes.
+   * **🎂 On This Day & 🎲 Unrated Folder Gacha**: Rediscover photos taken on the same date across years, or spin the random `Gacha` to pick an unculled folder.
+6. **📜 Washi / 🌙 Urusi Themes & 🇯🇵 JP ⇄ 🇺🇸 EN Real-Time Language Toggle**
+   * Switch between bright Japanese paper (`📜 Washi`) and darkroom ink (`🌙 Urusi`) themes, and toggle the entire UI & built-in manual between Japanese and English in one click.
+7. **🔌 USB Portable & 📱 Smartphone Offline Culling (`PhotoManager_Mobile.html`)**
    * **USB Portable**: Run directly from a USB flash drive or external SSD on any Windows PC (even without Python installed). Automatically tracks drive letter changes (e.g., `D:` → `E:`).
    * **Mobile Offline Culling**: High-quality WebP thumbnails are stored directly inside the SQLite database (`cache/library.db`). Using WebAssembly (`sql.js`), you can load the `.db` file on your smartphone in ~1 second without carrying hundreds of GBs of RAW files, cull with one thumb in bed or on the train, and sync ratings back to your PC later!
 
@@ -81,10 +88,11 @@ The git repository does not include the large portable Python runtime (`python/`
 
 ---
 
-## 📖 Documentation (Japanese)
+## 📖 Documentation
 
-* 📘 **[User Manual (`MANUAL.md`)](MANUAL.md)**
-* 🔌 **[USB Portable Guide (`README_USB.md`)](README_USB.md)**
+* 📘 **Built-in Interactive Manual**: Click the **`? Help` (`F1`)** button at the top-right of the app (fully available in both `🇯🇵 JP` and `🇺🇸 EN`!).
+* 📘 **[User Manual (`MANUAL.md` - Japanese)](MANUAL.md)**
+* 🔌 **[USB Portable Guide (`README_USB.md` - Japanese)](README_USB.md)**
 * 🧠 **[Architecture & Technical Knowledge (`docs/knowledge/`)](docs/knowledge/README.md)**
 
 ---

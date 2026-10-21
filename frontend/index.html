@@ -13,15 +13,15 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&family=Shippori+Mincho:wght@400;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=2.39">
-  <link rel="stylesheet" href="/css/grid-lightbox.css?v=2.39">
-  <link rel="stylesheet" href="/css/selection-menu.css?v=2.39">
-  <link rel="stylesheet" href="/css/inspector.css?v=2.39">
-  <link rel="stylesheet" href="/css/modals-features.css?v=2.39">
-  <link rel="stylesheet" href="/css/lab-map.css?v=2.39">
-  <link rel="stylesheet" href="/css/histogram.css?v=2.39">
-  <link rel="stylesheet" href="/css/compare.css?v=2.39">
-  <link rel="stylesheet" href="/css/ui-unify.css?v=2.39">
+  <link rel="stylesheet" href="/css/style.css?v=2.40">
+  <link rel="stylesheet" href="/css/grid-lightbox.css?v=2.40">
+  <link rel="stylesheet" href="/css/selection-menu.css?v=2.40">
+  <link rel="stylesheet" href="/css/inspector.css?v=2.40">
+  <link rel="stylesheet" href="/css/modals-features.css?v=2.40">
+  <link rel="stylesheet" href="/css/lab-map.css?v=2.40">
+  <link rel="stylesheet" href="/css/histogram.css?v=2.40">
+  <link rel="stylesheet" href="/css/compare.css?v=2.40">
+  <link rel="stylesheet" href="/css/ui-unify.css?v=2.40">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
@@ -64,7 +64,7 @@
         <div class="logo">
           <span class="hinomaru-disc" title="Hinomaru Ink"></span>
           <span class="logo-text">PHOTO<span>MANAGER</span></span>
-          <span class="app-version" id="appVersion" title="v2.39 (最終更新: 2026-10-21 00:42)">v2.39</span>
+          <span class="app-version" id="appVersion" title="v2.40 (最終更新: 2026-10-21 23:36)">v2.40</span>
         </div>
 
 
@@ -73,6 +73,12 @@
         <button id="themeToggleBtn" class="btn btn-theme-toggle" title="テーマ切り替え (和紙 ⇄ 夜墨)">
           <span class="theme-icon" id="themeToggleIcon">📜</span>
           <span id="themeToggleLabel">和紙</span>
+        </button>
+
+        <!-- UI言語切替（日本語 JP ⇄ English EN） -->
+        <button id="langToggleBtn" class="btn btn-lang-toggle" title="UI言語切り替え (日本語 ⇄ English)">
+          <span class="lang-icon" id="langToggleIcon">🇯🇵</span>
+          <span id="langToggleLabel">JP</span>
         </button>
       </div>
 
@@ -1021,7 +1027,7 @@
                 <h4 class="help-feature-title">気分や用途で選べる3つの表示レイアウト</h4>
               </div>
               <p class="help-feature-text">
-                画面上部のツールバーから、ワンクリックで3つの表示モードを切り替えられます。右上の「📜 和紙 ／ 🌙 夜墨」ボタンで明るい画面・暗い画面の切り替えも可能です。
+                画面上部のツールバーから、ワンクリックで3つの表示モードを切り替えられます。左上の「📜 和紙 ／ 🌙 夜墨（Washi / Urusi）」ボタンで明るい画面・暗い画面の切り替え、さらに隣の「🇯🇵 JP ／ 🇺🇸 EN」ボタンで日本語・英語UIのリアルタイム切り替えも可能です。
               </p>
               <div class="help-mode-grid">
                 <div class="help-mode-card">
@@ -2442,21 +2448,22 @@
     </div>
   </div>
 
-  <script src="/js/common.js?v=2.39"></script>
-  <script src="/js/selection.js?v=2.39"></script>
-  <script src="/js/inspector.js?v=2.39"></script>
-  <script src="/js/lightbox.js?v=2.39"></script>
-  <script src="/js/adjust.js?v=2.39"></script>
-  <script src="/js/histogram.js?v=2.39"></script>
-  <script src="/js/compare.js?v=2.39"></script>
-  <script src="/js/takeout.js?v=2.39"></script>
-  <script src="/js/presets.js?v=2.39"></script>
-  <script src="/js/slideshow.js?v=2.39"></script>
-  <script src="/js/location_tree.js?v=2.39"></script>
-  <script src="/js/folder_tree.js?v=2.39"></script>
-  <script src="/js/location_map.js?v=2.39"></script>
-  <script src="/js/lab.js?v=2.39"></script>
-  <script src="/js/sidebar_filters.js?v=2.39"></script>
-  <script src="/js/app.js?v=2.39"></script>
+  <script src="/js/common.js?v=2.40"></script>
+  <script src="/js/selection.js?v=2.40"></script>
+  <script src="/js/inspector.js?v=2.40"></script>
+  <script src="/js/lightbox.js?v=2.40"></script>
+  <script src="/js/adjust.js?v=2.40"></script>
+  <script src="/js/histogram.js?v=2.40"></script>
+  <script src="/js/compare.js?v=2.40"></script>
+  <script src="/js/takeout.js?v=2.40"></script>
+  <script src="/js/presets.js?v=2.40"></script>
+  <script src="/js/slideshow.js?v=2.40"></script>
+  <script src="/js/location_tree.js?v=2.40"></script>
+  <script src="/js/folder_tree.js?v=2.40"></script>
+  <script src="/js/location_map.js?v=2.40"></script>
+  <script src="/js/lab.js?v=2.40"></script>
+  <script src="/js/sidebar_filters.js?v=2.40"></script>
+  <script src="/js/app.js?v=2.40"></script>
+  <script src="/js/i18n.js?v=2.40"></script>
 </body>
 </html>

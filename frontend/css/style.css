@@ -327,6 +327,40 @@ body {
   font-size: 0.85rem;
 }
 
+/* 言語切り替えボタン（🇯🇵 JP ⇄ 🇺🇸 EN） */
+.btn-lang-toggle {
+  background: var(--bg-tertiary, #303844);
+  border: 1px solid var(--border-color, #3d4756);
+  color: var(--text-main, #f0f2f5);
+  font-family: 'Outfit', 'Inter', sans-serif;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  padding: 4px 9px;
+  border-radius: var(--radius-sm, 2px);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  transition: var(--transition-fast, 0.12s ease);
+  flex-shrink: 0;
+}
+
+.btn-lang-toggle:hover {
+  background: var(--bg-hover, #3c4554);
+  border-color: var(--accent-primary, #e14d2a);
+}
+
+.btn-lang-toggle.is-en {
+  border-color: rgba(225, 77, 42, 0.55);
+  background: rgba(225, 77, 42, 0.12);
+}
+
+.btn-lang-toggle .lang-icon {
+  font-size: 0.84rem;
+  line-height: 1;
+}
+
 /* 検索バー (シャープな矩形スタイル) */
 .search-box {
   position: relative;
