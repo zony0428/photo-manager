@@ -44,6 +44,7 @@ from .database import (
     update_scan_root_fingerprint,
     get_ignored_folders,
     remove_ignored_folder,
+    backfill_missing_lens_models,
 )
 from .database.folders import clear_folders_fs_cache
 
@@ -52,6 +53,8 @@ from .raw_loader import (
     extract_raw_thumbnail_image,
     extract_raw_full_preview,
     extract_raw_metadata,
+    extract_fallback_lens_model,
+    is_valid_lens_name,
     SUPPORTED_RAW_EXTENSIONS,
 )
 from .volume_info import get_volume_info
@@ -341,7 +344,7 @@ def extract_metadata(file_path: Path) -> Dict[str, Any]:
                 raw_lens = exif_ifd.get(0xa434) or exif.get(0xa434)
                 if raw_lens:
                     clean_lens = str(raw_lens).replace("\x00", "").strip()
-                    if clean_lens:
+                    if is_valid_lens_name(clean_lens):
                         lens_model = clean_lens
 
                 # 露出補正値（ExposureBiasValue: 0x9204）
@@ -413,6 +416,10 @@ def extract_metadata(file_path: Path) -> Dict[str, Any]:
     except Exception:
         # 画像オープンエラー時は基本情報のみで進める
         pass
+
+    # 標準EXIF (0xA434) でレンズ機種名が取得できなかった場合、Panasonic MakerNote / XMP からフォールバック抽出
+    if not is_valid_lens_name(lens_model):
+        lens_model = extract_fallback_lens_model(file_path)
 
     # Exifから日時が得られなかった、またはファイル更新日時のフォールバックになっている場合、
     # ファイル名から撮影日時を高精度に抽出する（スマホ撮影画像の確実な復元）
@@ -1122,6 +1129,15 @@ def scan_directory(target_dir_str: str, cleanup_orphans: bool = False, recursive
 
         # 残りのバッチをコミット
         _flush_batch_with_duplicates()
+
+        # 既存（unchanged）レコードで lens_model が未取得の写真を MakerNote / XMP から高速補完
+        try:
+            backfill_missing_lens_models(
+                directory_path=os.path.abspath(target_dir_str),
+                recursive=recursive,
+            )
+        except Exception as bf_err:
+            print(f"[WARN] レンズ情報の補完処理で警告: {bf_err}")
 
         cleaned_count = 0
         if cleanup_orphans:

@@ -41,7 +41,8 @@
 | `frontend/js/takeout.js` | スマート・テイクアウト（高機能一括画像書き出し）＆ ベタ焼き（コンタクトシート）HTML出力 |
 | `frontend/js/presets.js` | フィルタプリセットの保存・適用・チップ描画・削除 |
 | `frontend/js/slideshow.js` | フルスクリーンスライドショービューア（ダブルバッファ切替、自動再生、シャッフル） |
-| `frontend/js/app.js` | コアオーケストレータ: 初期化、データ取得、サイドバー描画（タイムライン・カメラ＆レンズ階層ツリー・タグ）、写真グリッド描画、キーボードショートカット |
+| `frontend/js/sidebar_filters.js` | 左ペインのタイムライン（年月ツリー）、カメラ＆レンズ2階層ツリー（`[+]`/`[-]`排他検索）、フォルダ階層データ構築、階層タグツリー・12色カラーパレット管理 |
+| `frontend/js/app.js` | コアオーケストレータ: 初期化、データ取得、写真グリッド段階チャンク描画、適用中フィルタチップ描画、評価・タグ更新、キーボードショートカット |
 | `frontend/js/mobile.js` | スマホ専用画面（`mobile.html` / `/m`）のコントローラ: PC直結モード・WebAssembly (`sql.js`) ローカルDB直接読込モード、片手4段階選別、差分JSON出力/同期 |
 
 ### CSS モジュール (`frontend/css/` — カスケード順序通りに `<link>` 読込)
@@ -121,9 +122,9 @@ Picasaスタイルの4段階評価（棄/可/良/優）、カラーラベル（5
 | 項目 | 内容 |
 |---|---|
 | **UI要素 (HTML)** | `#sidebarIndexTabs`, `#sidebarTabPanels`, `#tabPanel-quick`, `#tabPanel-timeline`, `#tabPanel-camera`, `#tabPanel-folder`, `#tabPanel-tags`, `#tabPanel-presets`, `#tabPanel-search` |
-| **フロントエンド (JS)** | `frontend/js/app.js` & `frontend/js/presets.js`<br>・`initSidebarTabs()`: サイドバータブ切替<br>・`renderTimeline(timelineData)` / `toggleTimelineYearMonth()`: 撮影年月ツリーと絞り込み<br>・`renderCameras(cameras)` / `toggleCameraFilter()`: カメラ機種一覧と絞り込み<br>・`renderFolders(folders)` / `buildFolderTree()`: フォルダツリー構築、オフラインアイコン表示<br>・`openFolderContextMenu(e, folderPath)`: フォルダ右クリック（再スキャン、除外、エクスプローラー開く）<br>・`renderFilterPresetsList()` / `applyFilterPreset()`: フィルタプリセットの保存・適用 (`presets.js`) |
-| **APIエンドポイント** | `GET /api/timeline`<br>`GET /api/cameras`<br>`GET /api/folders`<br>`POST /api/folders/open` (エクスプローラー起動)<br>`POST /api/folders/ignore` / `DELETE /api/folders/ignore` (除外管理)<br>`GET /api/filter-presets`, `POST /api/filter-presets` (プリセットCRUD) |
-| **バックエンド (Python)** | `server/database/photos.py`: `get_timeline_summary()`, `get_cameras_summary()`<br>`server/database/folders.py`: `get_folders_summary()`, `_directory_filter_sql()`<br>`server/database/presets.py`: `get_filter_presets()`, `create_filter_preset()` |
+| **フロントエンド (JS)** | `frontend/js/sidebar_filters.js` & `frontend/js/app.js` & `frontend/js/presets.js`<br>・`initSidebarTabs()`: サイドバータブ切替<br>・`renderTimeline(timelineData)` / `toggleTimelineYearMonth()`: 撮影年月ツリーと絞り込み (`sidebar_filters.js`)<br>・`renderCameras(cameras)` / `cycleCameraFilterState()` / `cycleLensFilterState()`: カメラ＆レンズ2階層ツリーと排他絞り込み (`sidebar_filters.js`)<br>・`buildTagTree(tags)` / `renderTagList()`: 階層タグツリーと12色パレット (`sidebar_filters.js`)<br>・`renderFilterPresetsList()` / `applyFilterPreset()`: フィルタプリセットの保存・適用 (`presets.js`) |
+| **APIエンドポイント** | `GET /api/timeline`<br>`GET /api/cameras`<br>`GET /api/folders`<br>`GET /api/locations/heatmap`<br>`GET /api/lab/karte`<br>`GET /api/lab/random-unrated-folder`<br>`POST /api/folders/open` (エクスプローラー起動)<br>`POST /api/folders/ignore` / `DELETE /api/folders/ignore` (除外管理)<br>`GET /api/filter-presets`, `POST /api/filter-presets` (プリセットCRUD) |
+| **バックエンド (Python)** | `server/database/photos.py`: `get_photos()`, `get_location_tree_summary()`<br>`server/database/lab_analytics.py`: `get_location_heatmap_data()`, `get_lab_karte_data()`, `get_random_unrated_folder()`, `_normalize_jp_prefecture()`<br>`server/database/folders.py`: `get_timeline_summary()`, `get_cameras_summary()`, `get_folders_summary()`, `_directory_filter_sql()`<br>`server/database/presets.py`: `get_filter_presets()`, `create_filter_preset()` |
 
 ---
 

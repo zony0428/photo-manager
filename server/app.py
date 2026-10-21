@@ -10,6 +10,7 @@ import json
 import os
 import re
 import shutil
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -72,6 +73,7 @@ from .database import (
     clear_photo_gps,
     cleanup_invalid_zero_gps,
     backfill_photo_locations,
+    backfill_missing_lens_models,
     get_location_tree_summary,
     get_location_heatmap_data,
     get_lab_karte_data,
@@ -152,6 +154,17 @@ async def lifespan(app: FastAPI):
     cleanup_missing_upload_photos(UPLOAD_DIR)
     cleanup_invalid_zero_gps()
     ensure_standalone_mobile_html()
+
+    # 既存DBで lens_model が未設定の一眼カメラ写真（Panasonic MakerNote / XMP等）をバックグラウンドで自動補完
+    def _bg_backfill_lenses():
+        try:
+            cnt = backfill_missing_lens_models(only_interchangeable_cameras=True)
+            if cnt > 0:
+                logger.info(f"[Backfill] 既存写真のレンズ機種名を {cnt} 件自動補完しました")
+        except Exception as e:
+            logger.warning(f"[Backfill] レンズ機種名の自動補完スキップ: {e}")
+
+    threading.Thread(target=_bg_backfill_lenses, daemon=True).start()
     yield
 
 

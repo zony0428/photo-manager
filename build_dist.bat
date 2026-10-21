@@ -155,10 +155,7 @@ echo        server\start.bat
 copy /y "%SRC%start.bat" "%DIST%\server\start.bat" >nul 2>&1
 copy /y "%SRC%start.bat" "%DIST%\start.bat" >nul 2>&1
 
-:: --- Launcher source & Build.bat (Cloud-safe local builder) ---
-:: PhotoManager.exe and autorun.inf are NOT pre-copied into dist/
-:: to prevent false-positive malware flags on Google Drive / Cloud sharing.
-:: Running Build.bat on the target PC/USB generates both files locally.
+:: --- Launcher source & fallback Build.bat ---
 if not exist "%DIST%\launcher" mkdir "%DIST%\launcher" 2>nul
 if exist "%SRC%launcher\Launcher.cs" (
     echo        launcher\Launcher.cs
@@ -169,11 +166,6 @@ if exist "%SRC%Build.bat" (
     copy /y "%SRC%Build.bat" "%DIST%\Build.bat" >nul 2>&1
 )
 if not exist "%DIST%\launcher\Launcher.cs" goto :ERR_FILES
-if not exist "%DIST%\Build.bat" goto :ERR_FILES
-
-:: Ensure no pre-built exe or autorun.inf remain in dist/
-if exist "%DIST%\PhotoManager.exe" del /f /q "%DIST%\PhotoManager.exe" >nul 2>&1
-if exist "%DIST%\autorun.inf" del /f /q "%DIST%\autorun.inf" >nul 2>&1
 
 :: --- User Documentation, License & Version ---
 if exist "%SRC%README.md" (
@@ -210,19 +202,51 @@ if exist "%SRC%PhotoManager_Mobile.html" (
 if not exist "%DIST%\carry" mkdir "%DIST%\carry" 2>nul
 if not exist "%DIST%\take_out" mkdir "%DIST%\take_out" 2>nul
 
-goto :PREPARE_CLOUD_SAFE
+goto :BUILD_LAUNCHER
 
 :ERR_FILES
 echo [ERROR] Failed to copy startup files.
 goto :FAILED
 
-:: --- Cloud-Safe Package Note ---
-:PREPARE_CLOUD_SAFE
+:: --- Build / Copy PhotoManager.exe & autorun.inf ---
+:BUILD_LAUNCHER
 echo.
-echo [3/4] Checking cloud-sharing safety (no autorun.inf / unsigned .exe)...
-echo        [OK] Ready for Google Drive / USB distribution.
+echo [3/4] Generating PhotoManager.exe and autorun.inf...
 
-goto :VERIFY
+:: 1. Generate autorun.inf
+> "%DIST%\autorun.inf" echo [AutoRun]
+>> "%DIST%\autorun.inf" echo icon=frontend\favicon.ico,0
+>> "%DIST%\autorun.inf" echo label=Photo Manager
+if exist "%DIST%\autorun.inf" (
+    echo        [OK] autorun.inf generated.
+) else (
+    echo [ERROR] Failed to generate autorun.inf.
+    goto :FAILED
+)
+
+:: 2. Build PhotoManager.exe (or copy existing if compiler unavailable)
+set "CSC=C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+if not exist "%CSC%" (
+    set "CSC=C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe"
+)
+
+if exist "%CSC%" (
+    "%CSC%" /nologo /target:winexe /optimize+ /win32icon:"%SRC%frontend\favicon.ico" /out:"%DIST%\PhotoManager.exe" "%SRC%launcher\Launcher.cs" >nul 2>&1
+    if exist "%DIST%\PhotoManager.exe" (
+        copy /y "%DIST%\PhotoManager.exe" "%SRC%PhotoManager.exe" >nul 2>&1
+        echo        [OK] PhotoManager.exe compiled and bundled.
+        goto :VERIFY
+    )
+)
+
+if exist "%SRC%PhotoManager.exe" (
+    copy /y "%SRC%PhotoManager.exe" "%DIST%\PhotoManager.exe" >nul 2>&1
+    echo        [OK] PhotoManager.exe copied from root.
+    goto :VERIFY
+)
+
+echo [ERROR] Failed to build or copy PhotoManager.exe.
+goto :FAILED
 
 :: --- Verify output ---
 :VERIFY
@@ -234,8 +258,8 @@ if not exist "%DIST%\frontend" set "OK=0"
 if not exist "%DIST%\server" set "OK=0"
 if not exist "%DIST%\server\run.py" set "OK=0"
 if not exist "%DIST%\run.py" set "OK=0"
-if not exist "%DIST%\launcher\Launcher.cs" set "OK=0"
-if not exist "%DIST%\Build.bat" set "OK=0"
+if not exist "%DIST%\PhotoManager.exe" set "OK=0"
+if not exist "%DIST%\autorun.inf" set "OK=0"
 if not exist "%DIST%\MANUAL.md" set "OK=0"
 if exist "%SRC%models" (
     if not exist "%DIST%\models" set "OK=0"
@@ -250,14 +274,14 @@ echo ============================================================
 echo.
 echo   Output: %DIST%
 echo.
-echo   How to use / share:
-echo   1. Copy the contents of "dist" to a USB drive or share via Google Drive.
-echo      (autorun.inf and PhotoManager.exe are excluded so cloud scanners
-echo       will NOT falsely flag the folder as malware.)
-echo   2. On first use, double-click "Build.bat" once.
-echo      It will automatically generate "PhotoManager.exe" and "autorun.inf"
-echo      and launch Photo Manager immediately.
-echo   3. From the next time, double-click "PhotoManager.exe" to launch.
+echo   Included launcher files:
+echo     - PhotoManager.exe (Native GUI launcher with icon)
+echo     - autorun.inf      (USB drive icon ^& label config)
+echo     - Build.bat        (Fallback launcher re-builder)
+echo.
+echo   How to use / distribute:
+echo   1. Zip the contents of "dist" for GitHub Releases, or copy to USB.
+echo   2. Double-click "PhotoManager.exe" to launch immediately!
 echo ============================================================
 echo.
 if not defined NO_PAUSE pause

@@ -4,9 +4,12 @@ LibRaw (rawpy) を使用して、各社カメラのRAWファイルから
 カメラ内現像済みの埋め込みプレビューJPEG（およびExifメタデータ）を高速に抽出する。
 """
 
+import html
 import io
 import logging
 import os
+import re
+import struct
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Union
@@ -49,6 +52,120 @@ def parse_exif_date_str(date_str: Optional[str]) -> Optional[str]:
         return dt.strftime("%Y-%m-%d %H:%M:%S")
     except Exception:
         return None
+
+
+_INVALID_LENS_NAMES = {
+    "", "-", "--", "---", "----", "n/a", "none", "null", "unknown",
+    "no-lens", "no lens", "no-accessory", "0", "0.0 mm f/0.0", "0000000"
+}
+
+_XMP_LENS_PATTERNS = (
+    re.compile(rb"<aux:Lens>([^<]+)</aux:Lens>", re.IGNORECASE),
+    re.compile(rb'\baux:Lens="([^"]+)"', re.IGNORECASE),
+    re.compile(rb"<exifEX:LensModel>([^<]+)</exifEX:LensModel>", re.IGNORECASE),
+    re.compile(rb'\bexifEX:LensModel="([^"]+)"', re.IGNORECASE),
+)
+
+
+def is_valid_lens_name(name: Optional[str]) -> bool:
+    """レンズ名が有効な文字列（ダミー値やXML断片でない）かを判定する"""
+    if not name:
+        return False
+    s = str(name).replace("\x00", "").strip()
+    if len(s) < 3 or s.lower() in _INVALID_LENS_NAMES:
+        return False
+    # すべて記号（ハイフンやアンダースコア）のみの場合は無効
+    if all(c in "-_./\\*?" for c in s):
+        return False
+    # XML/RDF 断片の誤混入を除外
+    if "<" in s or ">" in s or "xmlns" in s.lower() or "rdf:" in s.lower():
+        return False
+    return True
+
+
+def extract_fallback_lens_model(file_path: Union[str, Path]) -> Optional[str]:
+    """
+    標準EXIF (0xA434: LensModel) にレンズ名が記録されていない写真ファイルから、
+    先頭バイナリ（最大128KB）を高速スキャンして以下の順序でレンズ機種名を抽出する:
+      1. Panasonic MakerNote (0x927C 内の Tag 0x0051: LensType + Tag 0x0053: ConversionLens)
+      2. XMP メタデータ (aux:Lens / exifEX:LensModel — SILKYPIX現像JPEGやNikon D200等)
+    """
+    try:
+        with open(file_path, "rb") as f:
+            raw = f.read(131072)
+    except Exception as e:
+        logger.debug(f"レンズ情報フォールバック読み取りスキップ ({file_path}): {e}")
+        return None
+
+    if not raw:
+        return None
+
+    # 1. Panasonic MakerNote ("Panasonic\x00\x00\x00") の解析
+    pana_sig = b"Panasonic\x00\x00\x00"
+    search_pos = 0
+    while True:
+        idx = raw.find(pana_sig, search_pos)
+        if idx < 0 or idx + 14 > len(raw):
+            break
+        search_pos = idx + 12
+
+        try:
+            num_entries = struct.unpack_from("<H", raw, idx + 12)[0]
+        except Exception:
+            continue
+
+        if not (1 <= num_entries <= 500):
+            continue
+
+        # オフセット基準候補: 直前の TIFF Little Endian ヘッダ ("II*\x00") または ファイル先頭 (0)
+        tiff_ii = raw.rfind(b"II*\x00", 0, idx)
+        base_candidates = [tiff_ii, 0] if tiff_ii >= 0 else [0]
+
+        lens_str: Optional[str] = None
+        acc_str: Optional[str] = None
+
+        for i in range(num_entries):
+            entry_pos = idx + 14 + i * 12
+            if entry_pos + 12 > len(raw):
+                break
+            tag, typ, cnt, val_off = struct.unpack_from("<HHII", raw, entry_pos)
+            if typ != 2 or cnt <= 1 or cnt > 128:
+                continue
+            if tag not in (0x0051, 0x0053):
+                continue
+
+            for base in base_candidates:
+                start = base + val_off
+                if 0 <= start and start + cnt <= len(raw):
+                    chunk = raw[start:start + cnt].split(b"\x00", 1)[0]
+                    try:
+                        decoded = chunk.decode("ascii").strip()
+                    except UnicodeDecodeError:
+                        continue
+                    if is_valid_lens_name(decoded):
+                        if tag == 0x0051 and not lens_str:
+                            lens_str = decoded
+                        elif tag == 0x0053 and not acc_str:
+                            acc_str = decoded
+                        break
+
+        if lens_str:
+            if acc_str and acc_str not in lens_str:
+                return f"{lens_str} + {acc_str}"
+            return lens_str
+
+    # 2. XMP メタデータ (aux:Lens / exifEX:LensModel) の解析
+    for pat in _XMP_LENS_PATTERNS:
+        m = pat.search(raw)
+        if m:
+            try:
+                val = html.unescape(m.group(1).decode("utf-8", errors="ignore")).strip()
+                if is_valid_lens_name(val):
+                    return val
+            except Exception:
+                continue
+
+    return None
 
 
 def extract_raw_thumbnail_image(file_path: Union[str, Path]) -> Optional[Image.Image]:
@@ -289,7 +406,7 @@ def extract_raw_metadata(file_path: Path) -> Dict[str, Any]:
         raw_lens = exif_ifd.get(0xa434) or exif.get(0xa434)
         if raw_lens:
             clean_lens = str(raw_lens).replace("\x00", "").strip()
-            if clean_lens:
+            if is_valid_lens_name(clean_lens):
                 lens_model = clean_lens
 
         # 露出補正値 (ExposureBiasValue: 0x9204)
@@ -344,6 +461,10 @@ def extract_raw_metadata(file_path: Path) -> Dict[str, Any]:
             if width > 0 and height > 0 and width >= height:
                 width, height = height, width
 
+
+    # 標準Exif (0xA434) でレンズ機種名が取得できなかった場合、Panasonic MakerNote / XMP からフォールバック抽出
+    if not is_valid_lens_name(lens_model):
+        lens_model = extract_fallback_lens_model(file_path)
 
     # Exif日時が取れなかった場合、ファイル名から抽出を試みる
     if not date_taken or date_taken == fallback_dt.strftime("%Y-%m-%d %H:%M:%S"):

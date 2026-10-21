@@ -28,20 +28,19 @@ Thank you for visiting this repository! Before using or exploring this project, 
 
 ---
 
-## ⚠️ About False-Positive "Malware / SmartScreen" Warnings on Download
+## ⚠️ About False-Positive "SmartScreen" Warnings on First Launch
 
-When downloading this software from Google Drive / GitHub Releases or launching it for the first time, you may see warnings like **"Suspected Malware"** or **"Windows protected your PC (Microsoft Defender SmartScreen)"**.
+When downloading this software from GitHub Releases and launching it for the first time, you may see a blue confirmation screen like **"Windows protected your PC (Microsoft Defender SmartScreen)"**.
 
 ### ❓ Why does this warning appear? (Is it safe?)
 * **There are NO viruses or malicious programs whatsoever.** In fact, this app operates **100% offline** with no external network communication.
-* Because this is a personal hobby project without an expensive commercial EV Code Signing Certificate, cloud scanners and Windows Defender SmartScreen automatically flag unsigned `.exe` launchers or `autorun.inf` (USB drive icon config) as *"unknown executable = potentially unsafe"*.
+* Because this is a personal hobby project without an expensive commercial EV Code Signing Certificate, Windows Defender SmartScreen automatically flags unsigned `.exe` launchers (`PhotoManager.exe`) as *"unknown executable"*.
 
-### 🛡️ How Photo Manager Solves This (`Build.bat` Approach)
-1. **No pre-compiled `PhotoManager.exe` included in the package**
-   * To prevent false-positive blocks during download, neither this repository nor the distribution zip (`dist/`) includes `PhotoManager.exe` or `autorun.inf` out of the box.
-2. **Double-click `Build.bat` on first run to compile locally in 1 second**
-   * Double-clicking **`Build.bat`** uses Windows' built-in official C# compiler (`csc.exe`) to compile a tiny, plain-text source file ([`launcher/Launcher.cs`](launcher/Launcher.cs) — you can inspect all of it in Notepad!) directly into **`PhotoManager.exe`** on your own PC in 1 second, and immediately launches the app.
-   * Because the `.exe` is compiled locally on your machine, download blocks and SmartScreen warnings are minimized. From the second time onward, simply double-click `PhotoManager.exe`.
+### 🛡️ How to Launch (Direct Run or Local Rebuild via `Build.bat`)
+1. **Direct Launch**:
+   * If the blue SmartScreen prompt appears, simply click **"More info" → "Run anyway"** (it won't ask again after the first run).
+2. **Clean Local Build via `Build.bat` (Optional / Fallback)**:
+   * Double-clicking **`Build.bat`** uses Windows' built-in official C# compiler (`csc.exe`) to compile a tiny, plain-text source file ([`launcher/Launcher.cs`](launcher/Launcher.cs) — you can inspect all of it in Notepad!) directly into **`PhotoManager.exe`** and **`autorun.inf`** on your own PC in 1 second, and immediately launches the app without download-origin blocks.
 
 ---
 
@@ -69,9 +68,8 @@ When downloading this software from Google Drive / GitHub Releases or launching 
 
 ### Option A: Using the Release ZIP Package (Recommended — Portable Python Included)
 1. Download the `.zip` package from **[GitHub Releases](../../releases)** and extract it to any folder (or USB drive).
-2. **First time only**: Double-click **`Build.bat`**.
-   * `PhotoManager.exe` (with icon) will be created automatically and the app will launch.
-3. **From the second time onward**: Double-click **`PhotoManager.exe`** to start (opens in a dedicated borderless app window without a command prompt).
+2. Double-click **`PhotoManager.exe`** to start (opens in a dedicated borderless app window without a command prompt).
+   * *(Note: If SmartScreen blocks the first launch or if your antivirus removes the `.exe`, double-click **`Build.bat`** once to cleanly re-compile `PhotoManager.exe` locally.)*
 
 ### Option B: Cloning / Downloading Source from GitHub
 The git repository does not include the large portable Python runtime (`python/`). On your first run, follow these two steps (no system-wide Python installation required):

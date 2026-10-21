@@ -28,7 +28,7 @@ import/
 take_out/
 photos/
 
-# ビルド成果物・配布パッケージ（未署名exeやautorun.infによるクラウド誤検知防止のためBuild.batで現地生成）
+# ビルド成果物・配布パッケージ（GitHub Releases配布用 / 開発時はBuild.batまたはbuild_dist.batで生成）
 dist/
 *.zip
 PhotoManager.exe

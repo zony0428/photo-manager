@@ -13,15 +13,15 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&family=Shippori+Mincho:wght@400;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=2.38">
-  <link rel="stylesheet" href="/css/grid-lightbox.css?v=2.38">
-  <link rel="stylesheet" href="/css/selection-menu.css?v=2.38">
-  <link rel="stylesheet" href="/css/inspector.css?v=2.38">
-  <link rel="stylesheet" href="/css/modals-features.css?v=2.38">
-  <link rel="stylesheet" href="/css/lab-map.css?v=2.38">
-  <link rel="stylesheet" href="/css/histogram.css?v=2.38">
-  <link rel="stylesheet" href="/css/compare.css?v=2.38">
-  <link rel="stylesheet" href="/css/ui-unify.css?v=2.38">
+  <link rel="stylesheet" href="/css/style.css?v=2.39">
+  <link rel="stylesheet" href="/css/grid-lightbox.css?v=2.39">
+  <link rel="stylesheet" href="/css/selection-menu.css?v=2.39">
+  <link rel="stylesheet" href="/css/inspector.css?v=2.39">
+  <link rel="stylesheet" href="/css/modals-features.css?v=2.39">
+  <link rel="stylesheet" href="/css/lab-map.css?v=2.39">
+  <link rel="stylesheet" href="/css/histogram.css?v=2.39">
+  <link rel="stylesheet" href="/css/compare.css?v=2.39">
+  <link rel="stylesheet" href="/css/ui-unify.css?v=2.39">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
@@ -64,7 +64,7 @@
         <div class="logo">
           <span class="hinomaru-disc" title="Hinomaru Ink"></span>
           <span class="logo-text">PHOTO<span>MANAGER</span></span>
-          <span class="app-version" id="appVersion" title="v2.38 (最終更新: 2026-10-20 22:35)">v2.38</span>
+          <span class="app-version" id="appVersion" title="v2.39 (最終更新: 2026-10-21 00:42)">v2.39</span>
         </div>
 
 
@@ -1086,7 +1086,7 @@
           <div class="help-card">
             <h4>1. 起動と終了のしかた（2つの閉じかた）</h4>
             <p><strong>🚀 起動:</strong> フォルダ内の <code>PhotoManager.exe</code> をダブルクリックすると専用ウィンドウ（最大化状態）が開きます。<br>
-            <span class="help-tip">※Googleドライブ等で共有された直後で <code>PhotoManager.exe</code> がまだ無い場合は、初回だけ <strong><code>Build.bat</code></strong> をダブルクリックしてください（<code>PhotoManager.exe</code> とUSBアイコン設定 <code>autorun.inf</code> が自動作成されてそのまま起動します）。</span></p>
+            <span class="help-tip">※初回起動時に SmartScreen の確認画面が出た場合や <code>PhotoManager.exe</code> が見当たらない場合は、フォルダ内の <strong><code>Build.bat</code></strong> をダブルクリックするとお使いのPC上で <code>PhotoManager.exe</code> と <code>autorun.inf</code> がクリーンに生成されてそのまま起動します。</span></p>
             <p><strong>⏻ 完全終了（USBを抜く前など）:</strong> 画面右上の <strong>「⏻ 終了」ボタン</strong> →「サーバーを停止して終了」を選びます。</p>
             <p><strong>× 画面だけ閉じる（高速起動待機）:</strong> ウィンドウ右上の「&times;」で閉じると裏で待機状態になり、次回 <code>PhotoManager.exe</code> を開いたときに <strong>0.1秒</strong> で画面が復元します（Windows右下のタスクトレイのアイコンから完全終了もできます）。</p>
           </div>
@@ -1302,8 +1302,8 @@
             A. いいえ、パソコン内のファイルは削除されていません。画面上部ツールバーの <strong>「🗑️ 棄」</strong> ボタンを押して点灯させればいつでも再表示でき、<kbd>0</kbd> キーで元に戻せます。</p>
             <p style="margin-top: 8px;"><strong>Q. 回転や明るさ調整をした写真を、実際のファイルとして保存したいときは？</strong><br>
             A. アプリ内の調整は元ファイルを傷つけない非破壊方式です。調整結果を焼き込んだ画像ファイルを作るには、画面下部バーの <strong>「📤 テイクアウト」＞「⚡ スマート・テイクアウト...」</strong> から書き出してください。</p>
-            <p style="margin-top: 8px;"><strong>Q. Googleドライブ等で共有しようとしたらマルウェア（ウイルス）扱いされました。</strong><br>
-            A. 署名のない <code>.exe</code> や <code>autorun.inf</code> に対するクラウド側の自動誤検知です。共有時は <code>build_dist.bat</code> で出力される <code>dist</code> フォルダ（<code>.exe</code> を含まず、初回に <code>Build.bat</code> で現地生成する構成）をお使いください。</p>
+            <p style="margin-top: 8px;"><strong>Q. 初回起動時に「Windows によって PC が保護されました」と表示されました。</strong><br>
+            A. 個人開発で商用コード署名証明書を付与していないため表示される確認画面です。「詳細情報」→「実行」で起動するか、同梱の <code>Build.bat</code> を実行してPC上で <code>PhotoManager.exe</code> を再生成してください。</p>
           </div>
         </div>
       </div>
@@ -2442,20 +2442,21 @@
     </div>
   </div>
 
-  <script src="/js/common.js?v=2.38"></script>
-  <script src="/js/selection.js?v=2.38"></script>
-  <script src="/js/inspector.js?v=2.38"></script>
-  <script src="/js/lightbox.js?v=2.38"></script>
-  <script src="/js/adjust.js?v=2.38"></script>
-  <script src="/js/histogram.js?v=2.38"></script>
-  <script src="/js/compare.js?v=2.38"></script>
-  <script src="/js/takeout.js?v=2.38"></script>
-  <script src="/js/presets.js?v=2.38"></script>
-  <script src="/js/slideshow.js?v=2.38"></script>
-  <script src="/js/location_tree.js?v=2.38"></script>
-  <script src="/js/folder_tree.js?v=2.38"></script>
-  <script src="/js/location_map.js?v=2.38"></script>
-  <script src="/js/lab.js?v=2.38"></script>
-  <script src="/js/app.js?v=2.38"></script>
+  <script src="/js/common.js?v=2.39"></script>
+  <script src="/js/selection.js?v=2.39"></script>
+  <script src="/js/inspector.js?v=2.39"></script>
+  <script src="/js/lightbox.js?v=2.39"></script>
+  <script src="/js/adjust.js?v=2.39"></script>
+  <script src="/js/histogram.js?v=2.39"></script>
+  <script src="/js/compare.js?v=2.39"></script>
+  <script src="/js/takeout.js?v=2.39"></script>
+  <script src="/js/presets.js?v=2.39"></script>
+  <script src="/js/slideshow.js?v=2.39"></script>
+  <script src="/js/location_tree.js?v=2.39"></script>
+  <script src="/js/folder_tree.js?v=2.39"></script>
+  <script src="/js/location_map.js?v=2.39"></script>
+  <script src="/js/lab.js?v=2.39"></script>
+  <script src="/js/sidebar_filters.js?v=2.39"></script>
+  <script src="/js/app.js?v=2.39"></script>
 </body>
 </html>

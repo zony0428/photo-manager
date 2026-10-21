@@ -60,7 +60,12 @@ from .photos import (
     clear_photo_gps,
     cleanup_invalid_zero_gps,
     backfill_photo_locations,
+    backfill_missing_lens_models,
     get_location_tree_summary,
+)
+
+# ラボ分析・ジオタグヒートマップ・撮影統計カルテ
+from .lab_analytics import (
     get_location_heatmap_data,
     get_lab_karte_data,
     get_random_unrated_folder,
