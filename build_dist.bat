@@ -212,23 +212,12 @@ goto :BUILD_LAUNCHER
 echo [ERROR] Failed to copy startup files.
 goto :FAILED
 
-:: --- Build / Copy PhotoManager.exe & autorun.inf ---
+:: --- Build / Copy PhotoManager.exe ---
 :BUILD_LAUNCHER
 echo.
-echo [3/4] Generating PhotoManager.exe and autorun.inf...
+echo [3/4] Generating PhotoManager.exe...
 
-:: 1. Generate autorun.inf
-> "%DIST%\autorun.inf" echo [AutoRun]
->> "%DIST%\autorun.inf" echo icon=frontend\favicon.ico,0
->> "%DIST%\autorun.inf" echo label=Photo Manager
-if exist "%DIST%\autorun.inf" (
-    echo        [OK] autorun.inf generated.
-) else (
-    echo [ERROR] Failed to generate autorun.inf.
-    goto :FAILED
-)
-
-:: 2. Build PhotoManager.exe (or copy existing if compiler unavailable)
+:: Build PhotoManager.exe (or copy existing if compiler unavailable)
 set "CSC=C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
 if not exist "%CSC%" (
     set "CSC=C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe"
@@ -263,7 +252,6 @@ if not exist "%DIST%\server" set "OK=0"
 if not exist "%DIST%\server\run.py" set "OK=0"
 if not exist "%DIST%\run.py" set "OK=0"
 if not exist "%DIST%\PhotoManager.exe" set "OK=0"
-if not exist "%DIST%\autorun.inf" set "OK=0"
 if not exist "%DIST%\MANUAL.md" set "OK=0"
 if exist "%SRC%models" (
     if not exist "%DIST%\models" set "OK=0"
@@ -280,8 +268,7 @@ echo   Output: %DIST%
 echo.
 echo   Included launcher files:
 echo     - PhotoManager.exe (Native GUI launcher with icon)
-echo     - autorun.inf      (USB drive icon ^& label config)
-echo     - Build.bat        (Fallback launcher re-builder)
+echo     - Build.bat        (Fallback launcher re-builder ^& optional USB icon setup)
 echo.
 echo   How to use / distribute:
 echo   1. Zip the contents of "dist" for GitHub Releases, or copy to USB.

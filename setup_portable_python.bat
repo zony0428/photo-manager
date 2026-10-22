@@ -11,7 +11,7 @@ echo.
 :: 1. Download & extract Embeddable Python 3.11.9 if python\python.exe is not present yet
 if not exist "%~dp0python\python.exe" (
     echo [1/4] Downloading official Python 3.11.9 Embeddable package...
-    powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+    powershell -NoProfile -Command ^
         "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; " ^
         "$url = 'https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip'; " ^
         "$zip = Join-Path '%~dp0' 'python_embed.zip'; " ^

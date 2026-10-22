@@ -48,7 +48,7 @@ from server.tray import TrayManager
 
 PORT = 8088
 HOST = "127.0.0.1"
-BIND_HOST = "0.0.0.0"
+BIND_HOST = "127.0.0.1"
 APP_URL = f"http://{HOST}:{PORT}"
 
 
@@ -139,7 +139,7 @@ def main() -> None:
     launcher_thread = threading.Thread(target=_delayed_launch, daemon=True, name="WindowLauncher")
     launcher_thread.start()
 
-    # 2. Uvicorn サーバーインスタンスの生成（LAN内のAndroid端末からも接続できるよう 0.0.0.0 で待受）
+    # 2. Uvicorn サーバーインスタンスの生成（既定は安全なローカル 127.0.0.1 待受、スマホ連携モーダル表示時にオンデマンドでLAN待受を開始）
     from server.app import app
     config = uvicorn.Config(app, host=BIND_HOST, port=PORT, log_level="info")
     server = uvicorn.Server(config)

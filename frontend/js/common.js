@@ -1199,7 +1199,8 @@ function showMobileSyncResultModal(resultData, sourceLabel = 'mobile_sync.json',
 
 async function loadMobileConnectionInfo(silentCheck = false) {
   try {
-    const res = await fetch('/api/mobile/info');
+    const endpoint = silentCheck ? '/api/mobile/info' : '/api/mobile/info?enable_lan=1';
+    const res = await fetch(endpoint);
     if (!res.ok) return;
     const data = await res.json();
 

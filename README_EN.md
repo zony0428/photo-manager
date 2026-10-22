@@ -33,14 +33,15 @@ Thank you for visiting this repository! Before using or exploring this project, 
 When downloading this software from GitHub Releases and launching it for the first time, you may see a blue confirmation screen like **"Windows protected your PC (Microsoft Defender SmartScreen)"**.
 
 ### ❓ Why does this warning appear? (Is it safe?)
-* **There are NO viruses or malicious programs whatsoever.** In fact, this app operates **100% offline** with no external network communication.
+* **There are NO viruses or malicious programs whatsoever.** In fact, this app operates **100% offline** with no external network communication or registry modifications.
+* By default, the local server binds strictly to `127.0.0.1` (localhost only) so it never triggers Windows Firewall warnings or exposes ports on public Wi-Fi (LAN listening is activated on-demand only when you open the `📱 Mobile` QR modal, with strict cross-origin & localhost-only API protection).
 * Because this is a personal hobby project without an expensive commercial EV Code Signing Certificate, Windows Defender SmartScreen automatically flags unsigned `.exe` launchers (`PhotoManager.exe`) as *"unknown executable"*.
 
 ### 🛡️ How to Launch (Direct Run or Local Rebuild via `Build.bat`)
 1. **Direct Launch**:
    * If the blue SmartScreen prompt appears, simply click **"More info" → "Run anyway"** (it won't ask again after the first run).
 2. **Clean Local Build via `Build.bat` (Optional / Fallback)**:
-   * Double-clicking **`Build.bat`** uses Windows' built-in official C# compiler (`csc.exe`) to compile a tiny, plain-text source file ([`launcher/Launcher.cs`](launcher/Launcher.cs) — you can inspect all of it in Notepad!) directly into **`PhotoManager.exe`** and **`autorun.inf`** on your own PC in 1 second, and immediately launches the app without download-origin blocks.
+   * Double-clicking **`Build.bat`** uses Windows' built-in official C# compiler (`csc.exe`) to compile a tiny, plain-text source file ([`launcher/Launcher.cs`](launcher/Launcher.cs) — you can inspect all of it in Notepad!) directly into **`PhotoManager.exe`** on your own PC in 1 second, and immediately launches the app without download-origin blocks (if run from a USB drive root, it can optionally generate `autorun.inf` for a custom drive icon).
 
 ---
 

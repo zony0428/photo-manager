@@ -5,31 +5,15 @@ cd /d "%~dp0"
 title Photo Manager - Initial Build ^& Setup
 
 echo ============================================================
-echo   Photo Manager - Launcher ^& USB Icon Setup (Build.bat)
+echo   Photo Manager - Launcher Setup (Build.bat)
 echo ============================================================
 echo.
 
 :: ------------------------------------------------------------
-:: 1. Generate autorun.inf (for USB drive icon & label)
-:: ------------------------------------------------------------
-echo [1/2] Generating autorun.inf for USB drive icon...
-> "%~dp0autorun.inf" echo [AutoRun]
->> "%~dp0autorun.inf" echo icon=frontend\favicon.ico,0
->> "%~dp0autorun.inf" echo label=Photo Manager
-
-if exist "%~dp0autorun.inf" goto :AUTORUN_OK
-echo       [WARN] Failed to create autorun.inf.
-goto :BUILD_EXE
-
-:AUTORUN_OK
-echo       [OK] autorun.inf created.
-
-:: ------------------------------------------------------------
-:: 2. Compile PhotoManager.exe using Windows built-in C# compiler
+:: 1. Compile PhotoManager.exe using Windows built-in C# compiler
 :: ------------------------------------------------------------
 :BUILD_EXE
-echo.
-echo [2/2] Building PhotoManager.exe...
+echo [1/2] Building PhotoManager.exe...
 
 set "CSC=C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
 if exist "%CSC%" goto :CHECK_CS_SRC
@@ -53,6 +37,34 @@ if errorlevel 1 goto :CSC_FAIL
 if not exist "%~dp0PhotoManager.exe" goto :CSC_FAIL
 
 echo       [OK] PhotoManager.exe created successfully!
+
+:: ------------------------------------------------------------
+:: 2. Optional: Generate autorun.inf (only when requested or at drive root)
+:: ------------------------------------------------------------
+if /i "%~1"=="--autorun" goto :CREATE_AUTORUN
+if defined NO_LAUNCH goto :FINISH_BUILD
+
+:: Check if placed directly at the root of a drive (e.g. E:\)
+set "CUR_DIR=%~dp0"
+if not "%CUR_DIR:~3%"=="" goto :FINISH_BUILD
+if exist "%~dp0autorun.inf" goto :FINISH_BUILD
+
+echo.
+echo [2/2] USB Drive Root Detected (%CUR_DIR%)
+echo       Would you like to create "autorun.inf" for custom USB drive icon?
+echo       (Note: Some strict antivirus software may warn about autorun.inf files)
+choice /C YN /N /T 5 /D N /M "      Create autorun.inf? [y/N] (Auto-skips in 5s): "
+if errorlevel 2 goto :FINISH_BUILD
+
+:CREATE_AUTORUN
+> "%~dp0autorun.inf" echo [AutoRun]
+>> "%~dp0autorun.inf" echo icon=frontend\favicon.ico,0
+>> "%~dp0autorun.inf" echo label=Photo Manager
+if exist "%~dp0autorun.inf" (
+    echo       [OK] autorun.inf created.
+)
+
+:FINISH_BUILD
 echo.
 echo ============================================================
 echo   Setup Complete! Launching Photo Manager...

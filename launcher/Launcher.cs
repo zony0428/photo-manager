@@ -1,7 +1,18 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
+
+[assembly: AssemblyTitle("Photo Manager Launcher")]
+[assembly: AssemblyDescription("Photo Manager Standalone Desktop Launcher")]
+[assembly: AssemblyCompany("Photo Manager Project")]
+[assembly: AssemblyProduct("Photo Manager")]
+[assembly: AssemblyCopyright("Copyright (c) 2026 Photo Manager Project (MIT License)")]
+[assembly: ComVisible(false)]
+[assembly: AssemblyVersion("2.41.0.0")]
+[assembly: AssemblyFileVersion("2.41.0.0")]
 
 namespace PhotoManager
 {

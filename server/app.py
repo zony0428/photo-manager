@@ -15,7 +15,6 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -179,35 +178,111 @@ def _fast_json(obj: Any) -> Response:
 # アプリ初期化
 app = FastAPI(title="Photo Manager (Hinomaru Ink)", version=__version__, lifespan=lifespan)
 
-
-# CORS設定（ローカル開発および単体モバイルHTMLからのLAN同期用）
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
+# ローカル・プライベートLANオリジン判定用正規表現
+_ALLOWED_ORIGIN_RE = re.compile(
+    r"^https?://("
+    r"127\.0\.0\.1|localhost|\[::1\]|"
+    r"192\.168\.\d{1,3}\.\d{1,3}|"
+    r"10\.\d{1,3}\.\d{1,3}\.\d{1,3}|"
+    r"172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}"
+    r")(:\d+)?$",
+    re.IGNORECASE,
 )
+
+# 単体モバイルHTML (file:// や content:// 由来の Origin: null) からアクセスを許可するAPIパス
+_NULL_ORIGIN_ALLOWED_PATHS = {
+    "/api/mobile/sync-import",
+    "/api/mobile/info",
+    "/api/heartbeat",
+    "/api/version",
+}
+
+# PC本体 (127.0.0.1) からのみ実行を許可し、LAN (スマホ等) からの呼び出しを拒否するPC管理系パスプレフィックス
+_LOCAL_ONLY_PATH_PREFIXES = (
+    "/api/shutdown",
+    "/api/window/",
+    "/api/scan",
+    "/api/folders",
+    "/api/folder-tree",
+    "/api/browse",
+    "/api/upload",
+    "/api/import",
+    "/api/export",
+    "/api/database",
+    "/api/photos/purge-unlinked",
+    "/api/photos/batch-delete",
+)
+
+
+def _is_origin_allowed(origin: Optional[str], path: str) -> bool:
+    """クロスオリジンリクエストのOriginヘッダを検証し、外部悪성サイトからのCSRF/Localhost攻撃を遮断する"""
+    if not origin:
+        return True
+    if origin == "null":
+        return path in _NULL_ORIGIN_ALLOWED_PATHS
+    return bool(_ALLOWED_ORIGIN_RE.match(origin))
+
+
+def _is_lan_request_allowed(client_host: str, method: str, path: str) -> bool:
+    """LAN経由（スマホ等）からのリクエストに対し、PCローカル操作やファイル削除系APIをブロックする"""
+    if client_host in ("127.0.0.1", "::1", "localhost", "testclient"):
+        return True
+    if any(path.startswith(prefix) for prefix in _LOCAL_ONLY_PATH_PREFIXES):
+        return False
+    if path.startswith("/api/photo/") and (
+        path.endswith("/open-raw")
+        or path.endswith("/open-folder")
+        or path.endswith("/open-file")
+        or method.upper() == "DELETE"
+    ):
+        return False
+    return True
 
 
 @app.middleware("http")
 async def add_no_cache_header(request: Request, call_next):
-    """静的ファイル変更の即時反映およびモバイル単体HTML(content://, file://)からのLANアクセス許可ヘッダを設定する"""
-    if request.method == "OPTIONS" and request.headers.get("access-control-request-private-network") == "true":
+    """
+    1. 外部Webサイトからの不正なクロスオリジン要求（Drive-by Localhost Attack）を遮断
+    2. LAN経由アクセス時にPC専用操作APIを保護
+    3. 静的ファイル変更の即時反映およびモバイル単体HTMLからのLAN同期ヘッダを付与
+    """
+    path = request.url.path
+    origin = request.headers.get("origin")
+    client_host = request.client.host if request.client else "127.0.0.1"
+
+    if not _is_origin_allowed(origin, path):
         return Response(
-            status_code=204,
-            headers={
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-                "Access-Control-Allow-Headers": "*",
-                "Access-Control-Allow-Private-Network": "true",
-            },
+            content=json.dumps({"detail": "Forbidden origin"}),
+            status_code=403,
+            media_type="application/json",
         )
+
+    if not _is_lan_request_allowed(client_host, request.method, path):
+        return Response(
+            content=json.dumps({"detail": "This operation is restricted to localhost only"}),
+            status_code=403,
+            media_type="application/json",
+        )
+
+    cors_origin = origin if origin else "http://127.0.0.1:8088"
+
+    if request.method == "OPTIONS":
+        headers = {
+            "Access-Control-Allow-Origin": cors_origin,
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+            "Vary": "Origin",
+        }
+        if request.headers.get("access-control-request-private-network") == "true":
+            headers["Access-Control-Allow-Private-Network"] = "true"
+        return Response(status_code=204, headers=headers)
+
     response = await call_next(request)
+    if origin:
+        response.headers["Access-Control-Allow-Origin"] = cors_origin
+        response.headers["Vary"] = "Origin"
     if request.headers.get("access-control-request-private-network") == "true":
         response.headers["Access-Control-Allow-Private-Network"] = "true"
-    response.headers["Access-Control-Allow-Origin"] = "*"
-    path = request.url.path
     if path.endswith(".js") or path.endswith(".css") or path.endswith(".html") or path == "/":
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
         response.headers["Pragma"] = "no-cache"
@@ -1089,6 +1164,22 @@ def api_refresh_thumbnails(req: RefreshThumbnailsRequest):
     }
 
 
+# OSの規定アプリで直接開くことを許可する画像・RAW拡張子（実行可能ファイルの起動を防止）
+_SAFE_OPEN_MEDIA_EXTS = {
+    ".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".tif", ".tiff", ".heic", ".heif", ".avif",
+    ".cr2", ".cr3", ".crw", ".nef", ".nrw", ".arw", ".srf", ".sr2", ".orf", ".rw2", ".raf",
+    ".pef", ".dng", ".erf", ".3fr", ".fff", ".iiq", ".rwl", ".srw", ".x3f", ".mrw", ".kdc", ".dcr",
+}
+
+
+def _validate_safe_media_file(path: Path) -> None:
+    """os.startfile で開く対象が実在する通常ファイルであり、安全な画像/RAW拡張子であることを検証する"""
+    if not path.exists() or not path.is_file():
+        raise HTTPException(status_code=404, detail=f"ファイルが存在しません: {path}")
+    if path.suffix.lower() not in _SAFE_OPEN_MEDIA_EXTS:
+        raise HTTPException(status_code=403, detail=f"セキュリティ保護のため画像・RAW以外のファイルは開けません: {path.suffix}")
+
+
 @app.post("/api/photo/{photo_id}/open-raw")
 def api_open_raw(photo_id: int):
     """ペアのRAWファイルをOSのデフォルトアプリケーションで開く"""
@@ -1102,9 +1193,10 @@ def api_open_raw(photo_id: int):
     if not raw_path_str:
         raise HTTPException(status_code=404, detail="この写真にはRAWペアが存在しません")
 
-    raw_path = Path(raw_path_str)
-    if not raw_path.exists():
-        raise HTTPException(status_code=404, detail=f"RAWファイルが見つかりません: {raw_path_str}")
+    raw_path, is_online = resolve_portable_path(raw_path_str)
+    if not is_online:
+        raise HTTPException(status_code=404, detail="RAWファイルの保存先ドライブが未接続です（オフライン）")
+    _validate_safe_media_file(raw_path)
 
     try:
         _os.startfile(str(raw_path))
@@ -1136,21 +1228,23 @@ def api_open_photo_folder(photo_id: int):
     parent_dir = _os.path.normpath(str(target_path.parent))
 
     # 1. 実ファイルが存在する場合: explorer.exe /select,"<path>" でファイルを選択した状態で開く
-    if _os.path.exists(norm_file):
+    if _os.path.isfile(norm_file):
         try:
             # explorer /select,"パス" の文字列構文でプロセスを起動
             # ※ リスト形式 ["explorer", f"/select,{path}"] は引数全体がクォートされ /select スイッチが壊れるため文字列形式を使用
-            subprocess.Popen(f'explorer.exe /select,"{norm_file}"')
+            safe_norm = norm_file.replace('"', "")
+            subprocess.Popen(f'explorer.exe /select,"{safe_norm}"')
             return {"status": "ok", "path": norm_file}
         except Exception as e:
-            try:
-                _os.startfile(parent_dir)
-                return {"status": "ok", "path": parent_dir}
-            except Exception as e2:
-                raise HTTPException(status_code=500, detail=f"フォルダを開けませんでした: {e2}")
+            if _os.path.isdir(parent_dir):
+                try:
+                    _os.startfile(parent_dir)
+                    return {"status": "ok", "path": parent_dir}
+                except Exception as e2:
+                    raise HTTPException(status_code=500, detail=f"フォルダを開けませんでした: {e2}")
 
     # 2. 親フォルダが存在する場合: 親フォルダを確実に開く
-    elif _os.path.exists(parent_dir):
+    elif _os.path.isdir(parent_dir):
         try:
             _os.startfile(parent_dir)
             return {"status": "ok", "path": parent_dir}
@@ -1177,8 +1271,7 @@ def api_open_photo_file(photo_id: int):
     if not is_online:
         raise HTTPException(status_code=404, detail="写真の保存先ドライブが未接続です（オフライン）")
 
-    if not target_path.exists():
-        raise HTTPException(status_code=404, detail=f"ファイルが存在しません: {target_path}")
+    _validate_safe_media_file(target_path)
 
     try:
         _os.startfile(str(target_path))
@@ -2189,14 +2282,14 @@ def api_mobile_standalone():
 
 
 def _detect_local_ip_addresses() -> List[str]:
-    """PC自身のLAN内IPv4アドレス一覧を検出する"""
+    """PC自身のLAN内IPv4アドレス一覧を検出する（外部パブリックIPへの通信を発生させずプライベートアドレスのルーティング表を参照）"""
     import socket
 
     ips: List[str] = []
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
             s.settimeout(0.2)
-            s.connect(("8.8.8.8", 80))
+            s.connect(("10.255.255.255", 80))
             primary_ip = s.getsockname()[0]
             if primary_ip and not primary_ip.startswith("127."):
                 ips.append(primary_ip)
@@ -2211,6 +2304,55 @@ def _detect_local_ip_addresses() -> List[str]:
                 ips.append(ip)
     except Exception:
         pass
+
+    return ips
+
+
+# オンデマンドで起動したLAN待受用スレッドの管理セット
+_active_lan_listeners: set = set()
+_lan_listener_lock = threading.Lock()
+
+
+def _ensure_lan_listeners(port: int = 8088) -> List[str]:
+    """
+    ユーザーが「📱 スマホ」連携モーダルを開いた際、オンデマンドでPCのLAN IPアドレス (192.168.x.x等) に
+    セカンダリUvicornリスナーを起動する。
+    普段のPC利用時は 127.0.0.1 のみで動作するため、初回起動時のWindowsファイアウォール警告や
+    パブリックWi-Fiでの意図しないポート露出を回避しつつ、スマホ連携時は追加操作ゼロで接続できる。
+    """
+    import socket
+    import uvicorn
+
+    ips = _detect_local_ip_addresses()
+    with _lan_listener_lock:
+        for ip in ips:
+            key = f"{ip}:{port}"
+            if key in _active_lan_listeners:
+                continue
+            # 既に 0.0.0.0 等でバインド済みか確認
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(0.2)
+                if s.connect_ex((ip, port)) == 0:
+                    _active_lan_listeners.add(key)
+                    continue
+
+            def _run_lan_server(bind_ip: str, bind_port: int):
+                try:
+                    cfg = uvicorn.Config(app, host=bind_ip, port=bind_port, log_level="warning")
+                    srv = uvicorn.Server(cfg)
+                    logger.info(f"[Mobile LAN] スマホ連携用オンデマンドLAN待受を開始しました: http://{bind_ip}:{bind_port}/m")
+                    srv.run()
+                except Exception as e:
+                    logger.warning(f"[Mobile LAN] LAN待受の起動をスキップ ({bind_ip}:{bind_port}): {e}")
+
+            t = threading.Thread(
+                target=_run_lan_server,
+                args=(ip, port),
+                daemon=True,
+                name=f"MobileLanListener-{ip}",
+            )
+            t.start()
+            _active_lan_listeners.add(key)
 
     return ips
 
@@ -2236,12 +2378,15 @@ def api_mobile_qr_svg(request: Request, url: Optional[str] = None):
 
 
 @app.get("/api/mobile/info")
-def api_mobile_info(request: Request):
+def api_mobile_info(request: Request, enable_lan: int = Query(default=0)):
     """スマホ版 (/m) 接続用URL・QRコード情報、およびUSB内の未反映 mobile_sync.json の有無を返す"""
     import datetime
 
     port = request.url.port or 8088
-    ips = _detect_local_ip_addresses()
+    if enable_lan:
+        ips = _ensure_lan_listeners(port=port)
+    else:
+        ips = _detect_local_ip_addresses()
     urls = [f"http://{ip}:{port}/m" for ip in ips]
     if not urls:
         urls = [f"http://127.0.0.1:{port}/m"]

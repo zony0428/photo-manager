@@ -531,9 +531,13 @@ def run_smart_export(req: dict) -> dict:
 
 
 def open_folder_in_windows_explorer(dir_path: Path):
-    """Windowsエクスプローラーでフォルダを開く"""
+    """Windowsエクスプローラーでフォルダを開く（ディレクトリ実在検証付き）"""
     try:
-        os.startfile(str(dir_path))
+        resolved = Path(dir_path).resolve()
+        if not resolved.exists() or not resolved.is_dir():
+            print(f"[WARN] エクスプローラー起動拒否（有効なフォルダではありません）: {dir_path}")
+            return False
+        os.startfile(str(resolved))
         return True
     except Exception as e:
         print(f"[WARN] エクスプローラー起動失敗 ({dir_path}): {e}")
@@ -544,30 +548,41 @@ def pick_folder_dialog(initial_dir: Optional[str] = None) -> Optional[str]:
     """
     Windowsの標準フォルダ選択ダイアログを前面表示して選択されたパスを返す。
     キャンセルされた場合は None を返す。
+    コマンドインジェクション防止のため、初期パスは環境変数経由で渡す。
     """
     import subprocess
-    init_path = initial_dir or str(DEFAULT_TAKEOUT_DIR)
-    ps_script = f"""
+    init_path = str(DEFAULT_TAKEOUT_DIR)
+    if initial_dir and str(initial_dir).strip():
+        candidate = Path(str(initial_dir).strip())
+        if candidate.exists() and candidate.is_dir():
+            init_path = str(candidate.resolve())
+
+    ps_script = """
 [System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms") | Out-Null
 $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
 $dialog.Description = "エクスポート先フォルダを選択してください"
-$dialog.SelectedPath = "{init_path}"
+if ($env:PM_DIALOG_INIT_DIR -and (Test-Path -LiteralPath $env:PM_DIALOG_INIT_DIR)) {
+    $dialog.SelectedPath = $env:PM_DIALOG_INIT_DIR
+}
 $dialog.ShowNewFolderButton = $true
 $res = $dialog.ShowDialog()
-if ($res -eq [System.Windows.Forms.DialogResult]::OK) {{
+if ($res -eq [System.Windows.Forms.DialogResult]::OK) {
     Write-Output $dialog.SelectedPath
-}}
+}
 """
     try:
-        startupinfo = None
         creationflags = 0
         if os.name == 'nt':
             creationflags = subprocess.CREATE_NO_WINDOW
-        
+
+        env = os.environ.copy()
+        env["PM_DIALOG_INIT_DIR"] = init_path
+
         proc = subprocess.run(
             ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_script],
             capture_output=True,
             text=True,
+            env=env,
             creationflags=creationflags,
             timeout=60,
         )
