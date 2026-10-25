@@ -1831,19 +1831,28 @@ function setupEventListeners() {
     }
   });
 
-  // ドラッグ＆ドロップ アップロード処理
+  // ドラッグ＆ドロップ アップロード処理（外部からの実ファイルドロップ時のみオーバーレイを表示）
   let dragCounter = 0;
+  const isExternalFileDrag = (e) => {
+    if (window._draggingPhotoIds && window._draggingPhotoIds.length > 0) return false;
+    if (window._draggingTagNode) return false;
+    if (!e.dataTransfer || !e.dataTransfer.types) return false;
+    return Array.from(e.dataTransfer.types).includes('Files');
+  };
+
   window.addEventListener('dragenter', (e) => {
-    e.preventDefault();
-    dragCounter++;
-    if (window._draggingPhotoIds && window._draggingPhotoIds.length > 0) {
+    if (!isExternalFileDrag(e)) {
       dragCounter = 0;
+      if (elements.dragDropOverlay) elements.dragDropOverlay.style.display = 'none';
       return;
     }
+    e.preventDefault();
+    dragCounter++;
     elements.dragDropOverlay.style.display = 'flex';
   });
 
   window.addEventListener('dragleave', (e) => {
+    if (!isExternalFileDrag(e)) return;
     e.preventDefault();
     dragCounter--;
     if (dragCounter <= 0) {
@@ -1853,16 +1862,17 @@ function setupEventListeners() {
   });
 
   window.addEventListener('dragover', (e) => {
+    if (!isExternalFileDrag(e)) return;
     e.preventDefault();
   });
 
   window.addEventListener('drop', async (e) => {
+    if (!isExternalFileDrag(e)) return;
     e.preventDefault();
     dragCounter = 0;
     elements.dragDropOverlay.style.display = 'none';
 
     if (e.dataTransfer && e.dataTransfer.files.length > 0) {
-      if (window._draggingPhotoIds && window._draggingPhotoIds.length > 0) return;
       await uploadPhotos(e.dataTransfer.files);
     }
   });

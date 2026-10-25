@@ -1251,6 +1251,10 @@ function _ftInitDbMaintenanceModal() {
             return;
           }
           draggedTagNode = { fullPath: node.fullPath, name: node.name };
+          window._draggingTagNode = draggedTagNode;
+          if (elements.dragDropOverlay) {
+            elements.dragDropOverlay.style.display = 'none';
+          }
           item.classList.add('dragging');
           if (e.dataTransfer) {
             e.dataTransfer.effectAllowed = 'move';
@@ -1265,6 +1269,7 @@ function _ftInitDbMaintenanceModal() {
         item.addEventListener('dragend', () => {
           item.classList.remove('dragging');
           draggedTagNode = null;
+          window._draggingTagNode = null;
           container.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
           const rootZone = elements.settingsTagRootDropZone || document.getElementById('settingsTagRootDropZone');
           if (rootZone) {
@@ -1304,6 +1309,7 @@ function _ftInitDbMaintenanceModal() {
           if (!isValidDropTarget()) return;
           const src = draggedTagNode;
           draggedTagNode = null;
+          window._draggingTagNode = null;
           const newFullPath = `${node.fullPath}/${src.name}`;
           if (!confirm(`タグ「${src.fullPath}」を「${node.fullPath}」の配下へ移動し、「${newFullPath}」に変更しますか？\n（子階層タグや写真への付与状態もすべて自動で引き継がれます）`)) {
             return;
@@ -1419,6 +1425,7 @@ function _ftInitDbMaintenanceModal() {
       if (!draggedTagNode || !draggedTagNode.fullPath.includes('/')) return;
       const src = draggedTagNode;
       draggedTagNode = null;
+      window._draggingTagNode = null;
       const newFullPath = src.name;
       if (!confirm(`子タグ「${src.fullPath}」をルート（最上位階層「${newFullPath}」）へ独立移動しますか？\n（子階層タグもすべて一緒に移動します）`)) {
         return;
