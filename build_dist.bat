@@ -221,7 +221,7 @@ if exist "%CSC%" (
         copy /y "%DIST%\PhotoManager.exe" "%SRC%PhotoManager.exe" >nul 2>&1
         copy /y "%DIST%\PhotoManager.exe" "%DIST_UPD%\PhotoManager.exe" >nul 2>&1
         echo        [OK] PhotoManager.exe compiled and bundled.
-        goto :VERIFY
+        goto :MAKE_ZIPS
     )
 )
 
@@ -229,16 +229,24 @@ if exist "%SRC%PhotoManager.exe" (
     copy /y "%SRC%PhotoManager.exe" "%DIST%\PhotoManager.exe" >nul 2>&1
     copy /y "%SRC%PhotoManager.exe" "%DIST_UPD%\PhotoManager.exe" >nul 2>&1
     echo        [OK] PhotoManager.exe copied from root.
-    goto :VERIFY
+    goto :MAKE_ZIPS
 )
 
 echo [ERROR] Failed to build or copy PhotoManager.exe.
 goto :FAILED
 
+:: --- Create Release ZIP packages ---
+:MAKE_ZIPS
+echo.
+echo [4/5] Building Release ZIP archives...
+if exist "%SRC%python\python.exe" (
+    "%SRC%python\python.exe" "%SRC%server\make_release_zips.py"
+)
+
 :: --- Verify output ---
 :VERIFY
 echo.
-echo [4/4] Verifying outputs...
+echo [5/5] Verifying outputs...
 
 set "OK=1"
 if not exist "%DIST%\frontend" set "OK=0"
@@ -254,7 +262,7 @@ if exist "%SRC%models" (
     if not exist "%DIST%\models" set "OK=0"
 )
 
-if "%OK%"=="0" goto :VERIFY_FAIL
+if "%OK%"=="0" goto :MAKE_ZIPS_FAIL
 
 echo.
 echo ============================================================
