@@ -982,14 +982,546 @@ function _ftInitDbMaintenanceModal() {
     }
   };
 
+  // --- 右ペイン: タグツリーエディタ描画 & ドラッグ＆ドロップ階層変更 ---
+  let draggedTagNode = null;
+
+  const syncAfterTagMutation = async () => {
+    if (typeof refreshAll === 'function') {
+      await refreshAll();
+    }
+    renderSettingsTagTreeEditor();
+    if (state.selectedPhotoIds && state.selectedPhotoIds.size > 1 && typeof showBatchInspector === 'function') {
+      showBatchInspector();
+    } else if (state.activeInspectorPhotoId && typeof showSingleInspector === 'function') {
+      const p = state.photos.find(x => x.id === state.activeInspectorPhotoId);
+      if (p) showSingleInspector(p);
+    }
+  };
+
+  const executeTagMoveOrRename = async (oldFullPath, newFullPath, successMsg) => {
+    try {
+      const res = await fetch(`/api/tags/${encodeURIComponent(oldFullPath)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ new_tag: newFullPath }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.detail || 'タグの更新に失敗しました');
+      }
+      if (!state.settingsTagTreeExpandedPaths) {
+        state.settingsTagTreeExpandedPaths = new Set();
+      }
+      // 移動先の親階層を展開状態にする
+      const parts = newFullPath.split('/');
+      if (parts.length > 1) {
+        let cur = '';
+        for (let i = 0; i < parts.length - 1; i++) {
+          cur = cur ? `${cur}/${parts[i]}` : parts[i];
+          state.settingsTagTreeExpandedPaths.add(cur);
+        }
+      }
+      if (state.settingsTagTreeExpandedPaths.has(oldFullPath)) {
+        state.settingsTagTreeExpandedPaths.delete(oldFullPath);
+        state.settingsTagTreeExpandedPaths.add(newFullPath);
+      }
+      await syncAfterTagMutation();
+      if (typeof showToast === 'function') {
+        showToast(successMsg || `🏷️ タグを「${newFullPath}」に更新しました`, 'success', 2600);
+      }
+      return true;
+    } catch (err) {
+      if (typeof showToast === 'function') {
+        showToast(`エラー: ${err.message}`, 'error', 3200);
+      } else {
+        alert('エラー: ' + err.message);
+      }
+      return false;
+    }
+  };
+
+  const executeCreateNewTag = async (fullTag) => {
+    const cleanTag = (fullTag || '').replace(/^\/+|\/+$/g, '').trim();
+    if (!cleanTag) return false;
+    try {
+      const res = await fetch('/api/tags/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tag: cleanTag }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.detail || 'タグの作成に失敗しました');
+      }
+      if (!state.settingsTagTreeExpandedPaths) {
+        state.settingsTagTreeExpandedPaths = new Set();
+      }
+      const parts = cleanTag.split('/');
+      if (parts.length > 1) {
+        let cur = '';
+        for (let i = 0; i < parts.length - 1; i++) {
+          cur = cur ? `${cur}/${parts[i]}` : parts[i];
+          state.settingsTagTreeExpandedPaths.add(cur);
+        }
+      }
+      await syncAfterTagMutation();
+      if (typeof showToast === 'function') {
+        showToast(`🏷️ タグ「${cleanTag}」を作成しました`, 'success', 2200);
+      }
+      return true;
+    } catch (err) {
+      if (typeof showToast === 'function') {
+        showToast(`エラー: ${err.message}`, 'error', 3000);
+      }
+      return false;
+    }
+  };
+
+  function renderSettingsTagTreeEditor() {
+    const container = elements.settingsTagTreeContainer || document.getElementById('settingsTagTreeContainer');
+    if (!container) return;
+    container.innerHTML = '';
+
+    if (!state.settingsTagTreeExpandedPaths) {
+      state.settingsTagTreeExpandedPaths = new Set();
+    }
+
+    const manualTags = (state.availableTags || []).filter(t => {
+      const isAi = t.source === 'ai';
+      const isColor = (typeof COLOR_TAG_MAP !== 'undefined') && ((t.tag || t.name) in COLOR_TAG_MAP);
+      return !isAi && !isColor;
+    });
+
+    if (manualTags.length === 0) {
+      const emptyEl = document.createElement('div');
+      emptyEl.className = 'empty-hint';
+      emptyEl.style.cssText = 'font-size:0.8rem; padding:16px 10px; text-align:center;';
+      emptyEl.textContent = '手動タグはまだ登録されていません。下の入力欄から作成できます。';
+      container.appendChild(emptyEl);
+      return;
+    }
+
+    const treeRoot = typeof buildTagTree === 'function' ? buildTagTree(manualTags) : { children: new Map() };
+
+    function appendInlineChildCreator(targetEl, parentFullPath, parentDisplayName, indent) {
+      const addRow = document.createElement('div');
+      addRow.className = 'inspector-tree-inline-add settings-tree-inline-add';
+      addRow.style.paddingLeft = `${indent * 16 + 8}px`;
+      addRow.innerHTML = `
+        <div class="inspector-tree-inline-left">
+          <span class="tree-toggle-spacer"></span>
+          <input type="text" class="inspector-tree-inline-input" placeholder="${escapeHtml(parentDisplayName)} の子タグ名..." autocomplete="off">
+        </div>
+        <button type="button" class="apply-badge inspector-tree-inline-btn">+追加</button>
+      `;
+      const inputEl = addRow.querySelector('.inspector-tree-inline-input');
+      const btnEl = addRow.querySelector('.inspector-tree-inline-btn');
+      const submitChild = async () => {
+        if (!inputEl) return;
+        const val = inputEl.value.replace(/^\/+|\/+$/g, '').trim();
+        if (!val) return;
+        inputEl.value = '';
+        await executeCreateNewTag(`${parentFullPath}/${val}`);
+      };
+      addRow.addEventListener('click', (e) => e.stopPropagation());
+      if (btnEl) {
+        btnEl.addEventListener('click', (e) => {
+          e.stopPropagation();
+          submitChild();
+        });
+      }
+      if (inputEl) {
+        inputEl.addEventListener('keydown', (e) => {
+          e.stopPropagation();
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            submitChild();
+          }
+        });
+      }
+      targetEl.appendChild(addRow);
+    }
+
+    function startSettingsInlineRename(itemEl, node) {
+      const nameSpan = itemEl.querySelector('.inspector-tree-name');
+      if (!nameSpan || itemEl.querySelector('.tag-rename-input')) return;
+
+      const oldName = node.name;
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'tag-rename-input inspector-tag-rename-input';
+      input.value = oldName;
+
+      nameSpan.style.display = 'none';
+      nameSpan.parentNode.insertBefore(input, nameSpan.nextSibling);
+      input.focus();
+      input.select();
+
+      let committed = false;
+      async function commitRename() {
+        if (committed) return;
+        committed = true;
+        const newName = input.value.replace(/^\/+|\/+$/g, '').trim();
+        if (!newName || newName === oldName) {
+          input.remove();
+          nameSpan.style.display = '';
+          return;
+        }
+        const parts = node.fullPath.split('/');
+        parts[parts.length - 1] = newName;
+        const newFullPath = parts.join('/');
+        const ok = await executeTagMoveOrRename(
+          node.fullPath,
+          newFullPath,
+          `✏️ タグを「${newFullPath}」にリネームしました`
+        );
+        if (!ok) {
+          input.remove();
+          nameSpan.style.display = '';
+        }
+      }
+
+      input.addEventListener('keydown', (e) => {
+        e.stopPropagation();
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          commitRename();
+        } else if (e.key === 'Escape') {
+          committed = true;
+          input.remove();
+          nameSpan.style.display = '';
+        }
+      });
+      input.addEventListener('blur', () => {
+        setTimeout(() => commitRename(), 100);
+      });
+      input.addEventListener('click', (e) => e.stopPropagation());
+    }
+
+    function appendEditorTreeNodes(parentNode, targetEl, indent = 0) {
+      parentNode.children.forEach(node => {
+        const nodeWrapper = document.createElement('div');
+        nodeWrapper.className = 'inspector-tree-node settings-tag-tree-node';
+
+        const hasChildren = node.children.size > 0;
+        const isExpanded = state.settingsTagTreeExpandedPaths.has(node.fullPath);
+
+        const item = document.createElement('div');
+        item.className = 'inspector-tree-item settings-tag-tree-item';
+        item.style.paddingLeft = `${indent * 16 + 8}px`;
+        item.setAttribute('draggable', 'true');
+        item.dataset.fullPath = node.fullPath;
+
+        let toggleBtnHtml = '<span class="tree-toggle-spacer"></span>';
+        if (hasChildren) {
+          toggleBtnHtml = `<span class="tree-toggle-btn ${isExpanded ? '' : 'collapsed'}" title="${isExpanded ? '折りたたむ' : '展開する'}">▼</span>`;
+        }
+        const icon = hasChildren ? '📁' : '🏷️';
+        const countVal = node.count || 0;
+
+        item.innerHTML = `
+          <div class="inspector-tree-item-left">
+            <span class="settings-tag-drag-handle" title="ドラッグして他のタグ配下やルートへ移動">⋮⋮</span>
+            ${toggleBtnHtml}
+            <span style="flex-shrink:0;">${icon}</span>
+            <span class="inspector-tree-name" title="${escapeHtml(node.fullPath)}">${escapeHtml(node.name)}</span>
+            <span class="inspector-tree-count" title="付与されている写真枚数">${countVal}枚</span>
+          </div>
+          <div class="inspector-tree-item-actions settings-tag-item-actions">
+            <button type="button" class="inspector-tag-edit-btn settings-tag-subadd-btn" title="「${escapeHtml(node.name)}」の子タグを作成">+子</button>
+            <button type="button" class="inspector-tag-edit-btn settings-tag-rename-btn" title="タグ「${escapeHtml(node.name)}」の名前を変更">✏</button>
+            <button type="button" class="inspector-tag-edit-btn settings-tag-delete-btn" title="タグ「${escapeHtml(node.fullPath)}」をライブラリ全体から削除">🗑️</button>
+          </div>
+        `;
+
+        nodeWrapper.appendChild(item);
+
+        const childrenContainer = document.createElement('div');
+        childrenContainer.className = `inspector-tree-children${(hasChildren && isExpanded) ? '' : ' hidden'}`;
+        if (hasChildren) {
+          appendEditorTreeNodes(node, childrenContainer, indent + 1);
+        }
+        appendInlineChildCreator(childrenContainer, node.fullPath, node.name, indent + 1);
+        nodeWrapper.appendChild(childrenContainer);
+
+        // --- Drag & Drop イベント ---
+        item.addEventListener('dragstart', (e) => {
+          if (e.target.closest('input, button')) {
+            e.preventDefault();
+            return;
+          }
+          draggedTagNode = { fullPath: node.fullPath, name: node.name };
+          item.classList.add('dragging');
+          if (e.dataTransfer) {
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', node.fullPath);
+          }
+          const rootZone = elements.settingsTagRootDropZone || document.getElementById('settingsTagRootDropZone');
+          if (rootZone && node.fullPath.includes('/')) {
+            rootZone.classList.add('drop-eligible');
+          }
+        });
+
+        item.addEventListener('dragend', () => {
+          item.classList.remove('dragging');
+          draggedTagNode = null;
+          container.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+          const rootZone = elements.settingsTagRootDropZone || document.getElementById('settingsTagRootDropZone');
+          if (rootZone) {
+            rootZone.classList.remove('drop-eligible', 'drag-over');
+          }
+        });
+
+        const isValidDropTarget = () => {
+          if (!draggedTagNode) return false;
+          if (draggedTagNode.fullPath === node.fullPath) return false;
+          // 自身の子孫へ移動するのは禁止
+          if (node.fullPath.startsWith(draggedTagNode.fullPath + '/')) return false;
+          // 既に直下の親である場合は不要
+          const srcParent = draggedTagNode.fullPath.includes('/')
+            ? draggedTagNode.fullPath.slice(0, draggedTagNode.fullPath.lastIndexOf('/'))
+            : '';
+          if (srcParent === node.fullPath) return false;
+          return true;
+        };
+
+        item.addEventListener('dragover', (e) => {
+          if (!isValidDropTarget()) return;
+          e.preventDefault();
+          e.stopPropagation();
+          if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+          item.classList.add('drag-over');
+        });
+
+        item.addEventListener('dragleave', () => {
+          item.classList.remove('drag-over');
+        });
+
+        item.addEventListener('drop', async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          item.classList.remove('drag-over');
+          if (!isValidDropTarget()) return;
+          const src = draggedTagNode;
+          draggedTagNode = null;
+          const newFullPath = `${node.fullPath}/${src.name}`;
+          if (!confirm(`タグ「${src.fullPath}」を「${node.fullPath}」の配下へ移動し、「${newFullPath}」に変更しますか？\n（子階層タグや写真への付与状態もすべて自動で引き継がれます）`)) {
+            return;
+          }
+          await executeTagMoveOrRename(
+            src.fullPath,
+            newFullPath,
+            `📂 タグ「${src.fullPath}」を「${newFullPath}」へ移動しました`
+          );
+        });
+
+        // --- ボタン操作イベント ---
+        const subAddBtn = item.querySelector('.settings-tag-subadd-btn');
+        if (subAddBtn) {
+          subAddBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            childrenContainer.classList.remove('hidden');
+            state.settingsTagTreeExpandedPaths.add(node.fullPath);
+            const toggleBtn = item.querySelector('.tree-toggle-btn');
+            if (toggleBtn) toggleBtn.classList.remove('collapsed');
+            const subInput = childrenContainer.querySelector(':scope > .inspector-tree-inline-add .inspector-tree-inline-input');
+            if (subInput) setTimeout(() => subInput.focus(), 30);
+          });
+        }
+
+        const renameBtn = item.querySelector('.settings-tag-rename-btn');
+        if (renameBtn) {
+          renameBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            startSettingsInlineRename(item, node);
+          });
+        }
+
+        const deleteBtn = item.querySelector('.settings-tag-delete-btn');
+        if (deleteBtn) {
+          deleteBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const confirmed = typeof showDeleteTagModal === 'function'
+              ? await showDeleteTagModal(node.fullPath, countVal)
+              : confirm(`タグ「${node.fullPath}」（およびその子階層タグ）をすべての写真から完全に削除しますか？`);
+            if (!confirmed) return;
+            try {
+              const res = await fetch(`/api/tags/${encodeURIComponent(node.fullPath)}`, {
+                method: 'DELETE',
+              });
+              if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.detail || 'タグ削除に失敗しました');
+              }
+              if (state.tagFilters) {
+                for (const key of Array.from(state.tagFilters.keys())) {
+                  if (key === node.fullPath || key.startsWith(node.fullPath + '/')) {
+                    state.tagFilters.delete(key);
+                  }
+                }
+              }
+              state.settingsTagTreeExpandedPaths.delete(node.fullPath);
+              await syncAfterTagMutation();
+              if (typeof showToast === 'function') {
+                showToast(`🗑️ タグ「${node.fullPath}」をライブラリ全体から削除しました`, 'info', 2500);
+              }
+            } catch (err) {
+              if (typeof showToast === 'function') {
+                showToast(`削除エラー: ${err.message}`, 'error');
+              }
+            }
+          });
+        }
+
+        // 行クリックで展開・折りたたみ
+        if (hasChildren) {
+          item.addEventListener('click', (e) => {
+            if (e.target.closest('.inspector-tree-item-actions') || e.target.closest('.tag-rename-input')) return;
+            e.stopPropagation();
+            const toggleBtn = item.querySelector('.tree-toggle-btn');
+            const nowCollapsed = toggleBtn ? toggleBtn.classList.toggle('collapsed') : false;
+            if (nowCollapsed) {
+              state.settingsTagTreeExpandedPaths.delete(node.fullPath);
+            } else {
+              state.settingsTagTreeExpandedPaths.add(node.fullPath);
+            }
+            childrenContainer.classList.toggle('hidden', nowCollapsed);
+            if (toggleBtn) {
+              toggleBtn.title = nowCollapsed ? '展開する' : '折りたたむ';
+            }
+          });
+        }
+
+        targetEl.appendChild(nodeWrapper);
+      });
+    }
+
+    appendEditorTreeNodes(treeRoot, container, 0);
+  }
+  window.renderSettingsTagTreeEditor = renderSettingsTagTreeEditor;
+
+  // ルート階層へのドロップゾーン
+  const rootDropZone = elements.settingsTagRootDropZone || document.getElementById('settingsTagRootDropZone');
+  if (rootDropZone && !rootDropZone.dataset.bound) {
+    rootDropZone.dataset.bound = 'true';
+    rootDropZone.addEventListener('dragover', (e) => {
+      if (!draggedTagNode || !draggedTagNode.fullPath.includes('/')) return;
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+      rootDropZone.classList.add('drag-over');
+    });
+    rootDropZone.addEventListener('dragleave', () => {
+      rootDropZone.classList.remove('drag-over');
+    });
+    rootDropZone.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      rootDropZone.classList.remove('drag-over', 'drop-eligible');
+      if (!draggedTagNode || !draggedTagNode.fullPath.includes('/')) return;
+      const src = draggedTagNode;
+      draggedTagNode = null;
+      const newFullPath = src.name;
+      if (!confirm(`子タグ「${src.fullPath}」をルート（最上位階層「${newFullPath}」）へ独立移動しますか？\n（子階層タグもすべて一緒に移動します）`)) {
+        return;
+      }
+      await executeTagMoveOrRename(
+        src.fullPath,
+        newFullPath,
+        `⬆️ タグ「${src.fullPath}」を最上位ルート「${newFullPath}」へ独立移動しました`
+      );
+    });
+  }
+
+  // 全展開 / 全折りたたみボタン
+  const expandAllBtn = elements.settingsTagExpandAllBtn || document.getElementById('settingsTagExpandAllBtn');
+  if (expandAllBtn && !expandAllBtn.dataset.bound) {
+    expandAllBtn.dataset.bound = 'true';
+    expandAllBtn.addEventListener('click', () => {
+      if (!state.settingsTagTreeExpandedPaths) state.settingsTagTreeExpandedPaths = new Set();
+      (state.availableTags || []).forEach(t => {
+        const tagStr = t.tag || t.name || '';
+        const parts = tagStr.split('/');
+        if (parts.length > 1) {
+          let cur = '';
+          for (let i = 0; i < parts.length - 1; i++) {
+            cur = cur ? `${cur}/${parts[i]}` : parts[i];
+            state.settingsTagTreeExpandedPaths.add(cur);
+          }
+        }
+      });
+      renderSettingsTagTreeEditor();
+    });
+  }
+
+  const collapseAllBtn = elements.settingsTagCollapseAllBtn || document.getElementById('settingsTagCollapseAllBtn');
+  if (collapseAllBtn && !collapseAllBtn.dataset.bound) {
+    collapseAllBtn.dataset.bound = 'true';
+    collapseAllBtn.addEventListener('click', () => {
+      if (state.settingsTagTreeExpandedPaths) state.settingsTagTreeExpandedPaths.clear();
+      renderSettingsTagTreeEditor();
+    });
+  }
+
+  // 下部ルート新規タグ追加フォーム
+  const newRootInput = elements.settingsNewRootTagInput || document.getElementById('settingsNewRootTagInput');
+  const addRootBtn = elements.settingsAddRootTagBtn || document.getElementById('settingsAddRootTagBtn');
+  if (newRootInput && addRootBtn && !addRootBtn.dataset.bound) {
+    addRootBtn.dataset.bound = 'true';
+    const submitNewRoot = async () => {
+      const val = (newRootInput.value || '').replace(/^\/+|\/+$/g, '').trim();
+      if (!val) return;
+      newRootInput.value = '';
+      await executeCreateNewTag(val);
+    };
+    addRootBtn.addEventListener('click', submitNewRoot);
+    newRootInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        submitNewRoot();
+      }
+    });
+  }
+
   const openModal = () => {
+    const sortSelect = elements.settingTagSortModeSelect || document.getElementById('settingTagSortModeSelect');
+    if (sortSelect) {
+      sortSelect.value = (state.tagSortMode && state.tagSortMode !== 'count_desc')
+        ? state.tagSortMode
+        : 'lexical';
+    }
     modal.style.display = 'flex';
     loadStats();
+    renderSettingsTagTreeEditor();
   };
 
   const closeModal = () => {
     modal.style.display = 'none';
   };
+
+  const sortSelectEl = elements.settingTagSortModeSelect || document.getElementById('settingTagSortModeSelect');
+  if (sortSelectEl && !sortSelectEl.dataset.bound) {
+    sortSelectEl.dataset.bound = 'true';
+    sortSelectEl.value = (state.tagSortMode && state.tagSortMode !== 'count_desc')
+      ? state.tagSortMode
+      : 'lexical';
+    sortSelectEl.addEventListener('change', () => {
+      const mode = sortSelectEl.value || 'lexical';
+      state.tagSortMode = mode;
+      localStorage.setItem('pm_tag_sort_mode', mode);
+      if (typeof renderTagList === 'function') {
+        renderTagList();
+      }
+      renderSettingsTagTreeEditor();
+      if (state.selectedPhotoIds && state.selectedPhotoIds.size > 1 && typeof showBatchInspector === 'function') {
+        showBatchInspector();
+      } else if (state.activeInspectorPhotoId && typeof showSingleInspector === 'function') {
+        const p = state.photos.find(x => x.id === state.activeInspectorPhotoId);
+        if (p) showSingleInspector(p);
+      }
+      if (typeof showToast === 'function') {
+        showToast('🏷️ タグツリーの名前順ルールを保存・反映しました', 'success', 2200);
+      }
+    });
+  }
 
   openBtn.addEventListener('click', openModal);
   if (closeBtn) closeBtn.addEventListener('click', closeModal);

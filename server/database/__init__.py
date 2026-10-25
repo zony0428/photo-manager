@@ -77,6 +77,7 @@ from .tags import (
     remove_tag_from_photo,
     batch_add_tag,
     batch_remove_tag,
+    create_tag_definition,
     get_all_tags_summary,
     delete_tag,
     rename_tag,

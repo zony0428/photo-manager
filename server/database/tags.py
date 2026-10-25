@@ -296,10 +296,40 @@ def batch_update_rating(photo_ids: List[int], rating: int) -> int:
         return updated
 
 
+def _ensure_tag_definitions_table(cursor) -> None:
+    """tag_definitions テーブルが存在することを保証する"""
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS tag_definitions (
+            tag TEXT PRIMARY KEY,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+
+
+def create_tag_definition(tag: str) -> bool:
+    """写真未付与のまま新規タグ（およびその祖先階層）をタグツリー定義に登録する"""
+    cleaned_tag = tag.strip().strip("/")
+    if not cleaned_tag:
+        return False
+    all_tags = _expand_ancestor_tags(cleaned_tag)
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        _ensure_tag_definitions_table(cursor)
+        cursor.executemany(
+            "INSERT OR IGNORE INTO tag_definitions (tag) VALUES (?)",
+            [(t,) for t in all_tags],
+        )
+        conn.commit()
+        return True
+
+
 def get_all_tags_summary() -> List[Dict[str, Any]]:
     """すべてのタグと、それぞれが付けられている写真枚数・属性（手動/AI）を集計する"""
     with get_connection() as conn:
         cursor = conn.cursor()
+        _ensure_tag_definitions_table(cursor)
         cursor.execute(
             """
             SELECT 
@@ -314,8 +344,10 @@ def get_all_tags_summary() -> List[Dict[str, Any]]:
         )
         rows = cursor.fetchall()
         results = []
+        existing_tags = set()
         for row in rows:
             d = dict(row)
+            existing_tags.add(d["tag"])
             ai_c = d.get("ai_count", 0) or 0
             man_c = d.get("manual_count", 0) or 0
             if man_c > 0 and ai_c > 0:
@@ -325,35 +357,71 @@ def get_all_tags_summary() -> List[Dict[str, Any]]:
             else:
                 d["source"] = "manual"
             results.append(d)
+
+        # tag_definitions に登録されている空タグ（0枚）もツリー表示用にマージ
+        cursor.execute("SELECT tag FROM tag_definitions ORDER BY tag ASC")
+        for r in cursor.fetchall():
+            t_name = r["tag"]
+            if t_name and t_name not in existing_tags:
+                existing_tags.add(t_name)
+                results.append(
+                    {
+                        "tag": t_name,
+                        "count": 0,
+                        "ai_count": 0,
+                        "manual_count": 0,
+                        "source": "manual",
+                    }
+                )
         return results
 
 
 def delete_tag(tag: str) -> int:
-    """指定されたタグを全写真から一括削除する（子孫タグも含めて完全除去）"""
+    """指定されたタグを全写真およびタグ定義から一括削除する（子孫タグも含めて完全除去）"""
     cleaned_tag = tag.strip()
     if not cleaned_tag:
         return 0
     with get_connection() as conn:
         cursor = conn.cursor()
+        _ensure_tag_definitions_table(cursor)
         cursor.execute(
             "DELETE FROM photo_tags WHERE tag = ? OR tag LIKE ?",
             (cleaned_tag, f"{cleaned_tag}/%"),
         )
+        deleted = cursor.rowcount
+        cursor.execute(
+            "DELETE FROM tag_definitions WHERE tag = ? OR tag LIKE ?",
+            (cleaned_tag, f"{cleaned_tag}/%"),
+        )
         conn.commit()
-        return cursor.rowcount
+        return deleted
 
 
 def rename_tag(old_tag: str, new_tag: str) -> int:
-    """タグをリネームする（子孫タグのプレフィックスも一括変更）。
-    例: rename_tag("A/1", "A/猫") → "A/1" → "A/猫", "A/1/い" → "A/猫/い"
-    リネーム先タグが既に存在する場合は重複レコードを事前除去してUNIQUE制約違反を防止する。
+    """タグをリネームまたは別階層へ移動する（子孫タグのプレフィックスも一括変更）。
+    例:
+      - rename_tag("A/1", "A/猫") → "A/1" → "A/猫", "A/1/い" → "A/猫/い"
+      - rename_tag("A/B", "D/B") → "A/B" → "D/B", 新親 "D" を自動補完、
+        他で "A/*" を持たない写真からは旧親 "A" を自動除去（「A/C」を併せ持つ写真の「A」は維持）
     """
-    old_tag = old_tag.strip()
-    new_tag = new_tag.strip()
+    old_tag = old_tag.strip().strip("/")
+    new_tag = new_tag.strip().strip("/")
     if not old_tag or not new_tag or old_tag == new_tag:
         return 0
+    if new_tag.startswith(old_tag + "/"):
+        raise ValueError("自分自身の配下階層へは移動できません")
+
     with get_connection() as conn:
         cursor = conn.cursor()
+        _ensure_tag_definitions_table(cursor)
+
+        # 対象タグ（またはその子孫タグ）を持つすべての photo_id を事前取得
+        cursor.execute(
+            "SELECT DISTINCT photo_id FROM photo_tags WHERE tag = ? OR tag LIKE ?",
+            (old_tag, f"{old_tag}/%"),
+        )
+        affected_photo_ids = [r["photo_id"] for r in cursor.fetchall()]
+
         # UNIQUE制約 (photo_id, tag) 違反を防ぐため、リネーム先タグが既に付いている
         # レコードを事前に削除する（重複マージ）
         cursor.execute(
@@ -367,8 +435,8 @@ def rename_tag(old_tag: str, new_tag: str) -> int:
             (new_tag, old_tag),
         )
         count = cursor.rowcount
+
         # 子孫タグのプレフィックス置換 (例: "A/1/い" → "A/猫/い")
-        # 同様にリネーム先が既存の場合は重複を事前除去
         cursor.execute(
             """DELETE FROM photo_tags
                WHERE photo_id IN (SELECT photo_id FROM photo_tags WHERE tag LIKE ?)
@@ -380,6 +448,63 @@ def rename_tag(old_tag: str, new_tag: str) -> int:
             (new_tag, len(old_tag) + 1, f"{old_tag}/%"),
         )
         count += cursor.rowcount
+
+        # 1. 新しい親（祖先）タグの自動補完（例: "B" → "D/E/B" なら "D", "D/E" を対象写真に追加）
+        new_ancestors = _expand_ancestor_tags(new_tag)[:-1]
+        if new_ancestors and affected_photo_ids:
+            cursor.executemany(
+                """
+                INSERT INTO photo_tags (photo_id, tag, source, confidence)
+                VALUES (?, ?, 'manual', 1.0)
+                ON CONFLICT(photo_id, tag) DO NOTHING
+                """,
+                [(pid, anc) for pid in affected_photo_ids for anc in new_ancestors],
+            )
+
+        # 2. 旧親（祖先）タグの整理（例: "A/B" → "D/B" のとき、同じ写真に "A/C" 等が無ければ "A" を外す）
+        old_ancestors = _expand_ancestor_tags(old_tag)[:-1]
+        new_chain_set = set(_expand_ancestor_tags(new_tag))
+        removed_ancestors = [a for a in reversed(old_ancestors) if a not in new_chain_set]
+        if removed_ancestors and affected_photo_ids:
+            chunk_size = 500
+            for anc in removed_ancestors:
+                for i in range(0, len(affected_photo_ids), chunk_size):
+                    chunk = affected_photo_ids[i : i + chunk_size]
+                    placeholders = ",".join(["?"] * len(chunk))
+                    cursor.execute(
+                        f"""
+                        DELETE FROM photo_tags
+                        WHERE tag = ?
+                          AND photo_id IN ({placeholders})
+                          AND NOT EXISTS (
+                              SELECT 1 FROM photo_tags pt2
+                              WHERE pt2.photo_id = photo_tags.photo_id
+                                AND pt2.tag LIKE ?
+                          )
+                        """,
+                        [anc] + chunk + [f"{anc}/%"],
+                    )
+
+        # 3. tag_definitions テーブル側の更新＆祖先登録
+        cursor.execute(
+            "DELETE FROM tag_definitions WHERE tag = ? AND EXISTS (SELECT 1 FROM tag_definitions WHERE tag = ?)",
+            (old_tag, new_tag),
+        )
+        cursor.execute(
+            "UPDATE tag_definitions SET tag = ? WHERE tag = ?",
+            (new_tag, old_tag),
+        )
+        cursor.execute(
+            "DELETE FROM tag_definitions WHERE tag IN (SELECT ? || SUBSTR(tag, ?) FROM tag_definitions WHERE tag LIKE ?)",
+            (new_tag, len(old_tag) + 1, f"{old_tag}/%"),
+        )
+        cursor.execute(
+            "UPDATE tag_definitions SET tag = ? || SUBSTR(tag, ?) WHERE tag LIKE ?",
+            (new_tag, len(old_tag) + 1, f"{old_tag}/%"),
+        )
+        for t in _expand_ancestor_tags(new_tag):
+            cursor.execute("INSERT OR IGNORE INTO tag_definitions (tag) VALUES (?)", (t,))
+
         conn.commit()
         return count
 

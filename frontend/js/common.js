@@ -72,6 +72,12 @@ const state = {
   filterPresets: [],       // 表示上限に達したかどうか
   tagSourceFilter: 'manual',  // タグ種別フィルタ ('manual' | 'ai' | 'all')
   tagSearchQuery: '',      // タグ一覧のテキスト検索クエリ (Enter確定)
+  tagSortMode: (localStorage.getItem('pm_tag_sort_mode') && localStorage.getItem('pm_tag_sort_mode') !== 'count_desc')
+    ? localStorage.getItem('pm_tag_sort_mode')
+    : 'lexical', // タグツリーの名前順ルール ('lexical' | 'lexical_desc' | 'natural' | 'natural_desc')
+  tagSortByCount: localStorage.getItem('pm_tag_sort_by_count') === 'true'
+    || localStorage.getItem('pm_tag_sort_mode') === 'count_desc', // 写真枚数が多い順トグル (ON: 枚数順 / OFF: tagSortModeに従う)
+  settingsTagTreeExpandedPaths: new Set(), // 設定モーダル内タグツリーエディタの展開パス集合
   inspectorActiveTab: localStorage.getItem('pm_inspector_tab') || 'tags', // インスペクタの選択中タブ ('tags' | 'exif' | 'map')
   labFilter: null,             // ラボフィルタ ('shake_risk' | 'golden_hour' | 'blue_hour' | 'magic_all' | 'night' | null)
   onThisDay: null,             // 歴代の今日フィルタ ('MM-DD' | null)
@@ -222,6 +228,13 @@ const elements = {
   dbMaintenanceModal: document.getElementById('dbMaintenanceModal'),
   closeDbMaintenanceModalBtn: document.getElementById('closeDbMaintenanceModalBtn'),
   closeDbMaintenanceFooterBtn: document.getElementById('closeDbMaintenanceFooterBtn'),
+  settingTagSortModeSelect: document.getElementById('settingTagSortModeSelect'),
+  settingsTagExpandAllBtn: document.getElementById('settingsTagExpandAllBtn'),
+  settingsTagCollapseAllBtn: document.getElementById('settingsTagCollapseAllBtn'),
+  settingsTagRootDropZone: document.getElementById('settingsTagRootDropZone'),
+  settingsTagTreeContainer: document.getElementById('settingsTagTreeContainer'),
+  settingsNewRootTagInput: document.getElementById('settingsNewRootTagInput'),
+  settingsAddRootTagBtn: document.getElementById('settingsAddRootTagBtn'),
   dbMaintPhotoCount: document.getElementById('dbMaintPhotoCount'),
   dbMaintDbSize: document.getElementById('dbMaintDbSize'),
   dbMaintThumbCount: document.getElementById('dbMaintThumbCount'),
@@ -262,6 +275,7 @@ const elements = {
   clearTagSearchBtn: document.getElementById('clearTagSearchBtn'),
   tagList: document.getElementById('tagList'),
   clearTagFiltersBtn: document.getElementById('clearTagFiltersBtn'),
+  tagSortByCountToggleBtn: document.getElementById('tagSortByCountToggleBtn'),
   tagTypeSegmentedControl: document.getElementById('tagTypeSegmentedControl'),
   // メインエリア
   viewTitle: document.getElementById('viewTitle'),

@@ -123,6 +123,16 @@ def initialize_database() -> None:
         if "confidence" not in existing_tag_cols:
             cursor.execute("ALTER TABLE photo_tags ADD COLUMN confidence REAL DEFAULT 1.0")
 
+        # タグ定義テーブル（写真にまだ1枚も付与されていない空の親タグ・新規タグをツリー保持するため）
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS tag_definitions (
+                tag TEXT PRIMARY KEY,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+
         # 検索・ソート・重複集計用インデックス（date_taken 単一インデックスを包含し、重複集計を Covering Index 化する複合インデックスに統合）
         cursor.execute("DROP INDEX IF EXISTS idx_photos_date_taken")
         cursor.execute("DROP INDEX IF EXISTS idx_photos_date_taken_size")

@@ -152,10 +152,10 @@
           <span class="btn-label">スマホ連携</span>
         </button>
 
-        <!-- DB管理・バックアップボタン -->
-        <button id="folderDbMaintenanceBtn" class="btn btn-secondary" title="データベースのバックアップ・最適化（VACUUM）">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
-          <span class="btn-label">DB管理</span>
+        <!-- 設定・DB管理ボタン -->
+        <button id="folderDbMaintenanceBtn" class="btn btn-secondary" title="設定・データベース管理（タグ並び順・DBバックアップ・最適化）">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <span class="btn-label">設定</span>
         </button>
 
         <button id="openHelpModalBtn" class="btn btn-secondary" title="操作マニュアル & ショートカット一覧 (? / F1)">
@@ -375,7 +375,10 @@
 
               <div class="tag-filter-hint">
                 <span>クリックで <strong>[+]含む</strong> ➜ <strong>[-]除外</strong> ➜ <strong>解除</strong></span>
-                <button class="clear-tags-btn" id="clearTagFiltersBtn" style="display: none;">クリア</button>
+                <div class="tag-filter-hint-actions">
+                  <button class="clear-tags-btn" id="clearTagFiltersBtn" style="display: none;">クリア</button>
+                  <button type="button" class="tag-sort-count-toggle-btn" id="tagSortByCountToggleBtn" title="ON: 写真枚数が多い順 ／ OFF: 設定された名前順">📊 枚数順</button>
+                </div>
               </div>
               <ul class="tag-pill-list" id="tagList">
                 <li class="empty-hint">読み込み中...</li>
@@ -720,11 +723,14 @@
                       </div>
                     </div>
 
-                    <!-- タグエディタ（常時表示・クリック付与・リネーム・削除・子階層/末尾での新規作成統合） -->
+                    <!-- タグツリーからの付与・新規作成 -->
                     <div class="inspector-quick-tags" style="margin-top: 10px;">
-                      <div class="inspector-label" style="margin-bottom: 4px; padding: 4px 8px 0 8px;">タグエディタ (付与・作成・編集)</div>
+                      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; padding: 4px 8px 0 8px;">
+                        <div class="inspector-label" style="margin: 0;">タグ一覧から付与・作成</div>
+                        <button type="button" class="btn btn-secondary btn-xs inspector-open-tag-editor-btn" title="設定画面の「🌳 タグツリーエディタ」を開く（ドラッグ＆ドロップ階層移動・リネーム・整理）">⚙️ ツリー編集</button>
+                      </div>
                       <div class="inspector-quick-tree" id="inspectorQuickTree">
-                        <!-- 階層ツリーを描画、クリックで即付与＆リネーム・削除・新規追加 -->
+                        <!-- 階層ツリーを描画、+追加ボタンで付与＆新規追加 -->
                       </div>
                     </div>
 
@@ -886,11 +892,14 @@
                 </div>
               </div>
 
-              <!-- タグエディタ（一括付与・作成・編集） -->
+              <!-- タグツリーからの一括付与・新規作成 -->
               <div class="inspector-quick-tags" style="margin-top: 10px;">
-                <div class="inspector-label" style="margin-bottom: 4px; padding: 4px 8px 0 8px;">タグエディタ (一括付与・作成・編集)</div>
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; padding: 4px 8px 0 8px;">
+                  <div class="inspector-label" style="margin: 0;">タグ一覧から一括付与・作成</div>
+                  <button type="button" class="btn btn-secondary btn-xs inspector-open-tag-editor-btn" title="設定画面の「🌳 タグツリーエディタ」を開く（ドラッグ＆ドロップ階層移動・リネーム・整理）">⚙️ ツリー編集</button>
+                </div>
                 <div class="batch-quick-tree" id="batchQuickTree">
-                  <!-- 階層ツリーを一覧表示、クリックで一括追加＆リネーム・削除・新規追加 -->
+                  <!-- 階層ツリーを一覧表示、+追加ボタンで一括追加＆新規追加 -->
                 </div>
               </div>
             </div>
@@ -1164,7 +1173,7 @@
 
           <div class="help-card" style="margin-top: 14px;">
             <h4>2. 階層タグ・色ラベル・ローカルAI自動分類 ＆ 📷 カメラ・レンズ排他検索</h4>
-            <p><strong>🏷️ 階層タグ:</strong> タグ入力時に <code>旅行/2026北海道/小樽</code> のように <code>/</code> で区切ると、左サイドバーで親子ツリーとして整理されます（タグ右端の <code>＋</code> ボタンから子タグの追加も可能）。</p>
+            <p><strong>🏷️ 階層タグ ＆ タグツリーエディタ:</strong> タグ入力時に <code>旅行/2026北海道/小樽</code> のように <code>/</code> で区切ると親子ツリーとして整理されます。左サイドバーの <strong><code>📊 枚数順</code></strong> ボタンで枚数順と名前順をワンクリックで切り替えられるほか、<strong><code>⚙️ 設定</code></strong>（または右インスペクタの <strong><code>⚙️ ツリー編集</code></strong>）の <strong>「🌳 タグツリーエディタ」</strong> でドラッグ＆ドロップによる親子階層の組み替え・名前変更（<code>✏</code>）・削除（<code>🗑️</code>）が行えます。</p>
             <p><strong>🎨 色合い（12色パレット）:</strong> 右インスペクタの「🎨 色合い」で写真にイメージ色を登録し、左サイドバーの「🎨 カラー」から色別に絞り込めます。</p>
             <p><strong>🤖 ローカルAI自動タグ付け:</strong> 左サイドバーのフォルダを右クリック → <strong>「🤖 AIタグ付け」</strong> を選ぶと、ネット通信なしでパソコン内のAIが「青空」「海」「猫」「料理」「夜景」などのタグを自動付与します。</p>
             <p><strong>📷 カメラ・レンズ階層ツリー ＆ <code>[+]</code> / <code>[-]</code> 排他検索:</strong> タグだけでなく「📷 カメラ・レンズ」でも、カメラ本体の下に装着レンズが階層表示され、クリックするたびに <strong><code>[+]</code> 含む ➜ <code>[-]</code> 除外 ➜ 解除</strong> を切り替えられます（「特定のカメラ・レンズで撮った写真だけを除外する」といった高度な絞り込みが可能）。</p>
@@ -1577,55 +1586,102 @@
     </div>
   </div>
 
-  <!-- データベースメンテナンス モーダル (v1.40) -->
+  <!-- 設定 ＆ タグツリーエディタ モーダル (2ペイン構成) -->
   <div class="modal-backdrop" id="dbMaintenanceModal" style="display: none;">
-    <div class="modal-card" style="max-width: 520px;">
+    <div class="modal-card settings-two-pane-card" style="max-width: 960px; width: 94vw;">
       <div class="modal-header">
         <div class="modal-header-title">
-          <h2>⚙️ データベースメンテナンス</h2>
-          <span class="modal-subtitle">ライブラリDBの最適化・世代バックアップ管理</span>
+          <h2>⚙️ 設定 ＆ タグツリーエディタ</h2>
+          <span class="modal-subtitle">左: 表示設定・データベース管理 ／ 右: タグツリー構造エディタ（ドラッグ＆ドロップ階層移動・リネーム）</span>
         </div>
         <button class="modal-close-btn" id="closeDbMaintenanceModalBtn">&times;</button>
       </div>
 
-      <div class="modal-body" style="padding: 16px; font-size: 0.88rem; display: flex; flex-direction: column; gap: 14px;">
-        <!-- DB状態サマリー -->
-        <div style="background: var(--bg-secondary, rgba(255,255,255,0.04)); border: 1px solid var(--border-soft, rgba(255,255,255,0.1)); border-radius: var(--radius-sm, 4px); padding: 12px;">
-          <div style="font-weight: 600; margin-bottom: 6px; color: var(--text-main, #eceae4);">📊 データベースの状態</div>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 0.82rem; color: var(--text-muted, #94a3b8);">
-            <div>登録写真数: <strong id="dbMaintPhotoCount" style="color: var(--text-main, #eceae4);">-</strong></div>
-            <div>DBサイズ: <strong id="dbMaintDbSize" style="color: var(--text-main, #eceae4);">-</strong></div>
-            <div>サムネイル数: <strong id="dbMaintThumbCount" style="color: var(--text-main, #eceae4);">-</strong></div>
-            <div>解放可能領域: <strong id="dbMaintWalSize" style="color: var(--text-main, #eceae4);">-</strong></div>
-          </div>
-        </div>
-
-        <!-- 最適化 (VACUUM) -->
-        <div style="background: var(--bg-secondary, rgba(255,255,255,0.04)); border: 1px solid var(--border-soft, rgba(255,255,255,0.1)); border-radius: var(--radius-sm, 4px); padding: 12px; display: flex; justify-content: space-between; align-items: center; gap: 12px;">
-          <div>
-            <div style="font-weight: 600; color: var(--text-main, #eceae4);">🧹 データベース最適化 (VACUUM)</div>
-            <div style="font-size: 0.78rem; color: var(--text-dim, #64748b); margin-top: 2px;">不要領域を解放してファイルサイズを縮小し、読み書きを高速化します</div>
-          </div>
-          <button class="btn btn-secondary btn-sm" id="dbMaintVacuumBtn" style="white-space: nowrap;">最適化を実行</button>
-        </div>
-
-        <!-- バックアップ作成・管理 -->
-        <div style="background: var(--bg-secondary, rgba(255,255,255,0.04)); border: 1px solid var(--border-soft, rgba(255,255,255,0.1)); border-radius: var(--radius-sm, 4px); padding: 12px; display: flex; flex-direction: column; gap: 8px;">
-          <div style="display: flex; justify-content: space-between; align-items: center;">
+      <div class="modal-body settings-two-pane-body" style="padding: 16px; font-size: 0.88rem;">
+        <!-- 左ペイン: 設定 ＆ データベース管理 -->
+        <div class="settings-left-pane">
+          <!-- タグツリーの並び順設定（左ペイン＆右インスペクタ共通） -->
+          <div style="background: var(--bg-secondary, rgba(255,255,255,0.04)); border: 1px solid var(--border-soft, rgba(255,255,255,0.1)); border-radius: var(--radius-sm, 4px); padding: 12px; display: flex; flex-direction: column; gap: 8px;">
             <div>
-              <div style="font-weight: 600; color: var(--text-main, #eceae4);">💾 データベースのバックアップ</div>
-              <div id="dbMaintBackupInfoText" style="font-size: 0.78rem; color: var(--text-dim, #64748b); margin-top: 2px;">確認中...</div>
+              <div style="font-weight: 600; color: var(--text-main, #eceae4);">🏷️ タグの名前順ルール</div>
+              <div style="font-size: 0.76rem; color: var(--text-dim, #64748b); margin-top: 2px;">左ペインの「📊 枚数順」がオフのときに使われる名前ソート順を保存します</div>
             </div>
-            <button class="btn btn-primary btn-sm" id="dbMaintBackupBtn" style="white-space: nowrap;">今すぐ作成</button>
+            <select id="settingTagSortModeSelect" class="styled-select" style="width: 100%;">
+              <option value="lexical">🔤 文字順・昇順（例: 24-イベント → 2410-旅行 → 25-正月）</option>
+              <option value="lexical_desc">🔤 文字順・降順（例: 25-正月 → 2410-旅行 → 24-イベント）</option>
+              <option value="natural">🔢 数値の自然順・昇順（例: 1 → 2 → 10 / 24 → 25 → 2410）</option>
+              <option value="natural_desc">🔢 数値の自然順・降順（例: 2410 → 25 → 24 / 10 → 2 → 1）</option>
+            </select>
           </div>
-          <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
-            <button class="btn btn-secondary btn-sm" id="dbMaintOpenBackupDirBtn" style="font-size: 0.76rem; padding: 2px 8px;">📂 保存先フォルダを開く</button>
+
+          <!-- DB状態サマリー -->
+          <div style="background: var(--bg-secondary, rgba(255,255,255,0.04)); border: 1px solid var(--border-soft, rgba(255,255,255,0.1)); border-radius: var(--radius-sm, 4px); padding: 12px;">
+            <div style="font-weight: 600; margin-bottom: 6px; color: var(--text-main, #eceae4);">📊 データベースの状態</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 0.82rem; color: var(--text-muted, #94a3b8);">
+              <div>登録写真数: <strong id="dbMaintPhotoCount" style="color: var(--text-main, #eceae4);">-</strong></div>
+              <div>DBサイズ: <strong id="dbMaintDbSize" style="color: var(--text-main, #eceae4);">-</strong></div>
+              <div>サムネイル数: <strong id="dbMaintThumbCount" style="color: var(--text-main, #eceae4);">-</strong></div>
+              <div>解放可能領域: <strong id="dbMaintWalSize" style="color: var(--text-main, #eceae4);">-</strong></div>
+            </div>
+          </div>
+
+          <!-- 最適化 (VACUUM) -->
+          <div style="background: var(--bg-secondary, rgba(255,255,255,0.04)); border: 1px solid var(--border-soft, rgba(255,255,255,0.1)); border-radius: var(--radius-sm, 4px); padding: 12px; display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+            <div>
+              <div style="font-weight: 600; color: var(--text-main, #eceae4);">🧹 データベース最適化 (VACUUM)</div>
+              <div style="font-size: 0.76rem; color: var(--text-dim, #64748b); margin-top: 2px;">不要領域を解放してファイルサイズを縮小し、読み書きを高速化します</div>
+            </div>
+            <button class="btn btn-secondary btn-sm" id="dbMaintVacuumBtn" style="white-space: nowrap;">最適化を実行</button>
+          </div>
+
+          <!-- バックアップ作成・管理 -->
+          <div style="background: var(--bg-secondary, rgba(255,255,255,0.04)); border: 1px solid var(--border-soft, rgba(255,255,255,0.1)); border-radius: var(--radius-sm, 4px); padding: 12px; display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <div style="font-weight: 600; color: var(--text-main, #eceae4);">💾 データベースのバックアップ</div>
+                <div id="dbMaintBackupInfoText" style="font-size: 0.76rem; color: var(--text-dim, #64748b); margin-top: 2px;">確認中...</div>
+              </div>
+              <button class="btn btn-primary btn-sm" id="dbMaintBackupBtn" style="white-space: nowrap;">今すぐ作成</button>
+            </div>
+            <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
+              <button class="btn btn-secondary btn-sm" id="dbMaintOpenBackupDirBtn" style="font-size: 0.76rem; padding: 2px 8px;">📂 保存先フォルダを開く</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右ペイン: タグツリーエディタ（構造・名前の編集専用） -->
+        <div class="settings-right-pane">
+          <div class="settings-tag-editor-header">
+            <div>
+              <div style="font-weight: 700; font-size: 0.92rem; color: var(--text-main, #eceae4);">🌳 タグツリーエディタ（構造・名前の編集専用）</div>
+              <div style="font-size: 0.75rem; color: var(--text-dim, #64748b); margin-top: 2px;">タグをドラッグ＆ドロップして他のタグの配下へ移動、またはリネーム（✏）・子タグ追加（+子）・全体削除（🗑️）が行えます</div>
+            </div>
+            <div style="display: flex; gap: 4px; flex-shrink: 0;">
+              <button type="button" class="btn btn-secondary btn-xs" id="settingsTagExpandAllBtn" title="すべての階層を展開">すべて展開</button>
+              <button type="button" class="btn btn-secondary btn-xs" id="settingsTagCollapseAllBtn" title="すべて折りたたむ">折りたたむ</button>
+            </div>
+          </div>
+
+          <!-- ルート（最上位階層）への移動ドロップゾーン -->
+          <div class="settings-tag-root-dropzone" id="settingsTagRootDropZone">
+            <span>⬆️ 子タグをここにドラッグ＆ドロップで「ルート（最上位階層）」へ独立移動</span>
+          </div>
+
+          <!-- タグツリー本体 -->
+          <div class="settings-tag-tree-container" id="settingsTagTreeContainer">
+            <!-- JSで動的生成 -->
+          </div>
+
+          <!-- 最下部: 新規ルートタグ追加バー -->
+          <div class="settings-tag-root-add-bar">
+            <input type="text" id="settingsNewRootTagInput" class="inspector-tree-inline-input" placeholder="新規ルートタグ（または 親/子）を入力..." autocomplete="off">
+            <button type="button" class="btn btn-primary btn-xs" id="settingsAddRootTagBtn">+ 新規作成</button>
           </div>
         </div>
       </div>
 
       <div class="modal-footer" style="padding: 10px 16px; display: flex; justify-content: flex-end;">
-        <button class="btn btn-secondary" id="closeDbMaintenanceFooterBtn">閉じる</button>
+        <button class="btn btn-secondary" id="closeDbMaintenanceFooterBtn">閉じる (Esc)</button>
       </div>
     </div>
   </div>

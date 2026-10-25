@@ -1968,11 +1968,69 @@ body.resizing .resize-handle {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 6px;
   font-size: 0.65rem;
   color: var(--text-dim);
-  padding: 4px 8px 8px;
+  padding: 4px 6px 8px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
   margin-bottom: 6px;
+}
+
+.tag-filter-hint-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.tag-sort-count-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 7px;
+  font-size: 0.66rem;
+  font-weight: 600;
+  color: var(--text-muted, #94a3b8);
+  background: var(--bg-tertiary, rgba(148, 163, 184, 0.12));
+  border: 1px solid var(--border-color, rgba(148, 163, 184, 0.25));
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+  transition: all 0.15s ease;
+}
+
+.tag-sort-count-toggle-btn:hover {
+  color: var(--text-main, #eceae4);
+  border-color: var(--accent-primary, #e14d2a);
+}
+
+.tag-sort-count-toggle-btn.active {
+  color: #ffffff;
+  background: var(--accent-primary, #e14d2a);
+  border-color: var(--accent-primary, #e14d2a);
+  box-shadow: 0 1px 4px rgba(225, 77, 42, 0.35);
+}
+
+.inspector-open-tag-editor-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 7px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-muted, #94a3b8);
+  background: var(--bg-tertiary, rgba(148, 163, 184, 0.12));
+  border: 1px solid var(--border-color, rgba(148, 163, 184, 0.25));
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.inspector-open-tag-editor-btn:hover {
+  color: var(--accent-primary, #e14d2a);
+  border-color: var(--accent-primary, #e14d2a);
+  background: var(--accent-subtle, rgba(225, 77, 42, 0.08));
 }
 
 .clear-tags-btn {

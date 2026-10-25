@@ -47,9 +47,9 @@ When downloading this software from GitHub Releases and launching it for the fir
 
 ## ✨ Key Features
 
-1. **🔍 Obsessive "Exclusive Search (Exclude Filter `[-]`)" & Dedicated Right-Pane Tag Editor**
-   * The left sidebar is dedicated 100% to pure, mistake-free filtering. When filtering by tags/albums or the **Camera Body > Mounted Lens tree**, you can not only include `[+]` an item, but also **exclude `[-]` specific tags, cameras, or lenses** to easily find **"photos you forgot to add to an album"**!
-   * Creating tags, adding child tags (`+Sub`), inline renaming (`✏`), and explicit tag assignment (`+Add`) are all consolidated in the right Inspector's **Tag Editor**.
+1. **🔍 Obsessive "Exclusive Search (Exclude Filter `[-]`)" & Dedicated Drag-and-Drop "Tag Tree Editor"**
+   * The left sidebar is dedicated 100% to pure, mistake-free filtering. When filtering by tags/albums or the **Camera Body > Mounted Lens tree**, you can not only include `[+]` an item, but also **exclude `[-]` specific tags, cameras, or lenses** to easily find **"photos you forgot to add to an album"**! A one-click **`📊 By Count`** toggle switches between sorting tags by photo count and your preferred name sort rule (Lexical `24-xxx → 2410-xxx → 25-xxx` or Natural numeric order).
+   * Daily tag assignment (`+Add`) stays clean in the right Inspector, while structural operations—**Drag & Drop hierarchy reorganization, promoting child tags to root, inline renaming (`✏`), and library-wide deletion (`🗑️`)**—are safely isolated in the 2-pane **`⚙️ Settings & Tag Tree Editor`**.
 2. **🛡️ 100% Non-Destructive & 📄 XMP Sidecar Integration (`[👁️ XMP Preview]` Hold-to-Compare & Safe Import)**
    * Rotating, cropping, horizon leveling, adjusting exposure/color, or marking photos as "Rj (Reject)" never alters or deletes your original files on disk.
    * When companion `.xmp` sidecar files (from Lightroom, Adobe Camera Raw, etc.) are detected, hold down the **`[👁️ XMP Preview]`** button in the Inspector to temporarily preview XMP adjustments, or click **`📥 Import Rating & Tags`** to safely map XMP ratings to Photo Manager's 4-tier scale and import keywords under an isolated **`XMP/...` root** without polluting your existing tag tree.
@@ -79,9 +79,12 @@ When downloading this software from GitHub Releases and launching it for the fir
 ## 🚀 Setup & How to Run
 
 ### Option A: Using the Release ZIP Package (Recommended — Portable Python Included)
-1. Download the `.zip` package from **[GitHub Releases](../../releases)** and extract it to any folder (or USB drive).
-2. Double-click **`PhotoManager.exe`** to start (opens in a dedicated borderless app window without a command prompt).
+1. **First-Time Install (Full Package)**:
+   * Download the full `.zip` package from **[GitHub Releases](../../releases)** and extract it to any folder (or USB drive).
+   * Double-click **`PhotoManager.exe`** to start (opens in a dedicated borderless app window without a command prompt).
    * *(Note: If SmartScreen blocks the first launch or if your antivirus removes the `.exe`, double-click **`Build.bat`** once to cleanly re-compile `PhotoManager.exe` locally.)*
+2. **Updating from v2.42 (Lightweight Diff Package `PhotoManager_v2.43diff.zip`)**:
+   * If you already have `v2.42` running, simply extract **`PhotoManager_v2.43diff.zip`** and overwrite your existing folder—your `python/`, `models/`, `cache/` (database), and `storage/` remain untouched!
 
 ### Option B: Cloning / Downloading Source from GitHub
 The git repository does not include the large portable Python runtime (`python/`). On your first run, follow these two steps (no system-wide Python installation required):

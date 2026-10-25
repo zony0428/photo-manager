@@ -13,6 +13,7 @@ python_embed.zip
 scratch/
 uploads/
 carry/
+storage/
 
 # ユーザーデータ・データベース・サムネイル（個人写真情報）
 cache/
@@ -30,6 +31,7 @@ photos/
 
 # ビルド成果物・配布パッケージ（GitHub Releases配布用 / 開発時はBuild.batまたはbuild_dist.batで生成）
 dist/
+dist_update/
 *.zip
 PhotoManager.exe
 autorun.inf
@@ -46,4 +48,3 @@ autorun.inf
 # OS固有
 Thumbs.db
 Desktop.ini
-

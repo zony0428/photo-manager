@@ -727,11 +727,38 @@ function buildTagTree(tagItems) {
     });
   });
 
-  // 各階層の子ノードを自然順ソート（数字なら小さい方が上・昇順）で再帰的に整列
+  // 各階層の子ノードを設定されたソート順（枚数順トグルON時は枚数順優先、OFF時は設定画面の名前順ルール）で再帰的に整列
+  const sortMode = (typeof state !== 'undefined' && state.tagSortMode && state.tagSortMode !== 'count_desc')
+    ? state.tagSortMode
+    : (localStorage.getItem('pm_tag_sort_mode') && localStorage.getItem('pm_tag_sort_mode') !== 'count_desc'
+      ? localStorage.getItem('pm_tag_sort_mode')
+      : 'lexical');
+  const sortByCount = (typeof state !== 'undefined' && state.tagSortByCount !== undefined)
+    ? Boolean(state.tagSortByCount)
+    : (localStorage.getItem('pm_tag_sort_by_count') === 'true');
+
+  function compareTagNames(nameA, nameB) {
+    if (sortMode === 'lexical_desc') {
+      return nameB.localeCompare(nameA, undefined, { numeric: false, sensitivity: 'base' });
+    }
+    if (sortMode === 'natural') {
+      return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
+    }
+    if (sortMode === 'natural_desc') {
+      return nameB.localeCompare(nameA, undefined, { numeric: true, sensitivity: 'base' });
+    }
+    // デフォルト ('lexical'): 文字コード・辞書順（24-xxx → 2410-xxx → 25-xxx）
+    return nameA.localeCompare(nameB, undefined, { numeric: false, sensitivity: 'base' });
+  }
+
   function sortTreeNodes(node) {
     if (!node.children || node.children.size === 0) return;
     const sortedEntries = Array.from(node.children.entries()).sort((a, b) => {
-      return a[0].localeCompare(b[0], undefined, { numeric: true, sensitivity: 'base' });
+      if (sortByCount) {
+        const diff = (b[1].count || 0) - (a[1].count || 0);
+        if (diff !== 0) return diff;
+      }
+      return compareTagNames(a[0], b[0]);
     });
     node.children = new Map(sortedEntries);
     node.children.forEach(child => sortTreeNodes(child));
@@ -933,6 +960,40 @@ function renderColorPalette() {
 function renderTagList() {
   const hasActiveFilters = state.tagFilters.size > 0;
   elements.clearTagFiltersBtn.style.display = hasActiveFilters ? 'inline' : 'none';
+
+  // 「📊 枚数順」トグルボタンの状態同期＆イベントバインド
+  const countToggleBtn = elements.tagSortByCountToggleBtn || document.getElementById('tagSortByCountToggleBtn');
+  if (countToggleBtn) {
+    countToggleBtn.classList.toggle('active', Boolean(state.tagSortByCount));
+    countToggleBtn.setAttribute('aria-pressed', state.tagSortByCount ? 'true' : 'false');
+    if (!countToggleBtn.dataset.bound) {
+      countToggleBtn.dataset.bound = 'true';
+      countToggleBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        state.tagSortByCount = !state.tagSortByCount;
+        localStorage.setItem('pm_tag_sort_by_count', state.tagSortByCount ? 'true' : 'false');
+        renderTagList();
+        if (state.selectedPhotoIds && state.selectedPhotoIds.size > 1 && typeof showBatchInspector === 'function') {
+          showBatchInspector();
+        } else if (state.activeInspectorPhotoId && typeof showSingleInspector === 'function') {
+          const p = state.photos.find(x => x.id === state.activeInspectorPhotoId);
+          if (p) showSingleInspector(p);
+        }
+        if (typeof window.renderSettingsTagTreeEditor === 'function') {
+          window.renderSettingsTagTreeEditor();
+        }
+        if (typeof showToast === 'function') {
+          showToast(
+            state.tagSortByCount
+              ? '📊 タグを「写真枚数が多い順」に並べ替えました'
+              : '🔤 タグを「名前順（設定ルール）」に並べ替えました',
+            'info',
+            2000
+          );
+        }
+      });
+    }
+  }
 
   // カラータグパレットの描画（上部に集約）
   renderColorPalette();

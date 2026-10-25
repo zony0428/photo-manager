@@ -805,10 +805,23 @@ class RenameTagRequest(BaseModel):
     new_tag: str
 
 
+@app.post("/api/tags/create")
+def api_create_tag_definition(req: TagRequest):
+    """写真未付与のまま新規タグ（親フォルダタグ等）をタグツリー定義に登録する"""
+    from .database import create_tag_definition
+    success = create_tag_definition(req.tag)
+    if not success:
+        raise HTTPException(status_code=400, detail="タグ名が空です")
+    return {"status": "ok", "tag": req.tag.strip().strip("/")}
+
+
 @app.put("/api/tags/{tag:path}")
 def api_rename_tag(tag: str, req: RenameTagRequest):
-    """タグをリネームする（子孫タグのプレフィックスも一括変更）"""
-    updated_count = rename_tag(tag, req.new_tag)
+    """タグをリネームまたは別階層へ移動する（子孫タグのプレフィックスも一括変更）"""
+    try:
+        updated_count = rename_tag(tag, req.new_tag)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     return {"status": "ok", "old_tag": tag, "new_tag": req.new_tag, "updated_count": updated_count}
 
 

@@ -2,32 +2,40 @@
 setlocal
 chcp 65001 >nul 2>&1
 
-title Photo Manager - Build Distribution
+title Photo Manager - Build Distribution (Full ^& Lightweight Update)
 
 :: ================================================================
 :: Distribution package builder
 ::
-:: Excluded:
+:: Outputs:
+::   1. dist/        - Full standalone package (includes python/ & models/)
+::                     Uses robocopy /MIR differential sync so unchanged
+::                     python/ and models/ are not re-copied from scratch!
+::   2. dist_update/ - Lightweight update package (~few MBs, excludes
+::                     python/ and models/ for fast overwrite updates)
+::
+:: Excluded from both:
 ::   cache/       - User photo DB & thumbnails (and legacy .cache/)
 ::   storage/     - App internal storage (and legacy carry/)
 ::   take_out/    - Export preparation files
 ::   docs/        - Dev documentation
 ::   scratch/     - Debug scripts
 ::   .agents/     - AI customization
-::   dist/        - Previous output
 ::   __pycache__/ - Python cache
 :: ================================================================
 
 set "SRC=%~dp0"
 set "DIST=%~dp0dist"
+set "DIST_UPD=%~dp0dist_update"
 
 echo.
 echo ============================================================
-echo   Photo Manager - Build Distribution Package
+echo   Photo Manager - Build Distribution Packages
 echo ============================================================
 echo.
-echo   Source: %SRC%
-echo   Output: %DIST%
+echo   Source          : %SRC%
+echo   Full Output     : %DIST%
+echo   Lightweight Out : %DIST_UPD%
 echo.
 
 :: --- Verify this script is in the right place ---
@@ -58,52 +66,49 @@ if not exist "%SRC%python" (
     echo.
 )
 
-:: --- Remove previous output in dist/ ---
-if not exist "%DIST%" goto :MKDIR_DIST
-
-echo Removing previous output in dist/...
-rmdir /s /q "%DIST%" 2>nul
-ping -n 2 127.0.0.1 >nul
-if exist "%DIST%" (
-    echo [WARN] Could not remove dist/ folder directly, cleaning contents...
-    del /f /q /s "%DIST%\*" >nul 2>&1
-    for /d %%p in ("%DIST%\*") do rmdir /s /q "%%p" 2>nul
-)
-
-:MKDIR_DIST
+:: --- Prepare output directories ---
+:: Note: dist/ is NOT wiped completely so that unchanged python/ and models/
+:: can be incrementally synced via robocopy /MIR in under 1 second!
 if not exist "%DIST%" mkdir "%DIST%" 2>nul
 
+:: Clean & recreate lightweight dist_update/
+if exist "%DIST_UPD%" rmdir /s /q "%DIST_UPD%" 2>nul
+if not exist "%DIST_UPD%" mkdir "%DIST_UPD%" 2>nul
+
 :START_COPY
-echo [1/4] Copying folders...
+echo [1/4] Syncing folders (Incremental /MIR)...
 
 :: --- frontend/ ---
-echo        frontend/
-robocopy "%SRC%frontend" "%DIST%\frontend" /E /XD __pycache__ /XF *.orig_backup /R:1 /W:1 /NJH /NJS /NDL /NFL /NC /NS >nul
+echo        frontend/       -^> dist/ ^& dist_update/
+robocopy "%SRC%frontend" "%DIST%\frontend" /MIR /XD __pycache__ /XF *.orig_backup /R:1 /W:1 /NJH /NJS /NDL /NFL /NC /NS >nul
 if %errorlevel% geq 8 goto :ERR_FRONTEND
-goto :COPY_SERVER
+robocopy "%SRC%frontend" "%DIST_UPD%\frontend" /MIR /XD __pycache__ /XF *.orig_backup /R:1 /W:1 /NJH /NJS /NDL /NFL /NC /NS >nul
+if %errorlevel% geq 8 goto :ERR_FRONTEND
+
+:: --- server/ ---
+echo        server/         -^> dist/ ^& dist_update/
+robocopy "%SRC%server" "%DIST%\server" /MIR /XD __pycache__ cache .cache /R:1 /W:1 /NJH /NJS /NDL /NFL /NC /NS >nul
+if %errorlevel% geq 8 goto :ERR_SERVER
+robocopy "%SRC%server" "%DIST_UPD%\server" /MIR /XD __pycache__ cache .cache /R:1 /W:1 /NJH /NJS /NDL /NFL /NC /NS >nul
+if %errorlevel% geq 8 goto :ERR_SERVER
+goto :COPY_MODELS
 
 :ERR_FRONTEND
 echo [ERROR] Failed to copy frontend/.
 goto :FAILED
 
-:COPY_SERVER
-echo        server/
-robocopy "%SRC%server" "%DIST%\server" /E /XD __pycache__ cache .cache /R:1 /W:1 /NJH /NJS /NDL /NFL /NC /NS >nul
-if %errorlevel% geq 8 goto :ERR_SERVER
-goto :COPY_MODELS
-
 :ERR_SERVER
 echo [ERROR] Failed to copy server/.
 goto :FAILED
 
-:: --- models/ (AI auto-tagging) ---
+:: --- models/ (Full dist only, incremental /MIR) ---
 :COPY_MODELS
 if not exist "%SRC%models" goto :COPY_PYTHON
-echo        models/ (AI tagger models - please wait...)
-robocopy "%SRC%models" "%DIST%\models" /E /XD __pycache__ /R:1 /W:1 /NJH /NJS /NDL /NFL /NC /NS >nul
+echo        models/         -^> dist/ (incremental sync)
+robocopy "%SRC%models" "%DIST%\models" /MIR /XD __pycache__ /R:1 /W:1 /NJH /NJS /NDL /NFL /NC /NS >nul
 if %errorlevel% geq 8 goto :ERR_MODELS
 
-:: tags_embeddings.json の自動補完（models側になくてもserver/ai/から救済）
+:: Restore tags_embeddings.json from server/ai if missing in models/clip
 if not exist "%DIST%\models\clip\tags_embeddings.json" (
     if exist "%SRC%server\ai\tags_embeddings.json" (
         if not exist "%DIST%\models\clip" mkdir "%DIST%\models\clip" 2>nul
@@ -117,10 +122,11 @@ goto :COPY_PYTHON
 echo [ERROR] Failed to copy models/.
 goto :FAILED
 
+:: --- python/ (Full dist only, incremental /MIR) ---
 :COPY_PYTHON
 if not exist "%SRC%python" goto :COPY_LICENSES
-echo        python/ (4000+ files - please wait...)
-robocopy "%SRC%python" "%DIST%\python" /E /XD __pycache__ /R:1 /W:1 /NJH /NJS /NDL /NFL /NC /NS >nul
+echo        python/         -^> dist/ (incremental sync)
+robocopy "%SRC%python" "%DIST%\python" /MIR /XD __pycache__ /R:1 /W:1 /NJH /NJS /NDL /NFL /NC /NS >nul
 if %errorlevel% geq 8 goto :ERR_PYTHON
 goto :COPY_LICENSES
 
@@ -130,8 +136,10 @@ goto :FAILED
 
 :COPY_LICENSES
 if not exist "%SRC%LICENSES" goto :COPY_FILES
-echo        LICENSES/
-robocopy "%SRC%LICENSES" "%DIST%\LICENSES" /E /R:1 /W:1 /NJH /NJS /NDL /NFL /NC /NS >nul
+echo        LICENSES/       -^> dist/ ^& dist_update/
+robocopy "%SRC%LICENSES" "%DIST%\LICENSES" /MIR /R:1 /W:1 /NJH /NJS /NDL /NFL /NC /NS >nul
+if %errorlevel% geq 8 goto :ERR_LICENSES
+robocopy "%SRC%LICENSES" "%DIST_UPD%\LICENSES" /MIR /R:1 /W:1 /NJH /NJS /NDL /NFL /NC /NS >nul
 if %errorlevel% geq 8 goto :ERR_LICENSES
 goto :COPY_FILES
 
@@ -141,56 +149,40 @@ goto :FAILED
 
 :COPY_FILES
 echo.
-echo [2/4] Copying startup and setup files...
+echo [2/4] Copying startup, docs and setup files...
 
 :: --- Backend core scripts ---
-echo        server\run.py
 copy /y "%SRC%run.py" "%DIST%\server\run.py" >nul 2>&1
-echo        run.py
 copy /y "%SRC%run.py" "%DIST%\run.py" >nul 2>&1
+copy /y "%SRC%run.py" "%DIST_UPD%\server\run.py" >nul 2>&1
+copy /y "%SRC%run.py" "%DIST_UPD%\run.py" >nul 2>&1
 if not exist "%DIST%\server\run.py" goto :ERR_FILES
 
 :: --- Optional fallback start.bat ---
-echo        server\start.bat
 copy /y "%SRC%start.bat" "%DIST%\server\start.bat" >nul 2>&1
 copy /y "%SRC%start.bat" "%DIST%\start.bat" >nul 2>&1
+copy /y "%SRC%start.bat" "%DIST_UPD%\server\start.bat" >nul 2>&1
+copy /y "%SRC%start.bat" "%DIST_UPD%\start.bat" >nul 2>&1
 
 :: --- Launcher source & fallback Build.bat ---
 if not exist "%DIST%\launcher" mkdir "%DIST%\launcher" 2>nul
+if not exist "%DIST_UPD%\launcher" mkdir "%DIST_UPD%\launcher" 2>nul
 if exist "%SRC%launcher\Launcher.cs" (
-    echo        launcher\Launcher.cs
     copy /y "%SRC%launcher\Launcher.cs" "%DIST%\launcher\Launcher.cs" >nul 2>&1
+    copy /y "%SRC%launcher\Launcher.cs" "%DIST_UPD%\launcher\Launcher.cs" >nul 2>&1
 )
 if exist "%SRC%Build.bat" (
-    echo        Build.bat
     copy /y "%SRC%Build.bat" "%DIST%\Build.bat" >nul 2>&1
+    copy /y "%SRC%Build.bat" "%DIST_UPD%\Build.bat" >nul 2>&1
 )
 if not exist "%DIST%\launcher\Launcher.cs" goto :ERR_FILES
 
 :: --- User Documentation, License & Version ---
-if exist "%SRC%README.md" (
-    echo        README.md
-    copy /y "%SRC%README.md" "%DIST%\README.md" >nul 2>&1
-)
-if exist "%SRC%README_EN.md" (
-    echo        README_EN.md
-    copy /y "%SRC%README_EN.md" "%DIST%\README_EN.md" >nul 2>&1
-)
-if exist "%SRC%MANUAL.md" (
-    echo        MANUAL.md
-    copy /y "%SRC%MANUAL.md" "%DIST%\MANUAL.md" >nul 2>&1
-)
-if exist "%SRC%README_USB.md" (
-    echo        README_USB.md
-    copy /y "%SRC%README_USB.md" "%DIST%\README_USB.md" >nul 2>&1
-)
-if exist "%SRC%LICENSE" (
-    echo        LICENSE
-    copy /y "%SRC%LICENSE" "%DIST%\LICENSE" >nul 2>&1
-)
-if exist "%SRC%VERSION" (
-    echo        VERSION
-    copy /y "%SRC%VERSION" "%DIST%\VERSION" >nul 2>&1
+for %%F in (README.md README_EN.md MANUAL.md README_USB.md LICENSE NOTICE.txt VERSION) do (
+    if exist "%SRC%%%F" (
+        copy /y "%SRC%%%F" "%DIST%\%%F" >nul 2>&1
+        copy /y "%SRC%%%F" "%DIST_UPD%\%%F" >nul 2>&1
+    )
 )
 
 :: --- Standalone Mobile HTML (PhotoManager_Mobile.html) ---
@@ -200,6 +192,7 @@ if exist "%SRC%python\python.exe" (
 if exist "%SRC%PhotoManager_Mobile.html" (
     echo        PhotoManager_Mobile.html
     copy /y "%SRC%PhotoManager_Mobile.html" "%DIST%\PhotoManager_Mobile.html" >nul 2>&1
+    copy /y "%SRC%PhotoManager_Mobile.html" "%DIST_UPD%\PhotoManager_Mobile.html" >nul 2>&1
 )
 
 :: --- Working directories for portable USB (storage & take_out) ---
@@ -217,7 +210,6 @@ goto :FAILED
 echo.
 echo [3/4] Generating PhotoManager.exe...
 
-:: Build PhotoManager.exe (or copy existing if compiler unavailable)
 set "CSC=C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
 if not exist "%CSC%" (
     set "CSC=C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe"
@@ -227,6 +219,7 @@ if exist "%CSC%" (
     "%CSC%" /nologo /target:winexe /optimize+ /win32icon:"%SRC%frontend\favicon.ico" /out:"%DIST%\PhotoManager.exe" "%SRC%launcher\Launcher.cs" >nul 2>&1
     if exist "%DIST%\PhotoManager.exe" (
         copy /y "%DIST%\PhotoManager.exe" "%SRC%PhotoManager.exe" >nul 2>&1
+        copy /y "%DIST%\PhotoManager.exe" "%DIST_UPD%\PhotoManager.exe" >nul 2>&1
         echo        [OK] PhotoManager.exe compiled and bundled.
         goto :VERIFY
     )
@@ -234,6 +227,7 @@ if exist "%CSC%" (
 
 if exist "%SRC%PhotoManager.exe" (
     copy /y "%SRC%PhotoManager.exe" "%DIST%\PhotoManager.exe" >nul 2>&1
+    copy /y "%SRC%PhotoManager.exe" "%DIST_UPD%\PhotoManager.exe" >nul 2>&1
     echo        [OK] PhotoManager.exe copied from root.
     goto :VERIFY
 )
@@ -244,7 +238,7 @@ goto :FAILED
 :: --- Verify output ---
 :VERIFY
 echo.
-echo [4/4] Verifying output...
+echo [4/4] Verifying outputs...
 
 set "OK=1"
 if not exist "%DIST%\frontend" set "OK=0"
@@ -253,6 +247,9 @@ if not exist "%DIST%\server\run.py" set "OK=0"
 if not exist "%DIST%\run.py" set "OK=0"
 if not exist "%DIST%\PhotoManager.exe" set "OK=0"
 if not exist "%DIST%\MANUAL.md" set "OK=0"
+if not exist "%DIST_UPD%\frontend" set "OK=0"
+if not exist "%DIST_UPD%\server" set "OK=0"
+if not exist "%DIST_UPD%\PhotoManager.exe" set "OK=0"
 if exist "%SRC%models" (
     if not exist "%DIST%\models" set "OK=0"
 )
@@ -261,18 +258,16 @@ if "%OK%"=="0" goto :VERIFY_FAIL
 
 echo.
 echo ============================================================
-echo   [OK] Distribution package created successfully!
+echo   [OK] Distribution packages created successfully!
 echo ============================================================
 echo.
-echo   Output: %DIST%
+echo   1. Full Package (for first-time users):
+echo      %DIST%
+echo      (Includes python/ ^& models/)
 echo.
-echo   Included launcher files:
-echo     - PhotoManager.exe (Native GUI launcher with icon)
-echo     - Build.bat        (Fallback launcher re-builder ^& optional USB icon setup)
-echo.
-echo   How to use / distribute:
-echo   1. Zip the contents of "dist" for GitHub Releases, or copy to USB.
-echo   2. Double-click "PhotoManager.exe" to launch immediately!
+echo   2. Lightweight Update Package (for existing users / USB update):
+echo      %DIST_UPD%
+echo      (Only frontend/, server/, launcher ^& docs - overwrites in 1 sec!)
 echo ============================================================
 echo.
 if not defined NO_PAUSE pause

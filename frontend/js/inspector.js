@@ -1551,6 +1551,19 @@ function renderInspectorQuickTree(container, onSelect) {
     targetEl.appendChild(addRow);
   }
 
+  // 「⚙️ ツリー編集」ショートカットボタンのイベントバインド
+  document.querySelectorAll('.inspector-open-tag-editor-btn').forEach(btn => {
+    if (!btn.dataset.bound) {
+      btn.dataset.bound = 'true';
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (elements.folderDbMaintenanceBtn) {
+          elements.folderDbMaintenanceBtn.click();
+        }
+      });
+    }
+  });
+
   if (manualTags.length === 0) {
     const emptyEl = document.createElement('div');
     emptyEl.className = 'empty-hint';
@@ -1568,84 +1581,6 @@ function renderInspectorQuickTree(container, onSelect) {
     ? state.photos.find(p => p.id === state.activeInspectorPhotoId)
     : null;
   const assignedTagsSet = new Set((activeSinglePhoto && Array.isArray(activeSinglePhoto.tags)) ? activeSinglePhoto.tags : []);
-
-  function startInspectorTagInlineRename(itemEl, node) {
-    const nameSpan = itemEl.querySelector('.inspector-tree-name');
-    if (!nameSpan || itemEl.querySelector('.tag-rename-input')) return;
-
-    const oldName = node.name;
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'tag-rename-input inspector-tag-rename-input';
-    input.value = oldName;
-
-    nameSpan.style.display = 'none';
-    nameSpan.parentNode.insertBefore(input, nameSpan.nextSibling);
-    input.focus();
-    input.select();
-
-    let committed = false;
-    async function commitRename() {
-      if (committed) return;
-      committed = true;
-      const newName = input.value.replace(/^\/+|\/+$/g, '').trim();
-      if (!newName || newName === oldName) {
-        input.remove();
-        nameSpan.style.display = '';
-        return;
-      }
-
-      const parts = node.fullPath.split('/');
-      parts[parts.length - 1] = newName;
-      const newFullPath = parts.join('/');
-
-      try {
-        const res = await fetch(`/api/tags/${encodeURIComponent(node.fullPath)}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ new_tag: newFullPath }),
-        });
-        if (!res.ok) {
-          const data = await res.json();
-          throw new Error(data.detail || 'リネームに失敗しました');
-        }
-        if (state.inspectorQuickTreeExpandedPaths && state.inspectorQuickTreeExpandedPaths.has(node.fullPath)) {
-          state.inspectorQuickTreeExpandedPaths.delete(node.fullPath);
-          state.inspectorQuickTreeExpandedPaths.add(newFullPath);
-        }
-        await refreshAll();
-        if (state.selectedPhotoIds && state.selectedPhotoIds.size > 1 && typeof showBatchInspector === 'function') {
-          showBatchInspector();
-        } else if (state.activeInspectorPhotoId && typeof showSingleInspector === 'function') {
-          const p = state.photos.find(x => x.id === state.activeInspectorPhotoId);
-          if (p) showSingleInspector(p);
-        }
-        if (typeof showToast === 'function') {
-          showToast(`✏️ タグを「${newFullPath}」にリネームしました`, 'success', 2500);
-        }
-      } catch (err) {
-        alert('エラー: ' + err.message);
-        input.remove();
-        nameSpan.style.display = '';
-      }
-    }
-
-    input.addEventListener('keydown', (e) => {
-      e.stopPropagation();
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        commitRename();
-      } else if (e.key === 'Escape') {
-        committed = true;
-        input.remove();
-        nameSpan.style.display = '';
-      }
-    });
-    input.addEventListener('blur', () => {
-      setTimeout(() => commitRename(), 100);
-    });
-    input.addEventListener('click', (e) => e.stopPropagation());
-  }
 
   function appendTreeItems(parentNode, targetEl, indent = 0) {
     parentNode.children.forEach(node => {
@@ -1681,7 +1616,6 @@ function renderInspectorQuickTree(container, onSelect) {
         </div>
         <div class="inspector-tree-item-actions">
           <button type="button" class="inspector-tag-edit-btn inspector-tag-subadd-btn" title="「${escapeHtml(node.name)}」の子タグを作成">+子</button>
-          <button type="button" class="inspector-tag-edit-btn inspector-tag-rename-btn" title="タグ「${escapeHtml(node.name)}」をリネーム">✏</button>
           <span class="apply-badge${isAssigned ? ' is-assigned' : ''}" title="${badgeTitle}">${badgeText}</span>
         </div>
       `;
@@ -1708,14 +1642,6 @@ function renderInspectorQuickTree(container, onSelect) {
           if (toggleBtn) toggleBtn.classList.remove('collapsed');
           const subInput = childrenContainer.querySelector(':scope > .inspector-tree-inline-add .inspector-tree-inline-input');
           if (subInput) setTimeout(() => subInput.focus(), 30);
-        });
-      }
-
-      const renameBtn = item.querySelector('.inspector-tag-rename-btn');
-      if (renameBtn) {
-        renameBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          startInspectorTagInlineRename(item, node);
         });
       }
 
