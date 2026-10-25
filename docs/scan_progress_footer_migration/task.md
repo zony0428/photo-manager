@@ -1,0 +1,22 @@
+# タスクリスト: スキャン進捗バーのフッター（ステータスバー）化
+
+- [x] HTML構造の改修 (`frontend/index.html`) <!-- id: 0 -->
+  - `#globalScanBanner` をヘッダー直下から `.main-body` の下、`.app-layout` の最下部へ移動
+  - 要素タグを `<footer class="global-scan-banner global-scan-footer" id="globalScanBanner">` に変更
+- [x] CSSスタイルの改修 (`frontend/css/style.css`) <!-- id: 1 -->
+  - 最下部固定ステータスバー風の横1行スリムデザイン（高さ32px）を適用
+  - 進捗バーを右側にコンパクト配置（幅240px）
+  - スキャン出現時の下からスライドインアニメーション（`slideUpFooter`）
+  - スキャン実行中に写真選択時のフローティング操作バー（`.selection-floating-bar`）が重ならないよう `bottom: 44px` にオフセット
+- [x] JavaScript連動の改修 (`frontend/js/folder_tree.js`) <!-- id: 2 -->
+  - スキャン開始時に `body.classList.add('has-scan-banner')`、終了時に `remove` を追加
+  - `banner.style.display = 'flex'` でステータスバーとして表示
+- [x] 操作マニュアルの更新 (`MANUAL.md`) <!-- id: 3 -->
+  - 進捗表示が画面最下部に表示される旨へ説明を更新
+- [x] 実機ブラウザ検証 <!-- id: 4 -->
+  - スキャンステータスバーの表示確認
+  - ギャラリーのレイアウトシフト（ガタつき）が完全に解消されていることの確認
+  - フローティング操作バーとの共存・オフセット動作確認
+- [x] ドキュメント作成 (`docs/scan_progress_footer_migration/`) <!-- id: 5 -->
+- [x] Git コミット & プッシュ <!-- id: 6 -->
+  - バージョン `2.00` のまま維持してコミット

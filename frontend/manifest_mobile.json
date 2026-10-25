@@ -1,0 +1,30 @@
+{
+  "name": "Photo Manager Mobile",
+  "short_name": "PM Mobile",
+  "description": "Photo Manager モバイル閲覧・高速選別アプリ (USB DB / Wi-Fi直結対応)",
+  "start_url": "/mobile.html",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#16181b",
+  "theme_color": "#16181b",
+  "icons": [
+    {
+      "src": "/icons/icon-32.png?v=2",
+      "sizes": "32x32",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-192.png?v=2",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png?v=2",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

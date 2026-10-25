@@ -1,0 +1,2636 @@
+/* ==========================================================================
+   Photo Manager - Hinomaru Ink Design System (SHIUI Inspired)
+   和紙（Paper / #e5e3dc）、深和紙（Paper Deep / #d9d6cc）、
+   墨（Sumi / #2a2926）、淡墨（Sumi Soft / #4a4843）、朱（Shu / #e14d2a）
+   シャドウレス（No Shadow）の端正な直線と余白によるアートギャラリースタイル
+   ========================================================================== */
+
+:root, [data-theme="paper"] {
+  /* 和紙モード（Paper / Light） */
+  --bg-primary: #e5e3dc;          /* 和紙の地色 */
+  --bg-secondary: #d9d6cc;        /* 深和紙（サイドバー・カード・パネル） */
+  --bg-tertiary: #cecabf;         /* 淡墨混じり和紙（入力欄・サブ背景） */
+  --bg-hover: #c4c0b3;            /* ホバー時の和紙 */
+  --bg-glass: rgba(229, 227, 220, 0.94);
+  --bg-modal: rgba(229, 227, 220, 0.98);
+
+  --text-main: #2a2926;           /* 墨（Sumi） */
+  --text-muted: #4a4843;          /* 淡墨（Sumi Soft） */
+  --text-dim: #7a766e;            /* 薄墨 */
+
+  --accent-primary: #e14d2a;      /* 朱（Shu - 日の丸） */
+  --accent-primary-hover: #c43818;
+  --accent-glow: rgba(225, 77, 42, 0.15);
+  --accent-subtle: rgba(225, 77, 42, 0.08);
+
+  --star-active: #e14d2a;         /* 朱色の星印（後方互換） */
+  --star-empty: #b5b0a3;
+  --rating-excellent: #d4a017;    /* 優: 金色 */
+  --rating-good: #e14d2a;         /* 良: 朱色 */
+  --rating-discard: #6b6860;      /* 棄: 灰色 */
+
+  /* タグフィルタ 3ステート色 (和紙モード: 翠 vs 緋) */
+  --tag-include-bg: rgba(5, 150, 105, 0.12);
+  --tag-include-border: #059669;
+  --tag-include-text: #065f46;
+  --tag-include-icon: #059669;
+  --tag-include-badge-bg: #059669;
+  --tag-include-badge-text: #ffffff;
+
+  --tag-exclude-bg: rgba(220, 38, 38, 0.12);
+  --tag-exclude-border: #dc2626;
+  --tag-exclude-text: #991b1b;
+  --tag-exclude-icon: #dc2626;
+  --tag-exclude-badge-bg: #dc2626;
+  --tag-exclude-badge-text: #ffffff;
+
+  --border-color: #2a2926;        /* 墨の1px線 */
+  --border-soft: #bcb7aa;         /* 和紙の繊細な区切り線 */
+  --border-focus: #e14d2a;
+
+  --thumbnail-size: 220px;
+  --sidebar-width: 260px;
+  --header-height: 56px;
+
+  --radius-sm: 2px;
+  --radius-md: 2px;
+  --radius-lg: 3px;
+
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: 0 4px 20px rgba(42, 41, 38, 0.12);
+  --transition-fast: 0.12s ease;
+  --transition-normal: 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+[data-theme="sumi"] {
+  /* 夜墨モード（Sumi / Dark） - 銀墨・スレートダーク調色 (v1.83) */
+  --bg-primary: #16181b;          /* 漆黒スレート（写真表示エリア） */
+  --bg-secondary: #262c35;        /* 銀墨（左右サイドバー・インスペクタ・カード） */
+  --bg-tertiary: #303844;         /* 墨淡（入力欄・サブ背景） */
+  --bg-hover: #3c4554;            /* ホバー時 */
+  --bg-glass: rgba(22, 24, 27, 0.94);
+  --bg-modal: rgba(22, 24, 27, 0.98);
+
+  --text-main: #f0f2f5;           /* 明るいスレートホワイト */
+  --text-muted: #9ca6b5;          /* 淡スレート */
+  --text-dim: #687487;            /* 影墨 */
+
+  --accent-primary: #e14d2a;      /* 朱（闇に灯る鮮烈な赤） */
+  --accent-primary-hover: #ff5b33;
+  --accent-glow: rgba(225, 77, 42, 0.25);
+  --accent-subtle: rgba(225, 77, 42, 0.15);
+
+  --star-active: #e14d2a;         /* 朱色の星印（後方互換） */
+  --star-empty: #45433d;
+  --rating-excellent: #e8b828;    /* 優: 金色 */
+  --rating-good: #e14d2a;         /* 良: 朱色 */
+  --rating-discard: #5a5752;      /* 棄: 灰色 */
+
+  /* タグフィルタ 3ステート色 (夜墨モード: 翠 vs 緋) */
+  --tag-include-bg: rgba(16, 185, 129, 0.18);
+  --tag-include-border: #10b981;
+  --tag-include-text: #34d399;
+  --tag-include-icon: #34d399;
+  --tag-include-badge-bg: #059669;
+  --tag-include-badge-text: #ffffff;
+
+  --tag-exclude-bg: rgba(239, 68, 68, 0.18);
+  --tag-exclude-border: #ef4444;
+  --tag-exclude-text: #f87171;
+  --tag-exclude-icon: #ef4444;
+  --tag-exclude-badge-bg: #dc2626;
+  --tag-exclude-badge-text: #ffffff;
+
+  --border-color: #3d4756;        /* スレート境界線 */
+  --border-soft: #2f3642;         /* 繊細な区切り線 */
+  --border-focus: #e14d2a;
+
+  --thumbnail-size: 220px;
+  --sidebar-width: 260px;
+  --header-height: 56px;
+
+  --radius-sm: 2px;
+  --radius-md: 2px;
+  --radius-lg: 3px;
+
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: 0 4px 20px rgba(0, 0, 0, 0.5);
+  --transition-fast: 0.12s ease;
+  --transition-normal: 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* リセット＆基本設定 */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Shippori Mincho", sans-serif;
+  background-color: var(--bg-primary);
+  color: var(--text-main);
+  height: 100vh;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+
+/* アプリ全体レイアウト */
+.app-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* ==========================================================================
+   ヘッダー (上部ツールバー)
+   ========================================================================== */
+.app-header {
+  height: var(--header-height);
+  background: var(--bg-glass);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  z-index: 100;
+  transition: background-color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* 左右ペイン開閉トグルボタン (v1.73: 左右端配置・アイコンのみ・控えめ上品配色) */
+#toggleSidebarBtn.btn-sidebar-toggle,
+#toggleInspectorBtn.btn-inspector-toggle {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm, 4px);
+  transition: all var(--transition-fast);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+#toggleSidebarBtn.btn-sidebar-toggle:hover,
+#toggleInspectorBtn.btn-inspector-toggle:hover {
+  background: var(--bg-hover, rgba(255, 255, 255, 0.08));
+  color: var(--text-main);
+  border-color: var(--border-soft, rgba(255, 255, 255, 0.12));
+}
+
+/* アクティブ（ペイン表示中）: 控えめで品のある淡いティント配色 */
+#toggleSidebarBtn.btn-sidebar-toggle.active,
+#toggleInspectorBtn.btn-inspector-toggle.active {
+  background: rgba(225, 77, 42, 0.12);
+  color: var(--accent-primary);
+  border-color: rgba(225, 77, 42, 0.28);
+}
+
+#toggleSidebarBtn.btn-sidebar-toggle.active:hover,
+#toggleInspectorBtn.btn-inspector-toggle.active:hover {
+  background: rgba(225, 77, 42, 0.2);
+  color: var(--accent-primary);
+  border-color: var(--accent-primary);
+}
+
+/* 和紙モード（ライトテーマ）での馴染み調整 */
+[data-theme="paper"] #toggleSidebarBtn.btn-sidebar-toggle:hover,
+[data-theme="paper"] #toggleInspectorBtn.btn-inspector-toggle:hover {
+  background: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="paper"] #toggleSidebarBtn.btn-sidebar-toggle.active,
+[data-theme="paper"] #toggleInspectorBtn.btn-inspector-toggle.active {
+  background: rgba(225, 77, 42, 0.1);
+  color: var(--accent-primary);
+  border-color: rgba(225, 77, 42, 0.25);
+}
+
+[data-theme="paper"] #toggleSidebarBtn.btn-sidebar-toggle.active:hover,
+[data-theme="paper"] #toggleInspectorBtn.btn-inspector-toggle.active:hover {
+  background: rgba(225, 77, 42, 0.16);
+  border-color: var(--accent-primary);
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
+/* ツールバー縦セパレータ (終了ボタンと右端インスペクタボタンの間) */
+.toolbar-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border-soft, rgba(255, 255, 255, 0.15));
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
+[data-theme="paper"] .toolbar-divider {
+  background: rgba(0, 0, 0, 0.12);
+}
+
+/* ロゴ & Hinomaru マーク */
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
+  letter-spacing: 1px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.hinomaru-disc {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background-color: var(--accent-primary);
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.logo-text {
+  font-size: 1.02rem;
+  color: var(--text-main);
+  letter-spacing: 0.8px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.logo-text span {
+  color: var(--accent-primary);
+}
+
+.badge-hinomaru {
+  display: none; /* ライセンス上の表示義務なし・ロゴ領域の簡素化のため非表示 */
+}
+
+.app-version {
+  font-family: 'Outfit', sans-serif;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  padding: 1px 5px;
+  border: 1px solid var(--border-soft);
+  color: var(--text-dim);
+  background: transparent;
+  border-radius: var(--radius-sm);
+  user-select: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* テーマ切り替えボタン（和紙 ⇄ 夜墨） */
+
+.btn-theme-toggle {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.btn-theme-toggle:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent-primary);
+}
+
+.btn-theme-toggle .theme-icon {
+  font-size: 0.85rem;
+}
+
+/* 言語切り替えボタン（🇯🇵 JP ⇄ 🇺🇸 EN） */
+.btn-lang-toggle {
+  background: var(--bg-tertiary, #303844);
+  border: 1px solid var(--border-color, #3d4756);
+  color: var(--text-main, #f0f2f5);
+  font-family: 'Outfit', 'Inter', sans-serif;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  padding: 4px 9px;
+  border-radius: var(--radius-sm, 2px);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  transition: var(--transition-fast, 0.12s ease);
+  flex-shrink: 0;
+}
+
+.btn-lang-toggle:hover {
+  background: var(--bg-hover, #3c4554);
+  border-color: var(--accent-primary, #e14d2a);
+}
+
+.btn-lang-toggle.is-en {
+  border-color: rgba(225, 77, 42, 0.55);
+  background: rgba(225, 77, 42, 0.12);
+}
+
+.btn-lang-toggle .lang-icon {
+  font-size: 0.84rem;
+  line-height: 1;
+}
+
+/* 検索バー (シャープな矩形スタイル) */
+.search-box {
+  position: relative;
+  width: 260px;
+  display: flex;
+  align-items: center;
+}
+
+.search-icon {
+  position: absolute;
+  left: 10px;
+  width: 15px;
+  height: 15px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.search-box input {
+  width: 100%;
+  height: 32px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 0 32px 0 32px;
+  color: var(--text-main);
+  font-size: 0.82rem;
+  transition: var(--transition-fast);
+}
+
+.search-box input:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+  background: var(--bg-primary);
+}
+
+.clear-search-btn {
+  position: absolute;
+  right: 8px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+/* コントロールグループ */
+.control-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.thumbnail-slider-group input[type="range"] {
+  width: 90px;
+  accent-color: var(--accent-primary);
+  cursor: pointer;
+}
+
+.styled-select, .styled-select-sm {
+  background: var(--bg-tertiary);
+  color: var(--text-main);
+  border: 1px solid var(--border-color);
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 0.82rem;
+  cursor: pointer;
+  outline: none;
+  transition: var(--transition-fast);
+}
+
+.styled-select:hover, .styled-select-sm:hover {
+  border-color: var(--text-muted);
+}
+
+/* ボタン共通 */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.btn .btn-label {
+  white-space: nowrap;
+}
+
+.btn-primary {
+  background: var(--accent-primary);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.btn-primary:hover {
+  background: var(--accent-primary-hover);
+}
+
+.btn-secondary {
+  background: var(--bg-tertiary);
+  color: var(--text-main);
+  border-color: var(--border-color);
+}
+
+.btn-secondary:hover {
+  background: var(--bg-hover);
+}
+
+.btn-danger {
+  background: #dc2626;
+  color: #ffffff;
+  border-color: #b91c1c;
+  font-weight: 600;
+}
+
+.btn-danger:hover {
+  background: #b91c1c;
+  border-color: #991b1b;
+}
+
+/* 表示モード切替ボタングループ (グリッド / びっしり / マウント) */
+.view-mode-group {
+  display: flex;
+  background: var(--bg-tertiary);
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.mode-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  padding: 4px 9px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: var(--transition-fast);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.mode-btn .mode-label {
+  white-space: nowrap;
+}
+
+.mode-btn:hover {
+  color: var(--text-main);
+}
+
+.mode-btn.active {
+  background: var(--accent-primary);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+/* トグルボタン（スタック / 文字 / 詳細）: 色でON/OFFを識別 */
+.btn-icon-toggle {
+  background: var(--bg-tertiary);
+  color: var(--text-main);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.btn-icon-toggle:hover {
+  background: var(--bg-hover);
+}
+
+.btn-icon-toggle.active {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+/* ==========================================================================
+   ツールバー レスポンシブ設計（テキストの2段改行を根絶しスマートにアイコン化）
+   ========================================================================== */
+
+/* 1. 幅1550px以下 または コンパクトLv1: 右端ユーティリティ（追加・フォルダ管理・ヘルプ・終了）をアイコン化 */
+@media (max-width: 1550px) {
+  #uploadFilesBtn .btn-label,
+  #openScanModalBtn .btn-label,
+  #openHelpModalBtn .btn-label,
+  #openShutdownModalBtn .btn-label {
+    display: none;
+  }
+  #uploadFilesBtn,
+  #openScanModalBtn,
+  #openHelpModalBtn,
+  #openShutdownModalBtn {
+    padding: 6px 10px;
+    gap: 0;
+  }
+}
+
+.toolbar-compact-1 #uploadFilesBtn .btn-label,
+.toolbar-compact-1 #openScanModalBtn .btn-label,
+.toolbar-compact-1 #openHelpModalBtn .btn-label,
+.toolbar-compact-1 #openShutdownModalBtn .btn-label {
+  display: none !important;
+}
+.toolbar-compact-1 #uploadFilesBtn,
+.toolbar-compact-1 #openScanModalBtn,
+.toolbar-compact-1 #openHelpModalBtn,
+.toolbar-compact-1 #openShutdownModalBtn {
+  padding: 6px 10px !important;
+  gap: 0 !important;
+}
+
+/* 2. 幅1350px以下 または コンパクトLv2: トグルボタン群（スタック・文字・スライドショー）もアイコン化 */
+@media (max-width: 1350px) {
+  #startSlideshowBtn .btn-label,
+  #stackToggleLabel,
+  #infoToggleLabel {
+    display: none;
+  }
+  #startSlideshowBtn,
+  #toggleStackBtn,
+  #toggleInfoBtn {
+    padding: 6px 10px;
+    gap: 0;
+  }
+}
+
+.toolbar-compact-2 #startSlideshowBtn .btn-label,
+.toolbar-compact-2 #stackToggleLabel,
+.toolbar-compact-2 #infoToggleLabel {
+  display: none !important;
+}
+.toolbar-compact-2 #startSlideshowBtn,
+.toolbar-compact-2 #toggleStackBtn,
+.toolbar-compact-2 #toggleInfoBtn {
+  padding: 6px 10px !important;
+  gap: 0 !important;
+}
+
+/* 3. 幅1150px以下 または コンパクトLv3: レイアウトモード切替（グリッド/びっしり/マウント）もアイコン化 */
+@media (max-width: 1150px) {
+  .mode-btn .mode-label {
+    display: none;
+  }
+  .mode-btn {
+    padding: 4px 8px;
+    gap: 0;
+  }
+}
+
+.toolbar-compact-3 .mode-btn .mode-label {
+  display: none !important;
+}
+.toolbar-compact-3 .mode-btn {
+  padding: 4px 8px !important;
+  gap: 0 !important;
+}
+
+/* ==========================================================================
+   メインボディ (サイドバー ＋ コンテンツエリア)
+   ========================================================================== */
+.main-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ==========================================================================
+   アコーディオン式サイドバー (Accordion Sidebar) - v1.56
+   ========================================================================== */
+.sidebar.accordion-sidebar {
+  width: var(--sidebar-width, 275px);
+  min-width: 220px;
+  max-width: 500px;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border-soft);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+  z-index: 20;
+  user-select: none;
+  box-sizing: border-box;
+}
+
+[data-theme="paper"] .sidebar.accordion-sidebar {
+  background: #fbf9f4;
+  border-right: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+/* サイドバー折りたたみ状態（非表示時） */
+.sidebar.accordion-sidebar.is-collapsed {
+  display: none !important;
+  width: 0 !important;
+  min-width: 0 !important;
+  border-right: none;
+  overflow: hidden;
+}
+
+/* 上部コントロールバー（全解除 ＆ 一括開閉） */
+.sidebar-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--bg-tertiary, rgba(0, 0, 0, 0.15));
+  flex-shrink: 0;
+  gap: 6px;
+  box-sizing: border-box;
+}
+
+[data-theme="paper"] .sidebar-top-bar {
+  background: #f0ece1;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.sidebar-reset-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  position: relative;
+  color: var(--text-muted);
+  transition: all var(--transition-fast);
+}
+
+.sidebar-reset-btn:hover {
+  color: var(--accent-primary);
+  border-color: var(--accent-primary);
+  background: rgba(225, 77, 42, 0.1);
+}
+
+.sidebar-reset-btn.has-active-filter {
+  color: #fff !important;
+  background: var(--accent-primary) !important;
+  border-color: var(--accent-primary) !important;
+}
+
+.sidebar-reset-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  box-shadow: 0 0 6px var(--accent-primary);
+}
+
+.sidebar-expand-toggle-btn,
+.sidebar-close-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  border-radius: var(--radius-sm, 4px);
+  transition: all var(--transition-fast);
+}
+
+.sidebar-expand-toggle-btn:hover,
+.sidebar-close-btn:hover {
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="paper"] .sidebar-expand-toggle-btn:hover,
+[data-theme="paper"] .sidebar-close-btn:hover {
+  color: var(--text-main);
+  background: rgba(0, 0, 0, 0.06);
+}
+
+/* アコーディオン本体コンテナ: 親の高さいっぱいに広げ、外側スクロールは抑止 */
+.sidebar-accordion {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 各アコーディオンアイテム（閉じているもの）: 上部または下端にピタッと固定 */
+.accordion-item {
+  border-bottom: 1px solid var(--border-soft);
+  flex-shrink: 0;
+}
+
+[data-theme="paper"] .accordion-item {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.07);
+}
+
+/* 展開中のアコーディオンアイテム:
+   中身が短いときは余計に伸ばさず直下に後続メニューが自然に並び、
+   中身が長くて画面を越える時だけ縮小して後続メニューが画面外へスクロールアウトするのを防止 */
+.accordion-item.is-open {
+  flex: 0 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.accordion-item.is-open .accordion-header {
+  flex-shrink: 0;
+}
+
+/* アコーディオンヘッダー */
+.accordion-header {
+  display: flex;
+  align-items: center;
+  padding: 9px 12px;
+  cursor: pointer;
+  background: transparent;
+  transition: background var(--transition-fast);
+  user-select: none;
+  gap: 8px;
+  position: relative;
+}
+
+.accordion-header:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+[data-theme="paper"] .accordion-header:hover {
+  background: rgba(0, 0, 0, 0.035);
+}
+
+.accordion-arrow {
+  font-size: 0.65rem;
+  color: var(--text-dim);
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  transform: rotate(0deg);
+}
+
+.accordion-item.is-open .accordion-arrow {
+  transform: rotate(90deg);
+}
+
+.accordion-icon {
+  font-size: 0.95rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.accordion-title {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-main);
+  letter-spacing: 0.02em;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.accordion-item.has-filter .accordion-title {
+  color: var(--accent-primary);
+}
+
+.accordion-item.has-filter::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 3px;
+  background: var(--accent-primary);
+  border-radius: 0 2px 2px 0;
+}
+
+/* 各機能別のアクセントカラー */
+.accordion-item[data-section="quick"] { --section-color: #818cf8; }
+.accordion-item[data-section="folder"] { --section-color: #38bdf8; }
+.accordion-item[data-section="tags"] { --section-color: #34d399; }
+.accordion-item[data-section="timeline"] { --section-color: #fbbf24; }
+.accordion-item[data-section="camera"] { --section-color: #fb923c; }
+.accordion-item[data-section="presets"] { --section-color: #d97706; }
+.accordion-item[data-section="search"] { --section-color: #c084fc; }
+
+/* アコーディオンボディ */
+.accordion-body {
+  padding: 10px 12px 14px 12px;
+  background: rgba(0, 0, 0, 0.06);
+  box-sizing: border-box;
+}
+
+[data-theme="paper"] .accordion-body {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.accordion-item:not(.is-open) .accordion-body {
+  display: none;
+}
+
+/* 展開中のボディ: 内部独立スクロール */
+.accordion-item.is-open .accordion-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* 上品な細幅カスタムスクロールバー */
+.accordion-body::-webkit-scrollbar {
+  width: 5px;
+}
+.accordion-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+.accordion-body::-webkit-scrollbar-thumb {
+  background: rgba(120, 120, 120, 0.25);
+  border-radius: 3px;
+}
+.accordion-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(120, 120, 120, 0.45);
+}
+
+/* フォルダ操作ツールバー */
+.folder-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 0 0 8px 0;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--border-soft);
+  flex-wrap: nowrap;
+}
+
+[data-theme="paper"] .folder-toolbar {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.folder-toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.folder-toolbar .btn-mini-text {
+  font-size: 0.68rem;
+  padding: 2px 5px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm, 2px);
+  cursor: pointer;
+  color: var(--text-dim);
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+[data-theme="paper"] .folder-toolbar .btn-mini-text {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.12);
+  color: var(--text-muted);
+}
+
+.folder-toolbar .btn-mini-text:hover {
+  background: var(--bg-hover);
+  color: var(--text-main);
+  border-color: var(--border-color);
+}
+
+.drawer-pin-btn.pinned:hover {
+  background: var(--accent-primary);
+  color: #ffffff;
+}
+
+/* パネルスクロールバー */
+
+.sidebar-tab-panels::-webkit-scrollbar {
+  width: 5px;
+}
+.sidebar-tab-panels::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sidebar-tab-panels::-webkit-scrollbar-thumb {
+  background: rgba(120, 120, 120, 0.25);
+  border-radius: 3px;
+}
+.sidebar-tab-panels::-webkit-scrollbar-thumb:hover {
+  background: rgba(120, 120, 120, 0.45);
+}
+
+.tab-panel {
+  display: none;
+  animation: fadeInPanel 0.15s ease;
+}
+
+.tab-panel.active {
+  display: block;
+}
+
+@keyframes fadeInPanel {
+  from { opacity: 0; transform: translateX(3px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+#resizeHandleLeft {
+  display: block;
+}
+
+.sidebar.is-collapsed ~ #resizeHandleLeft {
+  display: none !important;
+}
+
+.tab-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  padding-right: 36px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+/* ==========================================================================
+   ピン留め（固定サイドバー）モード
+   ========================================================================== */
+.sidebar.is-pinned {
+  width: var(--sidebar-pinned-width, calc(52px + var(--sidebar-panel-width, 320px)));
+  min-width: 272px;
+  max-width: 652px;
+  border-right: 1px solid var(--border-color);
+  overflow: hidden;
+  position: relative;
+  z-index: 20;
+}
+
+.sidebar.is-pinned .sidebar-tab-panels {
+  position: relative;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: auto;
+  flex: 1;
+  height: 100%;
+  box-shadow: none;
+  border-right: none;
+  transform: none !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  transition: none;
+}
+
+.sidebar.is-pinned .index-tab.active {
+  background: var(--bg-secondary);
+  color: var(--text-main);
+  width: 49px;
+  margin-right: -2px;
+  z-index: 45;
+  border-left: 3px solid var(--tab-color);
+  border-top: 1px solid var(--border-soft);
+  border-bottom: 1px solid var(--border-soft);
+  border-right: 1px solid var(--bg-secondary);
+  box-shadow: -2px 0 6px rgba(0, 0, 0, 0.08);
+}
+
+.sidebar.is-pinned .index-tab.active .index-tab-label {
+  color: var(--tab-color);
+  font-weight: 700;
+}
+
+/* ピン留め時は左リサイズハンドルを再表示して幅調整可能にする */
+.sidebar.is-pinned ~ #resizeHandleLeft {
+  display: block;
+}
+
+.tab-panel-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-main);
+  letter-spacing: 0.02em;
+}
+
+.tab-panel-title-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ペインリサイズハンドル */
+.resize-handle {
+  width: 5px;
+  cursor: col-resize;
+  background: transparent;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 50;
+  transition: background 0.15s ease;
+}
+
+.resize-handle:hover,
+.resize-handle.active {
+  background: var(--accent-primary);
+}
+
+.resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 3px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  transition: background 0.15s ease;
+}
+
+.resize-handle:hover::after,
+.resize-handle.active::after {
+  background: var(--accent-primary);
+}
+
+/* ドラッグ中にテキスト選択とポインターイベントを無効化 */
+body.resizing {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+body.resizing * {
+  cursor: col-resize !important;
+  pointer-events: none !important;
+}
+
+body.resizing .resize-handle {
+  pointer-events: auto !important;
+}
+
+.sidebar-section {
+  padding: 16px 12px 6px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  padding: 0 8px;
+}
+
+.badge-sub {
+  font-size: 0.65rem;
+  color: var(--text-dim);
+  font-weight: 400;
+}
+
+.nav-list {
+  list-style: none;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+  transition: var(--transition-fast);
+}
+
+.nav-item:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-main);
+}
+
+.nav-item.active {
+  background: var(--accent-subtle);
+  color: var(--accent-primary);
+  font-weight: 600;
+  border-left-color: var(--accent-primary);
+}
+
+.nav-count {
+  margin-left: auto;
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-soft);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.nav-item.active .nav-count {
+  background: var(--accent-primary);
+  color: #ffffff;
+  border-color: var(--accent-primary);
+  font-weight: 600;
+}
+
+.nav-count.badge-warning {
+  background: rgba(225, 77, 42, 0.15);
+  color: var(--accent-primary, #e14d2a);
+  border-color: rgba(225, 77, 42, 0.35);
+  font-weight: 600;
+}
+
+/* ==========================================================================
+   タイムライン エキスパンダツリー (年・月 階層アコーディオン)
+   ========================================================================== */
+.timeline-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.timeline-year-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.timeline-year-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  color: var(--text-main);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition-fast);
+  user-select: none;
+}
+
+.timeline-year-header:hover {
+  background: var(--bg-tertiary);
+}
+
+.timeline-year-header.active-all {
+  background: rgba(56, 189, 248, 0.12);
+  color: var(--accent-primary);
+}
+
+.timeline-year-title {
+  flex: 1;
+}
+
+.timeline-month-list {
+  list-style: none;
+  padding-left: 14px;
+  margin-top: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.timeline-month-list.hidden {
+  display: none;
+}
+
+.timeline-month-item {
+  padding: 5px 10px;
+  font-size: 0.82rem;
+}
+
+/* ==========================================================================
+   フォルダ階層ツリー (開閉アコーディオン)
+   ========================================================================== */
+.folder-tree-container {
+  margin-top: 4px;
+}
+
+.folder-tree {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.folder-tree-node {
+  list-style: none;
+}
+
+.folder-tree-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 0.83rem;
+  cursor: pointer;
+  transition: var(--transition-fast);
+  user-select: none;
+}
+
+.folder-tree-item:hover {
+  background: var(--bg-hover);
+  color: var(--text-main);
+}
+
+.folder-tree-item.active {
+  background: var(--bg-tertiary);
+  color: var(--text-main);
+  border-left: 2px solid var(--accent-primary);
+  font-weight: 600;
+}
+
+.folder-tree-item.active .nav-count {
+  background: var(--accent-primary);
+  color: #ffffff;
+  border-color: var(--accent-primary);
+}
+
+/* 左クリック2回目の除外絞り込み選択状態 */
+.folder-tree-item.active-exclude {
+  background: var(--accent-subtle, rgba(225, 77, 42, 0.1));
+  color: var(--text-main, #2a2926);
+  border-left: 2px dashed var(--accent-primary, #e14d2a);
+  font-weight: 600;
+}
+
+.folder-tree-item.active-exclude .folder-tree-name {
+  text-decoration: line-through;
+  text-decoration-color: var(--accent-primary, #e14d2a);
+}
+
+.folder-tree-item.active-exclude .nav-count {
+  border-color: var(--accent-primary, #e14d2a);
+  color: var(--accent-primary, #e14d2a);
+}
+
+.folder-toggle-btn {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.62rem;
+  color: var(--text-dim);
+  cursor: pointer;
+  border-radius: 2px;
+  flex-shrink: 0;
+  transition: transform 0.12s ease;
+}
+
+.folder-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-main);
+}
+
+.folder-toggle-spacer {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.folder-tree-icon {
+  font-size: 0.95rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.folder-tree-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-tree-children {
+  list-style: none;
+  padding-left: 8px;
+  margin-top: 2px;
+  border-left: 1px dashed var(--border-soft);
+  margin-left: 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.folder-tree-children.collapsed {
+  display: none;
+}
+
+/* フォルダツリーアイテム状態（管理中 / 未管理 / 除外） - Hinomaru Ink デザイン */
+.folder-tree-item.status-unmanaged {
+  color: var(--text-dim);
+}
+.folder-tree-item.status-unmanaged .folder-tree-icon {
+  opacity: 0.5;
+}
+.folder-tree-item.status-unmanaged:hover {
+  color: var(--text-muted);
+  background: var(--bg-hover);
+}
+
+.folder-tree-item.status-ignored {
+  color: var(--text-dim);
+  opacity: 0.65;
+}
+.folder-tree-item.status-ignored .folder-tree-icon {
+  opacity: 0.35;
+}
+.folder-tree-item.status-ignored .folder-tree-name {
+  text-decoration: line-through;
+  text-decoration-color: var(--border-soft);
+}
+
+/* フォルダ状態バッジ（未登録 / 除外） */
+.badge-folder-status {
+  font-size: 0.64rem;
+  padding: 0 4px;
+  border-radius: var(--radius-sm);
+  line-height: 1.4;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  border: 1px solid var(--border-soft);
+  background: transparent;
+  user-select: none;
+}
+.badge-folder-status.unmanaged {
+  color: var(--text-dim);
+}
+.badge-folder-status.ignored {
+  color: var(--text-dim);
+  border-color: rgba(225, 77, 42, 0.45);
+}
+
+/* 実フォルダ消失 / 未接続警告バッジ (Hinomaru Ink: 朱の控えめなアクセント) */
+.badge-folder-missing {
+  font-size: 0.64rem;
+  padding: 0 4px;
+  border-radius: var(--radius-sm);
+  line-height: 1.4;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  border: 1px solid rgba(225, 77, 42, 0.45);
+  color: var(--accent-primary);
+  background: var(--accent-subtle);
+  user-select: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.folder-tree-item.is-missing .folder-tree-icon {
+  filter: grayscale(0.5);
+  opacity: 0.7;
+}
+
+.folder-tree-item.is-missing .folder-tree-name {
+  color: var(--text-dim);
+}
+
+/* セクション見出し（ショートカット / 接続中のドライブ / 未接続） */
+.folder-tree-section {
+  list-style: none;
+  padding: 8px 8px 2px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  color: var(--text-dim, #8a8780);
+  user-select: none;
+}
+.folder-tree-section:first-child {
+  padding-top: 2px;
+}
+
+/* 接続中ドライブと未接続ボリュームの区切り線 */
+.folder-tree-separator {
+  list-style: none;
+  margin: 8px 4px 2px;
+  border-top: 1px solid var(--border-soft, rgba(128, 128, 128, 0.25));
+}
+
+/* ツリー内の補助表示（読み込み中・サブフォルダなし等） */
+.folder-tree-hint {
+  font-size: 0.72rem;
+  padding: 3px 8px;
+}
+
+/* ドライブ・ショートカット行 */
+.folder-tree-item.status-root .folder-tree-name {
+  font-weight: 600;
+}
+
+/* 管理中フォルダ: 墨色の太字で強調 */
+.folder-tree-item.status-managed .folder-tree-name {
+  font-weight: 600;
+  color: var(--text-main, #2a2926);
+}
+
+/* 未登録でも配下に管理フォルダがある行は、経路が辿れるよう通常色で表示 */
+.folder-tree-item.status-unmanaged.has-managed {
+  color: var(--text-muted, #5c5a55);
+}
+.folder-tree-item.status-unmanaged.has-managed .folder-tree-icon {
+  opacity: 1;
+}
+
+/* 配下に管理フォルダがあることを示す朱の小さな印 */
+.folder-managed-dot {
+  font-size: 0.55rem;
+  line-height: 1;
+  color: var(--accent-primary, #e14d2a);
+  flex-shrink: 0;
+  padding-right: 2px;
+}
+
+/* 未接続ボリューム（キャッシュのみ）配下は淡色表示 */
+.folder-tree-item.is-offline {
+  opacity: 0.72;
+}
+.folder-tree-item.is-offline:hover,
+.folder-tree-item.is-offline.active {
+  opacity: 1;
+}
+
+/* フォルダタブ: スキャン進捗表示カード */
+.folder-scan-progress-card {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: var(--bg-tertiary, rgba(255, 255, 255, 0.05));
+  border: 1px solid var(--accent-primary, #e14d2a);
+  border-radius: var(--radius-sm, 4px);
+  animation: fadeInPanel 0.2s ease;
+}
+.folder-scan-progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-main, #2a2926);
+  margin-bottom: 4px;
+}
+.folder-scan-progress-track {
+  width: 100%;
+  height: 4px;
+  background: rgba(128, 128, 128, 0.2);
+  border-radius: 2px;
+  overflow: hidden;
+  margin: 4px 0;
+}
+.folder-scan-progress-fill {
+  height: 100%;
+  background: var(--accent-primary, #e14d2a);
+  transition: width 0.2s ease;
+}
+.folder-scan-progress-fill.indeterminate {
+  width: 50% !important;
+  animation: indeterminateBar 1.2s infinite ease-in-out;
+}
+@keyframes indeterminateBar {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(250%); }
+}
+.folder-scan-progress-current {
+  font-size: 0.68rem;
+  color: var(--text-dim, #8a8780);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* フォルダツリー内 インラインスキャン進捗バー (v2.02 視線移動ゼロ) */
+.folder-inline-scan-progress {
+  margin: 3px 6px 5px 22px;
+  padding: 6px 8px;
+  background: var(--bg-tertiary, rgba(225, 77, 42, 0.08));
+  border: 1px solid var(--accent-primary, #e14d2a);
+  border-radius: var(--radius-sm, 4px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  animation: inlineProgressFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-sizing: border-box;
+}
+
+@keyframes inlineProgressFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.folder-inline-progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--accent-primary, #e14d2a);
+  margin-bottom: 3px;
+}
+
+.folder-inline-progress-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.folder-inline-progress-count {
+  font-size: 0.68rem;
+  color: var(--text-muted, #7a766e);
+}
+
+.folder-inline-progress-track {
+  width: 100%;
+  height: 4px;
+  background: rgba(128, 128, 128, 0.2);
+  border-radius: 2px;
+  overflow: hidden;
+  margin: 3px 0;
+}
+
+.folder-inline-progress-fill {
+  height: 100%;
+  background: var(--accent-primary, #e14d2a);
+  transition: width 0.2s ease;
+}
+
+.folder-inline-progress-fill.indeterminate {
+  width: 50% !important;
+  animation: indeterminateBar 1.2s infinite ease-in-out;
+}
+
+.folder-inline-progress-filename {
+  font-size: 0.65rem;
+  color: var(--text-dim, #8a8780);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+
+/* スキャン対象フォルダ項目のアクティブ装飾 */
+.folder-tree-item.is-scanning-target {
+  background: rgba(225, 77, 42, 0.12) !important;
+  border-left: 3px solid var(--accent-primary, #e14d2a) !important;
+}
+
+.folder-tree-item.is-scanning-target .folder-tree-icon {
+  display: inline-block;
+  animation: scanIconPulse 1.2s ease-in-out infinite;
+}
+
+@keyframes scanIconPulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.22); }
+  100% { transform: scale(1); }
+}
+
+[data-theme="sumi"] .folder-inline-scan-progress {
+  background: rgba(35, 41, 52, 0.95);
+  border-color: var(--accent-primary, #e14d2a);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+}
+
+[data-theme="sumi"] .folder-inline-progress-count {
+  color: #94a3b8;
+}
+
+[data-theme="sumi"] .folder-inline-progress-filename {
+  color: #94a3b8;
+}
+
+/* フォルダタブ: 最下部パス直接入力バー */
+.folder-path-input-bar {
+  display: flex;
+  gap: 4px;
+  padding: 8px 0 2px;
+  margin-top: 10px;
+  border-top: 1px solid var(--border-soft, rgba(128, 128, 128, 0.2));
+  position: sticky;
+  bottom: -16px;
+  background: var(--bg-secondary, #fcfbf9);
+  z-index: 10;
+}
+.folder-path-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.74rem;
+  padding: 4px 8px;
+  background: var(--bg-primary, rgba(0, 0, 0, 0.05));
+  border: 1px solid var(--border-soft, rgba(128, 128, 128, 0.25));
+  border-radius: var(--radius-sm, 4px);
+  color: var(--text-main, #2a2926);
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+.folder-path-input:focus {
+  border-color: var(--accent-primary, #e14d2a);
+}
+.folder-path-scan-btn {
+  padding: 0 10px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  background: var(--accent-primary, #e14d2a);
+  color: #ffffff;
+  border: none;
+  border-radius: var(--radius-sm, 4px);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--transition-fast);
+}
+.folder-path-scan-btn:hover {
+  background: var(--accent-primary-hover, #c43818);
+}
+.folder-path-scan-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* AI自動タグトグルボタンのアクティブ状態 */
+#folderAutoAiToggleBtn.active {
+  background: var(--accent-subtle, rgba(225, 77, 42, 0.12)) !important;
+  color: var(--accent-primary, #e14d2a) !important;
+  border-color: var(--accent-primary, #e14d2a) !important;
+  font-weight: 600;
+}
+
+/* フォルダコンテキストメニュー固有スタイル */
+.folder-context-menu {
+  min-width: 235px;
+}
+.folder-context-header-text {
+  display: block;
+  max-width: 215px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.context-menu-item.disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* メインエリア 未接続フォルダ警告バナー (Hinomaru Ink) */
+.folder-warning-banner {
+  margin: 10px 18px 4px 18px;
+  padding: 10px 16px;
+  background: var(--accent-subtle, rgba(225, 77, 42, 0.08));
+  border: 1px solid rgba(225, 77, 42, 0.35);
+  border-radius: var(--radius-md, 8px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  animation: fadeInBanner 0.25s ease-out;
+}
+
+@keyframes fadeInBanner {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.warning-banner-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.warning-banner-icon {
+  font-size: 1.35rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.warning-banner-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.warning-banner-title {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--accent-primary, #e14d2a);
+  letter-spacing: 0.2px;
+}
+
+.warning-banner-desc {
+  font-size: 0.78rem;
+  color: var(--text-dim, #888);
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.warning-banner-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--accent-primary, #e14d2a);
+  background: rgba(225, 77, 42, 0.12);
+  border: 1px solid rgba(225, 77, 42, 0.4);
+  border-radius: var(--radius-sm, 6px);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.18s ease;
+}
+
+.warning-banner-btn:hover {
+  background: var(--accent-primary, #e14d2a);
+  color: #fff;
+  border-color: var(--accent-primary, #e14d2a);
+}
+
+
+/* ==========================================================================
+   サイドバー下部 ファイル名検索ボックス
+   ========================================================================== */
+.sidebar-search-section {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-color);
+}
+
+.sidebar-search-box {
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.sidebar-search-box .search-icon {
+  position: absolute;
+  left: 10px;
+  width: 15px;
+  height: 15px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.sidebar-search-box input {
+  width: 100%;
+  height: 34px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 0 30px 0 32px;
+  color: var(--text-main);
+  font-size: 0.82rem;
+  transition: var(--transition-fast);
+}
+
+.sidebar-search-box input:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+  background: var(--bg-secondary);
+}
+
+.sidebar-search-box .clear-search-btn {
+  position: absolute;
+  right: 8px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.sidebar-search-box .clear-search-btn:hover {
+  color: var(--text-main);
+}
+
+/* ==========================================================================
+   タグ（アルバム）アコーディオン ＆ 3ステートタグピル
+   ========================================================================== */
+.accordion-header {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast);
+}
+
+.accordion-header:hover {
+  background: var(--bg-tertiary);
+}
+
+.accordion-title-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.accordion-arrow {
+  font-size: 0.65rem;
+  transition: transform var(--transition-fast);
+  color: var(--text-muted);
+}
+
+.accordion-section.collapsed .accordion-arrow {
+  transform: rotate(-90deg);
+}
+
+.accordion-section.collapsed .accordion-body {
+  display: none;
+}
+
+.btn-mini {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.btn-mini:hover {
+  background: var(--accent-primary);
+  color: #0b1329;
+  border-color: var(--accent-primary);
+}
+
+.inline-tag-create {
+  display: flex;
+  gap: 6px;
+  padding: 6px 8px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: var(--radius-sm);
+  margin-bottom: 8px;
+}
+
+.inline-tag-create input {
+  flex: 1;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 0.78rem;
+  color: var(--text-main);
+  outline: none;
+}
+
+.btn-xs {
+  padding: 2px 8px;
+  font-size: 0.72rem;
+}
+
+.tag-filter-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 0.65rem;
+  color: var(--text-dim);
+  padding: 4px 6px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  margin-bottom: 6px;
+}
+
+.tag-filter-hint-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.tag-sort-count-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 7px;
+  font-size: 0.66rem;
+  font-weight: 600;
+  color: var(--text-muted, #94a3b8);
+  background: var(--bg-tertiary, rgba(148, 163, 184, 0.12));
+  border: 1px solid var(--border-color, rgba(148, 163, 184, 0.25));
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+  transition: all 0.15s ease;
+}
+
+.tag-sort-count-toggle-btn:hover {
+  color: var(--text-main, #eceae4);
+  border-color: var(--accent-primary, #e14d2a);
+}
+
+.tag-sort-count-toggle-btn.active {
+  color: #ffffff;
+  background: var(--accent-primary, #e14d2a);
+  border-color: var(--accent-primary, #e14d2a);
+  box-shadow: 0 1px 4px rgba(225, 77, 42, 0.35);
+}
+
+.inspector-open-tag-editor-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 7px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-muted, #94a3b8);
+  background: var(--bg-tertiary, rgba(148, 163, 184, 0.12));
+  border: 1px solid var(--border-color, rgba(148, 163, 184, 0.25));
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.inspector-open-tag-editor-btn:hover {
+  color: var(--accent-primary, #e14d2a);
+  border-color: var(--accent-primary, #e14d2a);
+  background: var(--accent-subtle, rgba(225, 77, 42, 0.08));
+}
+
+.clear-tags-btn {
+  background: none;
+  border: none;
+  color: var(--accent-primary);
+  font-size: 0.65rem;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+/* 3ステート階層タグツリー一覧 */
+.tag-pill-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.tag-tree-node {
+  display: flex;
+  flex-direction: column;
+}
+
+.tag-pill-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  border: 1px solid transparent;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  position: relative;
+}
+
+.tag-pill-item:hover {
+  background: var(--bg-hover);
+  color: var(--text-main);
+}
+
+.tag-pill-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  flex: 1;
+}
+
+/* ツリー展開・折りたたみ矢印 */
+.tree-toggle-btn {
+  font-size: 0.6rem;
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: transform var(--transition-fast);
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.tree-toggle-btn:hover {
+  color: var(--text-main);
+}
+
+.tree-toggle-btn.collapsed {
+  transform: rotate(-90deg);
+}
+
+.tree-toggle-spacer {
+  width: 14px;
+  flex-shrink: 0;
+}
+
+.tag-state-icon {
+  font-weight: 700;
+  font-size: 0.82rem;
+  width: 14px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.tag-name-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tag-pill-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.tag-pill-count {
+  font-size: 0.68rem;
+  color: var(--text-dim);
+  background: rgba(0, 0, 0, 0.3);
+  padding: 1px 6px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.tag-delete-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm, 4px);
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+  transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease, transform 0.1s ease;
+  user-select: none;
+}
+
+.tag-pill-item:hover .tag-delete-btn {
+  opacity: 0.65;
+  pointer-events: auto;
+  visibility: visible;
+}
+
+.tag-delete-btn:hover {
+  opacity: 1 !important;
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.18);
+}
+
+.tag-delete-btn:active {
+  transform: scale(0.92);
+}
+
+.tag-rename-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm, 4px);
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+  transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease, transform 0.1s ease;
+  user-select: none;
+}
+
+.tag-pill-item:hover .tag-rename-btn {
+  opacity: 0.65;
+  pointer-events: auto;
+  visibility: visible;
+}
+
+.tag-rename-btn:hover {
+  opacity: 1 !important;
+  color: #60a5fa;
+  background: rgba(96, 165, 250, 0.18);
+}
+
+.tag-rename-btn:active {
+  transform: scale(0.92);
+}
+
+/* ==========================================================================
+   カラータグ パレットバー (最上部エキスパンダ) ＆ カラースウォッチ
+   ========================================================================== */
+.color-palette-section {
+  margin: 0 0 8px 0;
+  padding: 0;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md, 4px);
+  overflow: hidden;
+  transition: border-color var(--transition-fast, 0.15s ease);
+}
+
+.color-palette-section:hover {
+  border-color: var(--border-color, #4b5563);
+}
+
+.color-palette-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--transition-fast, 0.15s ease), color var(--transition-fast, 0.15s ease);
+}
+
+.color-palette-header:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+}
+
+[data-theme="paper"] .color-palette-header:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.color-palette-header-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.color-palette-arrow {
+  font-size: 0.60rem;
+  color: var(--text-muted);
+  transition: transform var(--transition-fast, 0.15s ease);
+  display: inline-block;
+  line-height: 1;
+}
+
+.color-palette-section.is-open .color-palette-arrow {
+  transform: rotate(90deg);
+}
+
+.color-palette-section.is-open .color-palette-header {
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.color-palette-body {
+  padding: 8px;
+}
+
+.color-palette-sub {
+  font-size: 0.68rem;
+  color: var(--accent-primary);
+  font-weight: 600;
+}
+
+.color-swatch-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+}
+
+.color-swatch-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 2px;
+  min-height: 40px;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease, outline 0.15s ease;
+  position: relative;
+  user-select: none;
+}
+
+.color-swatch-chip:hover {
+  transform: translateY(-2px) scale(1.03);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.45);
+  filter: brightness(1.08);
+  z-index: 2;
+}
+
+.color-swatch-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  line-height: 1.1;
+  text-align: center;
+}
+
+.color-swatch-count {
+  font-size: 0.60rem;
+  font-weight: 600;
+  opacity: 0.9;
+  line-height: 1;
+  margin-top: 2px;
+  text-align: center;
+}
+
+/* 3ステート表現 (+ 含む, - 除外) */
+.color-swatch-chip.state-include {
+  outline: 2px solid #10b981;
+  outline-offset: 1px;
+  box-shadow: 0 0 0 2px #10b981, 0 3px 8px rgba(16, 185, 129, 0.6);
+  z-index: 3;
+}
+.color-swatch-chip.state-include::after {
+  content: "+";
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 15px;
+  height: 15px;
+  background: #10b981;
+  color: #ffffff;
+  border: 1.5px solid #ffffff;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+
+.color-swatch-chip.state-exclude {
+  outline: 2px solid #ef4444;
+  outline-offset: 1px;
+  box-shadow: 0 0 0 2px #ef4444, 0 3px 8px rgba(239, 68, 68, 0.6);
+  filter: grayscale(40%) brightness(0.85);
+  z-index: 3;
+}
+.color-swatch-chip.state-exclude::after {
+  content: "−";
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 15px;
+  height: 15px;
+  background: #ef4444;
+  color: #ffffff;
+  border: 1.5px solid #ffffff;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+
+/* タグ名テキスト検索ボックス */
+.tag-search-box {
+  margin: 6px 0 8px 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.tag-search-input {
+  width: 100%;
+  padding: 5px 28px 5px 9px;
+  font-size: 0.76rem;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm, 2px);
+  color: var(--text-main);
+  outline: none;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+
+.tag-search-input:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+  background: var(--bg-primary);
+}
+
+.tag-search-input::placeholder {
+  color: var(--text-dim, #64748b);
+  font-size: 0.72rem;
+}
+
+.tag-search-clear-btn {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--text-dim, #64748b);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 2px 4px;
+  line-height: 1;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s ease;
+}
+
+.tag-search-clear-btn:hover {
+  color: var(--text-primary, #ffffff);
+}
+
+/* ツリー一覧・カード・インスペクターのカラープレビュードット */
+.tag-color-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  display: inline-block;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+
+.tag-rename-input {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(96, 165, 250, 0.5);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 0.78rem;
+  padding: 1px 5px;
+  outline: none;
+  width: 80px;
+  font-family: inherit;
+}
+
+.tag-rename-input:focus {
+  border-color: #60a5fa;
+  box-shadow: 0 0 6px rgba(96, 165, 250, 0.3);
+}
+
+/* 階層インデント用コンテナ */
+.tag-tree-children {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-left: 14px;
+  padding-left: 6px;
+  border-left: 1px dashed rgba(255, 255, 255, 0.1);
+  margin-top: 3px;
+}
+
+.tag-tree-children.hidden {
+  display: none;
+}
+
+/* 状態①: 含む (+) - エメラルドグリーン (翠) */
+.tag-pill-item.state-include {
+  background: var(--tag-include-bg, rgba(16, 185, 129, 0.18));
+  border-color: var(--tag-include-border, #10b981);
+  color: var(--tag-include-text, #34d399);
+  font-weight: 600;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.25);
+}
+
+.tag-pill-item.state-include .tag-state-icon {
+  color: var(--tag-include-icon, #34d399);
+}
+
+.tag-pill-item.state-include .tag-pill-count {
+  background: var(--tag-include-badge-bg, #059669);
+  color: var(--tag-include-badge-text, #ffffff);
+  font-weight: 700;
+}
+
+/* 状態②: 除外・排他 (-) - クリムゾンレッド (緋) ＆ 打ち消し線 */
+.tag-pill-item.state-exclude {
+  background: var(--tag-exclude-bg, rgba(239, 68, 68, 0.18));
+  border-color: var(--tag-exclude-border, #ef4444);
+  color: var(--tag-exclude-text, #f87171);
+  font-weight: 600;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.25);
+}
+
+.tag-pill-item.state-exclude .tag-name-text {
+  text-decoration: line-through;
+  opacity: 0.9;
+}
+
+.tag-pill-item.state-exclude .tag-state-icon {
+  color: var(--tag-exclude-icon, #ef4444);
+  font-size: 1.1rem;
+}
+
+.tag-pill-item.state-exclude .tag-pill-count {
+  background: var(--tag-exclude-badge-bg, #dc2626);
+  color: var(--tag-exclude-badge-text, #ffffff);
+  font-weight: 700;
+}
+
+/* カード内のタグピル */
+.card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 2px;
+}
+
+.card-tag-badge {
+  font-size: 0.65rem;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-muted);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+/* ライトボックス内のタグ管理 */
+.lightbox-tags-section {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-color);
+}
+
+.lightbox-tags-section h4 {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.photo-tags-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+  min-height: 26px;
+}
+
+.photo-tag-chip {
+  background: rgba(56, 189, 248, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  color: var(--accent-primary);
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.photo-tag-chip .remove-chip-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.photo-tag-chip .remove-chip-btn:hover {
+  color: #ef4444;
+}
+
+.add-tag-form {
+  display: flex;
+  gap: 6px;
+}
+
+.add-tag-form input {
+  flex: 1;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 5px 8px;
+  color: var(--text-main);
+  font-size: 0.8rem;
+  outline: none;
+}
+
+.empty-hint {
+  padding: 8px 10px;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+.sidebar-footer {
+  margin-top: auto;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.2);
+  border-top: 1px solid var(--border-color);
+}
+
+.shortcut-tip {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+.shortcut-tip code {
+  background: var(--bg-tertiary);
+  padding: 2px 5px;
+  border-radius: 3px;
+  font-size: 0.7rem;
+  color: var(--accent-primary);
+  border: 1px solid var(--border-color);
+}
+

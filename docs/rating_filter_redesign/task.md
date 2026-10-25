@@ -1,0 +1,21 @@
+# タスクリスト: 評価フィルタ（優・良・可・棄）の6パターン動作への再設計
+
+- [x] 実装計画の作成 (`docs/rating_filter_redesign/implementation_plan.md`) <!-- id: 0 -->
+- [x] フロントエンド 状態・ロジックの改修 (`frontend/js/app.js`) <!-- id: 1 -->
+  - [x] `state.ratingFilter` の初期値を `[0, 1, 2]` (優・良・可: 棄以外すべて) に設定
+  - [x] 6パターン排他＆ORロジック (`toggleRatingFilter`) の実装
+  - [x] 評価トグルクリックイベントの接続
+  - [x] `fetchPhotos()` のクエリパラメータ生成処理の更新
+  - [x] `updateFilterChips()` (適用中フィルタチップ表示・個別解除) の更新
+  - [x] `resetAllFilters()` での初期値復帰処理の更新
+- [x] フロントエンド HTMLの初期状態・ラベル更新 (`frontend/index.html`) <!-- id: 2 -->
+  - [x] サイドバーの評価トグルの初期 active クラス (`優 active`, `良 active`, `可 active`, `棄 非active`)
+  - [x] ヘッダー側の評価トグルの初期 active クラス
+  - [x] 説明テキスト・バッジの更新 (6パターン動作に適合)
+- [x] サーバー側 API デフォルト値の整合 (`server/database.py`) <!-- id: 3 -->
+  - [x] ratings パラメータ未指定時のデフォルト動作を `[0, 1, 2]` に整合
+- [x] 動作確認・テスト <!-- id: 4 -->
+  - [x] 6パターン（デフォルト、優と良、優だけ、良だけ、可だけ、棄だけ）の全24通り遷移テスト
+  - [x] ヘッダーとサイドバーのトグル同期確認
+  - [x] フィルタチップ・リセットボタンの連動確認
+- [x] 修正内容確認ドキュメント (`docs/rating_filter_redesign/walkthrough.md`) の作成 <!-- id: 5 -->

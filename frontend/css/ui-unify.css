@@ -1,0 +1,565 @@
+/* ==========================================================================
+   Photo Manager - UI Shape & Interaction Unification System (ui-unify.css)
+   --------------------------------------------------------------------------
+   【視覚と操作の統一デザインルール】
+   1. 形状（角丸）による役割の完全分離:
+      - 器・構造枠・セレクト外枠 : 真四角 (border-radius: 2px)
+      - クリッカブル（押せる操作）: 角丸四角 (border-radius: 5px)
+      - 表示専用（情報バッジ・ピル）: 長丸カプセル (border-radius: 999px / cursor: default)
+
+   2. 囲み方と色による操作タイプの完全分離:
+      - A. 単発アクション : 独立した角丸四角ボタン。常時は無彩色、ホバー時のみ浮き上がる
+      - B. ON/OFF トグル  : 隙間(gap)を空けて独立配置された角丸四角ボタン。ONの時だけ色付き点灯
+      - C. 択一セレクト   : 外周を「真四角の凹み枠(2px)」で囲み、内部の選択肢を密着配置。選択中の1つだけ点灯
+   ========================================================================== */
+
+:root {
+  --ui-radius-frame: 2px;
+  --ui-radius-click: 5px;
+  --ui-radius-click-inner: 4px;
+  --ui-radius-pill: 999px;
+}
+
+/* ==========================================================================
+   0. 器・構造枠・フッターメニュー・モーダル外枠 ➜ すべて「真四角 (2px)」に統一
+      （従来カプセル型30px/999pxだった下部フローティングバーやスライドショーバー等も含む）
+   ========================================================================== */
+.selection-floating-bar,
+.slideshow-controls,
+.lightbox-bracket-bar,
+.floating-popover,
+.context-menu,
+.context-submenu,
+.modal-card,
+.image-adjust-dialog,
+.hist-hud-floating,
+.inspector-hist-card,
+.inspector-tabs-card {
+  border-radius: var(--ui-radius-frame, 2px) !important;
+}
+
+/* ==========================================================================
+   1. 表示専用バッジ・ラベル類 ➜ すべて「長丸カプセル (999px)」に統一
+      （クリックできない純粋な情報表示であることを形で明示）
+   ========================================================================== */
+.photos-count-badge,
+.nav-count,
+.folder-count-badge,
+.location-node-count,
+.slideshow-counter,
+.tag-pill-count,
+.badge-sub,
+.badge-info,
+.badge-warning,
+.badge-hint,
+.badge-subfolder-count,
+.raw-badge-indicator,
+.meta-exposure-tag,
+.compare-exif-pill,
+.compare-slot-badge,
+.compare-source-badge,
+.selection-badge,
+.lightbox-zoom-badge,
+.lightbox-offline-pill,
+.ai-tag-pill-badge,
+.hist-stat-pill {
+  border-radius: var(--ui-radius-pill, 999px) !important;
+  cursor: default;
+}
+
+/* EXIF露出タグ・比較ピルの余白をカプセル形状に合わせて微調整 */
+.meta-exposure-tag {
+  padding: 1px 8px;
+}
+
+.compare-exif-pill {
+  padding: 2px 8px;
+}
+
+.badge-sub,
+.raw-badge-indicator {
+  padding: 1px 8px;
+}
+
+.nav-count {
+  padding: 1px 7px;
+  min-width: 22px;
+  text-align: center;
+}
+
+/* ==========================================================================
+   2. クリッカブル（押せるボタン・チップ類）➜ すべて「角丸四角 (5px)」に統一
+      （従来カプセル型だった解除ボタンやフィルタチップ等も角丸四角に統一）
+   ========================================================================== */
+.btn,
+.btn-sm,
+.btn-xs,
+.btn-mini-text,
+.btn-sm-action,
+.btn-xs-action,
+.btn-icon-only,
+.btn-icon-toggle,
+.btn-theme-toggle,
+.icon-action-btn,
+.compare-tool-btn,
+.compare-zoom-readout,
+.preset-save-btn,
+.warning-banner-btn,
+.slideshow-btn,
+.adjust-step-btn,
+.hist-crop-toggle-btn,
+.filter-chip,
+.clear-filter-pill-btn,
+.tag-pill-item,
+.bracket-pill,
+.photo-tag-chip,
+.inspector-tags-list .tag-badge,
+.preset-chip {
+  border-radius: var(--ui-radius-click, 5px) !important;
+}
+
+/* 適用中フィルタチップ・すべて解除ボタン：押せる操作パーツとしての角丸四角スタイル */
+.filter-chip {
+  padding: 3px 8px;
+  cursor: pointer;
+}
+
+.clear-filter-pill-btn {
+  padding: 3px 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+}
+
+.clear-filter-pill-btn:hover {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: #ffffff;
+}
+
+/* 単発アクションなのに常時色が付いていたボタン（RAWを開く等）を通常時は落ち着いた色へ統一 */
+.btn-accent {
+  background: var(--bg-tertiary);
+  color: var(--text-main);
+  border: 1px solid var(--border-color);
+  border-radius: var(--ui-radius-click, 5px) !important;
+}
+
+.btn-accent:hover {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: #ffffff;
+}
+
+/* ==========================================================================
+   3. タイプB：ON/OFF トグル（複数同時ON可能）
+      ➜ 外枠で囲まず、隙間(gap)を空けて独立した角丸四角ボタンとして並べる
+   ========================================================================== */
+
+/* 一覧画面ヘッダー「評価フィルタ: [優] [良] [可] [棄]」（複数ON/OFF可能） */
+.rating-filter-toggles {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px !important;
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+}
+
+.rating-filter-toggles .rating-toggle {
+  border-radius: var(--ui-radius-click, 5px) !important;
+  padding: 3px 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-soft);
+  color: var(--text-dim);
+  opacity: 0.65;
+  font-size: 0.76rem;
+  font-weight: 700;
+  transition: all var(--transition-fast);
+}
+
+.rating-filter-toggles .rating-toggle:hover {
+  opacity: 0.95;
+  border-color: var(--text-muted);
+  background: var(--bg-hover);
+}
+
+.rating-filter-toggles .rating-toggle.active {
+  opacity: 1;
+  box-shadow: inset 0 0 0 1px currentColor;
+}
+
+/* 2枚比較ヘッダー「同期: [🖐️ ビュー] [🔍 ズーム]」（両方ON可能な独立トグル） */
+.compare-sync-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: transparent !important;
+  border: none !important;
+  padding: 0 2px !important;
+}
+
+/* ライトボックス上部バー・アクションボタン・左右矢印（和紙モードでも縁取りがくっきり見えるようテーマ変数で統一） */
+.lightbox-header {
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.lightbox-actions .icon-action-btn {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+}
+
+.lightbox-actions .icon-action-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent-primary, #e14d2a);
+  color: var(--accent-primary, #e14d2a);
+}
+
+/* ライトボックス上部のトグル型アイコンボタン（ℹ️ EXIF / 📊 ヒストグラム）のON点灯統一 */
+.lightbox-actions .icon-action-btn.active {
+  background: var(--accent-subtle, rgba(225, 77, 42, 0.18));
+  border-color: var(--accent-primary, #e14d2a);
+  color: var(--accent-primary, #e14d2a);
+}
+
+.lightbox-body .nav-arrow {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  border-radius: var(--ui-radius-click, 5px) !important;
+  opacity: 0.88;
+}
+
+.lightbox-body .nav-arrow:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent-primary, #e14d2a);
+  color: var(--accent-primary, #e14d2a);
+  opacity: 1;
+}
+
+/* 画像調整モーダル外枠・比率セレクト枠の和紙/夜墨テーマ整合 */
+.image-adjust-dialog {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+}
+
+.image-adjust-header,
+.image-adjust-fine-bar,
+.image-adjust-toolbar {
+  background: var(--bg-secondary);
+  border-color: var(--border-color);
+}
+
+.adjust-aspect-group {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+}
+
+.adjust-aspect-btn.active {
+  background: var(--accent-primary, #e14d2a);
+  color: #ffffff;
+}
+
+/* ==========================================================================
+   4. タイプC：択一セレクト（複数の中から1つだけ選ぶラジオ型セグメント）
+      ➜ 外周を「真四角の凹み枠 (2px)」で囲み、中の選択肢(4px)を密着配置する
+   ========================================================================== */
+
+/* すべての択一セレクト容器（外枠：真四角 2px） */
+.view-mode-group,
+.tag-type-segmented-control,
+.adjust-aspect-group,
+.slideshow-speed-group,
+.hist-mode-switch,
+.inspector-rating-btns,
+.batch-rate-buttons,
+#lightboxRatingWidget.rating-widget,
+.compare-rate-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px !important;
+  padding: 2px !important;
+  border-radius: var(--ui-radius-frame, 2px) !important;
+}
+
+/* 択一セレクト内部のボタン（内枠：角丸四角 4px） */
+.view-mode-group .mode-btn,
+.tag-type-segmented-control .tag-segment-btn,
+.adjust-aspect-group .adjust-aspect-btn,
+.slideshow-speed-group .slideshow-speed-btn,
+.hist-mode-switch .hist-mode-btn,
+.inspector-rating-btns .rating-btn,
+.batch-rate-buttons .btn-rate,
+.batch-rate-buttons .btn-rate-discard,
+#lightboxRatingWidget .rating-btn,
+.compare-rate-group .compare-rate-btn {
+  border-radius: var(--ui-radius-click-inner, 4px) !important;
+}
+
+/* --------------------------------------------------------------------------
+   写真の評価セレクタ [優 | 良 | 可 | 棄] の4箇所完全統一
+   （右インスペクタ単体 / 右インスペクタ一括 / ライトボックス / 2枚比較）
+   -------------------------------------------------------------------------- */
+
+/* ① 右インスペクタ（単体 & 一括）の評価セレクト枠 */
+.inspector-rating-btns,
+.batch-rate-buttons {
+  display: grid !important;
+  grid-template-columns: repeat(4, 1fr);
+  width: 100%;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+}
+
+.inspector-rating-btns .rating-btn,
+.batch-rate-buttons .btn {
+  margin: 0 !important;
+  padding: 5px 0 !important;
+  font-size: 0.86rem !important;
+  font-weight: 700 !important;
+  text-align: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  transform: none !important;
+  text-shadow: none !important;
+}
+
+.inspector-rating-btns .rating-btn:hover,
+.batch-rate-buttons .btn:hover {
+  background: rgba(128, 128, 128, 0.12);
+}
+
+.inspector-rating-btns .rating-btn-excellent.active {
+  background: rgba(212, 160, 23, 0.22);
+  border-color: var(--rating-excellent);
+  color: var(--rating-excellent);
+}
+
+.inspector-rating-btns .rating-btn-good.active {
+  background: rgba(225, 77, 42, 0.22);
+  border-color: var(--rating-good);
+  color: var(--rating-good);
+}
+
+.inspector-rating-btns .rating-btn-normal.active {
+  background: var(--bg-secondary);
+  border-color: var(--border-soft);
+  color: var(--text-main);
+}
+
+.inspector-rating-btns .rating-btn-discard.active {
+  background: rgba(107, 104, 96, 0.25);
+  border-color: var(--rating-discard);
+  color: var(--rating-discard);
+}
+
+/* ② ライトボックス上部の評価セレクト枠 (#lightboxRatingWidget：和紙/夜墨両対応) */
+#lightboxRatingWidget.rating-widget {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+}
+
+#lightboxRatingWidget .rating-btn {
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  color: var(--text-muted);
+  border: 1px solid transparent;
+  background: transparent;
+  user-select: none;
+}
+
+#lightboxRatingWidget .rating-btn:hover {
+  color: var(--text-main);
+  background: var(--bg-hover);
+}
+
+#lightboxRatingWidget .rating-btn-excellent.active {
+  background: rgba(212, 160, 23, 0.22);
+  border-color: var(--rating-excellent);
+  color: var(--rating-excellent);
+}
+
+#lightboxRatingWidget .rating-btn-good.active {
+  background: rgba(225, 77, 42, 0.22);
+  border-color: var(--rating-good);
+  color: var(--rating-good);
+}
+
+#lightboxRatingWidget .rating-btn-normal.active {
+  background: var(--bg-secondary);
+  border-color: var(--border-color);
+  color: var(--text-main);
+}
+
+#lightboxRatingWidget .rating-btn-discard.active {
+  background: rgba(107, 104, 96, 0.25);
+  border-color: var(--rating-discard);
+  color: var(--rating-discard);
+}
+
+/* ③ 2枚比較画面の評価セレクト枠 (.compare-rate-group) */
+.compare-rate-group {
+  background: rgba(0, 0, 0, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+/* ==========================================================================
+   5. 和紙モード / 夜墨モード 色設定の補完 ＆ トースト通知の視認性修正
+      - style.css で .toast-success / .toast-warning / .toast-error にハードコードされていた
+        暗色背景 rgba(15, 23, 42, 0.88) により、和紙モードで墨色テキスト (#2a2926) が
+        黒背景に沈んで見えなくなる問題を解消。
+      - 未定義だった派生CSS変数 (--bg-card, --bg-surface, --text-primary 等) を
+        テーマ変数へ正しくマッピングし、ダーク色フォールバック漏れを防止。
+   ========================================================================== */
+
+:root,
+[data-theme="paper"] {
+  --bg-card: var(--bg-secondary);
+  --bg-surface: var(--bg-secondary);
+  --text-primary: var(--text-main);
+  --text-secondary: var(--text-muted);
+  --text-normal: var(--text-main);
+  --border-subtle: var(--border-soft);
+}
+
+[data-theme="sumi"] {
+  --bg-card: var(--bg-secondary);
+  --bg-surface: var(--bg-secondary);
+  --text-primary: var(--text-main);
+  --text-secondary: var(--text-muted);
+  --text-normal: var(--text-main);
+  --border-subtle: var(--border-soft);
+}
+
+/* トースト通知（情報提示用の構造枠 ＝ 真四角 2px ＆ テーマ連動背景＋左アクセントライン） */
+.toast-message {
+  border-radius: var(--ui-radius-frame, 2px) !important;
+  background: var(--bg-secondary) !important;
+  color: var(--text-main) !important;
+  border: 1px solid var(--border-color) !important;
+  border-left: 4px solid var(--accent-primary, #e14d2a) !important;
+  box-shadow: var(--shadow-lg) !important;
+  font-weight: 600;
+}
+
+.toast-message.toast-success {
+  background: var(--bg-secondary) !important;
+  color: var(--text-main) !important;
+  border-color: var(--border-color) !important;
+  border-left: 4px solid #16a34a !important;
+}
+
+.toast-message.toast-warning {
+  background: var(--bg-secondary) !important;
+  color: var(--text-main) !important;
+  border-color: var(--border-color) !important;
+  border-left: 4px solid #d97706 !important;
+}
+
+.toast-message.toast-error {
+  background: var(--bg-secondary) !important;
+  color: var(--text-main) !important;
+  border-color: var(--border-color) !important;
+  border-left: 4px solid #dc2626 !important;
+}
+
+/* ==========================================================================
+   6. v2.38 新設UI（ラボ・47都道府県制覇マップ・カメラ&レンズツリー）の形状＆操作タイプ統一
+   ========================================================================== */
+
+/* ① 器・構造枠（真四角 2px） */
+.location-map-modal-card,
+.lab-karte-modal-card,
+.lab-otd-box,
+.lab-stat-box,
+.whitemap-svg-box,
+.whitemap-detail-box,
+.whitemap-region-box,
+.karte-summary-card,
+.karte-rank-card,
+.karte-chart-card,
+.trajectory-stat-bar,
+.camera-lens-sublist {
+  border-radius: var(--ui-radius-frame, 2px) !important;
+}
+
+/* ② 表示専用ピル・件数バッジ（長丸カプセル 999px・非クリッカブル） */
+.camera-state-badge,
+.karte-hit-pill,
+.whitemap-rank-pill,
+.trajectory-spot-badge {
+  border-radius: var(--ui-radius-pill, 999px) !important;
+  cursor: default;
+}
+
+/* ③ クリッカブル操作要素（角丸四角 5px） */
+.lab-filter-btn,
+.camera-tree-item,
+.camera-lens-item,
+.camera-tree-expander,
+.whitemap-pref-cell,
+.whitemap-country-chip,
+.karte-filter-btn {
+  border-radius: var(--ui-radius-click, 5px) !important;
+}
+
+/* ④ 操作タイプB：ラボ抽出ON/OFFトグルボタン（独立配置・ON時のみ朱色点灯） */
+.lab-filter-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+}
+
+.lab-filter-btn {
+  background: var(--bg-tertiary, #303844);
+  border: 1px solid var(--border-color, #374151);
+  color: var(--text-muted, #9aa4b2);
+  font-weight: 600;
+  transition: all 0.14s ease;
+}
+
+.lab-filter-btn:hover {
+  color: var(--text-main, #eef1f5);
+  background: var(--bg-hover, #343d4b);
+  border-color: var(--text-muted, #9aa4b2);
+}
+
+.lab-filter-btn.active {
+  background: var(--accent-soft, rgba(225, 77, 42, 0.14)) !important;
+  border-color: var(--accent-primary, #e14d2a) !important;
+  color: var(--accent-primary, #e14d2a) !important;
+  font-weight: 700;
+  box-shadow: inset 0 0 0 1px rgba(225, 77, 42, 0.25);
+}
+
+/* ⑤ 操作タイプC：白地図の表示モード択一セレクト（外枠2px凹み枠 ＋ 内側4px密着ボタン） */
+.whitemap-mode-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px !important;
+  padding: 2px !important;
+  background: var(--bg-tertiary, #303844);
+  border: 1px solid var(--border-color, #374151);
+  border-radius: var(--ui-radius-frame, 2px) !important;
+}
+
+.whitemap-mode-group .whitemap-mode-btn {
+  border-radius: var(--ui-radius-click-inner, 4px) !important;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted, #9aa4b2);
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.whitemap-mode-group .whitemap-mode-btn.active {
+  background: var(--accent-primary, #e14d2a);
+  color: #ffffff;
+}

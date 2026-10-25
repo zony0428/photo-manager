@@ -1,0 +1,21 @@
+# タスクリスト: サムネイル取得・更新機能の実装 (v1.39)
+
+- [x] 実装計画の作成・確認 <!-- id: 0 -->
+- [x] バックエンド実装 <!-- id: 1 -->
+  - [x] `server/database/photos.py`: 写真一覧クエリで `has_thumbnail` フラグを返却するよう最適化 <!-- id: 2 -->
+  - [x] `server/app.py`: `POST /api/thumbnails/refresh` エンドポイントを実装 <!-- id: 3 -->
+  - [x] バックエンド動作確認（単体スクリプト等による検証） <!-- id: 4 -->
+- [x] フロントエンド実装 <!-- id: 5 -->
+  - [x] `frontend/index.html`: `#contextMenu` および `#selectionFloatingBar` にサムネイル取得・更新ボタンを追加 <!-- id: 6 -->
+  - [x] `frontend/css/style.css`: サムネイル更新中のローディングアニメーション（パルス/オーバーレイ）スタイルを追加 <!-- id: 7 -->
+  - [x] `frontend/js/common.js`: 要素参照（`contextMenuRefreshThumbItem`, `floatingRefreshThumbBtn` 等）を追加 <!-- id: 8 -->
+  - [x] `frontend/js/selection.js`: 右クリックおよびフローティングバーで動的に文言（取得 vs 更新）を切り替え、API呼び出しと画面反映（キャッシュバスター付きURL即時更新）を実装 <!-- id: 9 -->
+- [x] バージョン更新・マニュアル同期 <!-- id: 10 -->
+  - [x] `VERSION` を 1.39 に更新 <!-- id: 11 -->
+  - [x] `server/version.py` を 1.39 に更新 <!-- id: 12 -->
+  - [x] `frontend/index.html` 内の静的アセットクエリ文字列（`?v=1.39`）を更新 <!-- id: 13 -->
+  - [x] `MANUAL.md` に新機能の説明を追記 <!-- id: 14 -->
+  - [x] `frontend/index.html` の `#helpModal` に新機能の説明を追記 <!-- id: 15 -->
+- [x] 総合動作確認 & Walkthrough作成 <!-- id: 16 -->
+  - [x] サーバー起動・APIテスト・ブラウザ動作確認 <!-- id: 17 -->
+  - [x] `docs/thumbnail_refresh_action/walkthrough.md` を作成 <!-- id: 18 -->

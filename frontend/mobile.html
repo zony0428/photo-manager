@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="ja" data-theme="sumi">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' blob: data:; img-src 'self' http: https: blob: data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; connect-src 'self' http: https: data: blob:; object-src 'none'; base-uri 'none'; form-action 'self' http: https:;">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#16181b" id="mMetaThemeColor">
+  <title>Photo Manager Mobile</title>
+  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=2">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png?v=2">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png?v=2">
+  <link rel="manifest" href="/manifest_mobile.json?v=1">
+  <link rel="stylesheet" href="/css/mobile.css?v=2.30">
+  <!-- オフラインUSB library.db 直接読み込み用 WebAssembly SQLite (sql.js) -->
+  <script src="/vendor/sqljs/sql-wasm.js"></script>
+</head>
+<body>
+  <div class="m-app">
+    <!-- ==================== 1. 上部ヘッダー ==================== -->
+    <header class="m-header">
+      <div class="m-header-left">
+        <button id="mOpenDrawerBtn" class="m-icon-btn" title="検索・絞り込みドロワーを開く" aria-label="フィルタメニュー">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="3" y1="6" x2="21" y2="6"/>
+            <line x1="3" y1="12" x2="15" y2="12"/>
+            <line x1="3" y1="18" x2="18" y2="18"/>
+          </svg>
+          <span id="mFilterDot" class="m-filter-dot" style="display:none;"></span>
+        </button>
+
+        <div class="m-brand">
+          <span class="m-hinomaru-disc"></span>
+          <div class="m-brand-titles">
+            <div class="m-brand-main">PM <span>MOBILE</span></div>
+            <div class="m-brand-sub">
+              <span id="mModeBadge" class="m-mode-badge mode-checking">確認中...</span>
+              <span id="mPhotoCount" class="m-photo-count">0枚</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="m-header-right">
+        <!-- 和紙 / 夜墨 テーマ切替 -->
+        <button id="mThemeBtn" class="m-icon-btn" title="テーマ切替 (和紙 ⇄ 夜墨)">
+          <span id="mThemeIcon">🌙</span>
+        </button>
+
+        <!-- DB読込 & 差分同期モーダルボタン -->
+        <button id="mOpenDbModalBtn" class="m-btn m-btn-db" title="USBのlibrary.db読込 / 選別データの保存・同期">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <ellipse cx="12" cy="5" rx="9" ry="3"/>
+            <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
+            <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+          </svg>
+          <span>DB/同期</span>
+          <span id="mPendingBadge" class="m-pending-badge" style="display:none;">0</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- ==================== 2. クイック評価フィルタ & 表示切替バー ==================== -->
+    <div class="m-quick-bar">
+      <div class="m-quick-scroll">
+        <button class="m-pill active" data-rating="default" id="mRateDefaultBtn" title="優・良・可を表示（棄を隠す）">すべて(棄以外)</button>
+        <button class="m-pill m-pill-excellent" data-rating="2">★ 優</button>
+        <button class="m-pill m-pill-good" data-rating="1">● 良</button>
+        <button class="m-pill m-pill-normal" data-rating="0">○ 可</button>
+        <button class="m-pill m-pill-discard" data-rating="-1">✕ 棄</button>
+        <button class="m-pill" data-rating="all">全件(棄含む)</button>
+
+        <div class="m-quick-divider"></div>
+
+        <button id="mStackToggleBtn" class="m-pill active" title="連写・ブラケットのスタック集約表示">
+          🗂️ スタック
+        </button>
+        <button id="mGridColsBtn" class="m-pill" title="グリッドの列数を切り替え (2列 / 3列 / 4列)">
+          ⊞ 3列
+        </button>
+        <button id="mSelectModeBtn" class="m-pill" title="複数選択して一括評価・タグ付け">
+          ☑️ 選択
+        </button>
+      </div>
+    </div>
+
+    <!-- ==================== 3. 現在有効な絞り込みチップバー ==================== -->
+    <div id="mActiveFiltersBar" class="m-active-filters" style="display:none;"></div>
+
+    <!-- ==================== 4. メインスクロール領域 ==================== -->
+    <main id="mScrollContainer" class="m-main">
+      <!-- ローディング表示 -->
+      <div id="mLoadingState" class="m-center-card" style="display:none;">
+        <div class="m-spinner"></div>
+        <div id="mLoadingText" class="m-center-title">データベースを読み込み中...</div>
+        <div id="mLoadingSub" class="m-center-sub">しばらくお待ちください</div>
+      </div>
+
+      <!-- DB未接続時のウェルカムカード（USB library.db 選択ガイド） -->
+      <div id="mWelcomeCard" class="m-center-card" style="display:none;">
+        <div class="m-welcome-icon">🔌</div>
+        <h2 class="m-center-title">USBメモリ内の DB を開く</h2>
+        <p class="m-center-sub">
+          USBメモリ内の <code>cache/library.db</code> を選択するだけで、全サムネイルの高速閲覧・検索・評価選別が行えます。<br>
+          <small>※メモリ上へ一括ロードするため、読込中はDBを書き換えません。</small>
+        </p>
+        <div class="m-welcome-actions">
+          <button id="mWelcomeLoadDbBtn" class="m-btn m-btn-primary m-btn-large">
+            📂 cache/library.db を選択して開く
+          </button>
+        </div>
+      </div>
+
+      <!-- 空状態（該当写真0件） -->
+      <div id="mEmptyState" class="m-center-card" style="display:none;">
+        <div class="m-welcome-icon">📷</div>
+        <div class="m-center-title">条件に一致する写真がありません</div>
+        <div class="m-center-sub">絞り込み条件を変更するか、フィルタをリセットしてください。</div>
+        <button id="mEmptyResetFilterBtn" class="m-btn m-btn-secondary" style="margin-top:12px;">
+          フィルタをすべて解除
+        </button>
+      </div>
+
+      <!-- 写真サムネイルグリッド -->
+      <div id="mPhotoGrid" class="m-photo-grid cols-3"></div>
+    </main>
+
+    <!-- ==================== 5. 複数選択モード用 一括操作ボトムバー ==================== -->
+    <div id="mBatchBar" class="m-batch-bar" style="display:none;">
+      <div class="m-batch-top">
+        <span id="mBatchCountLabel" class="m-batch-count">0枚選択中</span>
+        <div class="m-batch-subactions">
+          <button id="mBatchSelectAllBtn" class="m-text-btn">全選択</button>
+          <button id="mBatchClearBtn" class="m-text-btn">選択解除</button>
+          <button id="mBatchExitBtn" class="m-text-btn">完了</button>
+        </div>
+      </div>
+      <div class="m-batch-buttons">
+        <button class="m-rate-btn rate-discard" data-batch-rate="-1">✕ 棄</button>
+        <button class="m-rate-btn rate-normal" data-batch-rate="0">○ 可</button>
+        <button class="m-rate-btn rate-good" data-batch-rate="1">● 良</button>
+        <button class="m-rate-btn rate-excellent" data-batch-rate="2">★ 優</button>
+        <button id="mBatchTagBtn" class="m-rate-btn rate-tag">🏷️ タグ</button>
+      </div>
+    </div>
+
+    <!-- ==================== 6. 左スライドイン 検索・フィルタドロワー ==================== -->
+    <div id="mDrawerOverlay" class="m-drawer-overlay" style="display:none;"></div>
+    <aside id="mDrawer" class="m-drawer">
+      <div class="m-drawer-header">
+        <div class="m-drawer-title">🔍 検索・絞り込み</div>
+        <button id="mCloseDrawerBtn" class="m-icon-btn" aria-label="閉じる">✕</button>
+      </div>
+
+      <div class="m-drawer-body">
+        <!-- ファイル名検索 -->
+        <div class="m-filter-block">
+          <label class="m-filter-label" for="mSearchInput">ファイル名検索</label>
+          <div class="m-search-box">
+            <input type="search" id="mSearchInput" placeholder="例: DSC_001, .ARW など..." autocomplete="off">
+            <button id="mSearchClearBtn" class="m-search-clear" style="display:none;">✕</button>
+          </div>
+        </div>
+
+        <!-- 並び替え -->
+        <div class="m-filter-block">
+          <label class="m-filter-label" for="mSortSelect">並び順</label>
+          <select id="mSortSelect" class="m-select">
+            <option value="date_taken DESC">撮影日（新しい順）</option>
+            <option value="date_taken ASC">撮影日（古い順）</option>
+            <option value="rating DESC">評価の高い順（優→良→可→棄）</option>
+            <option value="file_name ASC">ファイル名順（A→Z）</option>
+          </select>
+        </div>
+
+        <!-- 🏷️ タグ階層フィルタ -->
+        <details class="m-accordion" open>
+          <summary class="m-accordion-summary">
+            <span>🏷️ タグで絞り込み</span>
+            <small class="m-accordion-hint">タップ: 含む / 2回: 除外</small>
+          </summary>
+          <div class="m-accordion-content">
+            <div id="mTagFilterList" class="m-filter-list"></div>
+          </div>
+        </details>
+
+        <!-- 📅 タイムライン（撮影年月） -->
+        <details class="m-accordion">
+          <summary class="m-accordion-summary">
+            <span>📅 タイムライン（年月）</span>
+          </summary>
+          <div class="m-accordion-content">
+            <div id="mTimelineFilterList" class="m-filter-list"></div>
+          </div>
+        </details>
+
+        <!-- 🗺️ ジオタグ（撮影地） -->
+        <details class="m-accordion">
+          <summary class="m-accordion-summary">
+            <span>🗺️ ジオタグ（撮影地域）</span>
+          </summary>
+          <div class="m-accordion-content">
+            <div id="mLocationFilterList" class="m-filter-list"></div>
+          </div>
+        </details>
+
+        <!-- 📷 カメラ機種 -->
+        <details class="m-accordion">
+          <summary class="m-accordion-summary">
+            <span>📷 カメラ機種</span>
+          </summary>
+          <div class="m-accordion-content">
+            <div id="mCameraFilterList" class="m-filter-list"></div>
+          </div>
+        </details>
+      </div>
+
+      <div class="m-drawer-footer">
+        <button id="mDrawerResetBtn" class="m-btn m-btn-secondary" style="flex:1;">すべてリセット</button>
+        <button id="mDrawerApplyCloseBtn" class="m-btn m-btn-primary" style="flex:1;">結果を見る</button>
+      </div>
+    </aside>
+
+    <!-- ==================== 7. フルスクリーン選別ビューア (スマホ版ライトボックス) ==================== -->
+    <div id="mViewerModal" class="m-viewer-modal" style="display:none;">
+      <!-- 上部バー -->
+      <div class="m-viewer-topbar">
+        <button id="mViewerCloseBtn" class="m-viewer-back-btn">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="15 18 9 12 15 6"/>
+          </svg>
+          <span>一覧</span>
+        </button>
+
+        <div class="m-viewer-title-wrap">
+          <div id="mViewerFileName" class="m-viewer-filename">IMG_0001.JPG</div>
+          <div id="mViewerCounter" class="m-viewer-counter">1 / 100</div>
+        </div>
+
+        <button id="mViewerOpenInfoBtn" class="m-viewer-info-btn" title="タグ編集・Exif詳細を開く">
+          🏷️ タグ・詳細
+        </button>
+      </div>
+
+      <!-- 中央画像ステージ（スワイプ移動 & ダブルタップズーム） -->
+      <div id="mViewerStage" class="m-viewer-stage">
+        <button id="mViewerPrevBtn" class="m-viewer-nav prev" aria-label="前の写真">‹</button>
+        <div id="mViewerImgWrapper" class="m-viewer-img-wrapper">
+          <img id="mViewerImg" class="m-viewer-img" src="" alt="プレビュー" draggable="false">
+        </div>
+        <button id="mViewerNextBtn" class="m-viewer-nav next" aria-label="次の写真">›</button>
+      </div>
+
+      <!-- スタック（連写・ブラケット・RAW+JPG）内コマ比較バー -->
+      <div id="mViewerStackBar" class="m-viewer-stack-bar" style="display:none;">
+        <div id="mViewerStackList" class="m-viewer-stack-list"></div>
+      </div>
+
+      <!-- 簡易Exif & 現在のタグ表示ストリップ -->
+      <div id="mViewerMetaStrip" class="m-viewer-meta-strip">
+        <div id="mViewerExifBrief" class="m-viewer-exif-brief"></div>
+        <div id="mViewerTagsBrief" class="m-viewer-tags-brief"></div>
+      </div>
+
+      <!-- 親指ドック（4段階評価ボタン + 自動送りスイッチ） -->
+      <div class="m-viewer-dock">
+        <div class="m-viewer-dock-options">
+          <label class="m-auto-advance-label">
+            <input type="checkbox" id="mAutoAdvanceCheck" checked>
+            <span>⚡ 評価したら自動で次の写真へ進む</span>
+          </label>
+          <span id="mViewerZoomHint" class="m-zoom-hint">ダブルタップで拡大</span>
+        </div>
+        <div class="m-viewer-rate-grid">
+          <button class="m-dock-rate-btn rate-discard" data-viewer-rate="-1">
+            <span class="rate-symbol">✕</span>
+            <span class="rate-text">棄</span>
+          </button>
+          <button class="m-dock-rate-btn rate-normal" data-viewer-rate="0">
+            <span class="rate-symbol">○</span>
+            <span class="rate-text">可</span>
+          </button>
+          <button class="m-dock-rate-btn rate-good" data-viewer-rate="1">
+            <span class="rate-symbol">●</span>
+            <span class="rate-text">良</span>
+          </button>
+          <button class="m-dock-rate-btn rate-excellent" data-viewer-rate="2">
+            <span class="rate-symbol">★</span>
+            <span class="rate-text">優</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== 8. タグ編集 & Exif詳細 ボトムシート ==================== -->
+    <div id="mInfoSheetOverlay" class="m-sheet-overlay" style="display:none;">
+      <div class="m-sheet" id="mInfoSheet">
+        <div class="m-sheet-handle-bar">
+          <div class="m-sheet-handle"></div>
+        </div>
+        <div class="m-sheet-header">
+          <div id="mInfoSheetTitle" class="m-sheet-title">🏷️ タグ編集 & 詳細情報</div>
+          <button id="mCloseInfoSheetBtn" class="m-icon-btn">✕</button>
+        </div>
+
+        <div class="m-sheet-body">
+          <!-- タグ付与・解除セクション -->
+          <div class="m-sheet-section">
+            <div class="m-sheet-section-title">付いているタグ</div>
+            <div id="mCurrentPhotoTags" class="m-tag-chips"></div>
+
+            <div class="m-sheet-section-subtitle">📂 タグツリーから選ぶ（親フォルダ展開で子タグ追加）</div>
+            <div id="mQuickTagSelector" class="m-quick-tag-selector"></div>
+          </div>
+
+          <!-- Exif詳細セクション -->
+          <div id="mExifSection" class="m-sheet-section">
+            <div class="m-sheet-section-title">📷 Exif / メタデータ詳細</div>
+            <div id="mExifTable" class="m-exif-grid"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== 9. DB読込 & 選別結果保存モーダル ==================== -->
+    <div id="mDbSyncOverlay" class="m-sheet-overlay" style="display:none;">
+      <div class="m-sheet m-sheet-large">
+        <div class="m-sheet-handle-bar">
+          <div class="m-sheet-handle"></div>
+        </div>
+        <div class="m-sheet-header">
+          <div class="m-sheet-title">📂 DB読込 & 選別データの保存</div>
+          <button id="mCloseDbSyncBtn" class="m-icon-btn">✕</button>
+        </div>
+
+        <div class="m-sheet-body">
+          <!-- セクション1: USB / ローカル library.db 読み込み -->
+          <div class="m-sync-card">
+            <div class="m-sync-card-title">🔌 1. USBメモリ内の <code>cache/library.db</code> を開く</div>
+            <p class="m-sync-card-desc">
+              USBメモリ内の <code>cache</code> フォルダにある <code>library.db</code> を選択してメモリに読み込みます。
+            </p>
+            <input type="file" id="mDbFileInput" accept=".db,.sqlite,.sqlite3,*/*" style="display:none;">
+            <button id="mSelectDbFileBtn" class="m-btn m-btn-primary" style="width:100%;">
+              📂 cache/library.db を選択して読み込む
+            </button>
+            <div id="mLoadedDbStatus" class="m-sync-status-box" style="margin-top:8px;"></div>
+          </div>
+
+          <!-- セクション2: 選別結果（評価・タグ変更）のPCへの書き戻し -->
+          <div class="m-sync-card">
+            <div class="m-sync-card-title">💾 2. 選別結果をUSBメモリに保存してPCへ反映する</div>
+            <div id="mPendingSummaryBox" class="m-sync-status-box" style="margin-bottom:10px;">
+              未反映の変更: <strong>0件</strong>
+            </div>
+
+            <div class="m-sync-actions-col">
+              <div style="background:rgba(255,255,255,0.03); border:1px solid var(--border-soft, rgba(255,255,255,0.1)); border-radius:8px; padding:10px; width:100%; box-sizing:border-box;">
+                <div style="font-size:0.8rem; font-weight:700; margin-bottom:6px;">📥 選別データ（<code>mobile_sync.json</code>）を書き出す</div>
+                <div style="font-size:0.74rem; color:var(--text-muted, #9ca6b5); line-height:1.5; margin-bottom:10px;">
+                  下のボタンから USBメモリ直下（または <code>cache</code> フォルダ）へ保存してください。<br>
+                  <strong>次回PCにUSBメモリを挿して Photo Manager を起動した瞬間に、全自動でPC側へ反映されます。</strong>
+                </div>
+                <button id="mExportSyncJsonBtn" class="m-btn m-btn-primary" style="width:100%; padding:12px;">
+                  💾 mobile_sync.json を保存する
+                </button>
+                <div style="display:flex; gap:8px; width:100%; margin-top:8px;">
+                  <button id="mShareSyncJsonBtn" class="m-btn m-btn-secondary" style="flex:1; font-size:0.75rem; padding:8px;">
+                    📤 共有メニュー（ファイルアプリ等）で保存
+                  </button>
+                  <button id="mCopySyncJsonBtn" class="m-btn m-btn-secondary" style="flex:1; font-size:0.75rem; padding:8px;">
+                    📋 JSONテキストをコピー
+                  </button>
+                </div>
+              </div>
+
+              <!-- 保存＆ファイルクローズ完了通知ボックス -->
+              <div id="mExportCompleteBox" style="display:none; background:rgba(22, 163, 74, 0.16); border:1px solid rgba(34, 197, 94, 0.55); border-radius:8px; padding:10px 12px; width:100%; box-sizing:border-box; margin-top:6px;">
+                <div id="mExportCompleteTitle" style="font-size:0.82rem; font-weight:700; color:#4ade80; margin-bottom:4px;">
+                  ✅ mobile_sync.json の書き込み・ファイルクローズが完了しました！
+                </div>
+                <div id="mExportCompleteDesc" style="font-size:0.75rem; color:var(--text-main, #eceae4); line-height:1.5;"></div>
+              </div>
+
+              <!-- USB抜き差し時の破損防止ガイド -->
+              <div id="mSafeEjectNotice" style="background:rgba(245, 158, 11, 0.12); border:1px solid rgba(245, 158, 11, 0.45); border-radius:8px; padding:10px 12px; width:100%; box-sizing:border-box; margin-top:6px;">
+                <div style="font-size:0.78rem; font-weight:700; color:#fbbf24; margin-bottom:4px;">
+                  ⚠️ USBメモリを引き抜く前の必須手順（データ消失・破損防止）
+                </div>
+                <ol style="margin:0; padding-left:18px; font-size:0.74rem; color:var(--text-main, #eceae4); line-height:1.55;">
+                  <li>上の保存ボタンを押したあと、<strong>「✅ 書き込み・ファイルクローズが完了しました」</strong>と表示されるまで絶対にUSBを抜かないでください。</li>
+                  <li>スマホ画面の上から通知バーを下ろし、<strong>「USBドライブを取り外す（マウント解除）」</strong>を必ずタップしてからUSBを抜いてください。<br>
+                  <span style="color:var(--text-muted, #9ca6b5);">※マウント解除せずに引き抜くと、スマホOSの書き込みキャッシュが閉じられずWindows接続時に「メディア破損」になります。</span></li>
+                </ol>
+              </div>
+
+              <button id="mExportFullDbBtn" class="m-btn m-btn-secondary" style="width:100%; display:none;">
+                📦 更新済み library.db 本体を丸ごと書き出し
+              </button>
+              <button id="mClearPendingBtn" class="m-text-btn" style="align-self:flex-end; margin-top:2px;">
+                🗑️ 端末内の変更履歴をリセット
+              </button>
+            </div>
+          </div>
+
+          <!-- セクション3: オフライン用単体完結型HTMLのスマホ保存 -->
+          <div class="m-sync-card" id="mStandaloneDownloadCard">
+            <div class="m-sync-card-title">📱 3. この選別アプリ（単体HTML）をスマホ本体に保存</div>
+            <p class="m-sync-card-desc">
+              <code>PhotoManager_Mobile.html</code> をスマホ本体（ダウンロードフォルダ）にコピーしておくと、USBメモリ上のHTMLを直接開かずに済むため、USBメモリの取り外しがさらに安全になります。
+            </p>
+            <a id="mDownloadStandaloneHtmlBtn" href="/api/mobile/standalone" download="PhotoManager_Mobile.html" class="m-btn m-btn-secondary" style="width:100%; text-decoration:none; box-sizing:border-box; justify-content:center;">
+              📥 単体完結型HTML (PhotoManager_Mobile.html) をスマホに保存
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- トースト通知 -->
+    <div id="mToast" class="m-toast" style="display:none;"></div>
+  </div>
+
+  <script src="/js/mobile.js?v=2.30"></script>
+</body>
+</html>

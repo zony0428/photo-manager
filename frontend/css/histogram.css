@@ -1,0 +1,377 @@
+/**
+ * Photo Manager - オンデマンド RGB・輝度ヒストグラム (Histogram UI & HUD)
+ * 常時表示による視界圧迫・CPU負荷を排除し、必要な瞬間（インスペクタ / ライトボックス / 画像調整）に
+ * ワンクリックまたは [H] キーで呼び出せるプロカメラ風ヒストグラムスタイル。
+ */
+
+/* =========================================================================
+   1. 右インスペクタ：プレビュー右下ミニトグルボタン & ドロワーパネル
+   ========================================================================= */
+
+.inspector-hist-toggle-btn {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 6;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(18, 18, 20, 0.72);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: all 0.16s ease;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+
+.inspector-hist-toggle-btn svg {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+.inspector-hist-toggle-btn:hover {
+  background: rgba(28, 28, 32, 0.9);
+  border-color: rgba(255, 255, 255, 0.45);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.inspector-hist-toggle-btn.active {
+  background: var(--accent-primary, #e14d2a);
+  border-color: rgba(255, 255, 255, 0.5);
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(225, 77, 42, 0.45);
+}
+
+/* インスペクタ固定プレビュー直下のオンデマンド展開ドロワー */
+.inspector-histogram-drawer {
+  margin-top: 8px;
+  background: var(--bg-tertiary, rgba(16, 16, 18, 0.75));
+  border: 1px solid var(--border-soft, rgba(255, 255, 255, 0.1));
+  border-radius: var(--radius-sm, 6px);
+  padding: 7px 9px 6px;
+  animation: histSlideDown 0.16s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+body.theme-washi .inspector-histogram-drawer {
+  background: #232220;
+  border-color: rgba(0, 0, 0, 0.22);
+  color: #eceae4;
+}
+
+@keyframes histSlideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* =========================================================================
+   2. ライトボックス & 画像調整モーダル：フローティング・ヒストグラムHUD
+   ========================================================================= */
+
+.histogram-floating-hud {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  z-index: 45;
+  width: 256px;
+  background: rgba(18, 18, 21, 0.84);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  padding: 8px 10px 7px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+  color: #eceae4;
+  user-select: none;
+  animation: histFadeIn 0.15s ease-out;
+  transition: right 0.2s ease;
+}
+
+/* ライトボックスでEXIFドロワーが開いている時は自動で左へ退避（ドラッグ未移動時） */
+.histogram-floating-hud.exif-drawer-offset:not(.is-user-dragged) {
+  right: 336px;
+}
+
+@keyframes histFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* 画像調整モーダルヘッダー内のヒストグラムトグルボタン */
+.image-adjust-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.adjust-hist-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 5px;
+  border: 1px solid var(--border-soft, rgba(255, 255, 255, 0.16));
+  background: var(--bg-secondary, rgba(255, 255, 255, 0.06));
+  color: var(--text-secondary, #b5b2a8);
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.adjust-hist-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text-main, #eceae4);
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+.adjust-hist-toggle-btn.active {
+  background: rgba(225, 77, 42, 0.2);
+  border-color: var(--accent-primary, #e14d2a);
+  color: #ffffff;
+}
+
+/* ライトボックスヘッダーのアイコンボタン点灯状態 */
+#toggleLightboxHistogramBtn.active {
+  background: rgba(225, 77, 42, 0.22);
+  border-color: var(--accent-primary, #e14d2a);
+  color: var(--accent-primary, #e14d2a);
+}
+
+/* =========================================================================
+   3. ヒストグラム共通ヘッダー・モード切替ピル・キャンバス・露出統計バー
+   ========================================================================= */
+
+.hist-widget-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 5px;
+  gap: 4px;
+}
+
+.histogram-floating-hud .hist-widget-header {
+  cursor: grab;
+}
+
+.histogram-floating-hud .hist-widget-header:active {
+  cursor: grabbing;
+}
+
+.hist-widget-title {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: rgba(236, 234, 228, 0.85);
+  white-space: nowrap;
+}
+
+.hist-scope-pill {
+  font-size: 0.62rem;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.hist-scope-pill:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.hist-scope-pill.is-crop {
+  background: rgba(225, 77, 42, 0.24);
+  border-color: rgba(225, 77, 42, 0.55);
+  color: #ffb4a2;
+}
+
+.hist-widget-controls {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.hist-mode-pills {
+  display: inline-flex;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.hist-mode-btn {
+  background: transparent;
+  border: none;
+  color: rgba(236, 234, 228, 0.6);
+  font-size: 0.63rem;
+  font-weight: 600;
+  padding: 2px 6px;
+  cursor: pointer;
+  line-height: 1.2;
+  transition: all 0.12s ease;
+}
+
+.hist-mode-btn:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.hist-mode-btn.active {
+  background: var(--accent-primary, #e14d2a);
+  color: #ffffff;
+}
+
+.hist-close-btn {
+  background: transparent;
+  border: none;
+  color: rgba(236, 234, 228, 0.55);
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 0 3px;
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.hist-close-btn:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* キャンバスラッパー */
+.hist-canvas-wrap {
+  position: relative;
+  width: 100%;
+  height: 82px;
+  background: #0e0e11;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  overflow: hidden;
+  cursor: crosshair;
+}
+
+.hist-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* ホバー時の階調値インスペクト表示 */
+.hist-hover-readout {
+  position: absolute;
+  top: 4px;
+  left: 6px;
+  pointer-events: none;
+  font-size: 0.62rem;
+  font-family: 'Inter', monospace;
+  background: rgba(10, 10, 12, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+  padding: 1px 5px;
+  color: #eceae4;
+  display: none;
+  white-space: nowrap;
+  z-index: 2;
+}
+
+/* 下部ステータス（黒つぶれ・平均輝度・白飛び警告） */
+.hist-stats-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 5px;
+  font-size: 0.65rem;
+  color: rgba(236, 234, 228, 0.68);
+  font-family: 'Inter', sans-serif;
+}
+
+.hist-clip-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  transition: all 0.15s ease;
+}
+
+.hist-clip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* 黒つぶれ警告点灯（シアンブルー） */
+.hist-clip-badge.is-shadow.is-clipped {
+  color: #7dd3fc;
+  background: rgba(56, 189, 248, 0.14);
+}
+.hist-clip-badge.is-shadow.is-clipped .hist-clip-dot {
+  background: #38bdf8;
+  box-shadow: 0 0 6px #38bdf8;
+}
+
+/* 白飛び警告点灯（朱赤） */
+.hist-clip-badge.is-highlight.is-clipped {
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.16);
+}
+.hist-clip-badge.is-highlight.is-clipped .hist-clip-dot {
+  background: #ef4444;
+  box-shadow: 0 0 6px #ef4444;
+}
+
+.hist-mean-badge {
+  color: rgba(236, 234, 228, 0.78);
+  font-variant-numeric: tabular-nums;
+}
+
+/* EXIFタブ内のヒストグラム呼び出しリンクボタン */
+.meta-hist-trigger-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border-soft, rgba(255, 255, 255, 0.15));
+  background: var(--bg-secondary, rgba(255, 255, 255, 0.05));
+  color: var(--text-secondary, #b5b2a8);
+  font-size: 0.72rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.meta-hist-trigger-btn:hover {
+  border-color: var(--accent-primary, #e14d2a);
+  color: var(--text-main, #eceae4);
+}
+
+.meta-hist-trigger-btn.active {
+  background: rgba(225, 77, 42, 0.16);
+  border-color: var(--accent-primary, #e14d2a);
+  color: var(--accent-primary, #e14d2a);
+}
