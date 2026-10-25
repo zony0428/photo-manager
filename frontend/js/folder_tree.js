@@ -12,7 +12,7 @@ const folderTreeState = {
   renderToken: 0,              // 古い取得結果で描画し直さないための世代番号
 };
 
-const FOLDER_TREE_SHORTCUT_ICONS = { pictures: '🖼️', documents: '📄', desktop: '🖥️' };
+const FOLDER_TREE_SHORTCUT_ICONS = { storage: '📦', pictures: '🖼️', documents: '📄', desktop: '🖥️' };
 const FOLDER_TREE_DRIVE_ICONS = { fixed: '💽', removable: '💾', network: '🌐', cdrom: '💿', ramdisk: '⚡' };
 
 /** 比較用のパス正規化（区切りを \ に統一・末尾区切り除去・小文字化） */
@@ -33,11 +33,13 @@ function _ftFormatCount(n) {
    ノード情報の生成
    -------------------------------------------------------------------------- */
 function _ftShortcutNode(s) {
+  const isStorage = !!s.is_storage || s.key === 'storage';
+  const isStorageRoot = !!s.is_storage_root || s.key === 'storage';
   return {
     kind: 'shortcut', scope: 'sc', key: _ftKey('sc', s.path), name: s.name, path: s.path,
-    icon: FOLDER_TREE_SHORTCUT_ICONS[s.key] || '📁', status: 'root', count: 0, total: s.total,
-    hasManaged: !!s.has_managed, hasChildren: true, isMissing: false, isOffline: false,
-    volumeSerial: null, serialMode: 'any',
+    icon: s.icon || FOLDER_TREE_SHORTCUT_ICONS[s.key] || '📁', status: isStorage ? 'managed' : 'root', count: 0, total: s.total,
+    hasManaged: !!s.has_managed || isStorage, hasChildren: true, isMissing: false, isOffline: false,
+    volumeSerial: null, serialMode: 'any', isStorage, isStorageRoot,
   };
 }
 
@@ -61,11 +63,12 @@ function _ftOfflineNode(v) {
 }
 
 function _ftChildNode(parent, c) {
+  const isStorage = !!c.is_storage || !!parent?.isStorage;
   return {
     kind: 'folder', scope: parent.scope, key: _ftKey(parent.scope, c.path), name: c.name, path: c.path,
-    icon: '📁', status: c.status, count: c.count, total: c.total, hasManaged: !!c.has_managed,
+    icon: '📁', status: c.status, count: c.count, total: c.total, hasManaged: !!c.has_managed || isStorage,
     hasChildren: !!c.has_children, isMissing: !!c.is_missing, isOffline: parent.isOffline,
-    volumeSerial: parent.volumeSerial, serialMode: parent.serialMode,
+    volumeSerial: parent.volumeSerial, serialMode: parent.serialMode, isStorage, isStorageRoot: false,
   };
 }
 
@@ -282,6 +285,8 @@ function _ftBuildNodeLi(node) {
   if (node.hasManaged) classes.push('has-managed');
   if (node.isMissing) classes.push('is-missing');
   if (node.isOffline) classes.push('is-offline');
+  if (node.isStorage) classes.push('is-storage-folder');
+  if (node.isStorageRoot) classes.push('is-storage-root');
   const filterState = _ftFilterState(node);
   if (filterState === 'include') classes.push('active');
   else if (filterState === 'exclude') classes.push('active-exclude');
@@ -290,6 +295,9 @@ function _ftBuildNodeLi(node) {
   item.dataset.filterType = 'folder';
   item.dataset.filterValue = node.path;
   item.dataset.status = node.status;
+  if (node.isStorage) {
+    item.dataset.storagePath = node.path;
+  }
 
   const toggle = document.createElement('span');
   if (node.hasChildren) {
@@ -316,6 +324,41 @@ function _ftBuildNodeLi(node) {
     _ftHandleClick(node);
   });
   item.addEventListener('contextmenu', (e) => _ftHandleContextMenu(e, node));
+  if (node.isStorage) {
+    item.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.dataTransfer) {
+        e.dataTransfer.dropEffect = 'move';
+      }
+      item.classList.add('drag-over-storage');
+    });
+    item.addEventListener('dragleave', (e) => {
+      if (!item.contains(e.relatedTarget)) {
+        item.classList.remove('drag-over-storage');
+      }
+    });
+    item.addEventListener('drop', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      item.classList.remove('drag-over-storage');
+      let explicitIds = null;
+      if (e.dataTransfer) {
+        const raw = e.dataTransfer.getData('application/x-photomanager-photos') || e.dataTransfer.getData('text/plain');
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) explicitIds = parsed;
+          } catch (_err) {
+            // JSONでない場合は window._draggingPhotoIds を使用
+          }
+        }
+      }
+      if (typeof window.handleDropPhotosToStorageFolder === 'function') {
+        window.handleDropPhotosToStorageFolder(node.path, node.name, explicitIds);
+      }
+    });
+  }
   if (node.hasChildren) {
     toggle.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -409,11 +452,11 @@ function _ftHandleClick(node) {
     return;
   }
   // 1回目: 通常絞り込み
-  let prefix = '📁 ';
+  let prefix = node.isStorageRoot ? '📦 ' : '📁 ';
   if (node.isOffline) prefix = '🔌 [未接続] ';
   else if (node.isMissing) prefix = '⚠️ [消失] ';
   else if (node.status === 'ignored') prefix = '🚫 [除外] ';
-  else if (node.status === 'unmanaged' && !node.hasManaged) prefix = '📁 [未登録] ';
+  else if (node.status === 'unmanaged' && !node.hasManaged && !node.isStorage) prefix = '📁 [未登録] ';
   setFilter('folder', node.path, `${prefix}${node.name}`);
 
   // 接続中かつ実フォルダが存在する場合、バックグラウンドで差分または管理登録判定
@@ -436,6 +479,8 @@ function _ftHandleContextMenu(e, node) {
     count: node.count,
     totalCount: node.total,
     hasManaged: node.hasManaged,
+    isStorage: !!node.isStorage,
+    isStorageRoot: !!node.isStorageRoot,
   });
 }
 

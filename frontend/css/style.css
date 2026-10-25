@@ -477,6 +477,18 @@ body {
   background: var(--bg-hover);
 }
 
+.btn-danger {
+  background: #dc2626;
+  color: #ffffff;
+  border-color: #b91c1c;
+  font-weight: 600;
+}
+
+.btn-danger:hover {
+  background: #b91c1c;
+  border-color: #991b1b;
+}
+
 /* 表示モード切替ボタングループ (グリッド / びっしり / マウント) */
 .view-mode-group {
   display: flex;

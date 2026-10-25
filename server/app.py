@@ -105,6 +105,24 @@ from .scanner import (
     extract_raw_full_preview,
     check_folder_diff,
     refresh_photo_thumbnail_transform,
+    SUPPORTED_EXTENSIONS,
+)
+from .database.folders import clear_folders_fs_cache
+from .storage_manager import (
+    STORAGE_DIR,
+    ensure_storage_dir,
+    migrate_carry_to_storage,
+    is_photo_in_storage,
+    resolve_storage_target_dir,
+    get_storage_folders,
+    create_storage_subfolder,
+    rename_storage_subfolder,
+    delete_storage_subfolder,
+    import_photos_to_storage,
+    move_photos_in_storage,
+    rename_photo_in_storage,
+    batch_rename_photos_in_storage,
+    export_storage_folder,
 )
 from .heartbeat import (
     record_heartbeat,
@@ -127,6 +145,10 @@ from .mobile_bundle import (
     ensure_standalone_mobile_html,
     STANDALONE_HTML_FILENAME,
 )
+from .sidecar import (
+    is_sidecar_file,
+    parse_xmp_for_photo,
+)
 
 
 import logging
@@ -136,7 +158,7 @@ logger = logging.getLogger("photo_manager.app")
 # プロジェクトルートディレクトリ
 BASE_DIR = Path(__file__).resolve().parent.parent
 FRONTEND_DIR = BASE_DIR / "frontend"
-UPLOAD_DIR = BASE_DIR / "carry"
+UPLOAD_DIR = BASE_DIR / "storage"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 IMPORT_DIR = BASE_DIR / "take_out"
 IMPORT_DIR.mkdir(parents=True, exist_ok=True)
@@ -148,8 +170,9 @@ _mobile_sync_event: Dict[str, int] = {"seq": 0, "applied_count": 0}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """起動時にDBを初期化し、carryのリンク切れ写真および無効な(0,0)GPSエラーを整理し、単体モバイルHTMLを最新化する"""
+    """起動時にDBを初期化し、旧carryからstorageへの移行・リンク切れ写真整理・無効な(0,0)GPSエラー整理を行い、単体モバイルHTMLを最新化する"""
     initialize_database()
+    migrate_carry_to_storage()
     cleanup_missing_upload_photos(UPLOAD_DIR)
     cleanup_invalid_zero_gps()
     ensure_standalone_mobile_html()
@@ -206,6 +229,7 @@ _LOCAL_ONLY_PATH_PREFIXES = (
     "/api/folder-tree",
     "/api/browse",
     "/api/upload",
+    "/api/storage",
     "/api/import",
     "/api/export",
     "/api/database",
@@ -405,6 +429,8 @@ def api_shutdown():
 def api_get_missing_photos():
     """実ファイルが削除・移動されて見つからない写真一覧を取得する"""
     photos = get_missing_photos()
+    for p in photos:
+        p["is_storage"] = is_photo_in_storage(p)
     return _fast_json({"photos": photos, "count": len(photos)})
 
 
@@ -463,6 +489,8 @@ def api_get_photos(
     """写真一覧を取得する（タグの含む/除外排他検索、年月OR条件、カメラ・レンズ含む/除外条件、場所階層絞り込み、ラボ分析フィルタ、ブラケットスタック表示、重複抽出対応）"""
     if missing_only:
         photos = get_missing_photos()
+        for p in photos:
+            p["is_storage"] = is_photo_in_storage(p)
         return _fast_json({"photos": photos, "count": len(photos)})
 
     inc_list = [t.strip() for t in include_tags.split(",") if t.strip()] if include_tags else None
@@ -525,6 +553,7 @@ def api_get_photos(
         _, is_dir_online = dir_cache[dir_path]
         is_offline = not is_dir_online
         p["is_offline"] = is_offline
+        p["is_storage"] = is_photo_in_storage(p)
         if not is_offline:
             file_set = dir_files_cache.get(dir_path)
             fname = p.get("file_name") or os.path.basename(p.get("file_path", ""))
@@ -542,7 +571,7 @@ def api_get_photos(
 
 @app.get("/api/photo/{photo_id}")
 def api_get_photo_detail(photo_id: int):
-    """指定IDの写真詳細情報（タグ一覧・スタックメンバー含む）を取得する"""
+    """指定IDの写真詳細情報（タグ一覧・スタックメンバー・XMPサイドカー解析情報含む）を取得する"""
     photo = get_photo_by_id(photo_id)
     if not photo:
         raise HTTPException(status_code=404, detail="写真が見つかりません")
@@ -551,7 +580,183 @@ def api_get_photo_detail(photo_id: int):
     if dir_path:
         _, is_dir_online = resolve_portable_path(dir_path)
         photo["is_offline"] = not is_dir_online
+    photo["is_storage"] = is_photo_in_storage(photo)
+
+    # XMPサイドカー情報の付与
+    file_path_str = photo.get("file_path")
+    if file_path_str:
+        real_path, is_online = resolve_portable_path(file_path_str)
+        if is_online and real_path.exists():
+            photo["xmp_info"] = parse_xmp_for_photo(real_path, photo.get("paired_raw_path"))
+        else:
+            photo["xmp_info"] = {"has_xmp": False}
+    else:
+        photo["xmp_info"] = {"has_xmp": False}
     return photo
+
+
+class XmpImportMetadataRequest(BaseModel):
+    import_rating: bool = True
+    import_tags: bool = True
+
+
+@app.get("/api/photo/{photo_id}/xmp-preview")
+def api_get_photo_xmp_preview(photo_id: int, mode: str = Query(default="thumb")):
+    """
+    XMPサイドカーの現像調整値のみを元画像へオンザフライ適用したプレビュー画像を返す。
+    Photo Manager のDB上の非破壊調整値は一切適用せず、XMP側の調整（回転・傾き・クロップ・露出・コントラスト・彩度）のみを反映する。
+    - mode="thumb": WebPサムネイル (max_size=360, image/webp)
+    - mode="view": フルサイズ拡大プレビュー (image/jpeg, quality=90)
+    """
+    import io as _io
+    from PIL import Image as _Image, ImageOps as _ImageOps
+
+    photo = get_photo_by_id(photo_id)
+    if not photo:
+        raise HTTPException(status_code=404, detail="写真が見つかりません")
+
+    file_path_str = photo.get("file_path")
+    if not file_path_str:
+        raise HTTPException(status_code=404, detail="ファイルパスが記録されていません")
+
+    real_path, is_online = resolve_portable_path(file_path_str)
+    if not is_online or not real_path.exists():
+        raise HTTPException(status_code=404, detail="元写真ファイルが未接続です")
+
+    xmp_info = parse_xmp_for_photo(real_path, photo.get("paired_raw_path"))
+    adj = xmp_info.get("adjustments") or {}
+    rot_val = int(adj.get("rotation") or 0)
+    fa_val = float(adj.get("fine_angle") or 0.0)
+    cw_val = adj.get("crop_w")
+    ch_val = adj.get("crop_h")
+    cx_val = adj.get("crop_x") or 0.0
+    cy_val = adj.get("crop_y") or 0.0
+    crop_box = (cx_val, cy_val, cw_val, ch_val) if (cw_val and ch_val) else None
+    b_val = int(adj.get("brightness") or 0)
+    ct_val = int(adj.get("contrast") or 0)
+    s_val = int(adj.get("saturation") or 0)
+
+    if str(mode).lower() == "thumb":
+        res = render_thumbnail_webp(
+            real_path,
+            max_size=360,
+            allow_cloud_download=True,
+            rotation=rot_val,
+            fine_angle=fa_val,
+            crop_box=crop_box,
+            brightness=b_val,
+            contrast=ct_val,
+            saturation=s_val,
+        )
+        if res is None:
+            raise HTTPException(status_code=500, detail="XMPサムネイルプレビューの生成に失敗しました")
+        thumb_bytes, _, _ = res
+        return Response(
+            content=thumb_bytes,
+            media_type="image/webp",
+            headers={
+                "Cache-Control": "no-cache, must-revalidate",
+                "X-Photo-Xmp-Preview": "thumb",
+            },
+        )
+
+    # mode == "view"
+    pil_img = None
+    try:
+        if photo.get("is_raw") or is_raw_file(real_path):
+            preview_res = extract_raw_full_preview(real_path)
+            if preview_res:
+                img_bytes, _, _, _ = preview_res
+                pil_img = _Image.open(_io.BytesIO(img_bytes))
+            elif photo.get("paired_raw_path"):
+                p_pair, is_pair_online = resolve_portable_path(photo["paired_raw_path"])
+                if is_pair_online and p_pair.exists():
+                    pil_img = _Image.open(p_pair)
+                    pil_img = _ImageOps.exif_transpose(pil_img)
+        else:
+            pil_img = _Image.open(real_path)
+            pil_img = _ImageOps.exif_transpose(pil_img)
+    except Exception as e:
+        logger.warning(f"XMPプレビュー用元画像読み込み失敗 ({real_path}): {e}")
+        pil_img = None
+
+    if pil_img is None:
+        raise HTTPException(status_code=500, detail="XMPプレビュー用の元画像を読み込めませんでした")
+
+    try:
+        pil_img = apply_photo_adjustments_pil(
+            pil_img,
+            rotation=rot_val,
+            fine_angle=fa_val,
+            crop_box=crop_box,
+            brightness=b_val,
+            contrast=ct_val,
+            saturation=s_val,
+        )
+        if pil_img.mode != "RGB":
+            pil_img = pil_img.convert("RGB")
+        buf = _io.BytesIO()
+        pil_img.save(buf, format="JPEG", quality=90)
+        return Response(
+            content=buf.getvalue(),
+            media_type="image/jpeg",
+            headers={
+                "Cache-Control": "no-cache, must-revalidate",
+                "X-Photo-Xmp-Preview": "view",
+            },
+        )
+    except Exception as e:
+        logger.error(f"XMPプレビュー描画エラー ({real_path}): {e}")
+        raise HTTPException(status_code=500, detail=f"XMPプレビュー生成エラー: {e}")
+
+
+@app.post("/api/photo/{photo_id}/import-xmp-metadata")
+def api_import_xmp_metadata(
+    photo_id: int,
+    req: XmpImportMetadataRequest = XmpImportMetadataRequest(),
+):
+    """
+    写真に付随する .xmp サイドカーから、評価（4段階変換）およびタグ（すべて XMP/ ルート配下）を
+    Photo Manager のDBへ明示的に取り込む。
+    """
+    photo = get_photo_by_id(photo_id)
+    if not photo:
+        raise HTTPException(status_code=404, detail="写真が見つかりません")
+
+    file_path_str = photo.get("file_path")
+    if not file_path_str:
+        raise HTTPException(status_code=404, detail="ファイルパスが記録されていません")
+
+    real_path, is_online = resolve_portable_path(file_path_str)
+    if not is_online or not real_path.exists():
+        raise HTTPException(status_code=404, detail="元写真ファイルが未接続です")
+
+    xmp_info = parse_xmp_for_photo(real_path, photo.get("paired_raw_path"))
+    if not xmp_info.get("has_xmp"):
+        raise HTTPException(status_code=404, detail="XMPサイドカーファイルが見つかりません")
+
+    imported_rating: Optional[int] = None
+    rating_info = xmp_info.get("rating") or {}
+    if req.import_rating and rating_info.get("has_rating") and rating_info.get("mapped_rating") is not None:
+        mapped_r = int(rating_info["mapped_rating"])
+        if -1 <= mapped_r <= 2:
+            update_rating(photo_id, mapped_r)
+            imported_rating = mapped_r
+
+    imported_tags: List[str] = []
+    xmp_tags = xmp_info.get("tags") or []
+    if req.import_tags and xmp_tags:
+        for tag in xmp_tags:
+            if tag:
+                add_tag_to_photo(photo_id, tag)
+                imported_tags.append(tag)
+
+    return {
+        "status": "ok",
+        "photo_id": photo_id,
+        "imported_rating": imported_rating,
+        "imported_tags": imported_tags,
+    }
 
 
 @app.post("/api/photo/{photo_id}/set-primary")
@@ -2049,28 +2254,59 @@ class PhotoUploadItem(BaseModel):
 
 class PhotoUploadRequest(BaseModel):
     files: List[PhotoUploadItem]
+    destination: Optional[str] = None
 
 
 @app.post("/api/upload")
 def api_upload_photos(req: PhotoUploadRequest):
-    """ブラウザからのドラッグ＆ドロップまたはファイル選択で直接写真を追加する (Base64方式)"""
+    """ブラウザからのドラッグ＆ドロップまたはファイル選択で直接 storage へ写真・付随サイドカーを追加する (Base64方式)"""
+    try:
+        target_dir = resolve_storage_target_dir(req.destination, must_exist=False)
+        target_dir.mkdir(parents=True, exist_ok=True)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
     saved_photos = []
+    saved_sidecars = []
     errors = []
 
+    # 第1パス: サイドカーファイル（.xmp, .pp3, .dop 等）を先に保存し、直後の画像 extract_metadata で参照可能にする
+    photo_items: List[PhotoUploadItem] = []
     for item in req.files:
         if not item.filename:
             continue
-        ext = Path(item.filename).suffix.lower()
-        if ext not in {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".tiff"}:
+        safe_name = Path(item.filename).name
+        ext = Path(safe_name).suffix.lower()
+        if is_sidecar_file(safe_name):
+            clean_sc_name = re.sub(r'[\\/*?:"<>|\x00-\x1f]', "_", safe_name).strip().rstrip(".")
+            if not clean_sc_name:
+                continue
+            dest_sc_path = target_dir / clean_sc_name
+            try:
+                raw_b64 = item.content_base64
+                if "," in raw_b64:
+                    raw_b64 = raw_b64.split(",", 1)[1]
+                file_bytes = base64.b64decode(raw_b64)
+                with open(dest_sc_path, "wb") as f:
+                    f.write(file_bytes)
+                saved_sidecars.append(dest_sc_path.name)
+            except Exception as e:
+                errors.append(f"{item.filename}: {str(e)}")
+        elif ext in SUPPORTED_EXTENSIONS:
+            photo_items.append(item)
+        else:
             errors.append(f"非対応形式: {item.filename}")
-            continue
 
-        dest_path = UPLOAD_DIR / item.filename
+    # 第2パス: 画像本体の保存 & メタデータ抽出（付随XMPからのハードウェア補完含む）& DB登録
+    for item in photo_items:
+        safe_name = Path(item.filename).name
+        ext = Path(safe_name).suffix.lower()
+        clean_stem = re.sub(r'[\\/*?:"<>|\x00-\x1f]', "_", Path(safe_name).stem).strip().rstrip(".") or "photo"
+        dest_path = target_dir / f"{clean_stem}{ext}"
         # 同名ファイルがある場合はナンバリング
         counter = 1
-        stem = dest_path.stem
         while dest_path.exists():
-            dest_path = UPLOAD_DIR / f"{stem}_{counter}{ext}"
+            dest_path = target_dir / f"{clean_stem}_{counter}{ext}"
             counter += 1
 
         try:
@@ -2090,12 +2326,158 @@ def api_upload_photos(req: PhotoUploadRequest):
         except Exception as e:
             errors.append(f"{item.filename}: {str(e)}")
 
+    if saved_photos:
+        clear_folders_fs_cache()
+
     return {
         "status": "ok",
         "uploaded_count": len(saved_photos),
+        "uploaded_sidecar_count": len(saved_sidecars),
         "files": saved_photos,
+        "sidecar_files": saved_sidecars,
+        "destination": str(target_dir),
         "errors": errors,
     }
+
+
+# ==============================================================================
+# アプリ内ストレージ (storage) 管理 API
+# ==============================================================================
+
+class StorageCreateFolderRequest(BaseModel):
+    parent_path: Optional[str] = ""
+    folder_name: str
+
+
+class StorageRenameFolderRequest(BaseModel):
+    folder_path: str
+    new_name: str
+
+
+class StorageDeleteFolderRequest(BaseModel):
+    folder_path: str
+
+
+class StorageImportPhotosRequest(BaseModel):
+    photo_ids: List[int]
+    destination: Optional[str] = ""
+
+
+class StorageMovePhotosRequest(BaseModel):
+    photo_ids: List[int]
+    destination: Optional[str] = ""
+
+
+class StorageRenamePhotoRequest(BaseModel):
+    photo_id: int
+    new_name: str
+
+
+class StorageBatchRenamePhotosRequest(BaseModel):
+    photo_ids: List[int]
+    naming_rule: str = "date_seq"
+    custom_prefix: Optional[str] = "Photo"
+    start_number: int = 1
+
+
+class StorageExportFolderRequest(BaseModel):
+    folder_path: Optional[str] = ""
+    destination_dir: Optional[str] = None
+    open_after: bool = True
+
+
+@app.get("/api/storage/folders")
+def api_get_storage_folders():
+    """storage 配下の全フォルダ階層と各フォルダの写真枚数を取得する"""
+    try:
+        return get_storage_folders()
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/storage/folders")
+def api_create_storage_folder(req: StorageCreateFolderRequest):
+    """storage 内に新しいサブフォルダを作成する"""
+    try:
+        return create_storage_subfolder(req.parent_path, req.folder_name)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.put("/api/storage/folders/rename")
+def api_rename_storage_folder(req: StorageRenameFolderRequest):
+    """storage 内のサブフォルダ名を変更し、DB内の写真パスも追従更新する"""
+    try:
+        return rename_storage_subfolder(req.folder_path, req.new_name)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.delete("/api/storage/folders")
+def api_delete_storage_folder(
+    req: Optional[StorageDeleteFolderRequest] = None,
+    folder_path: Optional[str] = Query(default=None),
+):
+    """storage 内の空サブフォルダを削除する"""
+    target_path = (req.folder_path if req and req.folder_path else folder_path) or ""
+    try:
+        return delete_storage_subfolder(target_path)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/storage/import-photos")
+def api_import_photos_to_storage(req: StorageImportPhotosRequest):
+    """選択された写真を storage の指定フォルダへ物理コピーし、メタデータ・タグ・評価・調整値を引き継いでDB登録する"""
+    try:
+        return import_photos_to_storage(req.photo_ids, req.destination)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/storage/move-photos")
+def api_move_photos_in_storage(req: StorageMovePhotosRequest):
+    """storage 内の写真を別の storage フォルダへ移動し、DBパスを更新する"""
+    try:
+        return move_photos_in_storage(req.photo_ids, req.destination)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/storage/rename-photo")
+def api_rename_photo_in_storage(req: StorageRenamePhotoRequest):
+    """storage 内の単一写真のファイル名を変更する"""
+    try:
+        return rename_photo_in_storage(req.photo_id, req.new_name)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/storage/batch-rename-photos")
+def api_batch_rename_photos_in_storage(req: StorageBatchRenamePhotosRequest):
+    """storage 内の複数写真を撮影日時昇順で一括連番リネームする"""
+    try:
+        return batch_rename_photos_in_storage(
+            req.photo_ids,
+            naming_rule=req.naming_rule,
+            custom_prefix=req.custom_prefix or "Photo",
+            start_number=req.start_number,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/storage/export-folder")
+def api_export_storage_folder(req: StorageExportFolderRequest):
+    """storage 内のフォルダをサブフォルダ構造ごと外部の指定先へコピー出力する"""
+    try:
+        return export_storage_folder(
+            folder_path=req.folder_path or "",
+            destination_dir=req.destination_dir,
+            open_after=req.open_after,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.get("/api/duplicates")
@@ -2125,6 +2507,7 @@ class SmartExportRequest(BaseModel):
     exif_remove_camera: bool = False
     exif_remove_other: bool = False
     exif_remove_all: bool = False
+    export_xmp_sidecar: bool = False
     open_folder_after: bool = True
 
 

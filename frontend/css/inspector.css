@@ -553,7 +553,7 @@
   border-radius: 4px;
   font-size: 0.75rem;
   color: var(--text-muted);
-  cursor: pointer;
+  cursor: default;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -584,6 +584,59 @@
   white-space: nowrap;
 }
 
+.inspector-tree-count {
+  font-size: 0.66rem;
+  color: var(--text-dim, #64748b);
+  background: rgba(128, 128, 128, 0.12);
+  padding: 0 4px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.inspector-tree-item-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.inspector-tag-edit-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-dim, #64748b);
+  font-size: 0.68rem;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 3px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.inspector-tree-item:hover .inspector-tag-edit-btn {
+  opacity: 0.85;
+}
+
+.inspector-tag-edit-btn:hover {
+  opacity: 1 !important;
+  background: rgba(128, 128, 128, 0.16);
+  color: var(--text-main, #f1f5f9);
+  border-color: var(--border-soft, rgba(255, 255, 255, 0.18));
+}
+
+.inspector-tag-rename-input {
+  flex: 1 1 auto;
+  min-width: 60px;
+  max-width: 140px;
+  padding: 1px 5px;
+  font-size: 0.72rem;
+  color: var(--text-main, #f1f5f9);
+  background: var(--bg-primary, #0f172a);
+  border: 1px solid var(--accent-primary, #38bdf8);
+  border-radius: 3px;
+  outline: none;
+}
+
 .inspector-tree-item .apply-badge {
   font-size: 0.68rem;
   padding: 1px 5px;
@@ -592,11 +645,22 @@
   color: var(--accent-primary);
   border: 1px solid rgba(56, 189, 248, 0.25);
   flex-shrink: 0;
+  cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
 }
 
-.inspector-tree-item .apply-badge:hover,
-.inspector-tree-item:hover .apply-badge {
+.inspector-tree-item .apply-badge.is-assigned {
+  background: rgba(34, 197, 94, 0.16);
+  color: #16a34a;
+  border-color: rgba(34, 197, 94, 0.35);
+  font-weight: 600;
+}
+
+[data-theme="sumi"] .inspector-tree-item .apply-badge.is-assigned {
+  color: #4ade80;
+}
+
+.inspector-tree-item .apply-badge:hover:not(.is-assigned) {
   background: var(--accent-primary);
   color: #0b1329;
   font-weight: 600;

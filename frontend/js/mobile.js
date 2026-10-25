@@ -753,7 +753,7 @@
       'file_name ASC': 'p.file_name ASC',
     };
     const orderClause = allowedSorts[mState.sortBy] || 'p.date_taken DESC, p.file_name ASC';
-    sql += ` ORDER BY ${orderClause} LIMIT 5000`;
+    sql += ` ORDER BY ${orderClause}`;
 
     const rows = queryLocalDbObjects(sql, params);
 

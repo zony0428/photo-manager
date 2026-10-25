@@ -19,6 +19,7 @@ from PIL import Image, ImageOps
 from .database import get_photo_by_id, get_thumbnails_batch
 from .raw_loader import extract_raw_full_preview, is_raw_file
 from .scanner import apply_photo_adjustments_pil, ensure_thumbnail, resolve_portable_path
+from .sidecar import write_xmp_sidecar_for_photo
 
 # プロジェクトルート基準のテイクアウト基本保存先
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -455,6 +456,10 @@ def export_single_photo(
                 optimize=True,
                 **save_kwargs,
             )
+
+        if opts.get("export_xmp_sidecar", False):
+            remove_gps_flag = bool(opts.get("exif_remove_gps") or opts.get("exif_remove_all"))
+            write_xmp_sidecar_for_photo(photo, target_path, remove_gps=remove_gps_flag)
 
         return True, target_path.name, None
 

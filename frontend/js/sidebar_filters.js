@@ -984,7 +984,7 @@ function renderTagList() {
     } else {
       emptyMsg = state.tagSourceFilter === 'ai' 
         ? 'その他のAIタグはありません' 
-        : 'その他のタグなし (＋で作成)';
+        : 'その他のタグなし (右インスペクタで作成)';
     }
     elements.tagList.innerHTML = `<li class="empty-hint">${emptyMsg}</li>`;
     return;
@@ -1055,8 +1055,6 @@ function renderTagList() {
         </div>
         <div class="tag-pill-right">
           <span class="tag-pill-count">${node.count}</span>
-          <span class="tag-rename-btn" title="タグ「${escapeHtml(node.name)}」をリネーム">✏</span>
-          <span class="tag-delete-btn" title="タグ「${escapeHtml(node.fullPath)}」を削除">&times;</span>
         </div>
       `;
 
@@ -1082,49 +1080,17 @@ function renderTagList() {
 
       // 左クリック: フィルタOFF ➜ 含む(+) / フィルタON(除外含む) ➜ OFF(解除)
       pillItem.addEventListener('click', (e) => {
-        if (e.target.closest('.tree-toggle-btn') || e.target.closest('.tag-delete-btn') || e.target.closest('.tag-rename-btn') || e.target.closest('.tag-rename-input')) return;
+        if (e.target.closest('.tree-toggle-btn')) return;
         handleTagLeftClick(node.fullPath);
       });
 
       // 右クリック: 除外(-)のトグル（OFFまたは含む ➜ 除外 / 既に除外 ➜ OFF）
       pillItem.addEventListener('contextmenu', (e) => {
-        if (e.target.closest('.tree-toggle-btn') || e.target.closest('.tag-delete-btn') || e.target.closest('.tag-rename-btn') || e.target.closest('.tag-rename-input')) return;
+        if (e.target.closest('.tree-toggle-btn')) return;
         e.preventDefault();
         e.stopPropagation();
         handleTagRightClick(node.fullPath);
       });
-
-      // タグ削除ボタン
-      const deleteBtn = pillItem.querySelector('.tag-delete-btn');
-      if (deleteBtn) {
-        deleteBtn.addEventListener('mousedown', (e) => {
-          e.stopPropagation();
-        });
-        deleteBtn.addEventListener('pointerdown', (e) => {
-          e.stopPropagation();
-        });
-        deleteBtn.addEventListener('click', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          deleteTagCompletely(node.fullPath, node.count);
-        });
-      }
-
-      // タグリネームボタン
-      const renameBtn = pillItem.querySelector('.tag-rename-btn');
-      if (renameBtn) {
-        renameBtn.addEventListener('mousedown', (e) => {
-          e.stopPropagation();
-        });
-        renameBtn.addEventListener('pointerdown', (e) => {
-          e.stopPropagation();
-        });
-        renameBtn.addEventListener('click', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          startInlineRename(pillItem, node);
-        });
-      }
 
       nodeEl.appendChild(pillItem);
 
@@ -1248,10 +1214,17 @@ async function deleteTagCompletely(tagPath, photoCount = 0) {
     // フィルタ状態からも削除
     state.tagFilters.delete(tagPath);
     await refreshAll();
+    if (state.selectedPhotoIds && state.selectedPhotoIds.size > 1 && typeof showBatchInspector === 'function') {
+      showBatchInspector();
+    } else if (state.activeInspectorPhotoId && typeof showSingleInspector === 'function') {
+      const p = state.photos.find(x => x.id === state.activeInspectorPhotoId);
+      if (p) showSingleInspector(p);
+    }
   } catch (err) {
     alert('エラー: ' + err.message);
   }
 }
+window.deleteTagCompletely = deleteTagCompletely;
 
 /**
  * タグツリー 左クリック操作

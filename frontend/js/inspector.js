@@ -182,9 +182,10 @@ function renderExposureTags(container, photo) {
  * 単一写真の詳細・編集モード表示
  */
 function showSingleInspector(photo) {
-  // 重複詳細情報（全保存パス・全ボリューム）や完全メタデータが未取得の場合は非同期取得して再描画
-  if (photo.duplicates === undefined) {
+  // 重複詳細情報（全保存パス・全ボリューム）・XMPサイドカー情報や完全メタデータが未取得の場合は非同期取得して再描画
+  if ((photo.duplicates === undefined || photo.xmp_info === undefined) && !photo._xmpDetailFetched) {
     const currentId = photo.id;
+    photo._xmpDetailFetched = true;
     fetch(`/api/photo/${currentId}`)
       .then(res => res.ok ? res.json() : null)
       .then(detail => {
@@ -203,6 +204,9 @@ function showSingleInspector(photo) {
   elements.inspectorTitle.title = photo.file_name;
 
   // プレビューサムネイル
+  if (elements.inspectorPreviewWrapper) {
+    elements.inspectorPreviewWrapper.classList.remove('is-xmp-preview-active');
+  }
   elements.inspectorThumb.src = getThumbnailUrl(photo);
   elements.inspectorThumb.style.transform = '';
   if (elements.inspectorThumb.complete && typeof window.refreshInspectorHistogram === 'function') {
@@ -213,6 +217,213 @@ function showSingleInspector(photo) {
     const idx = state.photos.findIndex(p => p.id === photo.id);
     if (idx >= 0) openLightbox(idx);
   };
+
+  // XMPサイドカー検出・ホールドプレビュー・評価/タグ取込バーの表示制御
+  const xmpBar = document.getElementById('inspectorXmpBar');
+  const xmpBadge = document.getElementById('inspectorXmpBadge');
+  const xmpPreviewBtn = document.getElementById('inspectorXmpPreviewBtn');
+  const xmpImportBtn = document.getElementById('inspectorXmpImportMetaBtn');
+  if (xmpBar) {
+    const xmpInfo = photo.xmp_info;
+    if (xmpInfo && xmpInfo.has_xmp) {
+      xmpBar.style.display = 'flex';
+      if (xmpBadge) {
+        const xmpName = xmpInfo.xmp_name || '.xmp';
+        const hwParts = [];
+        if (xmpInfo.hardware) {
+          if (xmpInfo.hardware.camera_model) hwParts.push(xmpInfo.hardware.camera_model);
+          if (xmpInfo.hardware.lens_model) hwParts.push(xmpInfo.hardware.lens_model);
+        }
+        xmpBadge.title = hwParts.length > 0
+          ? `XMPサイドカー検出: ${xmpName} (${hwParts.join(' / ')})`
+          : `XMPサイドカーファイルが検出されました (${xmpName})`;
+      }
+
+      // 1) [👁️ XMPプレビュー] ホールドボタン
+      const hasXmpAdj = !!(xmpInfo.adjustments && xmpInfo.adjustments.has_adjustments);
+      if (xmpPreviewBtn) {
+        xmpPreviewBtn.classList.remove('is-pressing');
+        xmpPreviewBtn.style.display = hasXmpAdj ? 'inline-flex' : 'none';
+        if (hasXmpAdj) {
+          const adjSummary = Array.isArray(xmpInfo.adjustments.summary) ? xmpInfo.adjustments.summary : [];
+          xmpPreviewBtn.title = adjSummary.length > 0
+            ? `押している間だけXMPの調整データを反映します (${adjSummary.join(' / ')})`
+            : '押している間だけPhotoManagerの調整をオフにし、XMPの調整データを反映して表示します';
+
+          const xmpThumbUrl = `/api/photo/${photo.id}/xmp-preview?mode=thumb&t=${photo.file_mtime || 0}`;
+          const xmpViewUrl = `/api/photo/${photo.id}/xmp-preview?mode=view&t=${photo.file_mtime || 0}`;
+
+          // 押した瞬間にラグなく切り替わるようバックグラウンドでプリロード
+          const preloadImg = new Image();
+          preloadImg.src = xmpThumbUrl;
+
+          const startXmpPreview = (e) => {
+            if (e && e.type === 'mousedown' && e.button !== 0) return;
+            if (e && e.type === 'touchstart') e.preventDefault();
+            if (xmpPreviewBtn.classList.contains('is-pressing')) return;
+
+            xmpPreviewBtn.classList.add('is-pressing');
+            if (elements.inspectorPreviewWrapper) {
+              elements.inspectorPreviewWrapper.classList.add('is-xmp-preview-active');
+            }
+
+            const prevOnload = elements.inspectorThumb.onload;
+            elements.inspectorThumb.onload = () => {
+              if (typeof window.refreshInspectorHistogram === 'function') {
+                window.refreshInspectorHistogram();
+              }
+              elements.inspectorThumb.onload = prevOnload;
+            };
+            elements.inspectorThumb.src = xmpThumbUrl;
+            elements.inspectorThumb.style.transform = '';
+            if (elements.inspectorThumb.complete && typeof window.refreshInspectorHistogram === 'function') {
+              window.refreshInspectorHistogram();
+            }
+
+            // ライトボックスが開いており同じ写真を表示中の場合はライトボックス画像も一時切替
+            if (elements.lightboxModal && elements.lightboxModal.style.display !== 'none') {
+              const lbPhoto = typeof getCurrentLightboxPhoto === 'function' ? getCurrentLightboxPhoto() : null;
+              if (lbPhoto && lbPhoto.id === photo.id) {
+                const lbImg = elements.lightboxImage || elements.lightboxImg || document.getElementById('lightboxImage');
+                if (lbImg) {
+                  lbImg.src = xmpViewUrl;
+                }
+              }
+            }
+          };
+
+          const stopXmpPreview = () => {
+            if (!xmpPreviewBtn.classList.contains('is-pressing')) return;
+            xmpPreviewBtn.classList.remove('is-pressing');
+            if (elements.inspectorPreviewWrapper) {
+              elements.inspectorPreviewWrapper.classList.remove('is-xmp-preview-active');
+            }
+
+            const prevOnload = elements.inspectorThumb.onload;
+            elements.inspectorThumb.onload = () => {
+              if (typeof window.refreshInspectorHistogram === 'function') {
+                window.refreshInspectorHistogram();
+              }
+              elements.inspectorThumb.onload = prevOnload;
+            };
+            elements.inspectorThumb.src = getThumbnailUrl(photo);
+            elements.inspectorThumb.style.transform = '';
+            if (elements.inspectorThumb.complete && typeof window.refreshInspectorHistogram === 'function') {
+              window.refreshInspectorHistogram();
+            }
+
+            // ライトボックスが開いており同じ写真を表示中の場合は元の表示へ復元
+            if (elements.lightboxModal && elements.lightboxModal.style.display !== 'none') {
+              const lbPhoto = typeof getCurrentLightboxPhoto === 'function' ? getCurrentLightboxPhoto() : null;
+              if (lbPhoto && lbPhoto.id === photo.id) {
+                const lbImg = elements.lightboxImage || elements.lightboxImg || document.getElementById('lightboxImage');
+                if (lbImg) {
+                  lbImg.src = getPhotoViewUrl(photo);
+                  if (typeof applyLightboxTransform === 'function') {
+                    applyLightboxTransform();
+                  }
+                }
+              }
+            }
+          };
+
+          xmpPreviewBtn.onmousedown = startXmpPreview;
+          xmpPreviewBtn.ontouchstart = startXmpPreview;
+          xmpPreviewBtn.onmouseup = stopXmpPreview;
+          xmpPreviewBtn.onmouseleave = stopXmpPreview;
+          xmpPreviewBtn.ontouchend = stopXmpPreview;
+          xmpPreviewBtn.ontouchcancel = stopXmpPreview;
+          xmpPreviewBtn.onblur = stopXmpPreview;
+        } else {
+          xmpPreviewBtn.onmousedown = null;
+          xmpPreviewBtn.ontouchstart = null;
+          xmpPreviewBtn.onmouseup = null;
+          xmpPreviewBtn.onmouseleave = null;
+          xmpPreviewBtn.ontouchend = null;
+          xmpPreviewBtn.ontouchcancel = null;
+          xmpPreviewBtn.onblur = null;
+        }
+      }
+
+      // 2) [📥 評価・タグ取込] ボタン
+      const hasXmpRating = !!(xmpInfo.rating && xmpInfo.rating.has_rating);
+      const xmpTags = Array.isArray(xmpInfo.tags) ? xmpInfo.tags : [];
+      const hasXmpTags = xmpTags.length > 0;
+      const hasImportableMeta = hasXmpRating || hasXmpTags;
+      if (xmpImportBtn) {
+        xmpImportBtn.style.display = hasImportableMeta ? 'inline-flex' : 'none';
+        if (hasImportableMeta) {
+          const ratingLabelMap = { 2: '優', 1: '良', 0: '可', '-1': '棄' };
+          const metaDescParts = [];
+          if (hasXmpRating) {
+            const rawR = xmpInfo.rating.raw_rating !== undefined ? xmpInfo.rating.raw_rating : '?';
+            const pmLabel = ratingLabelMap[String(xmpInfo.rating.pm_rating)] || '可';
+            metaDescParts.push(`評価: XMP(${rawR}) → ${pmLabel}`);
+          }
+          if (hasXmpTags) {
+            metaDescParts.push(`タグ: ${xmpTags.length}件 (XMP/配下)`);
+          }
+          xmpImportBtn.title = `XMPサイドカーから取り込み (${metaDescParts.join(' / ')})`;
+
+          xmpImportBtn.onclick = async (e) => {
+            e.stopPropagation();
+            const confirmLines = [`「${photo.file_name}」のXMPサイドカーから以下の情報を取り込みますか？\n`];
+            if (hasXmpRating) {
+              const rawR = xmpInfo.rating.raw_rating !== undefined ? xmpInfo.rating.raw_rating : '?';
+              const pmLabel = ratingLabelMap[String(xmpInfo.rating.pm_rating)] || '可';
+              confirmLines.push(`・評価: XMP評価 (${rawR}) → Photo Manager 4段階評価「${pmLabel}」`);
+            }
+            if (hasXmpTags) {
+              const previewTags = xmpTags.slice(0, 5).join(', ') + (xmpTags.length > 5 ? ' ほか' : '');
+              confirmLines.push(`・タグ (${xmpTags.length}件): ${previewTags}\n  ※ 既存タグと混ざらないよう「XMP/」ルート配下に登録されます`);
+            }
+            if (!confirm(confirmLines.join('\n'))) return;
+
+            try {
+              const res = await fetch(`/api/photo/${photo.id}/import-xmp-metadata`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  import_rating: hasXmpRating,
+                  import_tags: hasXmpTags,
+                }),
+              });
+              if (!res.ok) throw new Error(`HTTP ${res.status}`);
+              const result = await res.json();
+
+              // 最新詳細データを再取得して画面へ反映
+              const detailRes = await fetch(`/api/photo/${photo.id}`);
+              if (detailRes.ok) {
+                const detailData = await detailRes.json();
+                Object.assign(photo, detailData);
+              }
+              if (typeof updateCardRatingBadge === 'function' && photo.rating !== undefined) {
+                updateCardRatingBadge(photo.id, photo.rating);
+              }
+              showSingleInspector(photo);
+              if (typeof fetchTags === 'function') fetchTags();
+              if (typeof fetchPhotos === 'function') fetchPhotos();
+              if (typeof showToast === 'function') {
+                const importedTagCount = Array.isArray(result.imported_tags) ? result.imported_tags.length : xmpTags.length;
+                showToast(`📥 XMPからメタデータを取り込みました（タグ ${importedTagCount}件）`, 'success');
+              }
+            } catch (err) {
+              console.error('[ERROR] XMPメタデータ取込失敗:', err);
+              if (typeof showToast === 'function') {
+                showToast('XMPメタデータの取り込みに失敗しました', 'error');
+              }
+            }
+          };
+        } else {
+          xmpImportBtn.onclick = null;
+        }
+      }
+    } else {
+      xmpBar.style.display = 'none';
+      if (xmpPreviewBtn) xmpPreviewBtn.style.display = 'none';
+      if (xmpImportBtn) xmpImportBtn.style.display = 'none';
+    }
+  }
 
   // ヘッダーのフォルダ・ファイルを開くボタン
   if (elements.inspectorOpenFolderBtn) {
@@ -227,6 +438,29 @@ function showSingleInspector(photo) {
     elements.inspectorOpenFileBtn.onclick = (e) => {
       e.stopPropagation();
       openPhotoFile(photo.id);
+    };
+  }
+
+  // storage内写真のみファイル名変更ボタン（✏️）を表示
+  const renameHeaderBtn = document.getElementById('inspectorRenameHeaderBtn');
+  const renameExifBtn = document.getElementById('inspectorRenameExifBtn');
+  const inStorage = typeof window.isPhotoInStorage === 'function' ? window.isPhotoInStorage(photo) : false;
+  if (renameHeaderBtn) {
+    renameHeaderBtn.style.display = inStorage ? 'inline-flex' : 'none';
+    renameHeaderBtn.onclick = (e) => {
+      e.stopPropagation();
+      if (typeof window.openStorageRenameModal === 'function') {
+        window.openStorageRenameModal([photo.id]);
+      }
+    };
+  }
+  if (renameExifBtn) {
+    renameExifBtn.style.display = inStorage ? 'inline-flex' : 'none';
+    renameExifBtn.onclick = (e) => {
+      e.stopPropagation();
+      if (typeof window.openStorageRenameModal === 'function') {
+        window.openStorageRenameModal([photo.id]);
+      }
     };
   }
 
@@ -394,7 +628,27 @@ function showSingleInspector(photo) {
               const res = await fetch(`/api/photo/${sp.id}/set-primary`, { method: 'POST' });
               if (res.ok) {
                 await fetchPhotos();
-                state.activeInspectorPhotoId = sp.id;
+                const spInStorage = typeof window.isPhotoInStorage === 'function' ? window.isPhotoInStorage(sp) : false;
+          if (renameHeaderBtn) {
+            renameHeaderBtn.style.display = spInStorage ? 'inline-flex' : 'none';
+            renameHeaderBtn.onclick = (e) => {
+              e.stopPropagation();
+              if (typeof window.openStorageRenameModal === 'function') {
+                window.openStorageRenameModal([sp.id]);
+              }
+            };
+          }
+          if (renameExifBtn) {
+            renameExifBtn.style.display = spInStorage ? 'inline-flex' : 'none';
+            renameExifBtn.onclick = (e) => {
+              e.stopPropagation();
+              if (typeof window.openStorageRenameModal === 'function') {
+                window.openStorageRenameModal([sp.id]);
+              }
+            };
+          }
+
+          state.activeInspectorPhotoId = sp.id;
                 const updated = state.photos.find(p => p.id === sp.id);
                 if (updated) showSingleInspector(updated);
               }
@@ -444,6 +698,26 @@ function showSingleInspector(photo) {
             elements.inspectorOpenFileBtn.onclick = (e) => {
               e.stopPropagation();
               openPhotoFile(sp.id);
+            };
+          }
+
+          const spInStorage = typeof window.isPhotoInStorage === 'function' ? window.isPhotoInStorage(sp) : false;
+          if (renameHeaderBtn) {
+            renameHeaderBtn.style.display = spInStorage ? 'inline-flex' : 'none';
+            renameHeaderBtn.onclick = (e) => {
+              e.stopPropagation();
+              if (typeof window.openStorageRenameModal === 'function') {
+                window.openStorageRenameModal([sp.id]);
+              }
+            };
+          }
+          if (renameExifBtn) {
+            renameExifBtn.style.display = spInStorage ? 'inline-flex' : 'none';
+            renameExifBtn.onclick = (e) => {
+              e.stopPropagation();
+              if (typeof window.openStorageRenameModal === 'function') {
+                window.openStorageRenameModal([sp.id]);
+              }
             };
           }
 
@@ -1025,6 +1299,10 @@ function showBatchInspector() {
   elements.inspectorBatchView.style.display = 'block';
   if (elements.inspectorFixedPreview) elements.inspectorFixedPreview.style.display = 'none';
   elements.inspectorTitle.textContent = '一括編集';
+  const renameHeaderBtn = document.getElementById('inspectorRenameHeaderBtn');
+  if (renameHeaderBtn) {
+    renameHeaderBtn.style.display = 'none';
+  }
   if (elements.inspectorOpenFolderBtn) {
     elements.inspectorOpenFolderBtn.style.display = 'none';
   }
@@ -1285,6 +1563,90 @@ function renderInspectorQuickTree(container, onSelect) {
 
   const treeRoot = buildTagTree(manualTags);
 
+  // 単一表示時の対象写真に既に付いているタグ集合
+  const activeSinglePhoto = (state.selectedPhotoIds.size <= 1 && state.activeInspectorPhotoId)
+    ? state.photos.find(p => p.id === state.activeInspectorPhotoId)
+    : null;
+  const assignedTagsSet = new Set((activeSinglePhoto && Array.isArray(activeSinglePhoto.tags)) ? activeSinglePhoto.tags : []);
+
+  function startInspectorTagInlineRename(itemEl, node) {
+    const nameSpan = itemEl.querySelector('.inspector-tree-name');
+    if (!nameSpan || itemEl.querySelector('.tag-rename-input')) return;
+
+    const oldName = node.name;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'tag-rename-input inspector-tag-rename-input';
+    input.value = oldName;
+
+    nameSpan.style.display = 'none';
+    nameSpan.parentNode.insertBefore(input, nameSpan.nextSibling);
+    input.focus();
+    input.select();
+
+    let committed = false;
+    async function commitRename() {
+      if (committed) return;
+      committed = true;
+      const newName = input.value.replace(/^\/+|\/+$/g, '').trim();
+      if (!newName || newName === oldName) {
+        input.remove();
+        nameSpan.style.display = '';
+        return;
+      }
+
+      const parts = node.fullPath.split('/');
+      parts[parts.length - 1] = newName;
+      const newFullPath = parts.join('/');
+
+      try {
+        const res = await fetch(`/api/tags/${encodeURIComponent(node.fullPath)}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ new_tag: newFullPath }),
+        });
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.detail || 'リネームに失敗しました');
+        }
+        if (state.inspectorQuickTreeExpandedPaths && state.inspectorQuickTreeExpandedPaths.has(node.fullPath)) {
+          state.inspectorQuickTreeExpandedPaths.delete(node.fullPath);
+          state.inspectorQuickTreeExpandedPaths.add(newFullPath);
+        }
+        await refreshAll();
+        if (state.selectedPhotoIds && state.selectedPhotoIds.size > 1 && typeof showBatchInspector === 'function') {
+          showBatchInspector();
+        } else if (state.activeInspectorPhotoId && typeof showSingleInspector === 'function') {
+          const p = state.photos.find(x => x.id === state.activeInspectorPhotoId);
+          if (p) showSingleInspector(p);
+        }
+        if (typeof showToast === 'function') {
+          showToast(`✏️ タグを「${newFullPath}」にリネームしました`, 'success', 2500);
+        }
+      } catch (err) {
+        alert('エラー: ' + err.message);
+        input.remove();
+        nameSpan.style.display = '';
+      }
+    }
+
+    input.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        commitRename();
+      } else if (e.key === 'Escape') {
+        committed = true;
+        input.remove();
+        nameSpan.style.display = '';
+      }
+    });
+    input.addEventListener('blur', () => {
+      setTimeout(() => commitRename(), 100);
+    });
+    input.addEventListener('click', (e) => e.stopPropagation());
+  }
+
   function appendTreeItems(parentNode, targetEl, indent = 0) {
     parentNode.children.forEach(node => {
       const nodeWrapper = document.createElement('div');
@@ -1292,9 +1654,10 @@ function renderInspectorQuickTree(container, onSelect) {
 
       const hasChildren = node.children.size > 0;
       const isExpanded = state.inspectorQuickTreeExpandedPaths.has(node.fullPath);
+      const isAssigned = assignedTagsSet.has(node.fullPath);
 
       const item = document.createElement('div');
-      item.className = 'inspector-tree-item';
+      item.className = `inspector-tree-item${isAssigned ? ' is-assigned-row' : ''}`;
       item.style.paddingLeft = `${indent * 12 + 6}px`;
 
       // 展開矢印またはスペーサー (親フォルダはデフォルト閉)
@@ -1303,42 +1666,71 @@ function renderInspectorQuickTree(container, onSelect) {
         toggleBtnHtml = `<span class="tree-toggle-btn ${isExpanded ? '' : 'collapsed'}" title="${isExpanded ? '折りたたむ' : '展開する'}">▼</span>`;
       }
       const icon = hasChildren ? '📁' : '🏷️';
+      const countText = node.count != null ? `<span class="inspector-tree-count" title="付与されている写真枚数">${node.count}</span>` : '';
+      const badgeText = isAssigned ? '✓付与済' : '+追加';
+      const badgeTitle = isAssigned
+        ? `「${escapeHtml(node.fullPath)}」はこの写真に付与済みです`
+        : `「${escapeHtml(node.fullPath)}」を写真に付与`;
 
       item.innerHTML = `
         <div class="inspector-tree-item-left">
           ${toggleBtnHtml}
           <span style="flex-shrink:0;">${icon}</span>
           <span class="inspector-tree-name" title="${escapeHtml(node.fullPath)}">${escapeHtml(node.name)}</span>
+          ${countText}
         </div>
-        <span class="apply-badge" title="「${escapeHtml(node.fullPath)}」を写真に付与">+追加</span>
+        <div class="inspector-tree-item-actions">
+          <button type="button" class="inspector-tag-edit-btn inspector-tag-subadd-btn" title="「${escapeHtml(node.name)}」の子タグを作成">+子</button>
+          <button type="button" class="inspector-tag-edit-btn inspector-tag-rename-btn" title="タグ「${escapeHtml(node.name)}」をリネーム">✏</button>
+          <span class="apply-badge${isAssigned ? ' is-assigned' : ''}" title="${badgeTitle}">${badgeText}</span>
+        </div>
       `;
 
       nodeWrapper.appendChild(item);
 
-      // 子ノードコンテナ（末尾にその親フォルダ直下の子タグ追加フォームを配置）
-      let childrenContainer = null;
+      // 子ノードコンテナ（親ノードは常設、葉ノードも「+子」クリックでオンデマンド展開可能）
+      let childrenContainer = document.createElement('div');
+      childrenContainer.className = `inspector-tree-children${(hasChildren && isExpanded) ? '' : ' hidden'}`;
       if (hasChildren) {
-        childrenContainer = document.createElement('div');
-        childrenContainer.className = `inspector-tree-children${isExpanded ? '' : ' hidden'}`;
         appendTreeItems(node, childrenContainer, indent + 1);
-        appendInlineAddRow(childrenContainer, node.fullPath, node.name, indent + 1);
-        nodeWrapper.appendChild(childrenContainer);
+      }
+      appendInlineAddRow(childrenContainer, node.fullPath, node.name, indent + 1);
+      nodeWrapper.appendChild(childrenContainer);
+
+      // アクションボタン群のイベント設定
+      const subAddBtn = item.querySelector('.inspector-tag-subadd-btn');
+      if (subAddBtn) {
+        subAddBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          childrenContainer.classList.remove('hidden');
+          state.inspectorQuickTreeExpandedPaths.add(node.fullPath);
+          const toggleBtn = item.querySelector('.tree-toggle-btn');
+          if (toggleBtn) toggleBtn.classList.remove('collapsed');
+          const subInput = childrenContainer.querySelector(':scope > .inspector-tree-inline-add .inspector-tree-inline-input');
+          if (subInput) setTimeout(() => subInput.focus(), 30);
+        });
       }
 
-      // イベント設定
-      if (hasChildren) {
-        // 親ノード:
-        // 1. 右端の「+追加」バッジをクリック ➜ その親タグ自体を写真に付与
-        const applyBadge = item.querySelector('.apply-badge');
-        if (applyBadge) {
-          applyBadge.addEventListener('click', (e) => {
-            e.stopPropagation();
-            onSelect(node.fullPath);
-          });
-        }
+      const renameBtn = item.querySelector('.inspector-tag-rename-btn');
+      if (renameBtn) {
+        renameBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          startInspectorTagInlineRename(item, node);
+        });
+      }
 
-        // 2. 行（矢印・アイコン・ラベル）をクリック ➜ 展開/折りたたみのトグル
+      const applyBadge = item.querySelector('.apply-badge');
+      if (applyBadge) {
+        applyBadge.addEventListener('click', (e) => {
+          e.stopPropagation();
+          onSelect(node.fullPath);
+        });
+      }
+
+      // 行クリック時の動作（親ノードの展開・折りたたみのみ。タグ付与は右端の「+追加」ボタン明示クリック時のみ実行）
+      if (hasChildren) {
         item.addEventListener('click', (e) => {
+          if (e.target.closest('.inspector-tree-item-actions') || e.target.closest('.tag-rename-input')) return;
           e.stopPropagation();
           const toggleBtn = item.querySelector('.tree-toggle-btn');
           const nowCollapsed = toggleBtn ? toggleBtn.classList.toggle('collapsed') : false;
@@ -1347,18 +1739,10 @@ function renderInspectorQuickTree(container, onSelect) {
           } else {
             state.inspectorQuickTreeExpandedPaths.add(node.fullPath);
           }
-          if (childrenContainer) {
-            childrenContainer.classList.toggle('hidden', nowCollapsed);
-          }
+          childrenContainer.classList.toggle('hidden', nowCollapsed);
           if (toggleBtn) {
             toggleBtn.title = nowCollapsed ? '展開する' : '折りたたむ';
           }
-        });
-      } else {
-        // リーフノード: 行全体または「+追加」クリックで即タグ付与
-        item.addEventListener('click', (e) => {
-          e.stopPropagation();
-          onSelect(node.fullPath);
         });
       }
 

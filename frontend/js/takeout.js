@@ -17,6 +17,8 @@
   let applyAdjustmentsEl = null;
   let exifSyncDbEl = null;
   let labelExifSyncDb = null;
+  let exportXmpSidecarEl = null;
+  let labelExportXmpSidecar = null;
   let customSizeInput = null;
   let qualitySlider = null;
   let qualityVal = null;
@@ -49,6 +51,8 @@
     applyAdjustmentsEl = document.getElementById('takeoutApplyAdjustments');
     exifSyncDbEl = document.getElementById('takeoutExifSyncDb');
     labelExifSyncDb = document.getElementById('labelExifSyncDb');
+    exportXmpSidecarEl = document.getElementById('exportXmpSidecarCheck');
+    labelExportXmpSidecar = document.getElementById('labelExportXmpSidecar');
     customSizeInput = document.getElementById('takeoutCustomSize');
     qualitySlider = document.getElementById('takeoutQualitySlider');
     qualityVal = document.getElementById('takeoutQualityVal');
@@ -107,6 +111,7 @@
       const toSave = {
         apply_adjustments: opts.apply_adjustments,
         exif_sync_db: opts.exif_sync_db,
+        export_xmp_sidecar: opts.export_xmp_sidecar,
         resize_mode: opts.resize_mode,
         custom_long_edge: opts.custom_long_edge,
         format: opts.format,
@@ -151,6 +156,7 @@
       custom_prefix: customPrefixInput ? customPrefixInput.value.trim() || 'Photo' : 'Photo',
       apply_adjustments: applyAdjustmentsEl ? applyAdjustmentsEl.checked : true,
       exif_sync_db: exifSyncDbEl ? exifSyncDbEl.checked : true,
+      export_xmp_sidecar: !!(exportXmpSidecarEl ? exportXmpSidecarEl.checked : document.getElementById('exportXmpSidecarCheck')?.checked),
       exif_remove_gps: exifGpsEl ? exifGpsEl.checked : false,
       exif_remove_exposure: exifExposureEl ? exifExposureEl.checked : false,
       exif_remove_camera: exifCameraEl ? exifCameraEl.checked : false,
@@ -170,6 +176,9 @@
       }
       if (exifSyncDbEl && typeof saved.exif_sync_db === 'boolean') {
         exifSyncDbEl.checked = saved.exif_sync_db;
+      }
+      if (exportXmpSidecarEl && typeof saved.export_xmp_sidecar === 'boolean') {
+        exportXmpSidecarEl.checked = saved.export_xmp_sidecar;
       }
       if (saved.resize_mode) {
         const r = document.querySelector(`input[name="takeoutResize"][value="${saved.resize_mode}"]`);

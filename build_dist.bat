@@ -9,7 +9,7 @@ title Photo Manager - Build Distribution
 ::
 :: Excluded:
 ::   cache/       - User photo DB & thumbnails (and legacy .cache/)
-::   carry/       - Temporary imported files
+::   storage/     - App internal storage (and legacy carry/)
 ::   take_out/    - Export preparation files
 ::   docs/        - Dev documentation
 ::   scratch/     - Debug scripts
@@ -202,8 +202,8 @@ if exist "%SRC%PhotoManager_Mobile.html" (
     copy /y "%SRC%PhotoManager_Mobile.html" "%DIST%\PhotoManager_Mobile.html" >nul 2>&1
 )
 
-:: --- Working directories for portable USB (carry & take_out) ---
-if not exist "%DIST%\carry" mkdir "%DIST%\carry" 2>nul
+:: --- Working directories for portable USB (storage & take_out) ---
+if not exist "%DIST%\storage" mkdir "%DIST%\storage" 2>nul
 if not exist "%DIST%\take_out" mkdir "%DIST%\take_out" 2>nul
 
 goto :BUILD_LAUNCHER

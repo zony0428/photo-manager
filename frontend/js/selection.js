@@ -191,6 +191,11 @@ function updateSelectionUI() {
     elements.contextMenuRefreshThumbLabel.textContent = `${icon} ${actionText}${countText}`;
   }
 
+  // storage 関連ボタンの表示・ラベル動的更新
+  if (typeof window.updateStorageSelectionUI === 'function') {
+    window.updateStorageSelectionUI();
+  }
+
   // 右ペインにも現在の選択状態を即座に反映
   updateInspectorView();
 }
@@ -200,6 +205,9 @@ function updateSelectionUI() {
    ========================================================================== */
 function openContextMenu(x, y) {
   renderContextTagSubmenu();
+  if (typeof window.updateStorageContextMenu === 'function') {
+    window.updateStorageContextMenu();
+  }
   loadAndRenderContextImportSubmenu();
 
   // サムネイルメニュー項目の動的ラベル更新
@@ -247,6 +255,13 @@ let _activeFolderNode = null;
 function openFolderContextMenu(x, y, node) {
   closeContextMenu();
   _activeFolderNode = node;
+  state.contextFolderTarget = {
+    path: node.fullPath,
+    name: node.name || node.fullPath,
+    isStorage: !!node.isStorage,
+    isStorageRoot: !!node.isStorageRoot,
+    ...node,
+  };
 
   if (!elements.folderContextMenu) return;
 
@@ -322,6 +337,22 @@ function openFolderContextMenu(x, y, node) {
     setVisible(elements.folderMenuUnmanagedGroup, false);
     setVisible(elements.folderMenuIgnoredGroup, true);
     setDisabled(elements.folderMenuAddFromIgnored, isMissing || isOffline, '実フォルダが存在しないためスキャンできません');
+  }
+
+  // storage（アプリ内ストレージ）専用メニュー項目の表示制御
+  const storageGroupEl = document.getElementById('folderMenuStorageGroup');
+  const storageRenameEl = document.getElementById('folderMenuStorageRename');
+  const storageDeleteEl = document.getElementById('folderMenuStorageDelete');
+  const isStorage = !!node.isStorage;
+  const isStorageRoot = !!node.isStorageRoot;
+  if (storageGroupEl) {
+    storageGroupEl.style.display = isStorage ? 'block' : 'none';
+  }
+  if (storageRenameEl) {
+    storageRenameEl.style.display = (isStorage && !isStorageRoot) ? 'block' : 'none';
+  }
+  if (storageDeleteEl) {
+    storageDeleteEl.style.display = (isStorage && !isStorageRoot) ? 'block' : 'none';
   }
 
   // エクスプローラーで開く
@@ -646,6 +677,14 @@ function closeAllFloatingPopovers() {
   if (elements.floatingImportBtn) elements.floatingImportBtn.classList.remove('active');
   const rotateBtn = document.getElementById('floatingRotateBtn');
   if (rotateBtn) rotateBtn.classList.remove('active');
+  const storageImportPopover = document.getElementById('floatingStorageImportPopover');
+  if (storageImportPopover) storageImportPopover.style.display = 'none';
+  const storageImportBtn = document.getElementById('floatingStorageImportBtn');
+  if (storageImportBtn) storageImportBtn.classList.remove('active');
+  const storageMovePopover = document.getElementById('floatingStorageMovePopover');
+  if (storageMovePopover) storageMovePopover.style.display = 'none';
+  const storageMoveBtn = document.getElementById('floatingStorageMoveBtn');
+  if (storageMoveBtn) storageMoveBtn.classList.remove('active');
 }
 
 /**

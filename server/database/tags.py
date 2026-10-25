@@ -282,12 +282,18 @@ def batch_update_rating(photo_ids: List[int], rating: int) -> int:
         return 0
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute(
-            f"UPDATE photos SET rating = ?, updated_at = CURRENT_TIMESTAMP WHERE id IN ({','.join(['?']*len(photo_ids))})",
-            [rating] + photo_ids,
-        )
+        updated = 0
+        chunk_size = 500
+        for i in range(0, len(photo_ids), chunk_size):
+            chunk = photo_ids[i : i + chunk_size]
+            placeholders = ",".join(["?"] * len(chunk))
+            cursor.execute(
+                f"UPDATE photos SET rating = ?, updated_at = CURRENT_TIMESTAMP WHERE id IN ({placeholders})",
+                [rating] + chunk,
+            )
+            updated += cursor.rowcount
         conn.commit()
-        return cursor.rowcount
+        return updated
 
 
 def get_all_tags_summary() -> List[Dict[str, Any]]:

@@ -47,26 +47,30 @@ When downloading this software from GitHub Releases and launching it for the fir
 
 ## ✨ Key Features
 
-1. **🔍 Obsessive "Exclusive Search (Exclude Filter `[-]`)" for Tags & Camera/Lens Tree**
-   * When filtering by tags/albums or the **Camera Body > Mounted Lens tree**, you can not only include `[+]` an item, but also **exclude `[-]` specific tags, cameras, or lenses**.
-   * Combined with folder and date filters, this makes it super easy to find **"photos you forgot to add to an album"**!
-2. **🛡️ 100% Non-Destructive (Never touches a single byte of your original files)**
+1. **🔍 Obsessive "Exclusive Search (Exclude Filter `[-]`)" & Dedicated Right-Pane Tag Editor**
+   * The left sidebar is dedicated 100% to pure, mistake-free filtering. When filtering by tags/albums or the **Camera Body > Mounted Lens tree**, you can not only include `[+]` an item, but also **exclude `[-]` specific tags, cameras, or lenses** to easily find **"photos you forgot to add to an album"**!
+   * Creating tags, adding child tags (`+Sub`), inline renaming (`✏`), and explicit tag assignment (`+Add`) are all consolidated in the right Inspector's **Tag Editor**.
+2. **🛡️ 100% Non-Destructive & 📄 XMP Sidecar Integration (`[👁️ XMP Preview]` Hold-to-Compare & Safe Import)**
    * Rotating, cropping, horizon leveling, adjusting exposure/color, or marking photos as "Rj (Reject)" never alters or deletes your original files on disk.
-3. **🔒 100% Offline & Privacy-First**
+   * When companion `.xmp` sidecar files (from Lightroom, Adobe Camera Raw, etc.) are detected, hold down the **`[👁️ XMP Preview]`** button in the Inspector to temporarily preview XMP adjustments, or click **`📥 Import Rating & Tags`** to safely map XMP ratings to Photo Manager's 4-tier scale and import keywords under an isolated **`XMP/...` root** without polluting your existing tag tree.
+3. **📦 Self-Contained In-App Storage (`storage/`) & Automatic Sidecar Tracking**
+   * Select external photos and click **`📥 Import to storage`** to copy them into the app's internal `storage/` folder. Create/rename subfolders, move photos between `storage` subfolders (including Drag & Drop), rename files (`F2` single rename or batch sequential rename with live preview), and export folders right from the UI.
+   * Companion sidecars (`.xmp`, `.pp3`, `.dop`, etc.) and cross-folder paired RAW files automatically follow your photos during import, move, rename, and export!
+4. **🔒 100% Offline & Privacy-First**
    * Your photos are never uploaded to any cloud. AI auto-tagging (ONNX Runtime / CLIP) and reverse geocoding (GPS to Country / Prefecture / City) run completely locally on your PC.
-4. **⚡ Fast One-Handed Culling, ⚖️ 2-Up Duel Comparison & 📊 Live RGB Histogram**
+5. **⚡ Fast One-Handed Culling, ⚖️ 2-Up Duel Comparison & 📊 Live RGB Histogram**
    * **4-Tier Rating (`Ex / Gd / Nm / Rj`)**: Cull tens of thousands of photos using just number keys (`1`: Ex / `2`: Gd / `3`: Rj / `0`: Nm). Rejected photos hide immediately from the grid.
    * **Smart Burst, Exposure Bracketing (AEB) & Duplicate Stacking**: Automatically groups continuous bursts, exposure brackets, and duplicate files across folders. Compare EV+ / EV- brackets or burst shots instantly with `↑` / `↓` keys in Lightbox.
    * **⚖️ 2-Up Side-by-Side Duel & 📊 Live Histogram**: Compare two photos side-by-side with **synchronized zoom & pan**, highlight Exif differences, and run knockout selection (`W` to crown Right as the new champion). Includes a real-time RGB & Luminance waveform histogram (`H` key).
-   * **📤 Smart Takeout & 🎞️ Betayaki Contact Sheet HTML**: Batch-export selected shots with non-destructive edits baked in, custom resizing, chronological renaming, and Exif privacy stripping—or generate a classic darkroom negative contact sheet HTML (`Betayaki`) with interactive red grease-pencil `⭕` marks and A4 print support.
-5. **🧪 Photography Lab & 🗾 47-Prefecture Conquest Map / Walk Trajectory**
+   * **📤 Smart Takeout (with `.xmp` Export) & 🎞️ Betayaki Contact Sheet HTML**: Batch-export selected shots with non-destructive edits baked in, custom resizing, chronological renaming, Exif privacy stripping, and optional `.xmp` sidecar generation—or generate a classic darkroom negative contact sheet HTML (`Betayaki`) with interactive red grease-pencil `⭕` marks and A4 print support.
+6. **🧪 Photography Lab & 🗾 47-Prefecture Conquest Map / Walk Trajectory**
    * **🏆 Winning Lens & Sweet-Spot Chart**: Automatically analyzes your `Ex` / `Gd` keeper rates to rank your best-performing lenses and sweet-spot focal lengths, apertures, and shooting hours.
    * **🌅 Solar Elevation Lab & ⚠️ "Lens Shaker" Detector**: Computes sun angle from timestamp & GPS to filter Golden Hour, Blue Hour, and Night/Astro shots, plus one-click extraction of slow-shutter camera-shake risks (`< 1/focal_length sec`).
    * **🗾 47-Prefecture Conquest Map, Heatmap & 👣 Walk Trajectory**: Visualize your travel footprint across Japan, shooting density heatmaps, and chronological photo-walk routes.
    * **🎂 On This Day & 🎲 Unrated Folder Gacha**: Rediscover photos taken on the same date across years, or spin the random `Gacha` to pick an unculled folder.
-6. **📜 Washi / 🌙 Urusi Themes & 🇯🇵 JP ⇄ 🇺🇸 EN Real-Time Language Toggle**
+7. **📜 Washi / 🌙 Urusi Themes & 🇯🇵 JP ⇄ 🇺🇸 EN Real-Time Language Toggle**
    * Switch between bright Japanese paper (`📜 Washi`) and darkroom ink (`🌙 Urusi`) themes, and toggle the entire UI & built-in manual between Japanese and English in one click.
-7. **🔌 USB Portable & 📱 Smartphone Offline Culling (`PhotoManager_Mobile.html`)**
+8. **🔌 USB Portable & 📱 Smartphone Offline Culling (`PhotoManager_Mobile.html`)**
    * **USB Portable**: Run directly from a USB flash drive or external SSD on any Windows PC (even without Python installed). Automatically tracks drive letter changes (e.g., `D:` → `E:`).
    * **Mobile Offline Culling**: High-quality WebP thumbnails are stored directly inside the SQLite database (`cache/library.db`). Using WebAssembly (`sql.js`), you can load the `.db` file on your smartphone in ~1 second without carrying hundreds of GBs of RAW files, cull with one thumb in bed or on the train, and sync ratings back to your PC later!
 

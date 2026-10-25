@@ -198,7 +198,7 @@ def get_photos(
     untagged_only: bool = False,
     sort_by: str = "date_taken DESC",
     stacked: bool = True,
-    limit: int = 5000,
+    limit: int = 0,
     exclude_folder: Optional[str] = None,
     unlinked_only: bool = False,
     duplicates_only: bool = False,
@@ -544,12 +544,18 @@ def batch_update_rating(photo_ids: List[int], rating: int) -> int:
         return 0
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute(
-            f"UPDATE photos SET rating = ?, updated_at = CURRENT_TIMESTAMP WHERE id IN ({','.join(['?']*len(photo_ids))})",
-            [rating] + photo_ids,
-        )
+        updated = 0
+        chunk_size = 500
+        for i in range(0, len(photo_ids), chunk_size):
+            chunk = photo_ids[i:i + chunk_size]
+            placeholders = ",".join(["?"] * len(chunk))
+            cursor.execute(
+                f"UPDATE photos SET rating = ?, updated_at = CURRENT_TIMESTAMP WHERE id IN ({placeholders})",
+                [rating] + chunk,
+            )
+            updated += cursor.rowcount
         conn.commit()
-        return cursor.rowcount
+        return updated
 
 
 
@@ -760,25 +766,30 @@ def batch_reset_photo_adjustments(photo_ids: List[int]) -> int:
         return 0
     with get_connection() as conn:
         cursor = conn.cursor()
-        placeholders = ",".join("?" for _ in photo_ids)
-        sql = f"""
-            UPDATE photos
-            SET rotation = 0,
-                fine_angle = 0.0,
-                crop_x = NULL,
-                crop_y = NULL,
-                crop_w = NULL,
-                crop_h = NULL,
-                crop_aspect = NULL,
-                brightness = 0,
-                contrast = 0,
-                saturation = 0,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id IN ({placeholders})
-        """
-        cursor.execute(sql, photo_ids)
+        updated = 0
+        chunk_size = 500
+        for i in range(0, len(photo_ids), chunk_size):
+            chunk = photo_ids[i:i + chunk_size]
+            placeholders = ",".join("?" for _ in chunk)
+            sql = f"""
+                UPDATE photos
+                SET rotation = 0,
+                    fine_angle = 0.0,
+                    crop_x = NULL,
+                    crop_y = NULL,
+                    crop_w = NULL,
+                    crop_h = NULL,
+                    crop_aspect = NULL,
+                    brightness = 0,
+                    contrast = 0,
+                    saturation = 0,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id IN ({placeholders})
+            """
+            cursor.execute(sql, chunk)
+            updated += cursor.rowcount
         conn.commit()
-        return cursor.rowcount
+        return updated
 
 
 def batch_rotate_photos(photo_ids: List[int], delta_degrees: int = 90) -> int:
@@ -787,16 +798,21 @@ def batch_rotate_photos(photo_ids: List[int], delta_degrees: int = 90) -> int:
         return 0
     with get_connection() as conn:
         cursor = conn.cursor()
-        placeholders = ",".join("?" for _ in photo_ids)
-        sql = f"""
-            UPDATE photos
-            SET rotation = (((COALESCE(rotation, 0) + ?) % 360) + 360) % 360,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id IN ({placeholders})
-        """
-        cursor.execute(sql, [delta_degrees] + photo_ids)
+        updated = 0
+        chunk_size = 500
+        for i in range(0, len(photo_ids), chunk_size):
+            chunk = photo_ids[i:i + chunk_size]
+            placeholders = ",".join("?" for _ in chunk)
+            sql = f"""
+                UPDATE photos
+                SET rotation = (((COALESCE(rotation, 0) + ?) % 360) + 360) % 360,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id IN ({placeholders})
+            """
+            cursor.execute(sql, [delta_degrees] + chunk)
+            updated += cursor.rowcount
         conn.commit()
-        return cursor.rowcount
+        return updated
 
 
 
@@ -905,17 +921,22 @@ def batch_infer_gps(
 
         # 対象写真の抽出（GPS未設定かつ撮影日時が存在するもの）
         if photo_ids:
-            placeholders = ",".join(["?"] * len(photo_ids))
-            cursor.execute(
-                f"""
-                SELECT id, date_taken
-                FROM photos
-                WHERE id IN ({placeholders})
-                  AND latitude IS NULL
-                  AND date_taken IS NOT NULL AND date_taken != ''
-                """,
-                photo_ids
-            )
+            target_photos = []
+            chunk_size = 500
+            for i in range(0, len(photo_ids), chunk_size):
+                chunk = photo_ids[i:i + chunk_size]
+                placeholders = ",".join(["?"] * len(chunk))
+                cursor.execute(
+                    f"""
+                    SELECT id, date_taken
+                    FROM photos
+                    WHERE id IN ({placeholders})
+                      AND latitude IS NULL
+                      AND date_taken IS NOT NULL AND date_taken != ''
+                    """,
+                    chunk
+                )
+                target_photos.extend(cursor.fetchall())
         elif folder:
             dir_sql, dir_params = _directory_filter_sql(folder, recursive=True, column_name="directory_path")
             cursor.execute(
@@ -928,10 +949,10 @@ def batch_infer_gps(
                 """,
                 dir_params
             )
+            target_photos = cursor.fetchall()
         else:
             return {"inferred_count": 0, "skipped_count": 0, "total_target": 0}
 
-        target_photos = cursor.fetchall()
         total_target = len(target_photos)
         if total_target == 0:
             return {"inferred_count": 0, "skipped_count": 0, "total_target": 0}
@@ -1014,18 +1035,23 @@ def clear_inferred_gps(
     """
     with get_connection() as conn:
         cursor = conn.cursor()
+        updated = 0
         if photo_ids:
-            placeholders = ",".join(["?"] * len(photo_ids))
-            cursor.execute(
-                f"""
-                UPDATE photos
-                SET latitude = NULL, longitude = NULL, gps_source = NULL,
-                    country = NULL, state = NULL, city = NULL,
-                    meta_dirty = 1, updated_at = CURRENT_TIMESTAMP
-                WHERE id IN ({placeholders}) AND gps_source = 'inferred'
-                """,
-                photo_ids
-            )
+            chunk_size = 500
+            for i in range(0, len(photo_ids), chunk_size):
+                chunk = photo_ids[i:i + chunk_size]
+                placeholders = ",".join(["?"] * len(chunk))
+                cursor.execute(
+                    f"""
+                    UPDATE photos
+                    SET latitude = NULL, longitude = NULL, gps_source = NULL,
+                        country = NULL, state = NULL, city = NULL,
+                        meta_dirty = 1, updated_at = CURRENT_TIMESTAMP
+                    WHERE id IN ({placeholders}) AND gps_source = 'inferred'
+                    """,
+                    chunk
+                )
+                updated += cursor.rowcount
         elif folder:
             dir_sql, dir_params = _directory_filter_sql(folder, recursive=True, column_name="directory_path")
             cursor.execute(
@@ -1038,11 +1064,12 @@ def clear_inferred_gps(
                 """,
                 dir_params
             )
+            updated = cursor.rowcount
         else:
             return 0
 
         conn.commit()
-        return cursor.rowcount
+        return updated
 
 
 def clear_photo_gps(
@@ -1055,18 +1082,23 @@ def clear_photo_gps(
     """
     with get_connection() as conn:
         cursor = conn.cursor()
+        updated = 0
         if photo_ids:
-            placeholders = ",".join(["?"] * len(photo_ids))
-            cursor.execute(
-                f"""
-                UPDATE photos
-                SET latitude = NULL, longitude = NULL, gps_source = NULL,
-                    country = NULL, state = NULL, city = NULL,
-                    meta_dirty = 1, updated_at = CURRENT_TIMESTAMP
-                WHERE id IN ({placeholders})
-                """,
-                photo_ids
-            )
+            chunk_size = 500
+            for i in range(0, len(photo_ids), chunk_size):
+                chunk = photo_ids[i:i + chunk_size]
+                placeholders = ",".join(["?"] * len(chunk))
+                cursor.execute(
+                    f"""
+                    UPDATE photos
+                    SET latitude = NULL, longitude = NULL, gps_source = NULL,
+                        country = NULL, state = NULL, city = NULL,
+                        meta_dirty = 1, updated_at = CURRENT_TIMESTAMP
+                    WHERE id IN ({placeholders})
+                    """,
+                    chunk
+                )
+                updated += cursor.rowcount
         elif folder:
             dir_sql, dir_params = _directory_filter_sql(folder, recursive=True, column_name="directory_path")
             cursor.execute(
@@ -1079,11 +1111,12 @@ def clear_photo_gps(
                 """,
                 dir_params
             )
+            updated = cursor.rowcount
         else:
             return 0
 
         conn.commit()
-        return cursor.rowcount
+        return updated
 
 
 def cleanup_invalid_zero_gps() -> int:
@@ -1423,22 +1456,28 @@ def cleanup_missing_photos_in_folder(directory_path: str, recursive: bool = Fals
 
 def cleanup_missing_upload_photos(upload_dir: Path) -> int:
     """
-    carry フォルダ配下の写真で、実ファイルが削除されたレコードをDBから完全にクリーンアップする。
-    （外部ドライブのオフライン写真は保護し、テンポラリ持ち帰り用の carry 写真のみを対象とする）
+    storage（旧 carry）フォルダ配下の写真で、実ファイルが削除されたレコードをDBから完全にクリーンアップする。
+    （サブフォルダ内の写真およびポータブル移動時の相対パスも検証し、実在する写真は確実に保持する）
     """
+    from ..scanner import resolve_portable_path
+
     upload_dir_resolved = upload_dir.resolve()
     upload_dir_str = str(upload_dir_resolved).rstrip("\\/")
+    upload_dir_low = upload_dir_str.lower()
+
+    dir_sql, dir_params = _directory_filter_sql(upload_dir_str, recursive=True, column_name="directory_path")
+    fp_sql, fp_params = _directory_filter_sql(upload_dir_str, recursive=True, column_name="file_path")
 
     with get_connection() as conn:
         cursor = conn.cursor()
-        # carry ディレクトリ配下の写真を検索
+        # storage ディレクトリ（およびサブフォルダ）配下の写真を検索
         cursor.execute(
-            """
+            f"""
             SELECT id, file_path, directory_path
             FROM photos
-            WHERE directory_path = ? OR directory_path LIKE ? OR file_path LIKE ?
+            WHERE {dir_sql} OR {fp_sql}
             """,
-            (upload_dir_str, f"{upload_dir_str}\\%", f"{upload_dir_str}\\%"),
+            dir_params + fp_params,
         )
         rows = cursor.fetchall()
         if not rows:
@@ -1446,9 +1485,22 @@ def cleanup_missing_upload_photos(upload_dir: Path) -> int:
 
         missing_ids = []
         for r in rows:
-            p_path = Path(r["file_path"])
-            # そのままのパスで存在するか、または現在の upload_dir / ファイル名 で存在するか
-            is_present = p_path.exists() or (upload_dir_resolved / p_path.name).exists()
+            raw_fp = r["file_path"] or ""
+            p_path = Path(raw_fp)
+            is_present = p_path.exists()
+
+            if not is_present:
+                resolved_p, is_online = resolve_portable_path(raw_fp)
+                if is_online and resolved_p.exists():
+                    is_present = True
+
+            if not is_present:
+                norm_fp = raw_fp.replace("/", "\\")
+                if norm_fp.lower().startswith(upload_dir_low + "\\"):
+                    rel_sub = norm_fp[len(upload_dir_str):].lstrip("\\")
+                    if rel_sub and (upload_dir_resolved / rel_sub).exists():
+                        is_present = True
+
             if not is_present:
                 missing_ids.append(r["id"])
 
@@ -1461,7 +1513,7 @@ def cleanup_missing_upload_photos(upload_dir: Path) -> int:
                 cursor.execute(f"DELETE FROM photo_tags WHERE photo_id IN ({placeholders})", chunk)
                 cursor.execute(f"DELETE FROM photos WHERE id IN ({placeholders})", chunk)
             conn.commit()
-            print(f"[INFO] carry 内のリンク切れ写真 {len(missing_ids)} 件をDBから自動クリーンアップしました。")
+            print(f"[INFO] storage 内のリンク切れ写真 {len(missing_ids)} 件をDBから自動クリーンアップしました。")
             return len(missing_ids)
         return 0
 
@@ -1557,7 +1609,7 @@ def get_photos_brief_batch(photo_ids: List[int]) -> List[Dict[str, Any]]:
         return results
 
 
-def get_missing_photos(limit: int = 2000) -> List[Dict[str, Any]]:
+def get_missing_photos(limit: int = 0) -> List[Dict[str, Any]]:
     """
     接続中（オンライン）のドライブ・フォルダに登録されているが、
     実ファイルが削除または移動されて見つからない写真（孤児レコード）を抽出して返す。
@@ -1578,21 +1630,35 @@ def get_missing_photos(limit: int = 2000) -> List[Dict[str, Any]]:
             LEFT JOIN volumes v ON p.volume_serial = v.volume_serial
             LEFT JOIN thumbnails t ON p.id = t.photo_id
             WHERE p.rating IN (0, 1, 2)
+              AND (p.is_unlinked IS NULL OR p.is_unlinked = 0)
             ORDER BY p.date_taken DESC, p.file_name ASC
             """
         )
         rows = cursor.fetchall()
         dir_online_cache: Dict[str, bool] = {}
+        dir_files_cache: Dict[str, Optional[set]] = {}
         missing_photos: List[Dict[str, Any]] = []
 
         for r in rows:
             d_path = r["directory_path"]
             if d_path not in dir_online_cache:
-                _, is_online = resolve_portable_path(d_path)
+                resolved_dir, is_online = resolve_portable_path(d_path)
                 dir_online_cache[d_path] = is_online
+                if is_online and resolved_dir:
+                    try:
+                        with os.scandir(str(resolved_dir)) as it:
+                            dir_files_cache[d_path] = {entry.name.lower() for entry in it}
+                    except Exception:
+                        dir_files_cache[d_path] = None
+                else:
+                    dir_files_cache[d_path] = None
 
             # 親ドライブ/フォルダがオンラインなのに、実ファイルが存在しない写真
             if dir_online_cache[d_path]:
+                file_set = dir_files_cache.get(d_path)
+                fname = r["file_name"] or os.path.basename(r["file_path"] or "")
+                if file_set is not None and fname and fname.lower() in file_set:
+                    continue
                 f_path, _ = resolve_portable_path(r["file_path"])
                 if not os.path.exists(str(f_path)):
                     item = dict(r)
@@ -1601,7 +1667,7 @@ def get_missing_photos(limit: int = 2000) -> List[Dict[str, Any]]:
                     item["stack_count"] = 1
                     item["stack_photos"] = []
                     missing_photos.append(item)
-                    if len(missing_photos) >= limit:
+                    if limit and limit > 0 and len(missing_photos) >= limit:
                         break
 
         # タグ情報を付与 (SQLiteバインド上限回避のため900件ずつチャンク取得)
@@ -1624,7 +1690,7 @@ def get_missing_photos(limit: int = 2000) -> List[Dict[str, Any]]:
 
 def get_missing_photos_count() -> int:
     """実体パスが存在しない写真（オンラインドライブ内）の件数を取得する"""
-    photos = get_missing_photos(limit=5000)
+    photos = get_missing_photos(limit=0)
     return len(photos)
 
 

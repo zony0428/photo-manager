@@ -205,6 +205,45 @@
     '検索クリア': 'Clear search',
     '入力したキーワードを含むファイル名を即座に絞り込み表示します。': 'Instantly filters photos matching the filename keyword.',
 
+    // --- 📦 storage（アプリ内ストレージ）管理 ---
+    'storage (アプリ内ストレージ)': 'storage (In-App Storage)',
+    '📥 storageへインポート': '📥 Import to storage',
+    'storageへインポート': 'Import to storage',
+    '選択した写真をアプリ内の storage フォルダへコピー＆インポートします': 'Copy & import selected photos into the in-app storage folder',
+    '作成&インポート': 'Create & Import',
+    'storage内にフォルダを作成してインポート': 'Create a subfolder in storage and import',
+    'インポート先フォルダ': 'Destination Folder in storage',
+    '📦 storage内で移動': '📦 Move in storage',
+    'storage内で移動': 'Move in storage',
+    'storage 内の写真を別サブフォルダへ移動します': 'Move photos to another subfolder inside storage',
+    '作成&移動': 'Create & Move',
+    'storage内にフォルダを作成して移動': 'Create a subfolder in storage and move',
+    '移動先フォルダ': 'Destination Folder in storage',
+    'storageフォルダを開く': 'Open storage Folder',
+    'エクスプローラーでstorageフォルダを開きます': 'Open storage folder in File Explorer',
+    '✏️ ファイル名を変更 (F2)': '✏️ Rename File (F2)',
+    '✏️ 一括連番リネーム... (F2)': '✏️ Batch Sequential Rename... (F2)',
+    'ファイル名変更': 'Rename',
+    '一括リネーム': 'Batch Rename',
+    'ファイル名を変更 (F2)': 'Rename File (F2)',
+    '📁 新規サブフォルダを作成...': '📁 New Subfolder...',
+    '✏️ フォルダ名を変更...': '✏️ Rename Folder...',
+    '📤 このフォルダを外部へエクスポート...': '📤 Export Folder to External...',
+    '🗑️ 空フォルダを削除': '🗑️ Delete Empty Folder',
+    '✏️ ファイル名を変更': '✏️ Rename File',
+    'storage 内の写真ファイル名を変更します': 'Rename photo file in storage',
+    '現在のファイル名:': 'Current Filename:',
+    '変更を保存 (Enter)': 'Save Changes (Enter)',
+    '撮影日時 ＋ 3桁連番': 'Date Taken + 3-Digit Seq',
+    '撮影日時 ＋ 元ファイル名': 'Date Taken + Original Name',
+    '自由な接頭辞 ＋ 3桁連番': 'Custom Prefix + 3-Digit Seq',
+    '接頭辞（プレフィックス）': 'Custom Prefix',
+    '開始番号': 'Start Number',
+    '変更プレビュー（先頭5件）': 'Preview (First 5 Items)',
+    '📁 新規サブフォルダを作成': '📁 Create New Subfolder',
+    'storage 内に新しいサブフォルダを作成します': 'Create a new subfolder inside storage',
+    '作成する': 'Create',
+
     // --- 左サイドバー: 🧪 ラボ (Lab) ---
     'ラボ': 'Lab',
     '分析・発掘': 'Karte & Dig',
@@ -1362,6 +1401,71 @@
       'A. This appears because this indie tool is not signed with a commercial certificate. Click "More info" → "Run anyway", or double-click the bundled',
     'を実行してPC上で': 'to compile a fresh',
     'を再生成してください。': 'locally on your PC.',
+
+    // XMP サイドカー & storage 機能
+    'XMPサイドカーファイルが検出されました': 'XMP sidecar file detected',
+    '👁️ XMPプレビュー': '👁️ Hold XMP Preview',
+    '押している間だけPhotoManagerの調整をオフにし、XMPの調整データを反映して表示します':
+      'Hold to temporarily bypass Photo Manager edits and preview XMP adjustments',
+    '📥 評価・タグ取込': '📥 Import Rating/Tags',
+    'XMPサイドカーの評価（4段階変換）やタグ（XMP/ルート配下）を取り込みます':
+      'Import XMP rating (converted to 4-stage) and hierarchical tags (under XMP/ root)',
+    '📄 XMPサイドカー (.xmp) も一緒に出力する（評価・タグ・調整情報の保持）':
+      '📄 Also export XMP sidecar (.xmp) (preserves rating, tags & adjustments)',
+    '書き出し画像と一緒に評価・タグ・GPS・調整情報を記録した .xmp サイドカーファイルも出力します':
+      'Exports a companion .xmp sidecar file containing rating, tags, GPS, and adjustment metadata',
+    '📄 XMPサイドカー連携 ＆ 👁️ XMPプレビュー（ホールド比較）:':
+      '📄 XMP Sidecar Integration & 👁️ Hold XMP Preview:',
+    '同名の': 'For photos with a companion',
+    'サイドカーファイル（Lightroom / Adobe Camera Raw 等）が存在する写真では、右インスペクタ上部に':
+      'sidecar file (from Lightroom / Adobe Camera Raw, etc.), the',
+    '「📄 XMP」バー': '"📄 XMP" bar',
+    'が表示されます。': 'appears at the top of the right inspector.',
+    '「👁️ XMPプレビュー」ボタンを長押し（ホールド）している間だけ':
+      'While holding down "👁️ Hold XMP Preview",',
+    'Photo Manager 側の調整を一時オフにして XMP 側の調整（露出・コントラスト・彩度・クロップ・角度）を反映表示し、指を離すと元の表示に戻ります。また':
+      'Photo Manager temporarily bypasses its own edits to render the XMP adjustments (Exposure, Contrast, Saturation, Crop, Angle), restoring normal view upon release. Click',
+    '「📥 評価・タグ取込」': '"📥 Import Rating/Tags"',
+    'ボタンから、XMP 内の評価（4段階へ自動変換）や階層タグ（':
+      'to import XMP ratings (converted to 4-stage) and hierarchical keywords (safely isolated under the',
+    'ルート配下に隔離して安全にインポート）を取り込めます。':
+      'root).',
+    '非破壊で行った回転・傾き・切り抜き・明るさ調整の焼き込み、GPS/向きのExif同期、':
+      'Bakes in non-destructive rotation/crop/tone edits, syncs GPS/Orientation Exif,',
+    '📄 XMPサイドカー (': '📄 exports companion XMP sidecars (',
+    ') の同時出力（評価・タグ・調整情報の保持）': ') preserving ratings/tags/adjustments',
+    '、長辺リサイズ（4K / SNS最適 / フルHD等）、撮影秒数順の連番リネーム、SNS公開用のExifプライバシー消去を一括適用して別フォルダへ書き出します。':
+      ', resizes long edge (4K / Social / FHD), renames sequentially by timestamp, and scrubs private Exif into a separate folder.',
+    '📦 storage（アプリ内ストレージ）での完結管理 ＆ サイドカー自動追従:':
+      '📦 Self-Contained "storage" Management & Automatic Sidecar Tracking:',
+    '左サイドバー「📁 フォルダ」先頭の': 'At the top of "📁 Folders" in the left sidebar,',
+    '「📦 storage (アプリ内ストレージ)」': '"📦 storage (In-App Storage)"',
+    'には、外部フォルダの写真を選択して': 'lets you select external photos and click',
+    '「📥 storageへインポート」': '"📥 Import to storage"',
+    '（または左ツリーの': '(or drag & drop onto the',
+    'フォルダへドラッグ＆ドロップ）でコピー取り込みできます。':
+      'folder in the sidebar) to copy them into the app.',
+    '内ではサブフォルダの作成・名前変更、写真のフォルダ間移動（':
+      'supports creating/renaming subfolders, moving photos between folders (',
+    '「📦 storage内で移動」': '"📦 Move in storage"',
+    '）、ファイル名変更（': '), renaming files (',
+    'で単一リネーム／複数選択時は一括連番リネーム）、フォルダ右クリックからの外部エクスポートが自在に行えます。さらに、写真と同名の':
+      'for single rename or batch sequential rename), and exporting folders externally. Companion',
+    'サイドカーファイル（': 'sidecar files (',
+    '等）が存在する場合は、インポート・移動・リネーム・エクスポート時に自動で追従':
+      'etc.) automatically follow the photo during import, move, rename, and export',
+    'します。': '.',
+    'DB管理': 'DB Maint',
+    'データベースのバックアップ・最適化（VACUUM）': 'Database Backup & Optimization (VACUUM)',
+    'タグエディタ (付与・作成・編集)': 'Tag Editor (Assign, Create & Edit)',
+    'タグエディタ (一括付与・作成・編集)': 'Tag Editor (Batch Assign, Create & Edit)',
+    '✓付与済': '✓Added',
+    '+子': '+Sub',
+    'その他のタグなし (右インスペクタで作成)': 'No other tags (Create in Right Inspector)',
+    '付与されている写真枚数': 'Number of photos with this tag',
+    '🏷️ タグを全体から削除（確認）': '🏷️ Delete Tag from Library (Confirm)',
+    'キャンセル (NG)': 'Cancel (NG)',
+    'OK (全体から削除)': 'OK (Delete Tag)',
   };
 
   const MONTH_NAMES_SHORT = [
@@ -1577,6 +1681,11 @@
     [/^フィルタセット「(.+)」を適用しました$/, 'Applied filter preset "$1"'],
     [/^フィルタセット「(.+)」を削除しました$/, 'Deleted filter preset "$1"'],
     [/^✅\s*スキャン完了:\s*([\d,]+)枚検出\s*\(([\d,]+)枚更新(.*)\)$/, '✅ Scan complete: $1 found ($2 updated$3)'],
+    [/^XMPサイドカー検出:\s*(.+)$/, 'XMP sidecar detected: $1'],
+    [/^XMPサイドカーファイルが検出されました\s*\((.+)\)$/, 'XMP sidecar file detected ($1)'],
+    [/^押している間だけXMPの調整データを反映します\s*\((.+)\)$/, 'Hold to preview XMP adjustments ($1)'],
+    [/^XMPサイドカーから取り込み\s*\((.+)\)$/, 'Import from XMP sidecar ($1)'],
+    [/^📥\s*XMPからメタデータを取り込みました（タグ\s*(\d+)件）$/, '📥 Imported metadata from XMP ($1 tags)'],
   ];
 
   /**

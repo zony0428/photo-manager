@@ -145,24 +145,33 @@ class AITaggingWorker:
                 params = []
 
                 if photo_ids:
-                    placeholders = ",".join(["?"] * len(photo_ids))
-                    conditions.append(f"p.id IN ({placeholders})")
-                    params.extend(photo_ids)
-                elif folder_path:
-                    dir_sql, dir_params = _directory_filter_sql(folder_path, recursive=True, column_name="p.directory_path")
-                    conditions.append(dir_sql)
-                    params.extend(dir_params)
+                    targets = []
+                    id_chunk_size = 500
+                    for i in range(0, len(photo_ids), id_chunk_size):
+                        id_chunk = photo_ids[i : i + id_chunk_size]
+                        placeholders = ",".join(["?"] * len(id_chunk))
+                        chunk_conds = [f"p.id IN ({placeholders})"]
+                        if not force_retag:
+                            chunk_conds.append("p.id NOT IN (SELECT photo_id FROM photo_tags WHERE source = 'ai')")
+                        chunk_query = query + " WHERE " + " AND ".join(chunk_conds) + " ORDER BY p.id ASC"
+                        cursor.execute(chunk_query, id_chunk)
+                        targets.extend(cursor.fetchall())
+                else:
+                    if folder_path:
+                        dir_sql, dir_params = _directory_filter_sql(folder_path, recursive=True, column_name="p.directory_path")
+                        conditions.append(dir_sql)
+                        params.extend(dir_params)
 
-                if not force_retag:
-                    # すでにAIタグが付与済みの写真はスキップ
-                    conditions.append("p.id NOT IN (SELECT photo_id FROM photo_tags WHERE source = 'ai')")
+                    if not force_retag:
+                        # すでにAIタグが付与済みの写真はスキップ
+                        conditions.append("p.id NOT IN (SELECT photo_id FROM photo_tags WHERE source = 'ai')")
 
-                if conditions:
-                    query += " WHERE " + " AND ".join(conditions)
+                    if conditions:
+                        query += " WHERE " + " AND ".join(conditions)
 
-                query += " ORDER BY p.id ASC"
-                cursor.execute(query, params)
-                targets = cursor.fetchall()
+                    query += " ORDER BY p.id ASC"
+                    cursor.execute(query, params)
+                    targets = cursor.fetchall()
 
             with self._state_lock:
                 self.total_count = len(targets)

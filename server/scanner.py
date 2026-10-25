@@ -65,7 +65,7 @@ from .shell_thumbnail import get_shell_thumbnail, is_cloud_or_ondemand_path
 THUMBNAIL_DIR = CACHE_DIR / "thumbnails"
 
 # 対象画像拡張子（通常画像 + 各社RAW）
-SUPPORTED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".tiff"}
+SUPPORTED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".tiff", ".tif", ".heic", ".heif", ".avif"}
 SUPPORTED_EXTENSIONS = SUPPORTED_IMAGE_EXTENSIONS | SUPPORTED_RAW_EXTENSIONS
 
 # EXIFタグの逆引きマッピング作成
@@ -222,7 +222,23 @@ def resolve_portable_path(stored_path: str) -> Tuple[Path, bool]:
         if candidate_same_drive.exists():
             return candidate_same_drive, True
 
-    # 2. プロジェクト直下の "photos" ディレクトリ内を照合
+    # 2. プロジェクト直下の "storage" ディレクトリ（サブフォルダ階層含む）を照合
+    app_storage_dir = base_dir / "storage"
+    if app_storage_dir.exists():
+        norm_stored = str(orig_path).replace("/", "\\").rstrip("\\")
+        lower_stored = norm_stored.lower()
+        marker = "\\storage\\"
+        idx_st = lower_stored.rfind(marker)
+        if idx_st != -1:
+            rel_in_storage = norm_stored[idx_st + len(marker):].lstrip("\\")
+            if rel_in_storage:
+                candidate_storage = app_storage_dir / rel_in_storage
+                if candidate_storage.exists():
+                    return candidate_storage, True
+        elif lower_stored.endswith("\\storage"):
+            return app_storage_dir, True
+
+    # 3. プロジェクト直下の "photos" ディレクトリ内を照合
     app_photos_dir = base_dir / "photos"
     if app_photos_dir.exists():
         candidate_app_sub = app_photos_dir / orig_path.name
@@ -233,7 +249,7 @@ def resolve_portable_path(stored_path: str) -> Tuple[Path, bool]:
             if candidate_parent_sub.exists():
                 return candidate_parent_sub, True
 
-    # 3. 見つからない場合はオフライン
+    # 4. 見つからない場合はオフライン
     # 元パスの親ディレクトリの存在状態（ドライブ切断等の判定）をキャッシュ
     # （キャッシュは「元パスの親が実在するか」のみを表す。代替照合の成功では書き込まない）
     if not parent_known_offline:
@@ -280,10 +296,59 @@ def _parse_gps_coord(coord, ref) -> Optional[float]:
         return None
 
 
+def _apply_xmp_hardware_fallback(meta: Dict[str, Any], file_path: Path, fallback_dt_str: str) -> Dict[str, Any]:
+    """
+    Exifから取得できなかったハードウェア情報（レンズ機種名・カメラ機種名・撮影日時・GPS座標）がある場合のみ、
+    付随する .xmp サイドカーからハードウェア情報を安全に補完する（評価・タグ・ビットマップ調整は自動反映しない）。
+    """
+    need_lens = not is_valid_lens_name(meta.get("lens_model"))
+    need_cam = meta.get("camera_model") in (None, "", "不明", "RAW写真")
+    need_dt = (not meta.get("date_taken")) or (meta.get("date_taken") == fallback_dt_str)
+    need_gps = meta.get("latitude") is None or meta.get("longitude") is None
+
+    if not (need_lens or need_cam or need_dt or need_gps):
+        return meta
+
+    try:
+        from .sidecar import parse_xmp_for_photo
+        xmp_info = parse_xmp_for_photo(file_path)
+        if not xmp_info.get("has_xmp"):
+            return meta
+        hw = xmp_info.get("hardware") or {}
+        if need_lens and hw.get("lens_model") and is_valid_lens_name(hw["lens_model"]):
+            meta["lens_model"] = hw["lens_model"]
+        if need_cam and hw.get("camera_model"):
+            meta["camera_model"] = sanitize_camera_model(hw["camera_model"])
+        if need_dt and hw.get("date_taken"):
+            meta["date_taken"] = hw["date_taken"]
+            meta["year_month"] = hw["date_taken"][:7] if len(hw["date_taken"]) >= 7 else ""
+        if need_gps and hw.get("latitude") is not None and hw.get("longitude") is not None:
+            meta["latitude"] = hw["latitude"]
+            meta["longitude"] = hw["longitude"]
+            meta["gps_source"] = meta.get("gps_source") or "exif"
+            try:
+                from server.geocoder import reverse_geocode
+                loc = reverse_geocode(meta["latitude"], meta["longitude"])
+                meta["country"] = loc.get("country")
+                meta["state"] = loc.get("state")
+                meta["city"] = loc.get("city")
+            except Exception as geo_err:
+                logger.warning(f"XMP GPS逆ジオコーディング失敗 ({file_path.name}): {geo_err}")
+    except Exception as e:
+        logger.debug(f"XMPハードウェア補完スキップ ({file_path.name}): {e}")
+
+    return meta
+
+
 def extract_metadata(file_path: Path) -> Dict[str, Any]:
     """画像ファイルから幅、高さ、撮影日時、カメラ機種などのメタデータを抽出する（RAW対応）"""
     if is_raw_file(file_path):
-        return extract_raw_metadata(file_path)
+        raw_meta = extract_raw_metadata(file_path)
+        try:
+            fb_str = datetime.fromtimestamp(file_path.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            fb_str = ""
+        return _apply_xmp_hardware_fallback(raw_meta, file_path, fb_str)
 
     stat = file_path.stat()
     file_size = stat.st_size
@@ -447,7 +512,7 @@ def extract_metadata(file_path: Path) -> Dict[str, Any]:
         except Exception as e:
             logger.warning(f"逆ジオコーディング失敗 ({file_path.name}): {e}")
 
-    return {
+    meta = {
         "file_path": os.path.abspath(str(file_path)),
         "file_name": file_path.name,
         "directory_path": os.path.abspath(str(file_path.parent)),
@@ -475,6 +540,7 @@ def extract_metadata(file_path: Path) -> Dict[str, Any]:
         "state": state,
         "city": city,
     }
+    return _apply_xmp_hardware_fallback(meta, file_path, fallback_dt.strftime("%Y-%m-%d %H:%M:%S"))
 
 
 

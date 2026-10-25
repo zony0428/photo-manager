@@ -4,8 +4,8 @@
  * 汎用ヘルパー関数、テーマ制御、ハートビート、ペインリサイズを管理する。
  */
 
-// アプリケーション全体の定数
-const MAX_DISPLAY_PHOTOS = 5000;
+// アプリケーション全体の定数 (0 = 表示上限なし)
+const MAX_DISPLAY_PHOTOS = 0;
 
 // カラータグ定義マッピング (カラーコーディング ＆ パレット上部集約用)
 const COLOR_TAG_MAP = {
@@ -999,38 +999,44 @@ let _pendingDeleteTagResolve = null;
 
 function showDeleteTagModal(tagName, photoCount = 0) {
   return new Promise((resolve) => {
-    if (!elements.deleteTagModal) {
+    const modalEl = elements.deleteTagModal || document.getElementById('deleteTagModal');
+    const tagNameEl = elements.deleteTagModalTagName || document.getElementById('deleteTagModalTagName');
+    const descEl = elements.deleteTagModalPhotoCountDesc || document.getElementById('deleteTagModalPhotoCountDesc');
+    const cancelBtnEl = elements.btnCancelDeleteTag || document.getElementById('btnCancelDeleteTag');
+
+    if (!modalEl) {
       // モーダル要素が存在しない場合は標準 confirm に安全フォールバック
       const countMsg = photoCount > 0
         ? `\n\n※ ${photoCount} 枚の写真からこのタグ（およびその子孫タグ）が削除されます。`
         : '\n\n※ このタグ（およびその子孫タグ）が全写真から削除されます。';
-      resolve(confirm(`タグ「${tagName}」を削除しますか？${countMsg}\n※ 写真ファイル自体は削除されません。`));
+      resolve(window.confirm(`タグ「${tagName}」を全体から削除しますか？${countMsg}\n※ 写真ファイル自体は削除されません。`));
       return;
     }
 
     _pendingDeleteTagResolve = resolve;
 
-    if (elements.deleteTagModalTagName) {
-      elements.deleteTagModalTagName.textContent = tagName;
+    if (tagNameEl) {
+      tagNameEl.textContent = tagName;
     }
-    if (elements.deleteTagModalPhotoCountDesc) {
+    if (descEl) {
       if (photoCount > 0) {
-        elements.deleteTagModalPhotoCountDesc.textContent = `${photoCount} 枚の写真からこのタグ（およびその子孫タグ）が完全に除去されます。`;
+        descEl.textContent = `${photoCount} 枚の写真からこのタグ（およびその子孫タグ）が完全に除去されます。`;
       } else {
-        elements.deleteTagModalPhotoCountDesc.textContent = `このタグ（およびその子孫タグ）がライブラリから完全に除去されます。`;
+        descEl.textContent = `このタグ（およびその子孫タグ）がライブラリ内の全写真から完全に除去されます。`;
       }
     }
 
-    elements.deleteTagModal.style.display = 'flex';
-    if (elements.btnConfirmDeleteTag) {
-      elements.btnConfirmDeleteTag.focus();
+    modalEl.style.display = 'flex';
+    if (cancelBtnEl) {
+      cancelBtnEl.focus();
     }
   });
 }
 
 function closeDeleteTagModal(confirmed = false) {
-  if (elements.deleteTagModal) {
-    elements.deleteTagModal.style.display = 'none';
+  const modalEl = elements.deleteTagModal || document.getElementById('deleteTagModal');
+  if (modalEl) {
+    modalEl.style.display = 'none';
   }
   if (_pendingDeleteTagResolve) {
     _pendingDeleteTagResolve(confirmed);

@@ -13,15 +13,15 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&family=Shippori+Mincho:wght@400;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=2.40">
-  <link rel="stylesheet" href="/css/grid-lightbox.css?v=2.40">
-  <link rel="stylesheet" href="/css/selection-menu.css?v=2.40">
-  <link rel="stylesheet" href="/css/inspector.css?v=2.40">
-  <link rel="stylesheet" href="/css/modals-features.css?v=2.40">
-  <link rel="stylesheet" href="/css/lab-map.css?v=2.40">
-  <link rel="stylesheet" href="/css/histogram.css?v=2.40">
-  <link rel="stylesheet" href="/css/compare.css?v=2.40">
-  <link rel="stylesheet" href="/css/ui-unify.css?v=2.40">
+  <link rel="stylesheet" href="/css/style.css?v=2.42">
+  <link rel="stylesheet" href="/css/grid-lightbox.css?v=2.42">
+  <link rel="stylesheet" href="/css/selection-menu.css?v=2.42">
+  <link rel="stylesheet" href="/css/inspector.css?v=2.42">
+  <link rel="stylesheet" href="/css/modals-features.css?v=2.42">
+  <link rel="stylesheet" href="/css/lab-map.css?v=2.42">
+  <link rel="stylesheet" href="/css/histogram.css?v=2.42">
+  <link rel="stylesheet" href="/css/compare.css?v=2.42">
+  <link rel="stylesheet" href="/css/ui-unify.css?v=2.42">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
@@ -64,7 +64,7 @@
         <div class="logo">
           <span class="hinomaru-disc" title="Hinomaru Ink"></span>
           <span class="logo-text">PHOTO<span>MANAGER</span></span>
-          <span class="app-version" id="appVersion" title="v2.41 (最終更新: 2026-10-22 17:30)">v2.41</span>
+          <span class="app-version" id="appVersion" title="v2.42 (最終更新: 2026-10-25 17:30)">v2.42</span>
         </div>
 
 
@@ -144,12 +144,18 @@
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           <span class="btn-label">取り込み</span>
         </button>
-        <input type="file" id="fileUploadInput" multiple accept="image/*" style="display:none;">
+        <input type="file" id="fileUploadInput" multiple accept="image/*,.rw2,.arw,.cr2,.cr3,.nef,.nrw,.dng,.raf,.orf,.pef,.srw,.x3f,.heic,.heif,.avif,.xmp,.pp3,.arp,.dop,.on1,.cos,.nksc,.spd" style="display:none;">
 
         <!-- スマホ連携・モバイル画面 (/m) ボタン -->
         <button id="openMobileModalBtn" class="btn btn-secondary" title="スマホ（Android）連携・モバイル画面 (/m) を開く">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
           <span class="btn-label">スマホ連携</span>
+        </button>
+
+        <!-- DB管理・バックアップボタン -->
+        <button id="folderDbMaintenanceBtn" class="btn btn-secondary" title="データベースのバックアップ・最適化（VACUUM）">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+          <span class="btn-label">DB管理</span>
         </button>
 
         <button id="openHelpModalBtn" class="btn btn-secondary" title="操作マニュアル & ショートカット一覧 (? / F1)">
@@ -280,7 +286,6 @@
               <div class="folder-toolbar" id="folderToolbar">
                 <div class="folder-toolbar-group">
                   <button class="btn-mini-text" id="folderAutoAiToggleBtn" title="スキャン完了後にAIタグを自動付与するかどうかを切り替えます">🤖 OFF</button>
-                  <button class="btn-mini-text" id="folderDbMaintenanceBtn" title="データベースの最適化（VACUUM）やバックアップ">⚙️</button>
                   <button class="btn-mini-text" id="reloadFolderTreeBtn" title="ドライブ一覧とフォルダツリーを再読み込み">🔄</button>
                 </div>
                 <div class="folder-toolbar-group">
@@ -615,6 +620,10 @@
             <button type="button" class="inspector-header-folder-btn" id="inspectorOpenFolderBtn" title="元データが格納されているフォルダを開く (Explorer)" style="display: none;">
               <span class="folder-btn-icon">📁</span>
             </button>
+            <!-- ファイル名を変更ボタン（storage内写真のみ表示・アイコンのみ） -->
+            <button type="button" class="inspector-header-file-btn inspector-rename-btn" id="inspectorRenameHeaderBtn" title="ファイル名を変更 (F2)" style="display: none;">
+              <span class="file-btn-icon">✏️</span>
+            </button>
             <!-- ファイルを開くボタン（規定のアプリで開く・アイコンのみ） -->
             <button type="button" class="inspector-header-file-btn" id="inspectorOpenFileBtn" title="写真を関連付けられた規定のアプリで開く" style="display: none;">
               <span class="file-btn-icon">🖼️</span>
@@ -630,6 +639,12 @@
             <div class="inspector-preview-overlay">
               <span>🔍 拡大ビューワ (Space)</span>
             </div>
+          </div>
+          <!-- XMPサイドカー検出・プレビュー・取込バー -->
+          <div class="inspector-xmp-bar" id="inspectorXmpBar" style="display: none;">
+            <span class="xmp-sidecar-badge" id="inspectorXmpBadge" title="XMPサイドカーファイルが検出されました">📄 XMP</span>
+            <button type="button" class="btn-xmp-hold-preview" id="inspectorXmpPreviewBtn" style="display: none;" title="押している間だけPhotoManagerの調整をオフにし、XMPの調整データを反映して表示します">👁️ XMPプレビュー</button>
+            <button type="button" class="btn-xmp-import-meta" id="inspectorXmpImportMetaBtn" style="display: none;" title="XMPサイドカーの評価（4段階変換）やタグ（XMP/ルート配下）を取り込みます">📥 評価・タグ取込</button>
           </div>
         </div>
 
@@ -705,11 +720,11 @@
                       </div>
                     </div>
 
-                    <!-- クイック選択タグツリー（常時表示・親フォルダ内および末尾での新規追加統合） -->
+                    <!-- タグエディタ（常時表示・クリック付与・リネーム・削除・子階層/末尾での新規作成統合） -->
                     <div class="inspector-quick-tags" style="margin-top: 10px;">
-                      <div class="inspector-label" style="margin-bottom: 4px; padding: 4px 8px 0 8px;">タグツリーから選ぶ / 追加</div>
+                      <div class="inspector-label" style="margin-bottom: 4px; padding: 4px 8px 0 8px;">タグエディタ (付与・作成・編集)</div>
                       <div class="inspector-quick-tree" id="inspectorQuickTree">
-                        <!-- 階層ツリーを描画、クリックで即付与＆各階層末尾で新規追加 -->
+                        <!-- 階層ツリーを描画、クリックで即付与＆リネーム・削除・新規追加 -->
                       </div>
                     </div>
 
@@ -739,7 +754,7 @@
                     <div class="inspector-meta-table">
                       <div class="meta-row">
                         <span class="meta-name">ファイル名</span>
-                        <span class="meta-val" id="inspectorFileName">-</span>
+                        <span class="meta-val meta-val-with-action"><span id="inspectorFileName">-</span><button type="button" class="btn-inline-rename" id="inspectorRenameExifBtn" title="ファイル名を変更 (F2)" style="display: none;">✏️</button></span>
                       </div>
                       <div class="meta-row" id="inspectorFormatRow">
                         <span class="meta-name">フォーマット</span>
@@ -871,11 +886,11 @@
                 </div>
               </div>
 
-              <!-- タグツリーから選んで一発付与・新規追加 -->
+              <!-- タグエディタ（一括付与・作成・編集） -->
               <div class="inspector-quick-tags" style="margin-top: 10px;">
-                <div class="inspector-label" style="margin-bottom: 4px; padding: 4px 8px 0 8px;">タグツリーから選んで一括追加</div>
+                <div class="inspector-label" style="margin-bottom: 4px; padding: 4px 8px 0 8px;">タグエディタ (一括付与・作成・編集)</div>
                 <div class="batch-quick-tree" id="batchQuickTree">
-                  <!-- 階層ツリーを一覧表示、クリックで一括追加＆各階層末尾で新規追加 -->
+                  <!-- 階層ツリーを一覧表示、クリックで一括追加＆リネーム・削除・新規追加 -->
                 </div>
               </div>
             </div>
@@ -1162,6 +1177,7 @@
               <li><strong>切り抜き（アスペクト比）:</strong> 元の比率、1:1、16:9、4:3、3:2、自由サイズから選んで構図を調整（三分割ガイド線付き）。</li>
               <li><strong>📐 傾き補正（水平出し）:</strong> <code>-15°</code>〜<code>+15°</code> の範囲で斜めの水平線をまっすぐに補正（周囲に黒い余白が出ないよう自動で内側を切り抜きます）。</li>
               <li><strong>☀️ 明るさ・コントラスト・彩度 ＆ 📊 リアルタイムトーン波形:</strong> カメラの露出補正感覚（<code>-2.0EV</code>〜<code>+2.0EV</code>、1/3段ステップ）で明るさや色味を微調整すると、上部の <strong>📊 リアルタイムヒストグラム（RGB・輝度波形）</strong> が連動して変化し、白飛びや黒つぶれを防ぎながら追い込めます（右インスペクタの「ℹ️ 詳細情報」タブでも常時ヒストグラムを確認できます）。</li>
+              <li><strong>📄 XMPサイドカー連携 ＆ 👁️ XMPプレビュー（ホールド比較）:</strong> 同名の <code>.xmp</code> サイドカーファイル（Lightroom / Adobe Camera Raw 等）が存在する写真では、右インスペクタ上部に <strong>「📄 XMP」バー</strong> が表示されます。<strong>「👁️ XMPプレビュー」ボタンを長押し（ホールド）している間だけ</strong> Photo Manager 側の調整を一時オフにして XMP 側の調整（露出・コントラスト・彩度・クロップ・角度）を反映表示し、指を離すと元の表示に戻ります。また <strong>「📥 評価・タグ取込」</strong> ボタンから、XMP 内の評価（4段階へ自動変換）や階層タグ（<code>XMP/...</code> ルート配下に隔離して安全にインポート）を取り込めます。</li>
             </ul>
             <p class="help-tip">💡 いつでも「↺ リセット」ボタンから撮影時の初期状態に100%戻せます。</p>
           </div>
@@ -1181,7 +1197,7 @@
             <h4>5. 📤 スマート・テイクアウト ＆ 🎞️ ベタ焼き（コンタクトシート）HTML出力</h4>
             <p>画面下部バー（または右クリック）の <strong>「📤 テイクアウト」</strong> から、用途に合わせて2種類の出力が選べます（元ファイルは無傷のまま維持）：</p>
             <ul>
-              <li><strong>⚡ スマート・テイクアウト:</strong> 非破壊で行った回転・傾き・切り抜き・明るさ調整の焼き込み、GPS/向きのExif同期、長辺リサイズ（4K / SNS最適 / フルHD等）、撮影秒数順の連番リネーム、SNS公開用のExifプライバシー消去を一括適用して別フォルダへ書き出します。</li>
+              <li><strong>⚡ スマート・テイクアウト:</strong> 非破壊で行った回転・傾き・切り抜き・明るさ調整の焼き込み、GPS/向きのExif同期、<strong>📄 XMPサイドカー (<code>.xmp</code>) の同時出力（評価・タグ・調整情報の保持）</strong>、長辺リサイズ（4K / SNS最適 / フルHD等）、撮影秒数順の連番リネーム、SNS公開用のExifプライバシー消去を一括適用して別フォルダへ書き出します。</li>
               <li><strong>🎞️ ベタ焼きHTML出力（暗室コンタクトシート）:</strong> 選んだ写真を昔ながらの暗室ネガフィルムシート風（または和紙風）の単一HTMLファイルとして出力します。ブラウザで開いて写真をクリックすると<strong>赤鉛筆の「⭕（マル）」チェック</strong>を付けられ、そのままA4サイズ等での美しい一覧印刷にも対応しています。</li>
             </ul>
           </div>
@@ -1201,6 +1217,7 @@
             <p><strong>💾 プリセット保存:</strong> よく使う絞り込み条件は、左サイドバー「⚡ クイックアクセス」内の保存フォームで名前を付けて登録し、ワンクリックで呼び出せます。</p>
             <p><strong>📁 外部ソフト連携 ＆ 🔄 サムネイル更新:</strong> 右インスペクタ上部の <code>📁</code> でエクスプローラーを開き、<code>🖼️</code> で既定ソフトで開けます。外部ソフトで編集した後は、写真を右クリック →「🔄 サムネイルを更新」で表示を最新化できます。</p>
             <p><strong>⚙️ DBメンテナンス:</strong> 左サイドバー「📁 フォルダ」上部の <code>⚙️</code> ボタンで、世代バックアップを取りつつデータベース容量を最適化（VACUUM）できます。</p>
+            <p style="margin-top: 8px;"><strong>📦 storage（アプリ内ストレージ）での完結管理 ＆ サイドカー自動追従:</strong> 左サイドバー「📁 フォルダ」先頭の <strong>「📦 storage (アプリ内ストレージ)」</strong> には、外部フォルダの写真を選択して <strong>「📥 storageへインポート」</strong>（または左ツリーの <code>storage</code> フォルダへドラッグ＆ドロップ）でコピー取り込みできます。<code>storage</code> 内ではサブフォルダの作成・名前変更、写真のフォルダ間移動（<strong>「📦 storage内で移動」</strong>）、ファイル名変更（<strong><kbd>F2</kbd> キー</strong>で単一リネーム／複数選択時は一括連番リネーム）、フォルダ右クリックからの外部エクスポートが自在に行えます。さらに、写真と同名の<strong>サイドカーファイル（<code>.xmp</code> 等）が存在する場合は、インポート・移動・リネーム・エクスポート時に自動で追従</strong>します。</p>
           </div>
         </div>
 
@@ -1266,6 +1283,7 @@
                 <tr><td><kbd>0</kbd> / <kbd>4</kbd></td><td>選択中の写真の <strong>評価を取り消す（⚪ 可）</strong></td></tr>
                 <tr><td><kbd>R</kbd> / <kbd>L</kbd></td><td>選択中の写真を <strong>右へ90度(<kbd>R</kbd>) / 左へ90度(<kbd>L</kbd>) 回転</strong>（非破壊）</td></tr>
                 <tr><td><kbd>C</kbd></td><td>選択中の写真の <strong>切り抜き・傾き・明るさ調整画面</strong> を開く（非破壊）</td></tr>
+                <tr><td><kbd>F2</kbd></td><td><code>storage</code>（アプリ内ストレージ）内の写真の <strong>ファイル名を変更（1枚：単一リネーム ／ 2枚以上：一括連番リネーム）</strong></td></tr>
                 <tr><td><kbd>V</kbd></td><td><strong>⚖️ 2枚並べて比較（Side-by-Side）</strong> を開く（同期ズーム・勝ち抜き選別）</td></tr>
                 <tr><td><kbd>H</kbd></td><td><strong>📊 RGB・輝度ヒストグラム</strong> の表示 / 非表示を切り替え</td></tr>
                 <tr><td><kbd>I</kbd></td><td>写真上の文字・バッジ表示を隠す / 表示する（クリーンモード切替）</td></tr>
@@ -1490,11 +1508,11 @@
   </div>
 
   <!-- タグ完全削除確認モーダル (deleteTagModal) -->
-  <div class="modal-backdrop" id="deleteTagModal" style="display: none;">
+  <div class="modal-backdrop" id="deleteTagModal" style="display: none; z-index: 10500;">
     <div class="modal-card" style="max-width: 440px;">
       <div class="modal-header">
         <div class="modal-header-title">
-          <h2>🏷️ タグの完全削除</h2>
+          <h2>🏷️ タグを全体から削除（確認）</h2>
           <span class="modal-subtitle">ライブラリ全体からのタグ除去</span>
         </div>
         <button class="modal-close-btn" id="closeDeleteTagModalBtn">&times;</button>
@@ -1505,7 +1523,7 @@
           <div style="font-size: 2rem; line-height: 1; flex-shrink: 0;">🗑️</div>
           <div style="flex: 1;">
             <div style="font-weight: 600; font-size: 0.95rem; color: var(--text-main, #eceae4); margin-bottom: 8px;">
-              タグ「<span id="deleteTagModalTagName" style="color: #ef4444; word-break: break-all;"></span>」を削除しますか？
+              タグ「<span id="deleteTagModalTagName" style="color: #ef4444; word-break: break-all;"></span>」を全体から削除しますか？
             </div>
             <div style="font-size: 0.82rem; color: var(--text-muted, #94a3b8); line-height: 1.5; margin-bottom: 10px;">
               <span id="deleteTagModalPhotoCountDesc">このタグおよびその子孫タグがすべての写真から削除されます。</span><br>
@@ -1516,8 +1534,8 @@
       </div>
 
       <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px; padding: 12px 20px;">
-        <button class="btn btn-secondary" id="btnCancelDeleteTag">キャンセル (Esc)</button>
-        <button class="btn btn-danger" id="btnConfirmDeleteTag">タグを削除</button>
+        <button class="btn btn-secondary" id="btnCancelDeleteTag">キャンセル (NG)</button>
+        <button class="btn btn-danger" id="btnConfirmDeleteTag">OK (全体から削除)</button>
       </div>
     </div>
   </div>
@@ -1758,6 +1776,10 @@
                 <label class="takeout-checkbox-label" id="labelExifSyncDb" title="マップ等で追加・変更したGPS位置情報や回転向きを書き出し画像のExifに反映します">
                   <input type="checkbox" id="takeoutExifSyncDb" checked>
                   <span>🔄 DBの位置情報（GPS）・向きをExifへ同期して書き込む</span>
+                </label>
+                <label class="takeout-checkbox-label" id="labelExportXmpSidecar" title="書き出し画像と一緒に評価・タグ・GPS・調整情報を記録した .xmp サイドカーファイルも出力します">
+                  <input type="checkbox" id="exportXmpSidecarCheck">
+                  <span>📄 XMPサイドカー (.xmp) も一緒に出力する（評価・タグ・調整情報の保持）</span>
                 </label>
               </div>
             </div>
@@ -2095,6 +2117,100 @@
     </div>
   </div>
 
+  <!-- storage ファイル名変更（単一＆一括連番リネーム）モーダル -->
+  <div class="modal-backdrop" id="storageRenameModal" style="display: none;">
+    <div class="modal-card storage-rename-modal-card" style="max-width: 520px;">
+      <div class="modal-header">
+        <div class="modal-header-title">
+          <h2 id="storageRenameModalTitle">✏️ ファイル名を変更</h2>
+          <span class="modal-subtitle" id="storageRenameModalSubtitle">storage 内の写真ファイル名を変更します</span>
+        </div>
+        <button class="modal-close-btn" id="closeStorageRenameModalBtn">&times;</button>
+      </div>
+
+      <div class="modal-body storage-rename-modal-body">
+        <!-- 単一写真リネームモード -->
+        <div id="storageRenameSingleSection">
+          <div class="storage-rename-current-row">
+            <span class="storage-rename-label">現在のファイル名:</span>
+            <code class="storage-rename-current-val" id="storageRenameCurrentName">-</code>
+          </div>
+          <div class="storage-rename-input-group">
+            <input type="text" id="storageRenameSingleInput" class="storage-rename-stem-input" placeholder="新しいファイル名..." autocomplete="off">
+            <span class="storage-rename-ext-badge" id="storageRenameExtBadge">.JPG</span>
+          </div>
+        </div>
+
+        <!-- 複数写真 一括連番リネームモード -->
+        <div id="storageRenameBatchSection" style="display: none;">
+          <div class="storage-rename-rules">
+            <label class="storage-rename-rule-option">
+              <input type="radio" name="storageBatchNamingRule" value="date_seq" checked>
+              <span class="rule-title">撮影日時 ＋ 3桁連番</span>
+              <code class="rule-example">例: 20261025_001.jpg</code>
+            </label>
+            <label class="storage-rename-rule-option">
+              <input type="radio" name="storageBatchNamingRule" value="date_original">
+              <span class="rule-title">撮影日時 ＋ 元ファイル名</span>
+              <code class="rule-example">例: 20261025_143000_DSC001.jpg</code>
+            </label>
+            <label class="storage-rename-rule-option">
+              <input type="radio" name="storageBatchNamingRule" value="custom_seq">
+              <span class="rule-title">自由な接頭辞 ＋ 3桁連番</span>
+              <code class="rule-example">例: 北海道旅行_001.jpg</code>
+            </label>
+          </div>
+
+          <div class="storage-rename-custom-options" id="storageRenameCustomOptions" style="display: none;">
+            <div class="custom-opt-field">
+              <label for="storageRenameCustomPrefix">接頭辞（プレフィックス）</label>
+              <input type="text" id="storageRenameCustomPrefix" placeholder="例: 北海道旅行" autocomplete="off">
+            </div>
+            <div class="custom-opt-field custom-opt-num">
+              <label for="storageRenameStartNum">開始番号</label>
+              <input type="number" id="storageRenameStartNum" value="1" min="1" max="99999">
+            </div>
+          </div>
+
+          <div class="storage-rename-preview-box">
+            <div class="storage-rename-preview-header">変更プレビュー（先頭5件）</div>
+            <div class="storage-rename-preview-list" id="storageRenamePreviewList">
+              <!-- JSでリアルタイム描画 -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="cancelStorageRenameModalBtn">キャンセル (Esc)</button>
+        <button class="btn btn-primary" id="storageRenameSubmitBtn">変更を保存 (Enter)</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- storage サブフォルダ作成 / フォルダ名変更モーダル -->
+  <div class="modal-backdrop" id="storageFolderModal" style="display: none;">
+    <div class="modal-card storage-folder-modal-card" style="max-width: 440px;">
+      <div class="modal-header">
+        <div class="modal-header-title">
+          <h2 id="storageFolderModalTitle">📁 新規サブフォルダを作成</h2>
+          <span class="modal-subtitle" id="storageFolderModalSubtitle">storage 内に新しいサブフォルダを作成します</span>
+        </div>
+        <button class="modal-close-btn" id="closeStorageFolderModalBtn">&times;</button>
+      </div>
+
+      <div class="modal-body storage-folder-modal-body">
+        <label class="storage-rename-label" id="storageFolderInputLabel" for="storageFolderNameInput">フォルダ名</label>
+        <input type="text" id="storageFolderNameInput" class="storage-rename-stem-input" placeholder="フォルダ名を入力..." autocomplete="off" style="width: 100%; margin-top: 6px;">
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="cancelStorageFolderModalBtn">キャンセル (Esc)</button>
+        <button class="btn btn-primary" id="storageFolderSubmitBtn">作成する</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 右クリック コンテキストメニュー (マルチ選択タグ付け用) -->
   <div class="context-menu" id="contextMenu" style="display: none;">
     <div class="context-menu-header">
@@ -2154,6 +2270,56 @@
         </div>
       </div>
     </div>
+    <!-- storage へインポート（外部写真選択時） -->
+    <div class="context-menu-item has-submenu" id="contextMenuStorageImportItem" style="display: none;">
+      <div class="menu-item-content">
+        <span title="選択した写真をアプリ内の storage フォルダへコピー＆インポートします">📥 storageへインポート</span>
+        <span class="submenu-arrow">▶</span>
+      </div>
+      <div class="context-submenu" id="contextStorageImportSubmenu">
+        <div class="submenu-create-input">
+          <input type="text" id="contextNewStorageImportFolderInput" placeholder="新規フォルダ名..." autocomplete="off">
+          <button class="btn btn-primary btn-xs" id="contextConfirmNewStorageImportFolderBtn" title="storage内にフォルダを作成してインポート">作成&amp;インポート</button>
+        </div>
+        <div class="context-import-action" id="contextOpenStorageImportFolderBtn" title="エクスプローラーでstorageフォルダを開きます">
+          <span class="context-import-action-icon">📂</span>
+          <span class="context-import-action-text">storageフォルダを開く</span>
+          <span class="context-import-action-arrow">↗</span>
+        </div>
+        <div class="context-menu-divider" style="margin: 4px 0;"></div>
+        <div class="submenu-folder-list" id="contextStorageImportFolderList">
+          <div class="submenu-folder-loading">読み込み中...</div>
+        </div>
+      </div>
+    </div>
+    <!-- storage 内で移動（storage内写真選択時） -->
+    <div class="context-menu-item has-submenu" id="contextMenuStorageMoveItem" style="display: none;">
+      <div class="menu-item-content">
+        <span title="storage 内の写真を別サブフォルダへ移動します">📦 storage内で移動</span>
+        <span class="submenu-arrow">▶</span>
+      </div>
+      <div class="context-submenu" id="contextStorageMoveSubmenu">
+        <div class="submenu-create-input">
+          <input type="text" id="contextNewStorageMoveFolderInput" placeholder="新規フォルダ名..." autocomplete="off">
+          <button class="btn btn-primary btn-xs" id="contextConfirmNewStorageMoveFolderBtn" title="storage内にフォルダを作成して移動">作成&amp;移動</button>
+        </div>
+        <div class="context-import-action" id="contextOpenStorageMoveFolderBtn" title="エクスプローラーでstorageフォルダを開きます">
+          <span class="context-import-action-icon">📂</span>
+          <span class="context-import-action-text">storageフォルダを開く</span>
+          <span class="context-import-action-arrow">↗</span>
+        </div>
+        <div class="context-menu-divider" style="margin: 4px 0;"></div>
+        <div class="submenu-folder-list" id="contextStorageMoveFolderList">
+          <div class="submenu-folder-loading">読み込み中...</div>
+        </div>
+      </div>
+    </div>
+    <!-- storage ファイル名変更 / 一括連番リネーム（storage内写真選択時） -->
+    <div class="context-menu-item" id="contextMenuStorageRenameItem" style="display: none;">
+      <div class="menu-item-content">
+        <span id="contextMenuStorageRenameLabel">✏️ ファイル名を変更 (F2)</span>
+      </div>
+    </div>
     <div class="context-menu-item has-submenu" id="contextMenuRateItem">
       <div class="menu-item-content">
         <span>🏅 評価を設定</span>
@@ -2208,6 +2374,31 @@
       <span id="folderContextMenuPath" class="folder-context-header-text">フォルダ</span>
     </div>
     
+    <!-- storage（アプリ内ストレージ）専用メニュー項目 -->
+    <div class="folder-menu-group" id="folderMenuStorageGroup" style="display: none;">
+      <div class="context-menu-item" id="folderMenuStorageCreateSub">
+        <div class="menu-item-content">
+          <span>📁 新規サブフォルダを作成...</span>
+        </div>
+      </div>
+      <div class="context-menu-item" id="folderMenuStorageRename">
+        <div class="menu-item-content">
+          <span>✏️ フォルダ名を変更...</span>
+        </div>
+      </div>
+      <div class="context-menu-item" id="folderMenuStorageExport">
+        <div class="menu-item-content">
+          <span>📤 このフォルダを外部へエクスポート...</span>
+        </div>
+      </div>
+      <div class="context-menu-item text-danger" id="folderMenuStorageDelete" style="color: var(--danger, #ef4444);">
+        <div class="menu-item-content">
+          <span>🗑️ 空フォルダを削除</span>
+        </div>
+      </div>
+      <div class="context-menu-divider"></div>
+    </div>
+
     <!-- 管理中フォルダ用メニュー項目 -->
     <div class="folder-menu-group" id="folderMenuManagedGroup">
       <div class="context-menu-item" id="folderMenuRescanDirect">
@@ -2388,6 +2579,70 @@
         </div>
       </div>
 
+      <!-- 3-A. storageへインポート（外部写真選択時） -->
+      <div class="floating-action-group" id="floatingStorageImportGroup" style="display: none;">
+        <button class="btn btn-secondary btn-sm" id="floatingStorageImportBtn" title="選択した写真をアプリ内の storage フォルダへコピー＆インポートします">
+          <span class="btn-icon">📥</span>
+          <span class="btn-label">storageへインポート</span>
+        </button>
+        <div class="floating-popover" id="floatingStorageImportPopover" style="display: none;">
+          <div class="floating-popover-header">
+            <span class="floating-popover-title">📥 storageへインポート</span>
+            <button class="floating-popover-close" id="closeFloatingStorageImportPopoverBtn" title="閉じる">&times;</button>
+          </div>
+          <div class="floating-popover-body">
+            <div class="popover-input-group">
+              <input type="text" id="floatingStorageImportFolderInput" placeholder="新規フォルダ名..." autocomplete="off">
+              <button class="btn btn-primary btn-xs" id="floatingConfirmStorageImportFolderBtn" title="storage内にフォルダを作成してインポート">作成&amp;インポート</button>
+            </div>
+            <div class="context-import-action" id="floatingOpenStorageImportFolderBtn" title="エクスプローラーでstorageフォルダを開きます">
+              <span class="context-import-action-icon">📂</span>
+              <span class="context-import-action-text">storageフォルダを開く</span>
+              <span class="context-import-action-arrow">↗</span>
+            </div>
+            <div class="popover-section-label">インポート先フォルダ</div>
+            <div class="submenu-folder-list" id="floatingStorageImportFolderList">
+              <div class="submenu-folder-loading">読み込み中...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3-B. storage内で移動（storage内写真選択時） -->
+      <div class="floating-action-group" id="floatingStorageMoveGroup" style="display: none;">
+        <button class="btn btn-secondary btn-sm" id="floatingStorageMoveBtn" title="storage 内の写真を別サブフォルダへ移動します">
+          <span class="btn-icon">📦</span>
+          <span class="btn-label">storage内で移動</span>
+        </button>
+        <div class="floating-popover" id="floatingStorageMovePopover" style="display: none;">
+          <div class="floating-popover-header">
+            <span class="floating-popover-title">📦 storage内で移動</span>
+            <button class="floating-popover-close" id="closeFloatingStorageMovePopoverBtn" title="閉じる">&times;</button>
+          </div>
+          <div class="floating-popover-body">
+            <div class="popover-input-group">
+              <input type="text" id="floatingStorageMoveFolderInput" placeholder="新規フォルダ名..." autocomplete="off">
+              <button class="btn btn-primary btn-xs" id="floatingConfirmStorageMoveFolderBtn" title="storage内にフォルダを作成して移動">作成&amp;移動</button>
+            </div>
+            <div class="context-import-action" id="floatingOpenStorageMoveFolderBtn" title="エクスプローラーでstorageフォルダを開きます">
+              <span class="context-import-action-icon">📂</span>
+              <span class="context-import-action-text">storageフォルダを開く</span>
+              <span class="context-import-action-arrow">↗</span>
+            </div>
+            <div class="popover-section-label">移動先フォルダ</div>
+            <div class="submenu-folder-list" id="floatingStorageMoveFolderList">
+              <div class="submenu-folder-loading">読み込み中...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3-C. storage ファイル名変更 / 一括リネームボタン（storage内写真選択時） -->
+      <button class="btn btn-secondary btn-sm" id="floatingStorageRenameBtn" title="storage内のファイル名を変更 (F2)" style="display: none;">
+        <span class="btn-icon">✏️</span>
+        <span class="btn-label" id="floatingStorageRenameLabel">ファイル名変更</span>
+      </button>
+
       <!-- ジオタグ準用ボタン -->
       <button class="btn btn-secondary btn-sm" id="floatingInferGpsBtn" title="選択中の写真（ジオタグなし）に対して、撮影時刻が近いスマホ写真のジオタグ（±1時間）を一括準用します">
         <span class="btn-icon">📍</span>
@@ -2448,22 +2703,23 @@
     </div>
   </div>
 
-  <script src="/js/common.js?v=2.40"></script>
-  <script src="/js/selection.js?v=2.40"></script>
-  <script src="/js/inspector.js?v=2.40"></script>
-  <script src="/js/lightbox.js?v=2.40"></script>
-  <script src="/js/adjust.js?v=2.40"></script>
-  <script src="/js/histogram.js?v=2.40"></script>
-  <script src="/js/compare.js?v=2.40"></script>
-  <script src="/js/takeout.js?v=2.40"></script>
-  <script src="/js/presets.js?v=2.40"></script>
-  <script src="/js/slideshow.js?v=2.40"></script>
-  <script src="/js/location_tree.js?v=2.40"></script>
-  <script src="/js/folder_tree.js?v=2.40"></script>
-  <script src="/js/location_map.js?v=2.40"></script>
-  <script src="/js/lab.js?v=2.40"></script>
-  <script src="/js/sidebar_filters.js?v=2.40"></script>
-  <script src="/js/app.js?v=2.40"></script>
-  <script src="/js/i18n.js?v=2.40"></script>
+  <script src="/js/common.js?v=2.42"></script>
+  <script src="/js/selection.js?v=2.42"></script>
+  <script src="/js/inspector.js?v=2.42"></script>
+  <script src="/js/lightbox.js?v=2.42"></script>
+  <script src="/js/adjust.js?v=2.42"></script>
+  <script src="/js/histogram.js?v=2.42"></script>
+  <script src="/js/compare.js?v=2.42"></script>
+  <script src="/js/takeout.js?v=2.42"></script>
+  <script src="/js/presets.js?v=2.42"></script>
+  <script src="/js/slideshow.js?v=2.42"></script>
+  <script src="/js/location_tree.js?v=2.42"></script>
+  <script src="/js/folder_tree.js?v=2.42"></script>
+  <script src="/js/location_map.js?v=2.42"></script>
+  <script src="/js/lab.js?v=2.42"></script>
+  <script src="/js/sidebar_filters.js?v=2.42"></script>
+  <script src="/js/storage.js?v=2.42"></script>
+  <script src="/js/app.js?v=2.42"></script>
+  <script src="/js/i18n.js?v=2.42"></script>
 </body>
 </html>

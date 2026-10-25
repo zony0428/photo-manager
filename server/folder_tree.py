@@ -5,6 +5,7 @@
 """
 
 import os
+from pathlib import Path
 import string
 import sys
 import time
@@ -19,6 +20,9 @@ from .database import (
 )
 from .database.folders import normalize_folder_path
 from .volume_info import get_volume_info_for_drive
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+STORAGE_DIR = BASE_DIR / "storage"
 
 # GetDriveTypeW の戻り値
 _DRIVE_NO_ROOT_DIR = 1
@@ -167,6 +171,20 @@ def build_roots(quick_access: List[Dict[str, Any]]) -> Dict[str, Any]:
 
     # ショートカット（配下の写真総数は都度集計）
     shortcuts: List[Dict[str, Any]] = []
+    STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+    storage_path = normalize_folder_path(str(STORAGE_DIR))
+    storage_total = sum(r["count"] for r in get_directory_counts_under(storage_path))
+    shortcuts.insert(0, {
+        "key": "storage",
+        "name": "storage (アプリ内ストレージ)",
+        "icon": "📦",
+        "path": storage_path,
+        "total": storage_total,
+        "has_managed": True,
+        "is_storage": True,
+        "is_storage_root": True,
+    })
+
     for item in quick_access:
         if item.get("key") not in ("pictures", "documents", "desktop"):
             continue
@@ -180,8 +198,8 @@ def build_roots(quick_access: List[Dict[str, Any]]) -> Dict[str, Any]:
             "total": total,
             "has_managed": total > 0 or _has_scan_root_under(_key(path), scan_root_keys),
         })
-    # 表示順を固定（ピクチャ → ドキュメント → デスクトップ）
-    order = {"pictures": 0, "documents": 1, "desktop": 2}
+    # 表示順を固定（storage → ピクチャ → ドキュメント → デスクトップ）
+    order = {"storage": -1, "pictures": 0, "documents": 1, "desktop": 2}
     shortcuts.sort(key=lambda s: order.get(s["key"], 9))
 
     connected = _list_connected_drives()
@@ -257,6 +275,8 @@ def list_children(
     parent = normalize_folder_path(path)
     base = parent.rstrip("\\/")
     base_key = base.lower()
+    storage_key = _key(str(STORAGE_DIR))
+    parent_is_storage = _is_under(base_key, storage_key)
 
     scan_root_keys = [_key(r) for r in get_scan_roots()]
     ignored_keys = [_key(p) for p in get_ignored_folders()]
@@ -303,9 +323,11 @@ def list_children(
         child_key = child_path.lower()
         db_info = node.get("db") or {"total": 0, "count": 0, "deeper": False}
 
+        child_is_storage = parent_is_storage or _is_under(child_key, storage_key)
+
         if any(_is_under(child_key, ig) for ig in ignored_keys):
             status = "ignored"
-        elif db_info["count"] > 0 or child_key in scan_root_keys:
+        elif child_is_storage or db_info["count"] > 0 or child_key in scan_root_keys:
             status = "managed"
         else:
             status = "unmanaged"
@@ -319,17 +341,21 @@ def list_children(
         else:
             has_children = True
 
-        result.append({
+        child_item: Dict[str, Any] = {
             "name": node["name"],
             "path": child_path,
             "status": status,
             "count": db_info["count"],
             "total": db_info["total"],
-            "has_managed": db_info["total"] > 0 or _has_scan_root_under(child_key, scan_root_keys),
+            "has_managed": child_is_storage or db_info["total"] > 0 or _has_scan_root_under(child_key, scan_root_keys),
             "has_children": has_children,
             # 親フォルダは存在するのに実フォルダが無い = 消失（親自体が無い場合は未接続扱いで消失とはしない）
             "is_missing": parent_exists and not node["in_fs"],
-        })
+        }
+        if child_is_storage:
+            child_item["is_storage"] = True
+            child_item["is_storage_root"] = (child_key == storage_key)
+        result.append(child_item)
 
     result.sort(key=lambda c: c["name"].lower())
     return {

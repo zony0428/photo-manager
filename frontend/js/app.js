@@ -312,7 +312,7 @@ async function fetchPhotos() {
     } else {
       state.photos = data.photos;
     }
-    state.isLimitReached = data.photos.length >= MAX_DISPLAY_PHOTOS;
+    state.isLimitReached = MAX_DISPLAY_PHOTOS > 0 && data.photos.length >= MAX_DISPLAY_PHOTOS;
     renderPhotoGrid();
     updateViewHeader();
     updateInspectorView();
@@ -410,6 +410,7 @@ function createPhotoCard(photo, index) {
   const card = document.createElement('div');
   card.className = 'photo-card';
   card.dataset.photoId = photo.id;
+  card.draggable = true;
   card.dataset.index = index;
 
   // DBメタデータ（サムネイル寸法・元寸法・回転・クロップ）から正確なプレースホルダ縦横比を事前設定
@@ -1835,6 +1836,10 @@ function setupEventListeners() {
   window.addEventListener('dragenter', (e) => {
     e.preventDefault();
     dragCounter++;
+    if (window._draggingPhotoIds && window._draggingPhotoIds.length > 0) {
+      dragCounter = 0;
+      return;
+    }
     elements.dragDropOverlay.style.display = 'flex';
   });
 
@@ -1857,6 +1862,7 @@ function setupEventListeners() {
     elements.dragDropOverlay.style.display = 'none';
 
     if (e.dataTransfer && e.dataTransfer.files.length > 0) {
+      if (window._draggingPhotoIds && window._draggingPhotoIds.length > 0) return;
       await uploadPhotos(e.dataTransfer.files);
     }
   });
@@ -2675,7 +2681,8 @@ function toggleMinimalView(forcedState) {
  * ファイルアップロード処理 (ドラッグ＆ドロップまたはファイル選択: Base64方式)
  */
 async function uploadPhotos(fileList) {
-  const validFiles = Array.from(fileList).filter(f => f.type.startsWith('image/'));
+  const validExtPattern = /\.(jpg|jpeg|png|webp|bmp|gif|tiff|tif|heic|heif|avif|rw2|arw|cr2|cr3|nef|nrw|dng|raf|orf|pef|srw|x3f|xmp|pp3|arp|dop|on1|cos|nksc|spd)$/i;
+  const validFiles = Array.from(fileList).filter(f => (f.type && f.type.startsWith('image/')) || validExtPattern.test(f.name || ''));
   if (validFiles.length === 0) {
     alert('画像ファイル（JPEG, PNG, WebP等）が選択されていません');
     return;
@@ -2696,11 +2703,21 @@ async function uploadPhotos(fileList) {
     };
 
     const payloadFiles = await Promise.all(validFiles.map(readAsBase64));
+    const uploadBody = { files: payloadFiles };
+    if (
+      state.currentFilter &&
+      state.currentFilter.type === 'folder' &&
+      state.currentFilter.value &&
+      typeof window.isStoragePath === 'function' &&
+      window.isStoragePath(state.currentFilter.value)
+    ) {
+      uploadBody.destination = state.currentFilter.value;
+    }
 
     const response = await fetch('/api/upload', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ files: payloadFiles }),
+      body: JSON.stringify(uploadBody),
     });
 
     const data = await response.json();
