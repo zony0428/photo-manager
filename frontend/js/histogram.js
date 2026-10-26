@@ -713,7 +713,7 @@
 
     const drawer = document.getElementById('inspectorHistogramDrawer');
     const previewToggleBtn = document.getElementById('inspectorHistToggleBtn');
-    const exifTriggerBtn = document.getElementById('inspectorExifHistBtn');
+    const quickHistBtn = document.getElementById('inspectorQuickHistBtn');
 
     if (drawer) {
       drawer.style.display = histState.inspectorOpen ? 'block' : 'none';
@@ -721,9 +721,8 @@
     if (previewToggleBtn) {
       previewToggleBtn.classList.toggle('active', histState.inspectorOpen);
     }
-    if (exifTriggerBtn) {
-      exifTriggerBtn.classList.toggle('active', histState.inspectorOpen);
-      exifTriggerBtn.textContent = histState.inspectorOpen ? '📊 ヒストグラムを隠す (H)' : '📊 ヒストグラムを表示 (H)';
+    if (quickHistBtn) {
+      quickHistBtn.classList.toggle('active', histState.inspectorOpen);
     }
 
     if (histState.inspectorOpen) {
@@ -850,7 +849,12 @@
       drawer.className = 'inspector-histogram-drawer';
       drawer.style.display = 'none';
       drawer.innerHTML = buildHistogramWidgetHtml('inspHist', false);
-      fixedPreview.appendChild(drawer);
+      const quickActionsBar = document.getElementById('inspectorQuickActionsBar');
+      if (quickActionsBar) {
+        quickActionsBar.insertAdjacentElement('afterend', drawer);
+      } else {
+        fixedPreview.appendChild(drawer);
+      }
 
       bindWidgetInteractions(
         drawer,
@@ -858,27 +862,6 @@
         () => histState.lastInspectorData,
         () => toggleInspectorHistogram(false)
       );
-
-      // EXIFタブの露出・設定行の近くにもトグルボタンを追加
-      const exposureRow = document.getElementById('inspectorExposureRow');
-      if (exposureRow && exposureRow.parentElement) {
-        const histMetaRow = document.createElement('div');
-        histMetaRow.className = 'meta-row';
-        histMetaRow.id = 'inspectorHistMetaRow';
-        histMetaRow.innerHTML = `
-          <span class="meta-name">階調・露出</span>
-          <span class="meta-val">
-            <button type="button" class="meta-hist-trigger-btn" id="inspectorExifHistBtn" title="プレビュー下部にRGB・輝度ヒストグラムを展開します (Hキー)">
-              📊 ヒストグラムを表示 (H)
-            </button>
-          </span>
-        `;
-        exposureRow.insertAdjacentElement('afterend', histMetaRow);
-        const exifHistBtn = document.getElementById('inspectorExifHistBtn');
-        if (exifHistBtn) {
-          exifHistBtn.addEventListener('click', () => toggleInspectorHistogram());
-        }
-      }
 
       // インスペクタのサムネイル画像がロードされるたびに（開いていれば）波形を自動更新
       const inspThumb = document.getElementById('inspectorThumb');

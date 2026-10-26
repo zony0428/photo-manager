@@ -8,6 +8,7 @@ function toggleInspector(forcedState) {
   state.isInspectorOpen = (forcedState !== undefined) ? forcedState : !state.isInspectorOpen;
   elements.inspectorPane.style.display = state.isInspectorOpen ? 'flex' : 'none';
   elements.toggleInspectorBtn.classList.toggle('active', state.isInspectorOpen);
+  document.body.classList.toggle('inspector-collapsed', !state.isInspectorOpen);
   localStorage.setItem('pm_inspector_open', state.isInspectorOpen ? 'true' : 'false');
 
   if (state.isInspectorOpen) {
@@ -41,6 +42,85 @@ function updateInspectorView() {
     if (photo) {
       showSingleInspector(photo);
     }
+  }
+}
+
+// 別名エイリアス（外部モジュールからの呼び出し互換）
+window.updateInspector = updateInspectorView;
+
+/**
+ * ファーストビュー常時表示EXIFサマリ（#inspectorQuickExif）を更新する
+ * 1行目: 撮影日時 ＆ 解像度
+ * 2行目: カメラ機種名・レンズ名（1行省略表示、ホバー時に全文ツールチップ）
+ * 3行目: 露出諸元ピルバッジ群（焦点距離 / F値 / シャッター速度 / ISO感度）
+ */
+function updateQuickExifSummary(photo) {
+  try {
+    const container = elements.inspectorQuickExif || document.getElementById('inspectorQuickExif');
+    if (!container || !photo) return;
+
+    const dateEl = elements.quickExifDate || document.getElementById('quickExifDate');
+    const resEl = elements.quickExifRes || document.getElementById('quickExifRes');
+    const gearEl = elements.quickExifGear || document.getElementById('quickExifGear');
+    const pillsEl = elements.quickExifPills || document.getElementById('quickExifPills');
+
+    // 1行目: 撮影日時 ＆ 解像度
+    if (dateEl) {
+      dateEl.textContent = photo.date_taken ? String(photo.date_taken).replace('T', ' ') : '撮影日時不明';
+    }
+  if (resEl) {
+    resEl.textContent = (photo.width && photo.height) ? `${photo.width}×${photo.height}` : '';
+  }
+
+  // 2行目: カメラ機種名・レンズ名
+  if (gearEl) {
+    const make = (photo.camera_make || '').trim();
+    const model = (photo.camera_model || '').trim();
+    let camText = '';
+    if (make && model) {
+      camText = model.toLowerCase().startsWith(make.toLowerCase()) ? model : `${make} ${model}`;
+    } else {
+      camText = model || make;
+    }
+    const lensText = (photo.lens_model || '').trim();
+    const gearParts = [camText, lensText].filter(Boolean);
+    const fullGear = gearParts.length > 0 ? gearParts.join(' · ') : '機材情報なし';
+    gearEl.textContent = fullGear;
+    gearEl.title = fullGear;
+  }
+
+  // 3行目: 露出諸元ピルバッジ群（50mm / f/2.8 / 1/500s / ISO 100）
+  if (pillsEl) {
+    const pills = [];
+    if (photo.focal_length != null && photo.focal_length !== '') {
+      const flNum = Number(photo.focal_length);
+      const flStr = Number.isFinite(flNum) ? `${Math.round(flNum * 10) / 10}mm` : `${photo.focal_length}mm`;
+      const fl35Title = photo.focal_length_35mm
+        ? `焦点距離 ${flStr} (35mm判換算 ${photo.focal_length_35mm}mm)`
+        : `焦点距離 ${flStr}`;
+      pills.push(`<span class="quick-exif-pill" title="${escapeHtml(fl35Title)}">${escapeHtml(flStr)}</span>`);
+    }
+    if (photo.f_number != null && photo.f_number !== '') {
+      pills.push(`<span class="quick-exif-pill" title="絞り値 (F値)">f/${escapeHtml(String(photo.f_number))}</span>`);
+    }
+    if (photo.shutter_speed) {
+      const ssRaw = String(photo.shutter_speed).trim();
+      const ssStr = ssRaw.endsWith('s') ? ssRaw : `${ssRaw}s`;
+      pills.push(`<span class="quick-exif-pill" title="シャッター速度">${escapeHtml(ssStr)}</span>`);
+    }
+    if (photo.iso != null && photo.iso !== '') {
+      pills.push(`<span class="quick-exif-pill" title="ISO感度">ISO ${escapeHtml(String(photo.iso))}</span>`);
+    }
+    if (photo.exposure_bias !== undefined && photo.exposure_bias !== null && Math.abs(photo.exposure_bias) > 0.001) {
+      const sign = photo.exposure_bias > 0 ? '+' : '';
+      const biasVal = Math.round(photo.exposure_bias * 10) / 10;
+      pills.push(`<span class="quick-exif-pill" title="露出補正">${sign}${biasVal}EV</span>`);
+    }
+    pillsEl.innerHTML = pills.join('');
+    pillsEl.style.display = pills.length > 0 ? 'flex' : 'none';
+  }
+  } catch (err) {
+    console.warn('[WARN] updateQuickExifSummary error:', err);
   }
 }
 
@@ -181,20 +261,38 @@ function renderExposureTags(container, photo) {
 /**
  * 単一写真の詳細・編集モード表示
  */
+let _inspectorDetailFetchTimer = null;
+
 function showSingleInspector(photo) {
-  // 重複詳細情報（全保存パス・全ボリューム）・XMPサイドカー情報や完全メタデータが未取得の場合は非同期取得して再描画
+  // 一覧APIで既に重複なし(duplicate_count <= 1)・XMPなし(has_xmp === false)と判明している場合は
+  // 空オブジェクトを即座にセットし、不要な /api/photo/{id} 通信とインスペクタ二重再描画を防止する
+  if (photo.duplicates === undefined && photo.duplicate_count !== undefined && Number(photo.duplicate_count) <= 1) {
+    photo.duplicates = [];
+  }
+  if (photo.xmp_info === undefined && photo.has_xmp === false) {
+    photo.xmp_info = { has_xmp: false };
+  }
+
+  // 重複詳細情報（duplicate_count > 1）またはXMPサイドカー情報（has_xmp === true）が未取得の場合のみ非同期取得
   if ((photo.duplicates === undefined || photo.xmp_info === undefined) && !photo._xmpDetailFetched) {
     const currentId = photo.id;
-    photo._xmpDetailFetched = true;
-    fetch(`/api/photo/${currentId}`)
-      .then(res => res.ok ? res.json() : null)
-      .then(detail => {
-        if (detail && state.activeInspectorPhotoId === currentId) {
-          Object.assign(photo, detail);
-          showSingleInspector(photo);
-        }
-      })
-      .catch(err => console.warn('[WARN] 詳細メタデータ取得失敗:', err));
+    if (_inspectorDetailFetchTimer) {
+      clearTimeout(_inspectorDetailFetchTimer);
+    }
+    _inspectorDetailFetchTimer = setTimeout(() => {
+      _inspectorDetailFetchTimer = null;
+      if (state.activeInspectorPhotoId !== currentId) return;
+      photo._xmpDetailFetched = true;
+      fetch(`/api/photo/${currentId}`)
+        .then(res => res.ok ? res.json() : null)
+        .then(detail => {
+          if (detail && state.activeInspectorPhotoId === currentId) {
+            Object.assign(photo, detail);
+            showSingleInspector(photo);
+          }
+        })
+        .catch(err => console.warn('[WARN] 詳細メタデータ取得失敗:', err));
+    }, 180);
   }
 
   elements.inspectorSingleView.style.display = 'block';
@@ -400,6 +498,10 @@ function showSingleInspector(photo) {
               if (typeof updateCardRatingDirectly === 'function' && photo.rating !== undefined) {
                 updateCardRatingDirectly(photo.id, photo.rating);
               }
+              state.activeInspectorPhotoId = photo.id;
+              if (state.currentPhotoIndex < 0 && state.selectedPhotoIds.size > 0 && typeof clearSelection === 'function') {
+                clearSelection();
+              }
               showSingleInspector(photo);
               if (typeof fetchTags === 'function') fetchTags();
               if (typeof fetchPhotos === 'function') fetchPhotos();
@@ -488,6 +590,9 @@ function showSingleInspector(photo) {
       await updatePhotoRating(photo.id, newRating);
     };
   });
+
+  // 常時表示EXIFサマリ（ファーストビュー）を更新
+  updateQuickExifSummary(photo);
 
   // GPS情報の有無によるタブバッジ表示
   const hasGps = photo.latitude != null && photo.longitude != null;
@@ -628,7 +733,11 @@ function showSingleInspector(photo) {
               const res = await fetch(`/api/photo/${sp.id}/set-primary`, { method: 'POST' });
               if (res.ok) {
                 state.activeInspectorPhotoId = sp.id;
-                state.selectedPhotoIds = new Set([sp.id]);
+                if (typeof clearSelection === 'function') {
+                  clearSelection();
+                } else {
+                  state.selectedPhotoIds.clear();
+                }
                 await fetchPhotos();
                 const updated = state.photos.find(p => p.id === sp.id);
                 if (updated) showSingleInspector(updated);
@@ -660,6 +769,7 @@ function showSingleInspector(photo) {
             elements.inspectorTitle.textContent = sp.file_name;
             elements.inspectorTitle.title = sp.file_name;
           }
+          updateQuickExifSummary(sp);
 
           // 上部プレビュー枠クリック時のライトボックス対象もこの sp に切り替え
           if (elements.inspectorPreviewWrapper) {
@@ -1125,8 +1235,15 @@ async function showGpsCandidateModal(photo) {
             statePhoto.state = c.state;
             statePhoto.city = c.city;
           }
+          state.activeInspectorPhotoId = photo.id;
+          if (state.currentPhotoIndex < 0 && state.selectedPhotoIds.size > 0 && typeof clearSelection === 'function') {
+            clearSelection();
+          }
           showSingleInspector(photo);
           if (window.loadLocationTree) window.loadLocationTree();
+          if (state.activeLocation && typeof fetchPhotos === 'function') {
+            fetchPhotos();
+          }
           if (typeof showToast === 'function') {
             showToast('📍 スマホ写真からジオタグを準用しました', 'success', 3000);
           }
@@ -1832,6 +1949,10 @@ async function addTagToPhoto(photoId, tag, photoObj = null) {
     });
     if (!res.ok) throw new Error('タグの追加に失敗しました');
 
+    if (state.currentPhotoIndex < 0 && state.selectedPhotoIds.size > 0 && typeof clearSelection === 'function') {
+      state.activeInspectorPhotoId = photoId;
+      clearSelection();
+    }
     await fetchTags();
     if (state.untaggedOnly || (state.tagFilters && state.tagFilters.size > 0)) {
       await fetchPhotos();
@@ -1977,6 +2098,11 @@ async function removeTagFromPhoto(photoId, tag, chipEl = null, photoObj = null) 
       if (!fallbackRes.ok) throw new Error('タグ削除に失敗しました');
     }
 
+    if (state.currentPhotoIndex < 0 && state.selectedPhotoIds.size > 0 && typeof clearSelection === 'function') {
+      state.activeInspectorPhotoId = photoId;
+      clearSelection();
+    }
+
     // サイドバー・設定画面・クイックツリーのタグ件数を更新
     await fetchTags();
 
@@ -2029,6 +2155,48 @@ function initInspectorEvents() {
   }
   if (elements.closeInspectorBtn) {
     elements.closeInspectorBtn.addEventListener('click', () => toggleInspector(false));
+  }
+
+  // 単一インスペクタ: 上部クイックアクションバー（調整・波形・左回転・右回転）
+  const quickAdjustBtn = document.getElementById('inspectorQuickAdjustBtn');
+  if (quickAdjustBtn) {
+    quickAdjustBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const pid = state.activeInspectorPhotoId;
+      const photo = pid ? state.photos.find(p => p.id === pid) : null;
+      if (photo && typeof window.openImageAdjustModal === 'function') {
+        window.openImageAdjustModal(photo);
+      }
+    });
+  }
+  const quickHistBtn = document.getElementById('inspectorQuickHistBtn');
+  if (quickHistBtn) {
+    quickHistBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (typeof window.toggleInspectorHistogram === 'function') {
+        window.toggleInspectorHistogram();
+      }
+    });
+  }
+  const quickRotLeftBtn = document.getElementById('inspectorQuickRotateLeftBtn');
+  if (quickRotLeftBtn) {
+    quickRotLeftBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const pid = state.activeInspectorPhotoId;
+      if (pid && typeof window.rotatePhotoQuick === 'function') {
+        window.rotatePhotoQuick(pid, -90);
+      }
+    });
+  }
+  const quickRotRightBtn = document.getElementById('inspectorQuickRotateRightBtn');
+  if (quickRotRightBtn) {
+    quickRotRightBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const pid = state.activeInspectorPhotoId;
+      if (pid && typeof window.rotatePhotoQuick === 'function') {
+        window.rotatePhotoQuick(pid, 90);
+      }
+    });
   }
 
   // 単一インスペクタ: 新規タグ追加
@@ -2185,11 +2353,18 @@ function initInspectorEvents() {
         photo.state = null;
         photo.city = null;
 
+        state.activeInspectorPhotoId = photo.id;
+        if (state.currentPhotoIndex < 0 && state.selectedPhotoIds.size > 0 && typeof clearSelection === 'function') {
+          clearSelection();
+        }
         showSingleInspector(photo);
         if (typeof showToast === 'function') {
           showToast('🗑️ ジオタグ情報を削除しました', 'info');
         }
         if (window.loadLocationTree) window.loadLocationTree();
+        if (state.activeLocation && typeof fetchPhotos === 'function') {
+          fetchPhotos();
+        }
       } catch (err) {
         console.error('ジオタグ削除エラー:', err);
         if (typeof showToast === 'function') {

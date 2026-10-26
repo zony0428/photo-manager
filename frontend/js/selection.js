@@ -41,10 +41,12 @@ function togglePhotoSelection(photoId, index) {
     state.selectedPhotoIds.delete(photoId);
     if (state.selectedPhotoIds.size === 0) {
       state.lastSelectedIndex = -1;
+      state.selectionAnchorIndex = -1;
     }
   } else {
     state.selectedPhotoIds.add(photoId);
     state.lastSelectedIndex = index;
+    state.selectionAnchorIndex = index;
   }
   clearShiftPreview();
   updateCardSelectionClasses();
@@ -86,6 +88,7 @@ function selectAllPhotos() {
 function clearSelection() {
   state.selectedPhotoIds.clear();
   state.lastSelectedIndex = -1;
+  state.selectionAnchorIndex = -1;
   state.selectionBaseIds = null;
   clearShiftPreview();
   updateCardSelectionClasses();
@@ -167,28 +170,16 @@ function hasMissingThumbnailsInSelection() {
 }
 
 function updateSelectionUI() {
+  document.body.classList.toggle('inspector-collapsed', !state.isInspectorOpen);
   const count = state.selectedPhotoIds.size;
-  elements.floatingSelectedCount.textContent = count;
-  elements.selectionFloatingBar.style.display = count > 0 ? 'flex' : 'none';
-  elements.contextMenuSelectedCount.textContent = `${count}枚の写真を選択中`;
-
-  // サムネイルボタンのラベル動的更新（未取得が含まれるなら「取得」、全て取得済みなら「更新」）
-  const hasMissing = hasMissingThumbnailsInSelection();
-  const thumbIcon = document.getElementById('floatingRefreshThumbIcon');
-  if (thumbIcon) {
-    thumbIcon.textContent = hasMissing ? '🖼️' : '🔄';
+  if (elements.floatingSelectedCount) {
+    elements.floatingSelectedCount.textContent = count;
   }
-  if (elements.floatingRefreshThumbLabel) {
-    elements.floatingRefreshThumbLabel.textContent = hasMissing ? 'サムネイル取得' : 'サムネイル更新';
+  if (elements.selectionFloatingBar) {
+    elements.selectionFloatingBar.style.display = 'none';
   }
-  if (elements.floatingRefreshThumbBtn) {
-    elements.floatingRefreshThumbBtn.title = hasMissing ? '選択中の写真のサムネイルを取得します' : '選択中の写真のサムネイルを更新します';
-  }
-  if (elements.contextMenuRefreshThumbLabel) {
-    const actionText = hasMissing ? 'サムネイルを取得' : 'サムネイルを更新';
-    const countText = count > 1 ? ` (${count}枚)` : '';
-    const icon = hasMissing ? '🖼️' : '🔄';
-    elements.contextMenuRefreshThumbLabel.textContent = `${icon} ${actionText}${countText}`;
+  if (elements.contextMenuSelectedCount) {
+    elements.contextMenuSelectedCount.textContent = `${count}枚の写真を選択中`;
   }
 
   // storage 関連ボタンの表示・ラベル動的更新
@@ -208,7 +199,9 @@ function openContextMenu(x, y) {
   if (typeof window.updateStorageContextMenu === 'function') {
     window.updateStorageContextMenu();
   }
-  loadAndRenderContextImportSubmenu();
+  if (elements.contextImportFolderList) {
+    loadAndRenderContextImportSubmenu();
+  }
 
   // サムネイルメニュー項目の動的ラベル更新
   const count = state.selectedPhotoIds.size;
@@ -218,6 +211,26 @@ function openContextMenu(x, y) {
     const countText = count > 1 ? ` (${count}枚)` : '';
     const icon = hasMissing ? '🖼️' : '🔄';
     elements.contextMenuRefreshThumbLabel.textContent = `${icon} ${actionText}${countText}`;
+  }
+
+  // 単一選択専用の項目（クロップ画面・トーンコピー・画像コピー）の表示制御
+  const ctxCropEl = document.getElementById('contextMenuCrop');
+  if (ctxCropEl) ctxCropEl.style.display = count <= 1 ? 'flex' : 'none';
+  const ctxCopyToneEl = document.getElementById('contextMenuCopyTone');
+  if (ctxCopyToneEl) ctxCopyToneEl.style.display = count <= 1 ? 'flex' : 'none';
+  const ctxCopyImgEl = document.getElementById('contextMenuCopyImageItem');
+  if (ctxCopyImgEl) ctxCopyImgEl.style.display = count <= 1 ? 'flex' : 'none';
+
+  // トーン調整ペースト項目の状態更新
+  const ctxPasteToneEl = document.getElementById('contextMenuPasteTone');
+  if (ctxPasteToneEl) {
+    const copiedTone = typeof window.getCopiedToneAdjustments === 'function'
+      ? window.getCopiedToneAdjustments()
+      : null;
+    ctxPasteToneEl.style.opacity = copiedTone ? '1' : '0.55';
+    ctxPasteToneEl.title = copiedTone
+      ? `コピー中のトーン（明:${copiedTone.brightness} / コ:${copiedTone.contrast} / 彩:${copiedTone.saturation}）を選択中の${count}枚に適用`
+      : '先に写真のトーン調整をコピーしてください (Ctrl+Shift+C)';
   }
 
   elements.contextMenu.style.display = 'block';
@@ -672,11 +685,15 @@ function closeAllFloatingPopovers() {
   if (elements.floatingImportPopover) elements.floatingImportPopover.style.display = 'none';
   const rotatePopover = document.getElementById('floatingRotatePopover');
   if (rotatePopover) rotatePopover.style.display = 'none';
+  const morePopover = document.getElementById('floatingMorePopover');
+  if (morePopover) morePopover.style.display = 'none';
   if (elements.floatingAddTagBtn) elements.floatingAddTagBtn.classList.remove('active');
   if (elements.floatingRateBtn) elements.floatingRateBtn.classList.remove('active');
   if (elements.floatingImportBtn) elements.floatingImportBtn.classList.remove('active');
   const rotateBtn = document.getElementById('floatingRotateBtn');
   if (rotateBtn) rotateBtn.classList.remove('active');
+  const moreBtn = document.getElementById('floatingMoreBtn');
+  if (moreBtn) moreBtn.classList.remove('active');
   const storageImportPopover = document.getElementById('floatingStorageImportPopover');
   if (storageImportPopover) storageImportPopover.style.display = 'none';
   const storageImportBtn = document.getElementById('floatingStorageImportBtn');
@@ -685,6 +702,24 @@ function closeAllFloatingPopovers() {
   if (storageMovePopover) storageMovePopover.style.display = 'none';
   const storageMoveBtn = document.getElementById('floatingStorageMoveBtn');
   if (storageMoveBtn) storageMoveBtn.classList.remove('active');
+}
+
+/**
+ * その他の操作ポップオーバーの開閉トグル
+ */
+function toggleFloatingMorePopover(e) {
+  if (e) e.stopPropagation();
+  const popover = document.getElementById('floatingMorePopover');
+  const btn = document.getElementById('floatingMoreBtn');
+  if (!popover) return;
+
+  const isOpen = popover.style.display === 'flex';
+  closeAllFloatingPopovers();
+
+  if (!isOpen) {
+    popover.style.display = 'flex';
+    if (btn) btn.classList.add('active');
+  }
 }
 
 /**
@@ -912,7 +947,9 @@ function toggleFloatingImportPopover(e) {
   if (!isOpen) {
     elements.floatingImportPopover.style.display = 'flex';
     if (elements.floatingImportBtn) elements.floatingImportBtn.classList.add('active');
-    loadAndRenderFloatingImportFolders();
+    if (elements.floatingImportFolderList) {
+      loadAndRenderFloatingImportFolders();
+    }
     if (elements.floatingImportFolderInput) {
       elements.floatingImportFolderInput.value = '';
       setTimeout(() => elements.floatingImportFolderInput.focus(), 60);
@@ -1008,10 +1045,14 @@ function initSelectionEvents() {
     }
   });
 
-  // Escキーでフローティングポップオーバーを閉じる
+  // Escキーでフローティングポップオーバー・日時シフトモーダルを閉じる
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       closeAllFloatingPopovers();
+      const shiftModal = elements.dateShiftModal || document.getElementById('dateShiftModal');
+      if (shiftModal && shiftModal.style.display !== 'none') {
+        closeDateShiftModal();
+      }
     }
   });
 
@@ -1024,6 +1065,10 @@ function initSelectionEvents() {
   }
   if (elements.floatingImportPopover) {
     elements.floatingImportPopover.addEventListener('click', (e) => e.stopPropagation());
+  }
+  const floatMorePopover = document.getElementById('floatingMorePopover');
+  if (floatMorePopover) {
+    floatMorePopover.addEventListener('click', (e) => e.stopPropagation());
   }
 
   // コンテキストメニュー内: 新規タグ追加
@@ -1142,6 +1187,57 @@ function initSelectionEvents() {
     });
   }
 
+  // コンテキストメニュー: トーン調整をコピー (明るさ・コントラスト・彩度)
+  const ctxCopyTone = document.getElementById('contextMenuCopyTone');
+  if (ctxCopyTone) {
+    ctxCopyTone.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeContextMenu();
+      let targetPhoto = null;
+      if (state.selectedPhotoIds.size > 0) {
+        const firstId = Array.from(state.selectedPhotoIds)[0];
+        targetPhoto = state.photos.find(p => p.id === firstId);
+      } else if (state.activeInspectorPhotoId) {
+        targetPhoto = state.photos.find(p => p.id === state.activeInspectorPhotoId);
+      }
+      if (targetPhoto && typeof window.copyPhotoToneAdjustments === 'function') {
+        window.copyPhotoToneAdjustments(targetPhoto);
+      }
+    });
+  }
+
+  // コンテキストメニュー: トーン調整をペースト
+  const ctxPasteTone = document.getElementById('contextMenuPasteTone');
+  if (ctxPasteTone) {
+    ctxPasteTone.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeContextMenu();
+      const ids = Array.from(state.selectedPhotoIds);
+      if (ids.length > 0 && typeof window.batchPastePhotoToneAdjustments === 'function') {
+        window.batchPastePhotoToneAdjustments(ids);
+      }
+    });
+  }
+
+  // コンテキストメニュー: 画像をクリップボードにコピー (Ctrl+C)
+  const ctxCopyImg = document.getElementById('contextMenuCopyImageItem');
+  if (ctxCopyImg) {
+    ctxCopyImg.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeContextMenu();
+      let targetPhoto = null;
+      if (state.selectedPhotoIds.size > 0) {
+        const firstId = Array.from(state.selectedPhotoIds)[0];
+        targetPhoto = state.photos.find(p => p.id === firstId);
+      } else if (state.activeInspectorPhotoId) {
+        targetPhoto = state.photos.find(p => p.id === state.activeInspectorPhotoId);
+      }
+      if (targetPhoto && typeof window.copyPhotoImageToClipboard === 'function') {
+        window.copyPhotoImageToClipboard(targetPhoto);
+      }
+    });
+  }
+
   // フローティングバー: 回転ポップオーバートグル
   const floatRotBtn = document.getElementById('floatingRotateBtn');
   if (floatRotBtn) {
@@ -1176,6 +1272,17 @@ function initSelectionEvents() {
       }
     });
   }
+  const floatPasteToneBtn = document.getElementById('floatingPasteToneBtn');
+  if (floatPasteToneBtn) {
+    floatPasteToneBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeAllFloatingPopovers();
+      const ids = Array.from(state.selectedPhotoIds);
+      if (ids.length > 0 && typeof window.batchPastePhotoToneAdjustments === 'function') {
+        window.batchPastePhotoToneAdjustments(ids);
+      }
+    });
+  }
   const floatResetBtn = document.getElementById('floatingResetAdjustBtn');
   if (floatResetBtn) {
     floatResetBtn.addEventListener('click', (e) => {
@@ -1203,14 +1310,33 @@ function initSelectionEvents() {
     });
   }
 
+  // フローティングバー: その他の操作ポップオーバートグル
+  const floatMoreBtn = document.getElementById('floatingMoreBtn');
+  if (floatMoreBtn) {
+    floatMoreBtn.addEventListener('click', toggleFloatingMorePopover);
+  }
+  const closeFloatMoreBtn = document.getElementById('closeFloatingMorePopoverBtn');
+  if (closeFloatMoreBtn) {
+    closeFloatMoreBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeAllFloatingPopovers();
+    });
+  }
+
   // フローティングバー: GPS一括準用
   if (elements.floatingInferGpsBtn) {
-    elements.floatingInferGpsBtn.addEventListener('click', executeBatchInferGps);
+    elements.floatingInferGpsBtn.addEventListener('click', () => {
+      closeAllFloatingPopovers();
+      executeBatchInferGps();
+    });
   }
 
   // フローティングバー: GPS一括削除
   if (elements.floatingClearGpsBtn) {
-    elements.floatingClearGpsBtn.addEventListener('click', executeBatchClearGps);
+    elements.floatingClearGpsBtn.addEventListener('click', () => {
+      closeAllFloatingPopovers();
+      executeBatchClearGps();
+    });
   }
 
   // フローティングバー: タグ追加ポップオーバートグル
@@ -1314,6 +1440,7 @@ function initSelectionEvents() {
   // フローティングバー: サムネイル取得・更新
   if (elements.floatingRefreshThumbBtn) {
     elements.floatingRefreshThumbBtn.addEventListener('click', () => {
+      closeAllFloatingPopovers();
       refreshSelectedThumbnails();
     });
   }
@@ -1342,6 +1469,31 @@ function initSelectionEvents() {
       }
     });
   }
+
+  // フローティングバー: 撮影日時一括シフト補正
+  const floatShiftDateBtn = elements.floatingShiftDateBtn || document.getElementById('floatingShiftDateBtn');
+  if (floatShiftDateBtn && !floatShiftDateBtn.dataset.boundShiftDate) {
+    floatShiftDateBtn.dataset.boundShiftDate = '1';
+    floatShiftDateBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeAllFloatingPopovers();
+      openDateShiftModal();
+    });
+  }
+
+  // コンテキストメニュー: 撮影日時一括シフト補正
+  const ctxShiftDateItem = elements.contextMenuShiftDateItem || document.getElementById('contextMenuShiftDateItem');
+  if (ctxShiftDateItem && !ctxShiftDateItem.dataset.boundShiftDate) {
+    ctxShiftDateItem.dataset.boundShiftDate = '1';
+    ctxShiftDateItem.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeContextMenu();
+      openDateShiftModal();
+    });
+  }
+
+  // 撮影日時一括シフト補正モーダルのイベント登録
+  initDateShiftModalEvents();
 }
 
 /**
@@ -1461,10 +1613,8 @@ async function refreshSelectedThumbnails() {
       }
     });
 
-    // 選択状態UI（ボタン文言）を更新
-    updateSelectionUI();
-
     if (data.success_ids && data.success_ids.length > 0) {
+      clearSelection();
       if (data.failed_ids && data.failed_ids.length > 0) {
         if (typeof showToast === 'function') {
           showToast(`${data.success_ids.length}枚のサムネイルを${actionName}しました（${data.failed_ids.length}枚失敗）`, 'warning', 4000);
@@ -1475,6 +1625,7 @@ async function refreshSelectedThumbnails() {
         }
       }
     } else {
+      updateSelectionUI();
       if (typeof showToast === 'function') {
         showToast(`サムネイルの${actionName}に失敗しました（元ファイル未接続など）`, 'error', 4000);
       }
@@ -1520,6 +1671,7 @@ async function executeBatchInferGps() {
       if (typeof showToast === 'function') {
         showToast(`📍 ${data.inferred_count} 枚の写真にジオタグを準用しました`, 'success', 3500);
       }
+      clearSelection();
       // 再読み込みしてメタデータを画面に反映
       if (typeof refreshAll === 'function') {
         await refreshAll();
@@ -1569,6 +1721,7 @@ async function executeBatchClearGps() {
       if (typeof showToast === 'function') {
         showToast(`🗑️ ${count} 枚の写真からジオタグを削除しました`, 'success', 3500);
       }
+      clearSelection();
       // 再読み込みしてメタデータおよびツリーを画面に反映
       if (typeof refreshAll === 'function') {
         await refreshAll();
@@ -1586,5 +1739,471 @@ async function executeBatchClearGps() {
   }
 }
 window.executeBatchClearGps = executeBatchClearGps;
+
+/* ==========================================================================
+   撮影日時の一括シフト補正モーダル (#dateShiftModal)
+   ========================================================================== */
+let _dateShiftTargetIds = [];
+
+/**
+ * ローカルタイム基準で "YYYY-MM-DD HH:MM:SS" 文字列に offsetSeconds を加算してフォーマットする
+ * ※ Date.toISOString() は UTC ズレを起こすため使用禁止
+ */
+function _formatShiftedDateLocal(dateStr, offsetSeconds) {
+  if (!dateStr) return '';
+  const str = String(dateStr).trim();
+  const m = str.match(/^(\d{4})[:\-/](\d{2})[:\-/](\d{2})[ T](\d{2}):(\d{2}):(\d{2})/);
+  if (!m) return str;
+
+  const year = parseInt(m[1], 10);
+  const month = parseInt(m[2], 10);
+  const day = parseInt(m[3], 10);
+  const hour = parseInt(m[4], 10);
+  const minute = parseInt(m[5], 10);
+  const second = parseInt(m[6], 10);
+
+  const dt = new Date(year, month - 1, day, hour, minute, second);
+  if (isNaN(dt.getTime())) return str;
+
+  const shifted = new Date(dt.getTime() + (Number(offsetSeconds) || 0) * 1000);
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const yStr = String(shifted.getFullYear()).padStart(4, '0');
+  const moStr = pad2(shifted.getMonth() + 1);
+  const dStr = pad2(shifted.getDate());
+  const hStr = pad2(shifted.getHours());
+  const miStr = pad2(shifted.getMinutes());
+  const sStr = pad2(shifted.getSeconds());
+
+  return `${yStr}-${moStr}-${dStr} ${hStr}:${miStr}:${sStr}`;
+}
+
+/**
+ * モーダル入力欄から現在のシフト秒数（符号付き整数）を算出する
+ */
+function _getDateShiftOffsetSeconds() {
+  const dirEl = elements.dateShiftDirection || document.getElementById('dateShiftDirection');
+  const daysEl = elements.dateShiftDays || document.getElementById('dateShiftDays');
+  const hoursEl = elements.dateShiftHours || document.getElementById('dateShiftHours');
+  const minutesEl = elements.dateShiftMinutes || document.getElementById('dateShiftMinutes');
+  const secondsEl = elements.dateShiftSeconds || document.getElementById('dateShiftSeconds');
+
+  const dir = (dirEl && String(dirEl.value) === '-1') ? -1 : 1;
+  const d = Math.max(0, parseInt(daysEl ? daysEl.value : '0', 10) || 0);
+  const h = Math.max(0, parseInt(hoursEl ? hoursEl.value : '0', 10) || 0);
+  const m = Math.max(0, parseInt(minutesEl ? minutesEl.value : '0', 10) || 0);
+  const s = Math.max(0, parseInt(secondsEl ? secondsEl.value : '0', 10) || 0);
+
+  return dir * (d * 86400 + h * 3600 + m * 60 + s);
+}
+
+/**
+ * 指定された写真ID配列に対応する写真オブジェクト一覧を取得する（スタック内写真も探索）
+ */
+function _getDateShiftTargetPhotoObjects(ids) {
+  const result = [];
+  const seen = new Set();
+  const idSet = new Set((ids || []).map(id => Number(id)));
+
+  for (const p of (state.photos || [])) {
+    if (idSet.has(Number(p.id)) && !seen.has(Number(p.id))) {
+      seen.add(Number(p.id));
+      result.push(p);
+    }
+    if (Array.isArray(p.stack_photos)) {
+      for (const sp of p.stack_photos) {
+        if (idSet.has(Number(sp.id)) && !seen.has(Number(sp.id))) {
+          seen.add(Number(sp.id));
+          result.push(sp);
+        }
+      }
+    }
+  }
+  return result;
+}
+
+/**
+ * 撮影日時一括シフト補正モーダルを開く
+ */
+function openDateShiftModal(targetPhotoIds) {
+  let ids = [];
+  if (Array.isArray(targetPhotoIds) && targetPhotoIds.length > 0) {
+    ids = targetPhotoIds.map(id => Number(id)).filter(Boolean);
+  } else if (targetPhotoIds instanceof Set && targetPhotoIds.size > 0) {
+    ids = Array.from(targetPhotoIds).map(id => Number(id)).filter(Boolean);
+  } else if (state.selectedPhotoIds && state.selectedPhotoIds.size > 0) {
+    ids = Array.from(state.selectedPhotoIds).map(id => Number(id)).filter(Boolean);
+  } else if (state.currentPhotoIndex >= 0 && typeof getCurrentLightboxPhoto === 'function') {
+    const cur = getCurrentLightboxPhoto();
+    if (cur && cur.id) ids = [Number(cur.id)];
+  } else if (state.activeInspectorPhotoId) {
+    ids = [Number(state.activeInspectorPhotoId)];
+  }
+
+  if (ids.length === 0) {
+    if (typeof showToast === 'function') {
+      showToast('撮影日時を補正する写真を選択してください', 'warning', 3000);
+    }
+    return;
+  }
+
+  _dateShiftTargetIds = ids;
+  initDateShiftModalEvents();
+
+  const modal = elements.dateShiftModal || document.getElementById('dateShiftModal');
+  if (!modal) return;
+
+  const countEl = elements.dateShiftTargetCount || document.getElementById('dateShiftTargetCount');
+  if (countEl) {
+    countEl.textContent = String(ids.length);
+  }
+
+  // 入力欄を初期値にリセット
+  const dirEl = elements.dateShiftDirection || document.getElementById('dateShiftDirection');
+  const daysEl = elements.dateShiftDays || document.getElementById('dateShiftDays');
+  const hoursEl = elements.dateShiftHours || document.getElementById('dateShiftHours');
+  const minutesEl = elements.dateShiftMinutes || document.getElementById('dateShiftMinutes');
+  const secondsEl = elements.dateShiftSeconds || document.getElementById('dateShiftSeconds');
+
+  if (dirEl) dirEl.value = '1';
+  if (daysEl) daysEl.value = '0';
+  if (hoursEl) hoursEl.value = '0';
+  if (minutesEl) minutesEl.value = '0';
+  if (secondsEl) secondsEl.value = '0';
+
+  const presetGroup = elements.dateShiftPresetGroup || document.getElementById('dateShiftPresetGroup');
+  if (presetGroup) {
+    presetGroup.querySelectorAll('.date-shift-preset-btn').forEach(btn => {
+      btn.classList.remove('active');
+    });
+  }
+
+  // 元のEXIF日時に戻すボタンの有効/無効制御
+  const resetBtn = elements.dateShiftResetOrigBtn || document.getElementById('dateShiftResetOrigBtn');
+  if (resetBtn) {
+    const targetPhotos = _getDateShiftTargetPhotoObjects(ids);
+    const hasOrig = targetPhotos.some(p => Boolean(p && p.original_date_taken));
+    resetBtn.disabled = !hasOrig;
+    resetBtn.style.opacity = hasOrig ? '1' : '0.5';
+    resetBtn.title = hasOrig
+      ? 'シフト補正前の元のEXIF撮影日時に復元します'
+      : '選択中の写真にシフト補正履歴（元のEXIF日時）はありません';
+  }
+
+  updateDateShiftPreview();
+  modal.style.display = 'flex';
+}
+
+/**
+ * 撮影日時一括シフト補正モーダルを閉じる
+ */
+function closeDateShiftModal() {
+  const modal = elements.dateShiftModal || document.getElementById('dateShiftModal');
+  if (modal) {
+    modal.style.display = 'none';
+  }
+}
+
+/**
+ * 撮影日時シフトのプレビューリスト（先頭最大5件）をリアルタイム描画する
+ */
+function updateDateShiftPreview() {
+  const previewList = elements.dateShiftPreviewList || document.getElementById('dateShiftPreviewList');
+  if (!previewList) return;
+
+  const offsetSeconds = _getDateShiftOffsetSeconds();
+  const targetPhotos = _getDateShiftTargetPhotoObjects(_dateShiftTargetIds);
+  const samplePhotos = targetPhotos.slice(0, 5);
+
+  if (samplePhotos.length === 0) {
+    previewList.innerHTML = `<div class="date-shift-preview-empty" style="padding: 8px; color: var(--text-dim, #64748b); font-size: 0.78rem;">対象写真がありません</div>`;
+    return;
+  }
+
+  const rowsHtml = samplePhotos.map(p => {
+    const fname = _escHtml(p.file_name || `ID:${p.id}`);
+    const curDate = p.date_taken ? String(p.date_taken) : '';
+    const origDate = p.original_date_taken ? String(p.original_date_taken) : '';
+    const origBadge = origDate
+      ? ` <span class="date-shift-orig-note" style="font-size: 0.7rem; color: var(--text-dim, #64748b);">(元: ${_escHtml(origDate)})</span>`
+      : '';
+
+    if (!curDate) {
+      return `
+        <div class="date-shift-preview-row" style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 6px; font-size: 0.78rem; border-bottom: 1px solid var(--border-soft, rgba(255,255,255,0.06));">
+          <span class="preview-fname" style="font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 170px;" title="${fname}">${fname}</span>
+          <span style="color: var(--text-dim, #64748b);">撮影日時なし${origBadge}</span>
+        </div>
+      `;
+    }
+
+    const shiftedDate = _formatShiftedDateLocal(curDate, offsetSeconds);
+    const isChanged = shiftedDate !== curDate;
+    const afterColor = isChanged ? 'var(--accent-primary, #e14d2a)' : 'var(--text-main, #eceae4)';
+
+    return `
+      <div class="date-shift-preview-row" style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 6px; font-size: 0.78rem; border-bottom: 1px solid var(--border-soft, rgba(255,255,255,0.06)); flex-wrap: wrap;">
+        <span class="preview-fname" style="font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px;" title="${fname}">${fname}</span>
+        <div class="preview-dates" style="display: flex; align-items: center; gap: 6px; font-family: monospace; font-size: 0.76rem; flex-wrap: wrap;">
+          <span class="preview-date-before" style="color: var(--text-muted, #94a3b8);">${_escHtml(curDate)}${origBadge}</span>
+          <span class="preview-arrow" style="color: var(--text-dim, #64748b);">➜</span>
+          <span class="preview-date-after" style="font-weight: 700; color: ${afterColor};">${_escHtml(shiftedDate)}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  const moreCount = Math.max(0, targetPhotos.length - samplePhotos.length);
+  const moreHtml = moreCount > 0
+    ? `<div class="date-shift-preview-more" style="padding: 4px 6px; font-size: 0.72rem; color: var(--text-dim, #64748b); text-align: right;">…他 ${moreCount} 枚</div>`
+    : '';
+
+  previewList.innerHTML = rowsHtml + moreHtml;
+}
+
+/**
+ * 撮影日時一括シフト補正（または元のEXIF日時へのリセット）をAPIへ送信して即時反映する
+ */
+async function submitDateShift(resetMode = false) {
+  if (!_dateShiftTargetIds || _dateShiftTargetIds.length === 0) return;
+
+  const offsetSeconds = resetMode ? 0 : _getDateShiftOffsetSeconds();
+  if (!resetMode && offsetSeconds === 0) {
+    if (typeof showToast === 'function') {
+      showToast('シフトする時間（日・時・分・秒）を指定してください', 'warning', 3000);
+    }
+    return;
+  }
+
+  const submitBtn = elements.dateShiftSubmitBtn || document.getElementById('dateShiftSubmitBtn');
+  const resetBtn = elements.dateShiftResetOrigBtn || document.getElementById('dateShiftResetOrigBtn');
+  if (submitBtn) submitBtn.disabled = true;
+  if (resetBtn) resetBtn.disabled = true;
+
+  try {
+    const res = await fetch('/api/photos/batch-shift-date', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        photo_ids: _dateShiftTargetIds,
+        offset_seconds: offsetSeconds,
+        reset: Boolean(resetMode),
+      }),
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.detail || '撮影日時の更新に失敗しました');
+    }
+
+    // サーバーから返却された個別更新マップを構築（updated_photos が配列またはオブジェクトの場合に対応）
+    const serverUpdatedMap = new Map();
+    const _srvPhotos = data.photos || data.updated_photos;
+    if (Array.isArray(_srvPhotos)) {
+      _srvPhotos.forEach(item => {
+        if (item && item.id != null) {
+          serverUpdatedMap.set(Number(item.id), item);
+        }
+      });
+    } else if (data.updated_photos && typeof data.updated_photos === 'object') {
+      Object.entries(data.updated_photos).forEach(([k, v]) => {
+        serverUpdatedMap.set(Number(k), v);
+      });
+    }
+
+    const targetIdSet = new Set(_dateShiftTargetIds.map(id => Number(id)));
+
+    // 写真オブジェクト1件にシフト結果を即時反映するヘルパー
+    const applyUpdateToPhotoObj = (p) => {
+      if (!p || !targetIdSet.has(Number(p.id))) return;
+      const srv = serverUpdatedMap.get(Number(p.id));
+      if (srv) {
+        if (srv.date_taken !== undefined) p.date_taken = srv.date_taken;
+        if (srv.year_month !== undefined) {
+          p.year_month = srv.year_month;
+        } else if (p.date_taken) {
+          p.year_month = String(p.date_taken).substring(0, 7);
+        }
+        if ('original_date_taken' in srv) {
+          p.original_date_taken = srv.original_date_taken;
+        }
+      } else if (resetMode) {
+        if (p.original_date_taken) {
+          p.date_taken = p.original_date_taken;
+          p.year_month = String(p.date_taken).substring(0, 7);
+          p.original_date_taken = null;
+        }
+      } else if (p.date_taken) {
+        if (!p.original_date_taken) {
+          p.original_date_taken = p.date_taken;
+        }
+        p.date_taken = _formatShiftedDateLocal(p.date_taken, offsetSeconds);
+        p.year_month = String(p.date_taken).substring(0, 7);
+      }
+    };
+
+    // state.photos および stack_photos 内の該当写真を更新
+    (state.photos || []).forEach(p => {
+      applyUpdateToPhotoObj(p);
+      if (Array.isArray(p.stack_photos)) {
+        p.stack_photos.forEach(sp => applyUpdateToPhotoObj(sp));
+      }
+    });
+
+    // DOM上のカード日付表示を即時更新
+    const grid = elements.photoGrid || document.getElementById('photoGrid');
+    if (grid) {
+      _dateShiftTargetIds.forEach(pid => {
+        const card = grid.querySelector(`.photo-card[data-photo-id="${pid}"]`);
+        const pObj = (state.photos || []).find(p => Number(p.id) === Number(pid));
+        if (card && pObj && pObj.date_taken) {
+          const dateShort = String(pObj.date_taken).substring(0, 10);
+          card.querySelectorAll('.card-date').forEach(el => {
+            el.textContent = dateShort;
+          });
+        }
+      });
+    }
+
+    // 右インスペクタの表示更新
+    if (typeof updateInspectorView === 'function') {
+      updateInspectorView();
+    }
+
+    // ライトボックスが開いている場合はライトボックスの日時表示も更新
+    if (state.currentPhotoIndex >= 0 && typeof getCurrentLightboxPhoto === 'function') {
+      const curLight = getCurrentLightboxPhoto();
+      if (curLight && targetIdSet.has(Number(curLight.id))) {
+        if (elements.exifDateTaken) {
+          elements.exifDateTaken.textContent = curLight.date_taken || '-';
+        }
+        if (elements.lightboxMeta) {
+          const datePart = curLight.date_taken || '日付不明';
+          const camPart = curLight.camera_model || 'カメラ不明';
+          elements.lightboxMeta.textContent = `${datePart} | ${camPart}`;
+        }
+      }
+    }
+
+    // タイムラインツリーの再取得・更新
+    if (typeof fetchTimeline === 'function') {
+      fetchTimeline();
+    }
+
+    const updatedCount = data.updated_count != null ? data.updated_count : _dateShiftTargetIds.length;
+    if (typeof showToast === 'function') {
+      if (resetMode) {
+        showToast(`↩️ ${updatedCount}枚の写真の撮影日時を元のEXIF日時に戻しました`, 'success', 3500);
+      } else {
+        showToast(`🕒 ${updatedCount}枚の写真の撮影日時を一括シフト補正しました`, 'success', 3500);
+      }
+    }
+
+    closeDateShiftModal();
+  } catch (err) {
+    console.error('[DATE_SHIFT] error:', err);
+    if (typeof showToast === 'function') {
+      showToast(`エラー: ${err.message}`, 'error', 4000);
+    }
+  } finally {
+    if (submitBtn) submitBtn.disabled = false;
+    if (resetBtn) resetBtn.disabled = false;
+  }
+}
+
+/**
+ * 撮影日時一括シフト補正モーダルのイベントリスナー登録
+ */
+function initDateShiftModalEvents() {
+  const modal = elements.dateShiftModal || document.getElementById('dateShiftModal');
+  const closeBtn = elements.closeDateShiftModalBtn || document.getElementById('closeDateShiftModalBtn');
+  const cancelBtn = elements.cancelDateShiftModalBtn || document.getElementById('cancelDateShiftModalBtn');
+  const dirEl = elements.dateShiftDirection || document.getElementById('dateShiftDirection');
+  const daysEl = elements.dateShiftDays || document.getElementById('dateShiftDays');
+  const hoursEl = elements.dateShiftHours || document.getElementById('dateShiftHours');
+  const minutesEl = elements.dateShiftMinutes || document.getElementById('dateShiftMinutes');
+  const secondsEl = elements.dateShiftSeconds || document.getElementById('dateShiftSeconds');
+  const presetGroup = elements.dateShiftPresetGroup || document.getElementById('dateShiftPresetGroup');
+  const submitBtn = elements.dateShiftSubmitBtn || document.getElementById('dateShiftSubmitBtn');
+  const resetBtn = elements.dateShiftResetOrigBtn || document.getElementById('dateShiftResetOrigBtn');
+
+  if (closeBtn && !closeBtn.dataset.boundShift) {
+    closeBtn.dataset.boundShift = '1';
+    closeBtn.addEventListener('click', closeDateShiftModal);
+  }
+  if (cancelBtn && !cancelBtn.dataset.boundShift) {
+    cancelBtn.dataset.boundShift = '1';
+    cancelBtn.addEventListener('click', closeDateShiftModal);
+  }
+  if (modal && !modal.dataset.boundShift) {
+    modal.dataset.boundShift = '1';
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) closeDateShiftModal();
+    });
+  }
+
+  // 入力変更時にリアルタイムプレビュー更新
+  [dirEl, daysEl, hoursEl, minutesEl, secondsEl].forEach(el => {
+    if (el && !el.dataset.boundShift) {
+      el.dataset.boundShift = '1';
+      el.addEventListener('input', updateDateShiftPreview);
+      el.addEventListener('change', updateDateShiftPreview);
+    }
+  });
+
+  // プリセットボタンクリック処理 (.date-shift-preset-btn[data-offset-sec])
+  if (presetGroup && !presetGroup.dataset.boundShift) {
+    presetGroup.dataset.boundShift = '1';
+    presetGroup.addEventListener('click', (e) => {
+      const btn = e.target.closest('.date-shift-preset-btn[data-offset-sec]');
+      if (!btn) return;
+      e.preventDefault();
+
+      const offsetSec = parseInt(btn.dataset.offsetSec, 10) || 0;
+      const dEl = elements.dateShiftDirection || document.getElementById('dateShiftDirection');
+      const dyEl = elements.dateShiftDays || document.getElementById('dateShiftDays');
+      const hrEl = elements.dateShiftHours || document.getElementById('dateShiftHours');
+      const mnEl = elements.dateShiftMinutes || document.getElementById('dateShiftMinutes');
+      const scEl = elements.dateShiftSeconds || document.getElementById('dateShiftSeconds');
+
+      if (dEl) {
+        dEl.value = offsetSec < 0 ? '-1' : '1';
+      }
+      let absSec = Math.abs(offsetSec);
+      const days = Math.floor(absSec / 86400);
+      absSec %= 86400;
+      const hours = Math.floor(absSec / 3600);
+      absSec %= 3600;
+      const minutes = Math.floor(absSec / 60);
+      const seconds = absSec % 60;
+
+      if (dyEl) dyEl.value = String(days);
+      if (hrEl) hrEl.value = String(hours);
+      if (mnEl) mnEl.value = String(minutes);
+      if (scEl) scEl.value = String(seconds);
+
+      presetGroup.querySelectorAll('.date-shift-preset-btn').forEach(b => {
+        b.classList.toggle('active', b === btn);
+      });
+
+      updateDateShiftPreview();
+    });
+  }
+
+  if (submitBtn && !submitBtn.dataset.boundShift) {
+    submitBtn.dataset.boundShift = '1';
+    submitBtn.addEventListener('click', () => submitDateShift(false));
+  }
+  if (resetBtn && !resetBtn.dataset.boundShift) {
+    resetBtn.dataset.boundShift = '1';
+    resetBtn.addEventListener('click', () => submitDateShift(true));
+  }
+}
+
+window._formatShiftedDateLocal = _formatShiftedDateLocal;
+window.openDateShiftModal = openDateShiftModal;
+window.closeDateShiftModal = closeDateShiftModal;
+window.updateDateShiftPreview = updateDateShiftPreview;
+window.submitDateShift = submitDateShift;
+
 
 

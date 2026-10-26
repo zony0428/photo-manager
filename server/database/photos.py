@@ -100,6 +100,7 @@ def _sanitize_photo_data(photo_data: Dict[str, Any]) -> Dict[str, Any]:
     clean_data.setdefault("brightness", 0)
     clean_data.setdefault("contrast", 0)
     clean_data.setdefault("saturation", 0)
+    clean_data.setdefault("original_date_taken", None)
 
     # カメラ機種名およびレンズ名のサニタイズ（NUL文字などの除去）
     cam = clean_data.get("camera_model")
@@ -138,8 +139,8 @@ ON CONFLICT(file_path) DO UPDATE SET
     file_mtime = excluded.file_mtime,
     width = excluded.width,
     height = excluded.height,
-    date_taken = excluded.date_taken,
-    year_month = excluded.year_month,
+    date_taken = CASE WHEN photos.original_date_taken IS NOT NULL AND photos.original_date_taken != '' THEN photos.date_taken ELSE excluded.date_taken END,
+    year_month = CASE WHEN photos.original_date_taken IS NOT NULL AND photos.original_date_taken != '' THEN photos.year_month ELSE excluded.year_month END,
     camera_model = excluded.camera_model,
     exposure_bias = excluded.exposure_bias,
     shutter_speed = excluded.shutter_speed,
@@ -183,6 +184,68 @@ def upsert_photos_batch(list_of_meta: List[Dict[str, Any]]) -> None:
         conn.commit()
 
 
+def _shutter_speed_seconds_sql(col: str = "p.shutter_speed") -> str:
+    """シャッター速度文字列（分数 '1/250' または小数 '0.5' / '2.5s'）を露光秒数(REAL)に換算するSQL式を返す"""
+    clean_col = f"TRIM(REPLACE({col}, 's', ''))"
+    return f"""(CASE
+        WHEN {col} IS NULL OR TRIM({col}) = '' THEN NULL
+        WHEN INSTR({clean_col}, '/') > 0 THEN
+            CASE
+                WHEN CAST(SUBSTR({clean_col}, INSTR({clean_col}, '/') + 1) AS REAL) > 0
+                THEN CAST(SUBSTR({clean_col}, 1, INSTR({clean_col}, '/') - 1) AS REAL)
+                     / CAST(SUBSTR({clean_col}, INSTR({clean_col}, '/') + 1) AS REAL)
+                ELSE NULL
+            END
+        ELSE CAST({clean_col} AS REAL)
+    END)"""
+
+
+def _has_xmp_sidecar_fast(
+    file_path: Optional[str],
+    paired_raw_path: Optional[str] = None,
+    dir_file_set: Optional[set] = None,
+) -> bool:
+    """指定写真（またはペアRAW）と同名の .xmp サイドカーファイルが存在するか高速判定する"""
+    if not file_path:
+        return False
+    fname = os.path.basename(file_path)
+    stem, _ = os.path.splitext(fname)
+    candidates = {
+        f"{stem.lower()}.xmp",
+        f"{fname.lower()}.xmp",
+    }
+    if paired_raw_path:
+        raw_fname = os.path.basename(paired_raw_path)
+        raw_stem, _ = os.path.splitext(raw_fname)
+        candidates.add(f"{raw_stem.lower()}.xmp")
+        candidates.add(f"{raw_fname.lower()}.xmp")
+
+    if dir_file_set is not None:
+        return bool(candidates & dir_file_set)
+
+    try:
+        from ..scanner import resolve_portable_path
+        real_p, is_online = resolve_portable_path(file_path)
+        if not is_online:
+            return False
+        parent_dir = real_p.parent
+        for cand in candidates:
+            if (parent_dir / cand).exists():
+                return True
+    except Exception as e:
+        logger.debug(f"XMPサイドカー存在確認スキップ ({file_path}): {e}")
+    return False
+
+
+def invalidate_fast_cache() -> None:
+    """写真一覧キャッシュおよびフォルダ集計キャッシュを無効化する"""
+    try:
+        from .folders import clear_folders_fs_cache
+        clear_folders_fs_cache()
+    except Exception as e:
+        logger.debug(f"キャッシュ無効化スキップ: {e}")
+
+
 def get_photos(
     folder: Optional[str] = None,
     year_month: Optional[str] = None,
@@ -210,6 +273,7 @@ def get_photos(
     on_this_day: Optional[str] = None,
     focal_range: Optional[str] = None,
     aperture_range: Optional[str] = None,
+    attr_filter: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """条件に合致する写真一覧を取得する（タグの含む/除外排他検索、複数年月OR条件、カメラ・レンズ含む/除外条件、場所階層絞り込み、ラボ分析フィルタ、ブラケットスタック表示、重複写真抽出に対応）"""
     # デフォルト: 棄(-1)を除く全て (優・良・可: [0, 1, 2])
@@ -404,6 +468,26 @@ def get_photos(
         except ValueError:
             pass
 
+    # 属性フィルタ（RAW / JPEG / RAW+JPEGペア / XMPサイドカー / 非破壊調整済み）
+    if attr_filter:
+        af = attr_filter.strip().lower()
+        if af == "raw":
+            query += " AND (p.is_raw = 1 OR (p.paired_raw_path IS NOT NULL AND p.paired_raw_path != ''))"
+        elif af == "jpeg":
+            query += " AND COALESCE(p.is_raw, 0) = 0"
+        elif af == "raw_pair":
+            query += " AND (p.paired_raw_path IS NOT NULL AND p.paired_raw_path != '')"
+        elif af == "adjusted":
+            query += (
+                " AND (COALESCE(p.rotation, 0) != 0"
+                " OR ABS(COALESCE(p.fine_angle, 0.0)) > 0.01"
+                " OR COALESCE(p.brightness, 0) != 0"
+                " OR COALESCE(p.contrast, 0) != 0"
+                " OR COALESCE(p.saturation, 0) != 0"
+                " OR (p.crop_w IS NOT NULL AND p.crop_h IS NOT NULL"
+                " AND (p.crop_w < 0.999 OR p.crop_h < 0.999 OR COALESCE(p.crop_x, 0.0) > 0.001 OR COALESCE(p.crop_y, 0.0) > 0.001)))"
+            )
+
     # ファイル名検索（ユーザー要望によりファイル名限定）
     if search:
         query += " AND p.file_name LIKE ?"
@@ -455,11 +539,27 @@ def get_photos(
                 params.extend([tag])
 
     # ソート条件の検証
+    ss_sql = _shutter_speed_seconds_sql("p.shutter_speed")
+    shutter_fast_sql = f"CASE WHEN ({ss_sql}) IS NULL OR ({ss_sql}) <= 0 THEN 1 ELSE 0 END ASC, ({ss_sql}) ASC, p.date_taken DESC, p.id DESC"
+    shutter_slow_sql = f"CASE WHEN ({ss_sql}) IS NULL OR ({ss_sql}) <= 0 THEN 1 ELSE 0 END ASC, ({ss_sql}) DESC, p.date_taken DESC, p.id DESC"
     valid_sorts = {
         "date_taken DESC": "p.date_taken DESC, p.file_name ASC",
         "date_taken ASC": "p.date_taken ASC, p.file_name ASC",
         "rating DESC": "p.rating DESC, p.date_taken DESC",
         "file_name ASC": "p.file_name ASC",
+        "file_name DESC": "p.file_name DESC",
+        "file_size DESC": "COALESCE(p.file_size, 0) DESC, p.date_taken DESC",
+        "file_size ASC": "COALESCE(p.file_size, 0) ASC, p.date_taken DESC",
+        "focal_length ASC": "CASE WHEN p.focal_length IS NULL OR p.focal_length <= 0 THEN 1 ELSE 0 END ASC, p.focal_length ASC, p.date_taken DESC",
+        "focal_length DESC": "CASE WHEN p.focal_length IS NULL OR p.focal_length <= 0 THEN 1 ELSE 0 END ASC, p.focal_length DESC, p.date_taken DESC",
+        "f_number ASC": "CASE WHEN p.f_number IS NULL OR p.f_number <= 0 THEN 1 ELSE 0 END ASC, p.f_number ASC, p.date_taken DESC",
+        "f_number DESC": "CASE WHEN p.f_number IS NULL OR p.f_number <= 0 THEN 1 ELSE 0 END ASC, p.f_number DESC, p.date_taken DESC",
+        "iso DESC": "CASE WHEN p.iso IS NULL OR p.iso <= 0 THEN 1 ELSE 0 END ASC, p.iso DESC, p.date_taken DESC",
+        "iso ASC": "CASE WHEN p.iso IS NULL OR p.iso <= 0 THEN 1 ELSE 0 END ASC, p.iso ASC, p.date_taken DESC",
+        "shutter_fast": shutter_fast_sql,
+        "shutter_slow": shutter_slow_sql,
+        "shutter_speed ASC": shutter_fast_sql,
+        "shutter_speed DESC": shutter_slow_sql,
     }
     order_clause = valid_sorts.get(sort_by, "p.date_taken DESC, p.file_name ASC")
     query += f" ORDER BY {order_clause}"
@@ -475,6 +575,46 @@ def get_photos(
         col_names = [d[0] for d in cursor.description]
         rows = cursor.fetchall()
         photos = [dict(zip(col_names, row)) for row in rows]
+
+        if photos:
+            # ディレクトリ単位のファイル一覧を1回スキャンして XMP サイドカー有無を O(1) で判定
+            dir_files_map: Dict[str, Optional[set]] = {}
+            try:
+                from ..scanner import resolve_portable_path
+                from .folders import _PHOTO_DIR_SCAN_CACHE, _PHOTO_DIR_SCAN_TTL
+                import time as _time
+                now_ts = _time.monotonic()
+                unique_dirs = {p.get("directory_path") for p in photos if p.get("directory_path")}
+                for d_path in unique_dirs:
+                    cached = _PHOTO_DIR_SCAN_CACHE.get(d_path)
+                    if cached and (now_ts - cached[0]) <= _PHOTO_DIR_SCAN_TTL:
+                        dir_files_map[d_path] = cached[4]
+                    else:
+                        resolved_dir, is_online = resolve_portable_path(d_path)
+                        if is_online and resolved_dir:
+                            try:
+                                with os.scandir(str(resolved_dir)) as it:
+                                    dir_files_map[d_path] = {entry.name.lower() for entry in it}
+                            except Exception as e:
+                                logger.debug(f"XMP判定用ディレクトリスキャン失敗 ({resolved_dir}): {e}")
+                                dir_files_map[d_path] = None
+                        else:
+                            dir_files_map[d_path] = None
+            except Exception as e:
+                logger.debug(f"XMP判定キャッシュ準備スキップ: {e}")
+
+            for p in photos:
+                p["original_date_taken"] = p.get("original_date_taken")
+                d_path = p.get("directory_path")
+                f_set = dir_files_map.get(d_path) if d_path else None
+                p["has_xmp"] = _has_xmp_sidecar_fast(
+                    p.get("file_path"),
+                    p.get("paired_raw_path"),
+                    dir_file_set=f_set,
+                )
+
+            if (attr_filter or "").strip().lower() == "xmp":
+                photos = [p for p in photos if p.get("has_xmp")]
 
         if photos:
             photo_ids = [p["id"] for p in photos]
@@ -621,6 +761,11 @@ def get_photo_by_id(photo_id: int) -> Optional[Dict[str, Any]]:
         if not row:
             return None
         photo = dict(row)
+        photo["original_date_taken"] = row["original_date_taken"] if "original_date_taken" in row.keys() else None
+        photo["has_xmp"] = _has_xmp_sidecar_fast(
+            photo.get("file_path"),
+            photo.get("paired_raw_path"),
+        )
         cursor.execute("SELECT tag, source, confidence FROM photo_tags WHERE photo_id = ? ORDER BY tag ASC", (photo_id,))
         tag_rows = cursor.fetchall()
         photo["tags"] = [r["tag"] for r in tag_rows]
@@ -697,6 +842,182 @@ def update_rating(photo_id: int, rating: int) -> bool:
         return cursor.rowcount > 0
 
 
+def _parse_photo_datetime(dt_str: Optional[str]) -> Optional[datetime]:
+    """写真の撮影日時文字列を datetime オブジェクトにパースする"""
+    if not dt_str:
+        return None
+    s = str(dt_str).strip()
+    if not s:
+        return None
+    for fmt in (
+        "%Y-%m-%d %H:%M:%S",
+        "%Y:%m:%d %H:%M:%S",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%Y:%m:%d %H:%M",
+        "%Y-%m-%d",
+        "%Y:%m:%d",
+    ):
+        try:
+            return datetime.strptime(s[:19] if len(s) >= 19 else s, fmt)
+        except (ValueError, TypeError):
+            continue
+    return None
+
+
+def batch_shift_photo_dates(
+    photo_ids: List[int],
+    offset_seconds: int = 0,
+    reset: bool = False,
+) -> Dict[str, Any]:
+    """
+    複数写真の撮影日時（date_taken）を指定秒数だけ一括シフト、または初期撮影日時（original_date_taken）へ非破壊リセットする。
+    初回シフト時はシフト前の date_taken を original_date_taken カラムに退避・保持する。
+    """
+    if not photo_ids:
+        return {"updated_count": 0, "photos": []}
+
+    unique_ids = list(dict.fromkeys(int(pid) for pid in photo_ids if pid is not None))
+    if not unique_ids:
+        return {"updated_count": 0, "photos": []}
+
+    updated_photos: List[Dict[str, Any]] = []
+    chunk_size = 500
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+
+        if reset:
+            target_rows = []
+            for i in range(0, len(unique_ids), chunk_size):
+                chunk = unique_ids[i:i + chunk_size]
+                placeholders = ",".join(["?"] * len(chunk))
+                cursor.execute(
+                    f"""
+                    SELECT id, date_taken, year_month, original_date_taken
+                    FROM photos
+                    WHERE id IN ({placeholders})
+                      AND original_date_taken IS NOT NULL
+                      AND original_date_taken != ''
+                    """,
+                    chunk,
+                )
+                target_rows.extend(cursor.fetchall())
+
+            if target_rows:
+                for i in range(0, len(unique_ids), chunk_size):
+                    chunk = unique_ids[i:i + chunk_size]
+                    placeholders = ",".join(["?"] * len(chunk))
+                    cursor.execute(
+                        f"""
+                        UPDATE photos
+                        SET date_taken = original_date_taken,
+                            year_month = substr(replace(original_date_taken, ':', '-'), 1, 7),
+                            original_date_taken = NULL,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE id IN ({placeholders})
+                          AND original_date_taken IS NOT NULL
+                          AND original_date_taken != ''
+                        """,
+                        chunk,
+                    )
+                conn.commit()
+
+                for r in target_rows:
+                    orig_dt = str(r["original_date_taken"])
+                    restored_ym = orig_dt.replace(":", "-")[:7] if len(orig_dt) >= 7 else None
+                    updated_photos.append({
+                        "id": r["id"],
+                        "date_taken": orig_dt,
+                        "year_month": restored_ym,
+                        "original_date_taken": None,
+                    })
+
+            invalidate_fast_cache()
+            return {
+                "updated_count": len(updated_photos),
+                "photos": updated_photos,
+            }
+
+        # reset=False の場合
+        rows = []
+        for i in range(0, len(unique_ids), chunk_size):
+            chunk = unique_ids[i:i + chunk_size]
+            placeholders = ",".join(["?"] * len(chunk))
+            cursor.execute(
+                f"""
+                SELECT id, date_taken, year_month, original_date_taken
+                FROM photos
+                WHERE id IN ({placeholders})
+                """,
+                chunk,
+            )
+            rows.extend(cursor.fetchall())
+
+        if int(offset_seconds or 0) == 0:
+            current_list = [
+                {
+                    "id": r["id"],
+                    "date_taken": r["date_taken"],
+                    "year_month": r["year_month"],
+                    "original_date_taken": r["original_date_taken"],
+                }
+                for r in rows
+            ]
+            return {"updated_count": 0, "photos": current_list}
+
+        delta = timedelta(seconds=int(offset_seconds))
+        update_params: List[Tuple[str, str, str, int]] = []
+
+        for r in rows:
+            pid = r["id"]
+            cur_dt_str = r["date_taken"]
+            orig_dt_str = r["original_date_taken"]
+            if not cur_dt_str:
+                continue
+            dt = _parse_photo_datetime(cur_dt_str)
+            if dt is None:
+                continue
+
+            saved_orig = (
+                str(orig_dt_str)
+                if (orig_dt_str is not None and str(orig_dt_str).strip() != "")
+                else str(cur_dt_str)
+            )
+            shifted = dt + delta
+            new_dt = shifted.strftime("%Y-%m-%d %H:%M:%S")
+            new_ym = shifted.strftime("%Y-%m")
+
+            update_params.append((new_dt, new_ym, saved_orig, pid))
+            updated_photos.append({
+                "id": pid,
+                "date_taken": new_dt,
+                "year_month": new_ym,
+                "original_date_taken": saved_orig,
+            })
+
+        if update_params:
+            cursor.executemany(
+                """
+                UPDATE photos
+                SET date_taken = ?,
+                    year_month = ?,
+                    original_date_taken = ?,
+                    meta_dirty = 1,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                update_params,
+            )
+            conn.commit()
+
+    invalidate_fast_cache()
+    return {
+        "updated_count": len(updated_photos),
+        "photos": updated_photos,
+    }
+
+
 def update_photo_adjustments(
     photo_id: int,
     rotation: int = 0,
@@ -750,6 +1071,39 @@ def update_photo_adjustments(
         )
         conn.commit()
         return cursor.rowcount > 0
+
+
+def batch_update_photo_tone(
+    photo_ids: List[int],
+    brightness: int = 0,
+    contrast: int = 0,
+    saturation: int = 0,
+) -> int:
+    """複数写真のトーン微調整（明るさ・コントラスト・彩度）のみを一括更新する（回転・傾き・クロップは維持）"""
+    if not photo_ids:
+        return 0
+    clamped_b = max(-100, min(100, int(brightness or 0)))
+    clamped_c = max(-100, min(100, int(contrast or 0)))
+    clamped_s = max(-100, min(100, int(saturation or 0)))
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        updated = 0
+        chunk_size = 500
+        for i in range(0, len(photo_ids), chunk_size):
+            chunk = photo_ids[i:i + chunk_size]
+            placeholders = ",".join("?" for _ in chunk)
+            sql = f"""
+                UPDATE photos
+                SET brightness = ?,
+                    contrast = ?,
+                    saturation = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id IN ({placeholders})
+            """
+            cursor.execute(sql, [clamped_b, clamped_c, clamped_s] + chunk)
+            updated += cursor.rowcount
+        conn.commit()
+        return updated
 
 
 def rotate_photo(photo_id: int, delta_degrees: int = 90) -> Dict[str, Any]:
@@ -1616,11 +1970,11 @@ def delete_photos_by_ids(photo_ids: List[int]) -> int:
 
 
 def get_photo_brief(photo_id: int) -> Optional[Dict[str, Any]]:
-    """サムネイル配信等のための軽量な写真情報（id, file_path, file_size, file_mtime, date_taken, rotation, fine_angle, crop_*, トーン調整値）を取得する"""
+    """サムネイルおよびビューワ画像配信のための軽量な写真情報（単一主キー検索・JOIN/サブクエリなし）を取得する"""
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT id, file_path, file_size, file_mtime, date_taken, rotation, fine_angle, crop_x, crop_y, crop_w, crop_h, crop_aspect, brightness, contrast, saturation FROM photos WHERE id = ?",
+            "SELECT id, file_name, file_path, file_size, file_mtime, date_taken, is_raw, paired_raw_path, rotation, fine_angle, crop_x, crop_y, crop_w, crop_h, crop_aspect, brightness, contrast, saturation FROM photos WHERE id = ?",
             (photo_id,),
         )
         row = cursor.fetchone()

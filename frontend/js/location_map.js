@@ -1297,11 +1297,10 @@
    * ジオタグ全国制覇マップモーダルのイベントリスナーを初期化する
    */
   function initLocationMapModal() {
-    ensureSidebarTriggerButton();
     const modal = ensureLocationMapModalDom();
 
-    // 起動ボタン（サイドバーまたはヘッダー等）
-    document.querySelectorAll('#openLocationMapModalBtn, [data-action="open-location-map"]').forEach(btn => {
+    // 起動ボタン（ラボ内ショートカットまたはヘッダー等）
+    document.querySelectorAll('#openLocationMapModalBtn, #labOpenMapShortcutBtn, [data-action="open-location-map"]').forEach(btn => {
       if (btn.dataset.locMapBound) return;
       btn.dataset.locMapBound = 'true';
       btn.addEventListener('click', (e) => {

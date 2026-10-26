@@ -18,6 +18,7 @@
 | [architecture-scalability-and-side-effects.md](architecture-scalability-and-side-effects.md) | **【大規模化・高速化の相互影響検証 & 安全設計計画 (v2.20+)】** グリッド描画・DBインデックス・I/O・キャッシュ・テスト導入時に他部位を壊さないための「7つの禁止アンチパターン」と Phase 1〜4 実装仕様 |
 | [mobile-hybrid-architecture.md](mobile-hybrid-architecture.md) | **【Android / スマホ専用UI & ハイブリッドDB連携 (v2.30)】** Wi-Fi直結モード（`/m`）と WebAssembly SQLite (`sql.js`) によるUSB内 `library.db` 直接読込（ファイルロックエラー完全回避・BLOBサムネイル展開・3段階フォールバック差分同期）の設計と実装仕様 |
 | [storage-and-xmp-sidecar-architecture.md](storage-and-xmp-sidecar-architecture.md) | **【アプリ内ストレージ (`storage/`) 完結管理 ＆ XMPサイドカー非破壊連携 (v2.42+)】** `storage/` サブフォルダ管理・D&D移動・単一/一括連番リネーム、付随サイドカー/ペアRAW自動追従、`[👁️ XMPプレビュー]` ホールド比較・`XMP/...` 隔離取込の設計仕様 |
+| [ui-ux-diagnosis-and-roadmap.md](ui-ux-diagnosis-and-roadmap.md) | **【UI/UX 総合診断・機能配置整理 ＆ 残作業ロードマップ (v2.44+)】** ステップ1（UI交通整理）・ステップ2（矢印キー移動・Before/After比較・調整コピペ・Ctrl+C画像コピー・12種ソート・属性ピル）の実装記録と、**未実施の残作業6項目（ステップ3以降のバックログ）**の設計仕様 |
 
 ---
 

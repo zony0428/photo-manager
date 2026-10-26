@@ -68,25 +68,25 @@
 
 | 項目 | 内容 |
 |---|---|
-| **UI要素 (HTML)** | `#photoGrid` (メインコンテナ), `#viewTitle`, `#photoCountBadge`, `#sortSelect`, `#layoutToggleBtn`, `#minimalToggleBtn` |
-| **CSS** | `frontend/css/style.css` (`.photo-grid`, `.photo-card`, `.card-thumb`, `.card-badges`, `.card-rating`) |
-| **フロントエンド (JS)** | `frontend/js/app.js`<br>・`fetchPhotos()`: APIから写真一覧を取得し `state.photos` へ格納<br>・`renderPhotoGrid()`: グリッド描画のメイン処理（差分更新、DOM構築）<br>・`createPhotoCard(photo, index)`: 1枚分のカードDOM要素を生成<br>・`setupPhotoGridDelegation()`: グリッド上のクリック/右クリック/ダブルクリックの委譲処理<br>・`setLayoutMode(mode)`: グリッドサイズ・密度切り替え<br>・`toggleMinimalView()`: 情報非表示の純粋写真一覧モード切替<br>・`removePhotoFromView(photoId)`: フィルタ外となった写真を全再描画せずDOMから差分除去 |
-| **APIエンドポイント** | `GET /api/photos` (クエリ引数: `folder`, `recursive`, `search`, `rating`, `tags`, `sort`, `camera`, `year_month`, `connection`, `is_stacked`)<br>`GET /api/photo/{photo_id}/thumbnail` (サムネイル画像バイナリ)<br>`GET /api/thumbnails/batch` (複数サムネイルの一括取得) |
-| **バックエンド (Python)** | `server/app.py`: `api_photos()` (`_fast_json()` で高速返却)<br>`server/database/photos.py`: `get_photos()` (動的SQL構築、`_directory_filter_sql` による範囲絞り込み)<br>`server/database/thumbnails.py`: `get_thumbnail()` (SQLite BLOB取得) |
-| **関連ナレッジ** | `performance-optimization-patterns.md` (LIKE検索廃止と範囲比較、JSON高速化、BLOBサムネイル) |
+| **UI要素 (HTML)** | `#photoGrid` (メインコンテナ), `#viewTitle`, `#photoCountBadge`, `#sortBySelect` (14種類のソート順: シャッター速度順含む), `#attrFilterGroup` (`#attrFilterToggles`: `すべて`/`RAW`/`✂ 調整済` ＋ `#attrSubFilterSelect`: `JPEG`/`RAW+JPG`/`📄 XMP`), `#layoutToggleBtn`, `#minimalToggleBtn` |
+| **CSS** | `frontend/css/style.css`, `frontend/css/grid-lightbox.css` (`.photo-grid`, `.photo-card`, `.view-actions`, `.attr-filter-toggles`, `.attr-sub-select`) |
+| **フロントエンド (JS)** | `frontend/js/app.js`<br>・`fetchPhotos()`: APIから写真一覧を取得し `state.photos` へ格納（`attr_filter` 等対応）<br>・`renderPhotoGrid()`: グリッド描画のメイン処理（差分更新、DOM構築）<br>・`createPhotoCard(photo, index)`: 1枚分のカードDOM要素を生成<br>・`setupPhotoGridDelegation()`: グリッド上のクリック/右クリック/ダブルクリックの委譲処理<br>・`navigateGridSelection(key, isShift)`: 一覧グリッドでの矢印キー移動（`←` `→` `↑` `↓` ＆ `Shift` 範囲選択・自動スクロール・インスペクタ同期）<br>・`setAttrFilter(attr)` / `syncAttrFilterButtons()`: 属性フィルタピル＆詳細属性サブセレクト（すべて / RAW / 調整済 / JPEG / RAW+JPG / XMP）切替<br>・`setLayoutMode(mode)`: グリッドサイズ・密度切り替え<br>・`toggleMinimalView()`: 情報非表示の純粋写真一覧モード切替<br>・`removePhotoFromView(photoId)`: フィルタ外となった写真を全再描画せずDOMから差分除去し、単一フォーカス時は次の写真へ自動引き継ぎ |
+| **APIエンドポイント** | `GET /api/photos` (クエリ引数: `folder`, `recursive`, `search`, `ratings`, `attr_filter`, `tags`, `sort_by`, `camera`, `year_month`, `connection`, `stacked`)<br>`GET /api/photo/{photo_id}/thumbnail` (サムネイル画像バイナリ)<br>`GET /api/thumbnails/batch` (複数サムネイルの一括取得) |
+| **バックエンド (Python)** | `server/app.py`: `api_photos()` (`_fast_json()` で高速返却)<br>`server/database/photos.py`: `get_photos()` (動的SQL構築、`_directory_filter_sql` による範囲絞り込み、`_shutter_speed_seconds_sql()` によるシャッター速度順ソート)<br>`server/database/thumbnails.py`: `get_thumbnail()` (SQLite BLOB取得) |
+| **関連ナレッジ** | `performance-optimization-patterns.md` (LIKE検索廃止と範囲比較、JSON高速化、BLOBサムネイル), `ui-ux-diagnosis-and-roadmap.md` |
 
 ---
 
 ## 2. 写真の選択と一括操作 (Selection & Batch Actions)
 
-サムネイルの選択、範囲選択、コンテキストメニュー、一括操作バー、物理削除機能。
+サムネイルの選択、範囲選択、コンテキストメニュー、一括操作バー、非破壊撮影日時シフト補正、物理削除機能。
 
 | 項目 | 内容 |
 |---|---|
-| **UI要素 (HTML)** | `#selectionToolbar`, `#selectionCount`, `#contextMenu`, `#floatingBatchBar`, `#floatingDeleteBtn`, `#floatingClearSelectionBtn` |
-| **フロントエンド (JS)** | `frontend/js/selection.js`<br>・`togglePhotoSelection(photoId, isCtrl)`: 単一・Ctrl追加選択<br>・`rangeSelectPhotos(targetPhotoId)`: Shiftクリックによる範囲選択<br>・`selectAllPhotos()` / `clearSelection()`: 全選択 / 選択解除<br>・`updateCardSelectionClasses()`: 前回選択差分（`lastSelectedPhotoIds`）のみDOM更新<br>・`openContextMenu(e, photoId)` / `closeContextMenu()`: 右クリックメニュー表示・位置計算<br>・`deleteSelectedPhotos()`: 選択中写真の物理削除（確認ダイアログ後実行） |
-| **APIエンドポイント** | `DELETE /api/photo/{photo_id}` (単一写真の削除)<br>`POST /api/photos/batch-tags` (一括タグ追加/削除)<br>`POST /api/photos/batch-rate` (一括評価付与) |
-| **バックエンド (Python)** | `server/app.py`: `api_delete_photo()`, `api_batch_tags()`, `api_batch_rate()`<br>`server/database/photos.py`: `delete_photo_by_id()`<br>`server/database/tags.py`: `batch_add_tag()`, `batch_remove_tag()` |
+| **UI要素 (HTML)** | `#selectionFloatingBar`, `#floatingSelectedCount`, `#contextMenu`, `#floatingMoreGroup` (`#floatingMoreBtn`, `#floatingMorePopover`: サムネイル更新・撮影日時一括補正・ジオタグ準用・ジオタグ削除), `#dateShiftModal` (撮影日時一括シフト補正モーダル), `#floatingDeleteBtn`, `#floatingClearSelectionBtn` |
+| **フロントエンド (JS)** | `frontend/js/selection.js`<br>・`togglePhotoSelection(photoId, isCtrl)`: 単一・Ctrl追加選択<br>・`rangeSelectPhotos(targetPhotoId)`: Shiftクリックによる範囲選択<br>・`selectAllPhotos()` / `clearSelection()`: 全選択 / 選択解除<br>・`updateCardSelectionClasses()`: 前回選択差分（`lastSelectedPhotoIds`）のみDOM更新<br>・`openContextMenu(e, photoId)` / `closeContextMenu()`: 右クリックメニュー表示・位置計算<br>・`openDateShiftModal()` / `submitDateShift()` / `_formatShiftedDateLocal()`: 撮影日時一括シフト補正（±日時・プリセット・5件プレビュー・元のEXIF日時への復元）<br>・`deleteSelectedPhotos()`: 選択中写真の物理削除（確認ダイアログ後実行） |
+| **APIエンドポイント** | `DELETE /api/photo/{photo_id}` (単一写真の削除)<br>`POST /api/photos/batch-tags` (一括タグ追加/削除)<br>`POST /api/photos/batch-rate` (一括評価付与)<br>`POST /api/photos/batch-shift-date` (非破壊の撮影日時一括シフト補正＆元日時リセット) |
+| **バックエンド (Python)** | `server/app.py`: `api_delete_photo()`, `api_batch_tags()`, `api_batch_rate()`, `api_batch_shift_photo_dates()`<br>`server/database/photos.py`: `delete_photo_by_id()`, `batch_shift_photo_dates()` (`original_date_taken` 退避・再スキャン保護)<br>`server/database/tags.py`: `batch_add_tag()`, `batch_remove_tag()` |
 
 ---
 
@@ -136,7 +136,7 @@ Picasaスタイルの4段階評価（棄/可/良/優）、カラーラベル（1
 
 | 項目 | 内容 |
 |---|---|
-| **UI要素 (HTML)** | `#inspectorPane`, `#inspectorSingleView`, `#inspectorBatchView`, `#inspectorXmpBar`, `#inspectorXmpHoldPreviewBtn`, `#inspectorXmpImportBtn`, `#inspectorTabPaneExif`, `#inspectorTabPaneMap`, `#inspectorTabPaneTags`, `#gpsCandidateModal` |
+| **UI要素 (HTML)** | `#inspectorPane`, `#inspectorSingleView`, `#inspectorBatchView`, `#inspectorQuickActionsBar` (`#inspectorQuickAdjustBtn`, `#inspectorQuickHistBtn`, `#inspectorQuickRotateLeftBtn`, `#inspectorQuickRotateRightBtn`), `#inspectorXmpBar`, `#inspectorXmpHoldPreviewBtn`, `#inspectorXmpImportBtn`, `#inspectorTabPaneExif`, `#inspectorTabPaneMap`, `#inspectorTabPaneTags`, `#gpsCandidateModal` |
 | **フロントエンド (JS)** | `frontend/js/inspector.js`<br>・`toggleInspector(forceState)`: インスペクター開閉とレイアウト調整<br>・`updateInspectorView()`: 選択数に応じて単一/一括ビューを切り替え<br>・`showSingleInspector(photo)`: EXIF値・XMPサイドカー検出バーの描画、`_bindXmpSidecarControls()` による長押しホールド比較と評価・タグ取込<br>・`showBatchInspector(photos)`: 複数選択時の一括タグ編集・一括評価<br>・`showGpsCandidateModal(photo)`: 近傍写真（時間・場所）からGPS座標をコピーするモーダル<br>・`openPhotoFolder(photoId)`: 写真をエクスプローラーで選択状態で表示 |
 | **APIエンドポイント** | `GET /api/photo/{photo_id}`<br>`GET /api/photo/{photo_id}/xmp-preview`<br>`POST /api/photo/{photo_id}/xmp-import` / `POST /api/photos/batch-xmp-import`<br>`POST /api/photo/{photo_id}/open-raw`<br>`POST /api/photo/{photo_id}/open-folder`<br>`GET /api/photo/{photo_id}/gps-candidates`<br>`POST /api/photo/{photo_id}/copy-gps` / `POST /api/photos/batch-copy-gps` |
 | **バックエンド (Python)** | `server/app.py`: `api_photo_xmp_preview()`, `api_photo_xmp_import()`, `api_open_raw()`, `api_open_folder()`, `api_gps_candidates()`, `api_copy_gps()`<br>`server/xmp_sidecar.py`: `parse_xmp_sidecar()`, `find_xmp_sidecar()`<br>`server/database/photos.py`: `update_photo_gps()`, `find_nearby_gps_photos()` |
@@ -202,10 +202,10 @@ ONNX Runtime と CLIP モデルによるローカル画像分類・被写体自�
 
 | 項目 | 内容 |
 |---|---|
-| **UI要素 (HTML)** | **テイクアウト**: `#smartTakeoutModal`, `#takeoutApplyAdjustments`, `#takeoutExifSyncDb`, `#takeoutExifRemoveAll`, `#takeoutExifRemoveGps`, `#takeoutExportXmp`<br>**storage管理**: `#storageRenameModal`, `#storageFolderCreateModal`, `#storageFolderRenameModal`, `#storageFolderExportModal`<br>**画像調整**: `#imageAdjustModal`, `#adjustFineAngleRange`, `#adjustBrightnessRange`, `#adjustContrastRange`, `#adjustSaturationRange` |
-| **フロントエンド (JS)** | `frontend/js/takeout.js`: スマートテイクアウト設定モーダル制御、`executeSmartTakeout()`<br>`frontend/js/selection.js`: `storage/` へのインポート・移動・単一/一括連番リネーム (`openStorageRenameModal`)<br>`frontend/js/adjust.js`: Twitter(X)風クロップ枠・8点ハンドル制御、水平出し（自動内接ズーム連動）・明るさ・コントラスト・彩度の0ms CSSリアルタイムプレビュー、`saveAdjustModal()` |
-| **APIエンドポイント** | `POST /api/export/smart` (スマートテイクアウト一括出力・オプション `.xmp` サイドカー出力)<br>`POST /api/photo/{photo_id}/adjust` / `POST /api/photo/{photo_id}/reset-adjust` / `POST /api/photos/batch-reset-adjust`<br>`GET /api/photo/{photo_id}/view` (`?raw=1` で調整モーダル用無加工原画を返却)<br>`GET /api/storage-folders` / `POST /api/storage-folders` / `PUT /api/storage-folders/rename` / `DELETE /api/storage-folders` / `POST /api/storage-folders/export`<br>`POST /api/photos/import-to-storage` / `POST /api/storage/move-photos` / `POST /api/storage/rename-photo` / `POST /api/storage/batch-rename-photos` |
-| **バックエンド (Python)** | `server/exporter.py`: `export_single_photo()`, `filter_exif_data()`<br>`server/xmp_sidecar.py`: `parse_xmp_sidecar()`, `generate_xmp_sidecar_xml()`, `find_xmp_sidecar()`<br>`server/scanner.py`: `apply_photo_adjustments_pil()`, `refresh_photo_thumbnail_transform()`<br>`server/database/photos.py`: `update_photo_adjustments()`, `reset_photo_adjustments()`, `update_photo_file_location()`, `update_directory_prefix()` |
+| **UI要素 (HTML)** | **テイクアウト**: `#smartTakeoutModal`, `#takeoutApplyAdjustments`, `#takeoutExifSyncDb`, `#takeoutExifRemoveAll`, `#takeoutExifRemoveGps`, `#takeoutExportXmp`<br>**storage管理**: `#storageRenameModal`, `#storageFolderCreateModal`, `#storageFolderRenameModal`, `#storageFolderExportModal`<br>**画像調整**: `#imageAdjustModal`, `#adjustCopyToneBtn`, `#adjustPasteToneBtn`, `#adjustCompareOrigBtn`, `#adjustBeforeBadge`, `#adjustFineAngleRange`, `#adjustBrightnessRange`, `#adjustContrastRange`, `#adjustSaturationRange`<br>**コンテキスト・下部バー連携**: `#contextMenuCopyTone`, `#contextMenuPasteTone`, `#contextMenuCopyImageItem`, `#floatingPasteToneBtn` |
+| **フロントエンド (JS)** | `frontend/js/takeout.js`: スマートテイクアウト設定モーダル制御、`executeSmartTakeout()`<br>`frontend/js/selection.js`: `storage/` へのインポート・移動・単一/一括連番リネーム (`openStorageRenameModal`)、右クリック/下部バーからのトーンコピー＆ペースト・画像コピー連携<br>`frontend/js/adjust.js`: Twitter(X)風クロップ枠・8点ハンドル制御、水平出し（自動内接ズーム連動）・明るさ・コントラスト・彩度の0ms CSSリアルタイムプレビュー、`setCompareOriginalMode()`（`\` / `Space` 長押しBefore比較）、`copyPhotoToneAdjustments()` / `batchPastePhotoToneAdjustments()`（トーン3項目のみのコピー＆一括ペースト）、`copyPhotoImageToClipboard()`（`Ctrl+C` で非破壊調整反映済み画像をOSクリップボードへコピー）、`saveAdjustModal()` |
+| **APIエンドポイント** | `POST /api/export/smart` (スマートテイクアウト一括出力・オプション `.xmp` サイドカー出力)<br>`POST /api/photo/{photo_id}/adjust` / `POST /api/photos/batch-adjust-tone` (トーン3項目一括適用) / `POST /api/photo/{photo_id}/reset-adjust` / `POST /api/photos/batch-reset-adjust`<br>`GET /api/photo/{photo_id}/view` (`?raw=1` で調整モーダル用無加工原画を返却)<br>`GET /api/storage-folders` / `POST /api/storage-folders` / `PUT /api/storage-folders/rename` / `DELETE /api/storage-folders` / `POST /api/storage-folders/export`<br>`POST /api/photos/import-to-storage` / `POST /api/storage/move-photos` / `POST /api/storage/rename-photo` / `POST /api/storage/batch-rename-photos` |
+| **バックエンド (Python)** | `server/exporter.py`: `export_single_photo()`, `filter_exif_data()`<br>`server/xmp_sidecar.py`: `parse_xmp_sidecar()`, `generate_xmp_sidecar_xml()`, `find_xmp_sidecar()`<br>`server/scanner.py`: `apply_photo_adjustments_pil()`, `refresh_photo_thumbnail_transform()`<br>`server/database/photos.py`: `update_photo_adjustments()`, `batch_update_photo_tone()`, `reset_photo_adjustments()`, `update_photo_file_location()`, `update_directory_prefix()` |
 | **関連ナレッジ** | `storage-and-xmp-sidecar-architecture.md` |
 
 ---

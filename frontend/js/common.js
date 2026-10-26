@@ -85,6 +85,9 @@ const state = {
   focalRangeLabel: null,       // 焦点距離帯の表示ラベル
   apertureRange: null,         // F値帯フィルタ ('f1_4' | 'f2_0' | 'f2_8' | 'f4_0' | 'f5_6' | 'f8_0' | 'f11_plus' | null)
   apertureRangeLabel: null,    // F値帯の表示ラベル
+  attrFilter: 'all',           // 属性フィルタ ('all' | 'raw' | 'adjusted' | 'jpeg' | 'raw_pair' | 'xmp')
+  selectionAnchorIndex: -1,    // Shift+矢印キー範囲選択の起点インデックス
+  copiedToneAdjustments: null, // コピー済みのトーン調整値 ({ brightness, contrast, saturation })
 };
 
 
@@ -228,6 +231,7 @@ const elements = {
   dbMaintenanceModal: document.getElementById('dbMaintenanceModal'),
   closeDbMaintenanceModalBtn: document.getElementById('closeDbMaintenanceModalBtn'),
   closeDbMaintenanceFooterBtn: document.getElementById('closeDbMaintenanceFooterBtn'),
+  settingStartupWindowModeSelect: document.getElementById('settingStartupWindowModeSelect'),
   settingTagSortModeSelect: document.getElementById('settingTagSortModeSelect'),
   settingsTagExpandAllBtn: document.getElementById('settingsTagExpandAllBtn'),
   settingsTagCollapseAllBtn: document.getElementById('settingsTagCollapseAllBtn'),
@@ -341,6 +345,11 @@ const elements = {
   inspectorOpenFolderBtn: document.getElementById('inspectorOpenFolderBtn'),
   inspectorOpenFileBtn: document.getElementById('inspectorOpenFileBtn'),
   inspectorRatingBtns: document.getElementById('inspectorRatingBtns'),
+  inspectorQuickExif: document.getElementById('inspectorQuickExif'),
+  quickExifDate: document.getElementById('quickExifDate'),
+  quickExifRes: document.getElementById('quickExifRes'),
+  quickExifGear: document.getElementById('quickExifGear'),
+  quickExifPills: document.getElementById('quickExifPills'),
   inspectorTabsNav: document.getElementById('inspectorTabsNav'),
   inspectorTabGpsDot: document.getElementById('inspectorTabGpsDot'),
   inspectorTagCount: document.getElementById('inspectorTagCount'),
@@ -428,6 +437,23 @@ const elements = {
   themeToggleBtn: document.getElementById('themeToggleBtn'),
   themeToggleIcon: document.getElementById('themeToggleIcon'),
   themeToggleLabel: document.getElementById('themeToggleLabel'),
+  // 撮影日時一括シフト補正モーダル & 詳細属性フィルタ
+  floatingShiftDateBtn: document.getElementById('floatingShiftDateBtn'),
+  contextMenuShiftDateItem: document.getElementById('contextMenuShiftDateItem'),
+  dateShiftModal: document.getElementById('dateShiftModal'),
+  closeDateShiftModalBtn: document.getElementById('closeDateShiftModalBtn'),
+  cancelDateShiftModalBtn: document.getElementById('cancelDateShiftModalBtn'),
+  dateShiftTargetCount: document.getElementById('dateShiftTargetCount'),
+  dateShiftDirection: document.getElementById('dateShiftDirection'),
+  dateShiftDays: document.getElementById('dateShiftDays'),
+  dateShiftHours: document.getElementById('dateShiftHours'),
+  dateShiftMinutes: document.getElementById('dateShiftMinutes'),
+  dateShiftSeconds: document.getElementById('dateShiftSeconds'),
+  dateShiftPresetGroup: document.getElementById('dateShiftPresetGroup'),
+  dateShiftPreviewList: document.getElementById('dateShiftPreviewList'),
+  dateShiftResetOrigBtn: document.getElementById('dateShiftResetOrigBtn'),
+  dateShiftSubmitBtn: document.getElementById('dateShiftSubmitBtn'),
+  attrSubFilterSelect: document.getElementById('attrSubFilterSelect'),
 };
 
 
@@ -619,32 +645,97 @@ function toggleTheme() {
 let _lastSeenMobileSyncSeq = null;
 
 /**
- * 起動時にブラウザウィンドウを確実に最大化（タスクバーを残したフルサイズ）にする
- * Edge/Chrome の --app モードで前回の小さなウィンドウサイズが遅延復元される問題に対処するため、
- * JS側の resizeTo とバックエンド側の Win32 最大化API (/api/window/maximize) の両方で最大化する。
+ * クライアント側 JavaScript API で可能な範囲でウィンドウモードを即時反映する（Win32 API とのハイブリッド補完）
+ * @param {string} mode - 'maximized' | 'remember' | 'center' | 'left_half' | 'right_half' | 'fullscreen'
+ * @param {boolean} isUserGesture - ユーザー操作（セレクトボックス変更など）による呼び出しかどうか
+ */
+function applyClientWindowMode(mode, isUserGesture = false) {
+  try {
+    const availW = window.screen.availWidth || 1920;
+    const availH = window.screen.availHeight || 1040;
+    const availLeft = typeof window.screen.availLeft === 'number' ? window.screen.availLeft : 0;
+    const availTop = typeof window.screen.availTop === 'number' ? window.screen.availTop : 0;
+
+    if (mode === 'fullscreen') {
+      if (isUserGesture && !document.fullscreenElement && document.documentElement.requestFullscreen) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      }
+      return;
+    }
+
+    // フルスクリーン以外のモードで現在 DOM フルスクリーン中なら解除
+    if (document.fullscreenElement && document.exitFullscreen) {
+      document.exitFullscreen().catch(() => {});
+    }
+
+    if (mode === 'remember') {
+      return;
+    }
+
+    if (mode === 'maximized') {
+      window.moveTo(availLeft, availTop);
+      window.resizeTo(availW, availH);
+    } else if (mode === 'center') {
+      const targetW = Math.max(960, Math.round(availW * 0.8));
+      const targetH = Math.max(680, Math.round(availH * 0.82));
+      const x = availLeft + Math.round((availW - targetW) / 2);
+      const y = availTop + Math.round((availH - targetH) / 2);
+      window.resizeTo(targetW, targetH);
+      window.moveTo(x, y);
+    } else if (mode === 'left_half') {
+      const halfW = Math.round(availW / 2);
+      window.resizeTo(halfW, availH);
+      window.moveTo(availLeft, availTop);
+    } else if (mode === 'right_half') {
+      const halfW = Math.round(availW / 2);
+      window.resizeTo(availW - halfW, availH);
+      window.moveTo(availLeft + halfW, availTop);
+    }
+  } catch (e) {
+    // 通常タブ等でのリサイズ制限時はバックエンド Win32 API に委ねる
+  }
+}
+window.applyClientWindowMode = applyClientWindowMode;
+
+/**
+ * 起動時に設定されたウィンドウモード（最大化 / 前回記憶 / 画面中央 / 左半分 / 右半分 / フルスクリーン）を適用する
  */
 function ensureStartupWindowMaximized() {
   if (sessionStorage.getItem('pm_window_maximized')) return;
 
-  const triggerMaximize = () => {
-    const isNotMaximized =
-      window.outerWidth < window.screen.availWidth * 0.95 ||
-      window.outerHeight < window.screen.availHeight * 0.9;
-    if (isNotMaximized) {
-      try {
-        window.moveTo(0, 0);
-        window.resizeTo(window.screen.availWidth, window.screen.availHeight);
-      } catch (e) {}
-      fetch('/api/window/maximize', { method: 'POST' }).catch(() => {});
-    }
-  };
+  fetch('/api/window/settings')
+    .then((res) => (res.ok ? res.json() : null))
+    .then((data) => {
+      const mode = (data && data.startup_mode) || localStorage.getItem('pm_startup_window_mode') || 'maximized';
+      localStorage.setItem('pm_startup_window_mode', mode);
+      sessionStorage.setItem('pm_window_maximized', '1');
 
-  triggerMaximize();
-  setTimeout(triggerMaximize, 250);
-  setTimeout(() => {
-    triggerMaximize();
-    sessionStorage.setItem('pm_window_maximized', '1');
-  }, 800);
+      if (mode === 'remember') {
+        return;
+      }
+
+      if (mode === 'maximized') {
+        const triggerMaximize = () => {
+          const isNotMaximized =
+            window.outerWidth < window.screen.availWidth * 0.95 ||
+            window.outerHeight < window.screen.availHeight * 0.9;
+          if (isNotMaximized) {
+            applyClientWindowMode('maximized', false);
+            fetch('/api/window/maximize', { method: 'POST' }).catch(() => {});
+          }
+        };
+        triggerMaximize();
+        setTimeout(triggerMaximize, 250);
+        setTimeout(triggerMaximize, 800);
+      } else {
+        // クライアント側リサイズ + バックエンド Win32 API で正確に適用
+        applyClientWindowMode(mode, false);
+        fetch('/api/window/maximize', { method: 'POST' }).catch(() => {});
+      }
+    })
+    .catch(() => {
+      sessionStorage.setItem('pm_window_maximized', '1');
+    });
 }
 
 function initHeartbeat() {
@@ -749,8 +840,12 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 const escapeAttr = escapeHtml;
+const _escHtml = escapeHtml;
+const _escAttr = escapeHtml;
 window.escapeHtml = escapeHtml;
 window.escapeAttr = escapeHtml;
+window._escHtml = escapeHtml;
+window._escAttr = escapeHtml;
 
 /**
  * ユーティリティ: ファイルサイズ表記変換
@@ -920,6 +1015,10 @@ function toggleSidebar(forcedState) {
 
   if (sidebar) {
     sidebar.classList.toggle('is-collapsed', !state.isSidebarOpen);
+    sidebar.classList.remove('is-overlay-open');
+  }
+  if (typeof window.syncSidebarRailActiveState === 'function') {
+    window.syncSidebarRailActiveState();
   }
   if (toggleBtn) {
     toggleBtn.classList.toggle('active', state.isSidebarOpen);
@@ -1541,9 +1640,12 @@ function initCommonModals() {
   }
 }
 
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initCommonModals);
-} else {
+function bootCommonUI() {
   initCommonModals();
 }
 
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', bootCommonUI);
+} else {
+  bootCommonUI();
+}

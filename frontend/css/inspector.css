@@ -149,9 +149,9 @@
   background: rgba(0, 0, 0, 0.06);
 }
 
-/* インスペクタ上部固定プレビューサムネイル */
+/* インスペクタ上部固定プレビューサムネイル（省スペース化） */
 .inspector-fixed-preview {
-  padding: 12px 16px 10px 16px;
+  padding: 8px 14px 8px 14px;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-soft);
   flex-shrink: 0;
@@ -168,29 +168,107 @@
 .inspector-body {
   flex: 1;
   overflow-y: auto;
-  padding: 14px 16px 20px 16px;
+  padding: 10px 14px 16px 14px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 10px;
 }
 
-/* プレビュー画像 */
+/* プレビュー画像（4:3比率で見やすく、縦横どちらも見切れゼロで全体表示） */
+.inspector-preview-container,
 .inspector-preview-wrapper {
   position: relative;
   width: 100%;
-  aspect-ratio: 16 / 10;
-  background: #000;
+  aspect-ratio: 4 / 3;
+  height: auto;
+  max-height: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #141413;
   border-radius: var(--radius-sm);
   overflow: hidden;
   cursor: pointer;
   border: 1px solid var(--border-color);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* 常時表示EXIFサマリ（ファーストビュー・3行構成） */
+.inspector-quick-exif {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 7px 10px;
+  background: var(--bg-tertiary, rgba(0, 0, 0, 0.18));
+  border: 1px solid var(--border-soft, rgba(255, 255, 255, 0.06));
+  border-radius: var(--radius-sm, 4px);
+}
+
+.quick-exif-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.quick-exif-row-top {
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.74rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.quick-exif-date {
+  color: var(--text-main, #f0f2f5);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.quick-exif-res {
+  color: var(--text-dim, #687487);
+  font-size: 0.7rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.quick-exif-gear {
+  display: block;
+  font-size: 0.73rem;
+  color: var(--text-muted, #9ca6b5);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.35;
+}
+
+.quick-exif-pills {
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 1px;
+}
+
+.quick-exif-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  font-size: 0.7rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--text-muted, #9ca6b5);
+  background: var(--bg-secondary, rgba(255, 255, 255, 0.06));
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+  border-radius: 999px;
+  line-height: 1.4;
 }
 
 .inspector-preview-wrapper img {
   width: 100%;
   height: 100%;
   object-fit: contain;
+  display: block;
   transition: transform var(--transition-normal);
 }
 
@@ -214,6 +292,65 @@
 
 .inspector-preview-wrapper:hover .inspector-preview-overlay {
   opacity: 1;
+}
+
+/* インスペクタ プレビュー直下の単一写真クイックアクションバー */
+.inspector-quick-actions-bar {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.inspector-quick-action-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-main, #f1f5f9);
+  background: var(--bg-tertiary, rgba(255, 255, 255, 0.06));
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.14));
+  border-radius: var(--radius-sm, 4px);
+  cursor: pointer;
+  transition: all var(--transition-fast, 0.15s ease);
+  white-space: nowrap;
+}
+
+.inspector-quick-action-btn.icon-only {
+  flex: 0 0 32px;
+  padding: 0;
+  font-size: 0.9rem;
+}
+
+.inspector-quick-action-btn:hover {
+  background: var(--bg-hover, rgba(225, 77, 42, 0.14));
+  border-color: var(--accent-primary, #e14d2a);
+  color: var(--accent-primary, #e14d2a);
+  transform: translateY(-1px);
+}
+
+.inspector-quick-action-btn.active {
+  background: rgba(225, 77, 42, 0.18);
+  border-color: var(--accent-primary, #e14d2a);
+  color: var(--accent-primary, #e14d2a);
+}
+
+[data-theme="paper"] .inspector-quick-action-btn {
+  background: #f4efe6;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  color: #1c1917;
+}
+
+[data-theme="paper"] .inspector-quick-action-btn:hover,
+[data-theme="paper"] .inspector-quick-action-btn.active {
+  background: #ffffff;
+  border-color: var(--accent-primary, #c53d2f);
+  color: var(--accent-primary, #c53d2f);
 }
 
 
@@ -1060,12 +1197,12 @@
 .stack-badge {
   background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
-  color: var(--text-main);
+  color: var(--text-muted);
   font-size: 0.62rem;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.03em;
   padding: 1px 5px;
-  border-radius: var(--radius-sm);
+  border-radius: 3px;
   display: inline-flex;
   align-items: center;
   gap: 3px;
@@ -1076,22 +1213,33 @@
 }
 
 .stack-badge:hover {
-  background: var(--accent-primary);
-  color: #ffffff;
-  border-color: var(--accent-primary);
+  background: var(--bg-hover);
+  color: var(--text-main);
+  border-color: var(--text-muted);
 }
 
-/* 重複写真スタックバッジ（藍色・インディゴ系の上品なアクセント） */
+/* 重複写真スタックバッジ（モノトーン・ストイック統一） */
 .stack-badge.stack-badge-dup {
-  background: rgba(59, 130, 246, 0.12);
-  border-color: rgba(59, 130, 246, 0.35);
-  color: var(--accent-info, #60a5fa);
+  background: var(--bg-tertiary);
+  border-color: var(--border-color);
+  color: var(--text-muted);
 }
 
 .stack-badge.stack-badge-dup:hover {
-  background: rgba(59, 130, 246, 0.25);
-  border-color: rgba(59, 130, 246, 0.6);
-  color: #ffffff;
+  background: var(--bg-hover);
+  border-color: var(--text-muted);
+  color: var(--text-main);
+}
+
+/* サムネイル上のスタック・重複バッジ（すりガラス・モノトーン統一 P3） */
+.card-thumb-wrapper .stack-badge,
+.bkt-badge,
+.dup-badge {
+  background: rgba(20, 20, 20, 0.68) !important;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  color: rgba(255, 255, 255, 0.92) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
 }
 
 .bracket-pill.bracket-pill-dup {
@@ -1451,33 +1599,28 @@
 }
 
 /* ==========================================================================
-   RAW / RAW+JPEG フォーマットバッジ用スタイル（Hinomaru Ink）
+   RAW / RAW+JPEG フォーマットバッジ用スタイル（Tiat風すりガラス・モノトーン P3）
    ========================================================================== */
 
-.format-badge {
+.format-badge,
+.format-badge.raw-jpg-badge,
+.format-badge.raw-badge {
   position: absolute;
   bottom: 6px;
   left: 6px;
   font-size: 0.62rem;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.05em;
   padding: 1px 6px;
-  border-radius: var(--radius-sm);
+  border-radius: 3px;
   z-index: 4;
   pointer-events: none;
   text-transform: uppercase;
-}
-
-.format-badge.raw-jpg-badge {
-  background: var(--accent-primary);
-  color: #ffffff;
-  border: 1px solid var(--accent-primary);
-}
-
-.format-badge.raw-badge {
-  background: var(--bg-secondary);
-  color: var(--text-main);
-  border: 1px solid var(--border-color);
+  background: rgba(20, 20, 20, 0.68) !important;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  color: rgba(255, 255, 255, 0.92) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
 }
 
 /* インスペクター内のブラケットリスト用フォーマットピル */
@@ -1854,73 +1997,6 @@
   padding: 4px 0;
   border-top: 1px dashed var(--border-soft);
   margin-top: 4px;
-}
-
-/* ==========================================================================
-   評価（レーティング）フィルタ トグルボタングループ (OR条件)
-   ========================================================================== */
-.rating-filter {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.82rem;
-  color: var(--text-muted);
-}
-
-.rating-filter-toggles {
-  display: flex;
-  gap: 4px;
-  background: var(--bg-tertiary);
-  padding: 2px 4px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border-soft);
-}
-
-.rating-toggle {
-  background: transparent;
-  border: 1px solid transparent;
-  color: var(--text-dim);
-  padding: 3px 8px;
-  font-size: 0.78rem;
-  font-weight: 700;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  opacity: 0.45;
-  user-select: none;
-}
-
-.rating-toggle:hover {
-  opacity: 0.8;
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.rating-toggle.active {
-  opacity: 1;
-}
-
-.rating-toggle[data-rating="2"].active {
-  background: rgba(212, 160, 23, 0.2);
-  border-color: var(--rating-excellent);
-  color: var(--rating-excellent);
-}
-
-.rating-toggle[data-rating="1"].active {
-  background: rgba(225, 77, 42, 0.2);
-  border-color: var(--rating-good);
-  color: var(--rating-good);
-}
-
-.rating-toggle[data-rating="0"].active {
-  background: rgba(120, 120, 120, 0.2);
-  border-color: var(--text-muted);
-  color: var(--text-main);
-}
-
-.rating-toggle[data-rating="-1"].active {
-  background: rgba(90, 87, 82, 0.25);
-  border-color: var(--rating-discard);
-  color: var(--rating-discard);
 }
 
 /* クイックタブ（サイドバー）内での評価トグル */

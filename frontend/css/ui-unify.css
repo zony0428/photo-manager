@@ -25,10 +25,12 @@
       （従来カプセル型30px/999pxだった下部フローティングバーやスライドショーバー等も含む）
    ========================================================================== */
 .selection-floating-bar,
+.batch-action-bar,
 .slideshow-controls,
 .lightbox-bracket-bar,
 .floating-popover,
 .context-menu,
+.selection-context-menu,
 .context-submenu,
 .modal-card,
 .image-adjust-dialog,
@@ -62,7 +64,8 @@
 .lightbox-zoom-badge,
 .lightbox-offline-pill,
 .ai-tag-pill-badge,
-.hist-stat-pill {
+.hist-stat-pill,
+.quick-exif-pill {
   border-radius: var(--ui-radius-pill, 999px) !important;
   cursor: default;
 }
@@ -94,7 +97,6 @@
 .btn,
 .btn-sm,
 .btn-xs,
-.btn-mini-text,
 .btn-sm-action,
 .btn-xs-action,
 .btn-icon-only,
@@ -114,8 +116,27 @@
 .bracket-pill,
 .photo-tag-chip,
 .inspector-tags-list .tag-badge,
-.preset-chip {
+.preset-chip,
+.date-shift-preset-btn {
   border-radius: var(--ui-radius-click, 5px) !important;
+}
+
+/* サイドバー内ミニテキストボタン：フラットなゴーストボタン (P2-B) */
+.btn-mini-text,
+.folder-toolbar .btn-mini-text,
+.location-toolbar .btn-mini-text {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  border-radius: 4px !important;
+}
+
+.btn-mini-text:hover,
+.folder-toolbar .btn-mini-text:hover,
+.location-toolbar .btn-mini-text:hover {
+  background: var(--bg-hover);
+  color: var(--text-main);
+  border-color: transparent;
 }
 
 /* 適用中フィルタチップ・すべて解除ボタン：押せる操作パーツとしての角丸四角スタイル */
@@ -152,41 +173,112 @@
 }
 
 /* ==========================================================================
-   3. タイプB：ON/OFF トグル（複数同時ON可能）
-      ➜ 外枠で囲まず、隙間(gap)を空けて独立した角丸四角ボタンとして並べる
+   3. ビューヘッダー セグメントコントロール & サイドバー タグソートボタン (P2-B)
    ========================================================================== */
 
-/* 一覧画面ヘッダー「評価フィルタ: [優] [良] [可] [棄]」（複数ON/OFF可能） */
+/* 一覧画面ヘッダー「属性フィルタ: [すべて] [RAW] [✂ 調整済]」＆「評価フィルタ: [優] [良] [可] [棄]」 */
+.attr-filter,
+.rating-filter {
+  display: inline-flex;
+  align-items: center;
+  background: var(--bg-tertiary);
+  padding: 2px;
+  border-radius: 6px !important;
+  border: 1px solid var(--border-color);
+  gap: 2px;
+}
+
+.rating-filter-label,
+.rating-filter > label {
+  display: none !important;
+}
+
+.attr-filter-toggles,
 .rating-filter-toggles {
   display: inline-flex;
   align-items: center;
-  gap: 5px !important;
+  gap: 2px !important;
   background: transparent !important;
   border: none !important;
   padding: 0 !important;
 }
 
+.attr-toggle,
+.rating-toggle,
+.attr-filter-toggles .attr-toggle,
 .rating-filter-toggles .rating-toggle {
-  border-radius: var(--ui-radius-click, 5px) !important;
-  padding: 3px 10px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-soft);
-  color: var(--text-dim);
-  opacity: 0.65;
-  font-size: 0.76rem;
-  font-weight: 700;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  height: 24px !important;
+  min-height: 24px !important;
+  padding: 0 10px !important;
+  box-sizing: border-box !important;
+  border-radius: 4px !important;
+  border: none !important;
+  background: transparent !important;
+  color: var(--text-muted);
+  opacity: 1;
+  box-shadow: none !important;
+  font-family: inherit;
+  font-size: 0.75rem !important;
+  font-weight: 500 !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+  vertical-align: middle !important;
   transition: all var(--transition-fast);
 }
 
+.attr-toggle:hover,
+.rating-toggle:hover,
+.attr-filter-toggles .attr-toggle:hover,
 .rating-filter-toggles .rating-toggle:hover {
-  opacity: 0.95;
-  border-color: var(--text-muted);
-  background: var(--bg-hover);
+  color: var(--text-main);
+  background: rgba(128, 128, 128, 0.10) !important;
 }
 
+.attr-toggle.active,
+.rating-toggle.active,
+.attr-filter-toggles .attr-toggle.active,
 .rating-filter-toggles .rating-toggle.active {
-  opacity: 1;
-  box-shadow: inset 0 0 0 1px currentColor;
+  background: var(--bg-panel) !important;
+  color: var(--text-main) !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.10) !important;
+  font-weight: 600 !important;
+}
+
+.attr-sub-select {
+  height: 24px !important;
+  min-height: 24px !important;
+  padding: 0 8px !important;
+  border: none !important;
+  background: transparent !important;
+  color: var(--text-muted);
+  border-radius: 4px !important;
+  box-shadow: none !important;
+}
+
+.attr-sub-select.active {
+  background: var(--bg-panel) !important;
+  color: var(--text-main) !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.10) !important;
+  font-weight: 600 !important;
+}
+
+/* [枚数順] トグルボタン：検索Inputと同じ高さ・角丸に統一 (P2-B) */
+.tag-sort-count-toggle-btn {
+  height: 26px !important;
+  border-radius: 5px !important;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+}
+
+.tag-sort-count-toggle-btn.active {
+  background: var(--bg-hover) !important;
+  color: var(--text-main) !important;
+  border-color: var(--text-muted) !important;
+  box-shadow: none !important;
 }
 
 /* 2枚比較ヘッダー「同期: [🖐️ ビュー] [🔍 ズーム]」（両方ON可能な独立トグル） */
@@ -265,12 +357,11 @@
 
 /* ==========================================================================
    4. タイプC：択一セレクト（複数の中から1つだけ選ぶラジオ型セグメント）
-      ➜ 外周を「真四角の凹み枠 (2px)」で囲み、中の選択肢(4px)を密着配置する
+      ➜ 外周を凹み枠で囲み、中の選択肢(4px)を密着配置する
    ========================================================================== */
 
 /* すべての択一セレクト容器（外枠：真四角 2px） */
 .view-mode-group,
-.tag-type-segmented-control,
 .adjust-aspect-group,
 .slideshow-speed-group,
 .hist-mode-switch,
@@ -285,9 +376,44 @@
   border-radius: var(--ui-radius-frame, 2px) !important;
 }
 
+/* サイドバー内「手動 / AI / すべて」セグメントタブ (P2-B) */
+.tag-type-segmented-control {
+  display: grid !important;
+  grid-template-columns: repeat(3, 1fr);
+  width: 100%;
+  background: var(--bg-tertiary);
+  padding: 2px !important;
+  border-radius: 6px !important;
+  border: 1px solid var(--border-color);
+  gap: 2px !important;
+  margin-bottom: 8px;
+}
+
+.tag-type-segmented-control .tag-type-tab,
+.tag-type-segmented-control .tag-segment-btn {
+  border: none !important;
+  border-bottom: none !important;
+  background: transparent;
+  color: var(--text-muted);
+  height: 24px;
+  border-radius: 4px !important;
+  font-weight: 500;
+  box-shadow: none;
+}
+
+.tag-type-segmented-control .tag-type-tab.active,
+.tag-type-segmented-control .tag-segment-btn.active {
+  background: var(--bg-panel) !important;
+  color: var(--text-main) !important;
+  border: none !important;
+  border-bottom: none !important;
+  border-radius: 4px !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08) !important;
+  font-weight: 600;
+}
+
 /* 択一セレクト内部のボタン（内枠：角丸四角 4px） */
 .view-mode-group .mode-btn,
-.tag-type-segmented-control .tag-segment-btn,
 .adjust-aspect-group .adjust-aspect-btn,
 .slideshow-speed-group .slideshow-speed-btn,
 .hist-mode-switch .hist-mode-btn,
@@ -410,11 +536,6 @@
 
 /* ==========================================================================
    5. 和紙モード / 夜墨モード 色設定の補完 ＆ トースト通知の視認性修正
-      - style.css で .toast-success / .toast-warning / .toast-error にハードコードされていた
-        暗色背景 rgba(15, 23, 42, 0.88) により、和紙モードで墨色テキスト (#2a2926) が
-        黒背景に沈んで見えなくなる問題を解消。
-      - 未定義だった派生CSS変数 (--bg-card, --bg-surface, --text-primary 等) を
-        テーマ変数へ正しくマッピングし、ダーク色フォールバック漏れを防止。
    ========================================================================== */
 
 :root,
@@ -562,4 +683,545 @@
 .whitemap-mode-group .whitemap-mode-btn.active {
   background: var(--accent-primary, #e14d2a);
   color: #ffffff;
+}
+
+/* ==========================================================================
+   9. 左サイドバー 2段階構造（左端：垂直タブレール ＋ 右側：全高メニューエリア）
+   ========================================================================== */
+
+/* サイドバー全体を横並び2カラム（Rail + Stage）にする */
+.sidebar.accordion-sidebar.sidebar-two-stage {
+  display: flex !important;
+  flex-direction: row !important;
+  width: var(--sidebar-width, 305px);
+  min-width: 245px;
+  max-width: 520px;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* メニューオフ（is-collapsed）時：左端のアイコン列（54px）は残し、メニューエリアのみ隠す */
+.sidebar.accordion-sidebar.sidebar-two-stage.is-collapsed {
+  display: flex !important;
+  width: 54px !important;
+  min-width: 54px !important;
+  max-width: 54px !important;
+  border-right: none !important;
+  overflow: visible !important;
+  z-index: 250 !important;
+}
+
+.sidebar.accordion-sidebar.sidebar-two-stage.is-collapsed .sidebar-stage {
+  display: none !important;
+}
+
+/* メニューオフ時にアイコンを押したとき：メニューエリアを写真グリッドの上にオーバーレイ展開 */
+.sidebar.accordion-sidebar.sidebar-two-stage.is-collapsed.is-overlay-open .sidebar-stage {
+  display: flex !important;
+  position: absolute !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  left: 54px !important;
+  width: 268px !important;
+  min-width: 268px !important;
+  max-width: 80vw !important;
+  height: 100% !important;
+  z-index: 300 !important;
+  border-right: 1px solid var(--border-color) !important;
+  box-shadow: 12px 0 32px rgba(0, 0, 0, 0.28) !important;
+  animation: sidebarOverlaySlideIn 0.14s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+[data-theme="paper"] .sidebar.accordion-sidebar.sidebar-two-stage.is-collapsed.is-overlay-open .sidebar-stage {
+  box-shadow: 10px 0 28px rgba(42, 41, 38, 0.16) !important;
+}
+
+@keyframes sidebarOverlaySlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* インスペクタプレビュー上の重複「波形」オーバーレイボタンを非表示化 */
+.inspector-hist-toggle-btn {
+  display: none !important;
+}
+
+/* 第1段階: 左端 垂直タブレール (Activity Bar) */
+.sidebar-rail {
+  width: 54px;
+  min-width: 54px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 4px 8px;
+  gap: 3px;
+  background: var(--bg-tertiary);
+  border-right: 1px solid var(--border-color);
+  flex-shrink: 0;
+  box-sizing: border-box;
+  z-index: 2;
+}
+
+[data-theme="paper"] .sidebar-rail {
+  background: #ebe7dd;
+  border-right: 1px solid var(--border-color);
+}
+
+.rail-spacer {
+  flex: 1 1 auto;
+}
+
+.rail-tab-btn {
+  position: relative;
+  width: 46px;
+  height: 44px;
+  padding: 4px 2px;
+  border: 1px solid transparent;
+  border-radius: 6px !important;
+  background: transparent;
+  color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  cursor: pointer;
+  transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease;
+  flex-shrink: 0;
+}
+
+.rail-tab-btn:hover {
+  color: var(--text-main);
+  background: var(--bg-hover);
+}
+
+.rail-tab-btn.active {
+  color: var(--text-main);
+  background: var(--bg-panel);
+  border-color: var(--border-color);
+  box-shadow: var(--shadow-sm);
+}
+
+/* アクティブタブの左端インジケータバー */
+.rail-tab-btn.active::before {
+  content: "";
+  position: absolute;
+  left: -4px;
+  top: 9px;
+  bottom: 9px;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: var(--accent-primary);
+}
+
+/* フィルタ適用中セクションの小ドット */
+.rail-tab-btn.has-filter::after {
+  content: "";
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+}
+
+.rail-tab-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.rail-tab-label {
+  font-size: 0.61rem;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+
+/* 第2段階: 右側 メニュー・ツリー表示ステージ */
+.sidebar-stage {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-secondary);
+}
+
+[data-theme="paper"] .sidebar-stage {
+  background: #fbf9f4;
+}
+
+/* 上部バーでは一括開閉ボタンを非表示（タブ切替式のため不要） */
+.sidebar-two-stage #sidebarToggleAllBtn {
+  display: none !important;
+}
+
+.sidebar-two-stage .sidebar-top-bar {
+  padding: 6px 8px;
+  min-height: 36px;
+}
+
+/* メニューエリア本体：選択中の1セクションのみを縦100%で表示 */
+.sidebar-two-stage .sidebar-accordion {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebar-two-stage .accordion-item:not(.is-open) {
+  display: none !important;
+}
+
+.sidebar-two-stage .accordion-item.is-open {
+  display: flex !important;
+  flex-direction: column !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  height: 100% !important;
+  border-bottom: none !important;
+  overflow: hidden !important;
+}
+
+/* 選択中セクションの見出しバー（メニューエリア上部の固定タイトルとして機能） */
+.sidebar-two-stage .accordion-item.is-open > .accordion-header {
+  height: 32px;
+  min-height: 32px;
+  padding: 0 12px;
+  cursor: default;
+  border-bottom: 1px solid var(--border-soft);
+  background: transparent !important;
+  flex-shrink: 0;
+}
+
+.sidebar-two-stage .accordion-header .accordion-arrow {
+  display: none !important;
+}
+
+/* 選択中セクションのボディ：残り縦幅100%を単一スクロール領域として開放 */
+.sidebar-two-stage .accordion-item.is-open > .accordion-body {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  height: 100% !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  padding: 10px 10px 16px 10px;
+}
+
+.sidebar-two-stage .folder-tree,
+.sidebar-two-stage .tag-tree,
+.sidebar-two-stage .tag-pill-list,
+.sidebar-two-stage .location-tree,
+.sidebar-two-stage .camera-tree,
+.sidebar-two-stage .camera-tree-list,
+.sidebar-two-stage .timeline-tree {
+  max-height: none !important;
+}
+
+
+/* ==========================================================================
+   10. 上部1段統合ツールバー (.unified-single-header) ＆ システムメニュー
+   ========================================================================== */
+
+.app-header.unified-single-header {
+  height: 44px;
+  min-height: 44px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
+.unified-single-header .header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.unified-single-header .header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* 左上：現在の表示タイトル ＋ 枚数バッジ */
+.header-view-status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  max-width: 240px;
+  flex-shrink: 1;
+}
+
+.header-view-status .hinomaru-disc {
+  width: 9px;
+  height: 9px;
+  flex-shrink: 0;
+}
+
+.header-view-status .view-title {
+  font-size: 0.86rem !important;
+  font-weight: 600 !important;
+  color: var(--text-main);
+  margin: 0 !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
+}
+
+.header-view-status .photos-count-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  padding: 1px 7px;
+  border-radius: 999px !important;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ヘッダー内に統合された属性・評価フィルタ群 */
+.header-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* 省スペースボタン調整 */
+.unified-single-header .header-compact-btn {
+  padding: 0 7px !important;
+  gap: 4px !important;
+}
+
+.unified-single-header .thumbnail-slider-group input[type="range"] {
+  width: 68px;
+}
+
+.unified-single-header #sortBySelect {
+  max-width: 150px;
+}
+
+/* 画面幅が狭い時（1360px以下）は再生・スタック・情報・レイアウトのテキストラベルを自動でアイコン化して1行維持 */
+@media (max-width: 1380px) {
+  .unified-single-header .header-compact-btn .btn-label,
+  .unified-single-header .view-mode-group .mode-label {
+    display: none !important;
+  }
+  .header-view-status {
+    max-width: 170px;
+  }
+}
+
+/* システムメニュードロップダウン */
+.header-system-menu-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.header-system-menu-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px !important;
+  height: 26px !important;
+}
+
+.header-system-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 224px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px !important;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  z-index: 1200;
+}
+
+[data-theme="paper"] .header-system-dropdown {
+  background: #fbf9f4;
+  box-shadow: 0 8px 24px rgba(42, 41, 38, 0.16);
+}
+
+.header-system-brand-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px 6px;
+  border-bottom: 1px solid var(--border-soft);
+  margin-bottom: 2px;
+  color: var(--text-muted);
+}
+
+.header-menu-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 4px !important;
+  background: transparent;
+  color: var(--text-main);
+  font-size: 0.78rem;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.header-menu-item:hover {
+  background: var(--bg-hover);
+}
+
+.header-menu-item.header-menu-danger {
+  color: #dc2626;
+}
+
+.header-menu-item.header-menu-danger:hover {
+  background: rgba(220, 38, 38, 0.1);
+}
+
+.header-menu-inline-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 2px 0;
+}
+
+.header-menu-pill-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: 26px;
+  padding: 0 6px;
+  border-radius: 4px !important;
+  border: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+  color: var(--text-main);
+  font-size: 0.73rem;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.header-menu-pill-btn:hover {
+  background: var(--bg-hover);
+}
+
+.header-menu-divider {
+  height: 1px;
+  background: var(--border-soft);
+  margin: 3px 2px;
+}
+
+/* 適用中フィルタチップ・サブバー（条件がある時だけ薄く表示） */
+.view-header.view-chip-bar {
+  min-height: 28px !important;
+  padding: 3px 12px !important;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-soft);
+}
+
+/* ==========================================================================
+   11. 左ペイン上部 常設フィルタバー (.sidebar-persistent-filters) ＆ フッターバー廃止
+   ========================================================================== */
+
+.sidebar-persistent-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 6px 8px 7px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+  flex-shrink: 0;
+}
+
+[data-theme="paper"] .sidebar-persistent-filters {
+  background: #f3efe6;
+}
+
+.sidebar-persistent-filters .attr-filter,
+.sidebar-persistent-filters .rating-filter {
+  width: 100% !important;
+  display: flex !important;
+  box-sizing: border-box;
+}
+
+.sidebar-persistent-filters .attr-filter-toggles {
+  width: 100% !important;
+  display: flex !important;
+  align-items: center;
+  gap: 2px !important;
+}
+
+.sidebar-persistent-filters .attr-toggle {
+  flex: 1 1 auto;
+  padding: 0 5px !important;
+  font-size: 0.72rem !important;
+  height: 24px !important;
+  justify-content: center;
+}
+
+.sidebar-persistent-filters .attr-sub-select {
+  width: 68px !important;
+  min-width: 62px !important;
+  max-width: 78px !important;
+  height: 24px !important;
+  padding: 0 16px 0 5px !important;
+  font-size: 0.71rem !important;
+  background-position: right 4px center !important;
+  flex-shrink: 0;
+}
+
+.sidebar-persistent-filters .rating-filter-toggles {
+  width: 100% !important;
+  display: grid !important;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2px !important;
+}
+
+.sidebar-persistent-filters .rating-toggle {
+  width: 100% !important;
+  height: 24px !important;
+  padding: 0 !important;
+  justify-content: center;
+  font-size: 0.75rem !important;
+}
+
+/* 写真グリッド下部のフッターメニューバー（#selectionFloatingBar）を常時非表示化（右クリック＆右ペインに集約） */
+#selectionFloatingBar,
+.selection-floating-bar {
+  display: none !important;
 }

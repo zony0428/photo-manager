@@ -1,0 +1,23 @@
+# タスクリスト：ステップ3 残作業6項目の一括完遂（マルチエージェント・オーケストレーション）
+
+- [x] **ステップ1：UIの交通整理（完了・v2.44）**
+- [x] **ステップ2：基本ビューア体験の強化 ＆ ボタン・案内テキストサイズ統一（完了・v2.44）**
+- [x] **ステップ3：未実施残作業6項目の一括完遂（並列サブエージェント・オーケストレーション）**
+  - [x] **Track 1（Subagent 1: Backend & DB Specialist）**:
+    - [x] DBマイグレーション（`photos.original_date_taken` 追加）＆ `batch_shift_photo_dates()` 実装（非破壊日時シフト＆元日時リセット・再スキャン保護）
+    - [x] `POST /api/photos/batch-shift-date` エンドポイント追加
+    - [x] シャッター速度順ソート（`shutter_fast` / `shutter_slow`）のSQL実装
+    - [x] 属性フィルタ拡張（`jpeg` / `raw_pair` / `xmp`）のバックエンド実装
+    - [x] 「📥 取り込み (`POST /api/upload`)」のデフォルト保存先を `uploads/` から `storage/` へ一本化
+  - [x] **Track 2（Subagent 2: Frontend JS & i18n Specialist）**:
+    - [x] `common.js` / `selection.js`: 撮影日時一括シフト補正モーダル（`#dateShiftModal`、±日時指定・プリセット・5件リアルタイムプレビュー・元日時リセット）実装
+    - [x] `app.js`: 拡張属性フィルタ（`jpeg` / `raw_pair` / `xmp` サブセレクト連動）＆ `storage/` 取り込み連携
+    - [x] `i18n.js`: 新規UI文言の日英リアルタイム翻訳辞書追加
+  - [x] **Track 3（Subagent 3: Frontend HTML & CSS Specialist）**:
+    - [x] `index.html`: シャッター速度ソート2種追加、属性サブセレクト（`#attrSubFilterSelect`）追加、撮影日時シフトモーダル（`#dateShiftModal`）＆メニュー項目追加
+    - [x] `index.html`: 「📤 テイクアウト」ポップオーバー/サブメニューの整理（旧 `take_out/` 単純コピーを折りたたみ `<details>` へ格納し、スマート・テイクアウト＆ベタ焼きHTMLを主役化）
+    - [x] `index.html`: 左サイドバー「🗺️ ジオタグ」への「🗾 制覇マップ」配置＆「🧪 ラボ」内の2グループ整理
+    - [x] `style.css` / `grid-lightbox.css` / `modals-features.css`: モーダル・折りたたみ・属性サブセレクト・ノートPC幅レスポンシブ最適化スタイル追加
+  - [x] **Track 4（Orchestrator: 統合検証 ＆ ドキュメント・KI更新）**:
+    - [x] 3つのサブエージェントの成果物を統合チェック＆自動検証スクリプト（`verify_step3.py`）実行（全テストパス）
+    - [x] `MANUAL.md`、`index.html`（`#helpModal`）、`docs/knowledge/ui-ux-diagnosis-and-roadmap.md`、`docs/knowledge/feature-code-map.md` 更新

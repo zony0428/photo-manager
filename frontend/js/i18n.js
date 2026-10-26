@@ -53,8 +53,46 @@
     '並び替え': 'Sort By',
     '新しい順 (撮影日)': 'Newest (Date Taken)',
     '古い順 (撮影日)': 'Oldest (Date Taken)',
+    '撮影日時 (新しい順)': 'Date Taken (Newest)',
+    '撮影日時 (古い順)': 'Date Taken (Oldest)',
     '評価の高い順': 'Top Rated (Ex → Rj)',
+    '評価の高い順 (優 → 棄)': 'Top Rated (Ex → Rj)',
     'ファイル名順': 'File Name (A → Z)',
+    'ファイル名 (A→Z)': 'File Name (A → Z)',
+    'ファイル名 (Z→A)': 'File Name (Z → A)',
+    'ファイル名 (A → Z)': 'File Name (A → Z)',
+    'ファイル名 (Z → A)': 'File Name (Z → A)',
+    'サイズ (大きい順)': 'File Size (Large → Small)',
+    'サイズ (小さい順)': 'File Size (Small → Large)',
+    'ファイルサイズ (大きい順)': 'File Size (Large → Small)',
+    'ファイルサイズ (小さい順)': 'File Size (Small → Large)',
+    '焦点距離 (広角→望遠)': 'Focal Length (Wide → Tele)',
+    '焦点距離 (望遠→広角)': 'Focal Length (Tele → Wide)',
+    '焦点距離 (広角 → 望遠)': 'Focal Length (Wide → Tele)',
+    '焦点距離 (望遠 → 広角)': 'Focal Length (Tele → Wide)',
+    'F値 (開放→絞込)': 'Aperture (Wide Open → Stopped Down)',
+    'F値 (開放 → 絞込)': 'Aperture (Wide Open → Stopped Down)',
+    'F値 (絞込 → 開放)': 'Aperture (Stopped Down → Wide Open)',
+    'シャッター速度 (高速 → 低速)': 'Shutter Speed (Fast → Slow)',
+    'シャッター速度 (低速 → 高速)': 'Shutter Speed (Slow → Fast)',
+    'ISO感度 (高い順)': 'ISO (High → Low)',
+    'ISO感度 (低い順)': 'ISO (Low → High)',
+    '✂ 調整済': 'Edited',
+    '調整済': 'Edited',
+    '詳細属性...': 'More Attr...',
+    'JPEG / 一般のみ': 'JPEG Only',
+    'JPEG/一般のみ': 'JPEG Only',
+    'RAW+JPG ペア': 'RAW+JPG Pair',
+    'RAW+JPGペア': 'RAW+JPG Pair',
+    'XMP あり': 'Has XMP',
+    'XMPあり': 'Has XMP',
+    '調整済みのみ': 'Edited Only',
+    '調整済のみ': 'Edited Only',
+    'RAWのみ': 'RAW Only',
+    '属性フィルタ (すべて / RAWのみ / 調整済みのみ)': 'Attribute Filter (All / RAW Only / Edited Only)',
+    'すべての形式を表示': 'Show all formats',
+    'RAW写真（およびRAW+JPGペア）のみ表示': 'Show RAW photos (and RAW+JPG pairs) only',
+    '回転・傾き・切り抜き・トーン調整済みの写真のみ表示': 'Show photos with non-destructive edits only',
     '取り込み': 'Import',
     'PCの写真ファイルを選んで、アプリ内にコピーしてライブラリに取り込みます': 'Select photo files from PC and copy into library',
     'スマホ連携': 'Mobile',
@@ -116,6 +154,10 @@
 
     // --- 左サイドバー: フォルダ ---
     'フォルダ': 'Folders',
+  'クイック': 'Quick',
+  '年月': 'Date',
+  '機材': 'Gear',
+
     'スキャン完了後にAIタグを自動付与するかどうかを切り替えます': 'Toggle Auto AI-Tagging after folder scan',
     'データベースの最適化（VACUUM）やバックアップ': 'Database Optimization (VACUUM) & Backup',
     'ドライブ一覧とフォルダツリーを再読み込み': 'Reload drives and folder tree',
@@ -131,34 +173,45 @@
     'パスを直接入力してスキャン...': 'Enter folder path to scan...',
     'フォルダパスを入力して Enter または右のボタンでスキャンを開始します': 'Enter folder path and press Enter or click ▶ to scan',
     '入力したフォルダをスキャンして管理に追加': 'Scan entered folder and add to library',
-    '⭐ ショートカット': '⭐ Shortcuts',
-    '💻 接続中のドライブ': '💻 Connected Drives',
-    '🔌 未接続（キャッシュのみ）': '🔌 Offline (Cached Thumbnails)',
+    '⭐ ショートカット': 'Shortcuts',
+    'ショートカット': 'Shortcuts',
+    '💻 接続中のドライブ': 'Connected Drives',
+    '接続中のドライブ': 'Connected Drives',
+    '🔌 未接続（キャッシュのみ）': 'Offline (Cached Thumbnails)',
+    '未接続（キャッシュのみ）': 'Offline (Cached Thumbnails)',
     '接続中のドライブがありません': 'No connected drives found',
     '除外': 'Ignored',
-    '⚠️ 消失': '⚠️ Missing',
+    '⚠️ 消失': 'Missing',
+    '消失': 'Missing',
 
     // --- 左サイドバー: タグ (アルバム) & カラー ---
     'タグ (アルバム)': 'Tags (Albums)',
     'カラーフィルタを開閉': 'Toggle Color Palette Filter',
-    '🎨 カラー': '🎨 Colors',
+    '🎨 カラー': 'Colors',
+    'カラー': 'Colors',
     'タグ名を入力...': 'Enter tag name...',
     '作成': 'Create',
-    '👤 手動': '👤 Manual',
-    '🤖 AI': '🤖 AI',
+    '👤 手動': 'Manual',
+    '手動': 'Manual',
+    '🤖 AI': 'AI',
+    'AI': 'AI',
     'すべて': 'All',
-    '🔍 タグ候補を絞り込み (Enter)...': '🔍 Filter tags (Enter)...',
+    '🔍 タグ候補を絞り込み (Enter)...': 'Filter tags (Enter)...',
+    'タグを絞り込み...': 'Filter tags...',
     '検索解除': 'Clear search',
     'クリックで': 'Click:',
     '[+]含む': '[+] In',
     '[-]除外': '[-] Out',
     '解除': 'Off',
     'クリア': 'Clear',
-    '📊 枚数順': '📊 By Count',
+    '📊 枚数順': 'By Count',
+    '枚数順': 'By Count',
     'ON: 写真枚数が多い順 ／ OFF: 設定の名前順ルール': 'ON: Sort by photo count desc / OFF: Sort by name rule in Settings',
-    '⚙️ ツリー編集': '⚙️ Edit Tree',
+    'ON: 写真枚数が多い順 ／ OFF: 設定された名前順': 'ON: Sort by photo count desc / OFF: Sort by name rule in Settings',
+    '⚙️ ツリー編集': 'Edit Tree',
     'タグツリーエディタ（階層移動・名前変更・削除）を開く': 'Open Tag Tree Editor (Drag & Drop hierarchy, rename, delete)',
-    '⚙️ 設定': '⚙️ Settings',
+    '⚙️ 設定': 'Settings',
+    '設定': 'Settings',
     '表示設定・タグツリーエディタ・データベース管理（VACUUM / バックアップ）': 'Display Settings, Tag Tree Editor & Database Maintenance (VACUUM / Backup)',
     '⚙️ 設定 ＆ タグツリーエディタ': '⚙️ Settings & Tag Tree Editor',
     '🏷️ タグの名前順ルール': '🏷️ Tag Name Sort Rule',
@@ -191,7 +244,8 @@
     // --- 左サイドバー: ジオタグ & 制覇マップ ---
     'ジオタグ': 'Geotags',
     'ジオタグツリーを再読み込み': 'Reload Geotag Tree',
-    '🗾 制覇マップ': '🗾 Seiha Map',
+    '🗾 制覇マップ': 'Seiha Map',
+    '制覇マップ': 'Seiha Map',
     '47都道府県 制覇白地図': '47-Pref Seiha Map',
     '47都道府県 撮影制覇白地図': '47-Pref Seiha Map',
     '47都道府県 撮影制覇白地図・撮影密度ヒートマップ・撮影さんぽ軌跡を開く': 'Open 47-Prefecture Seiha Map, Density Heatmap & Osanpo Trail',
@@ -262,24 +316,31 @@
     // --- 左サイドバー: 🧪 ラボ (Lab) ---
     'ラボ': 'Lab',
     '分析・発掘': 'Karte & Dig',
+    '📊 撮影カルテ・選別発掘': 'Karte & Discovery',
+    '撮影カルテ・選別発掘': 'Karte & Discovery',
+    '🔭 光線・露出・記念日スマート抽出': 'Smart Light & OTD Filters',
+    '光線・露出・記念日スマート抽出': 'Smart Light & OTD Filters',
     '勝ちレンズ・得意設定カルテ': 'Kami-Lens Karte',
-    '🏆 勝ちレンズ・得意設定カルテ': '🏆 Kami-Lens Karte',
+    '🏆 勝ちレンズ・得意設定カルテ': 'Kami-Lens Karte',
     'これまでの評価から勝ちレンズ・黄金の焦点距離・F値・時間帯を診断します': 'Diagnose your Kami-Lenses, Golden Focal Length, F-stop & Shutter Rhythm from your ratings',
     '未整理ガチャ': 'Gacha',
-    '🎲 未整理ガチャ': '🎲 Gacha',
+    '🎲 未整理ガチャ': 'Gacha',
     '未整理（評価：可）の写真が残っているフォルダをランダムに1つ引き当てます': 'Draw a random folder that still has unrated (Nm) photos!',
     '未整理（可）の写真が残っているフォルダをランダムに1つ引き当てます': 'Draw a random folder that still has unrated (Nm) photos!',
     '2枚比較 (V)': 'Duel (V)',
-    '⚖️ 2枚比較 (V)': '⚖️ Duel (V)',
+    '⚖️ 2枚比較 (V)': 'Duel (V)',
     '選択した2枚の写真を並べて同期ズーム＆Exif比較 (Vキー)': 'Side-by-side sync zoom & Exif comparison (V key)',
     '選択した2枚の写真を並べて同期ズーム＆Exif比較 (V)': 'Side-by-side sync zoom & Exif comparison (V)',
-    '🎂 歴代の今日・記念日': '🎂 On This Day',
+    '🎂 歴代の今日・記念日': 'On This Day',
+    '歴代の今日・記念日': 'On This Day',
     '今日': 'Today',
     '今日の日付に戻す': 'Reset to today',
     '月を選択': 'Select Month',
     '日を選択': 'Select Day',
-    '🎂 抽出': '🎂 Dig',
-    '🎂 抽出中': '🎂 Active',
+    '🎂 抽出': 'Dig',
+    '抽出': 'Dig',
+    '🎂 抽出中': 'Active',
+    '抽出中': 'Active',
     '指定した月日の歴代写真を抽出・解除': 'Filter photos taken on this month & day across all years',
     '🔭 太陽高度・露出ラボ抽出': '🔭 Solar Angle & Exposure Lab',
     '太陽高度・露出ラボ抽出': 'Solar Angle & Exposure Lab',
@@ -306,7 +367,8 @@
     // --- メインビュー・ヘッダー & 空状態 ---
     '✕ すべて解除': '✕ Clear All',
     '絞り込みをすべて解除してすべての写真を表示': 'Clear all active filters and show all photos',
-    '🗑️ リンク消失写真をすべて完全消去': '🗑️ Purge All Unlinked Photos',
+    '🗑️ リンク消失写真をすべて完全消去': 'Purge All Unlinked Photos',
+    'リンク消失写真をすべて完全消去': 'Purge All Unlinked Photos',
     'リンク消失しているすべての写真レコード（サムネイル・タグ含む）をDBから完全に消去': 'Permanently remove all unlinked photo records from database',
     'このフィルタを解除': 'Remove this filter',
     '実フォルダが存在しないか、ドライブが未接続です': 'Folder missing or external drive disconnected',
@@ -331,6 +393,12 @@
 
     // --- 右ペイン: インスペクタ ---
     '写真情報': 'Inspector',
+    '調整': 'Adjust',
+    '波形': 'Hist',
+    '画像の切り抜き・傾き補正・明るさ微調整を開く (Cキー)': 'Open Crop, Horizon Level & Tone Adjustments (C key)',
+    'RGB・輝度ヒストグラムを表示/非表示 (Hキー)': 'Toggle RGB & Luminance Histogram (H key)',
+    '反時計回りに90°回転 (Lキー)': 'Rotate 90° CCW (L key)',
+    '時計回りに90°回転 (Rキー)': 'Rotate 90° CW (R key)',
     '元データが格納されているフォルダを開く (Explorer)': 'Open containing folder in Explorer',
     '写真を関連付けられた規定のアプリで開く': 'Open photo in default external app',
     'パネルを閉じる': 'Close Inspector',
@@ -441,6 +509,13 @@
 
     // --- 画像調整モーダル (adjust.js) ---
     '画像の調整': 'Adjust Image (Crop, Level & Tone)',
+    '📋 トーンをコピー': '📋 Copy Tone',
+    '🎨 トーンをペースト': '🎨 Paste Tone',
+    '👁️ 元画像と比較 (\\)': '👁️ Compare Original (\\)',
+    '👁️ 元画像 (Before)': '👁️ Original (Before)',
+    '明るさ・コントラスト・彩度の設定値をコピーします（傾き・回転・切り抜き枠は除外）': 'Copy Brightness, Contrast & Saturation values (excludes tilt, rotation & crop)',
+    'コピーした明るさ・コントラスト・彩度をこの写真に適用します': 'Paste copied Brightness, Contrast & Saturation to this photo',
+    '押している間だけ調整前の元画像（Before）を表示します（\\キー または Spaceキー長押しでも比較可能）': 'Hold to preview unadjusted original image (or hold \\ / Space key)',
     '📐傾': '📐Tilt',
     '☀️明': '☀️EV',
     '◐比': '◐Cont',
@@ -608,6 +683,10 @@
     '↻ 右へ回転 (R)': '↻ Rotate 90° CW (R)',
     '↺ 左へ回転 (L)': '↺ Rotate 90° CCW (L)',
     '✂ 切り抜き・微調整 (C)': '✂ Crop, Tilt & Tone (C)',
+    '📋 トーン調整をコピー (Ctrl+Shift+C)': '📋 Copy Tone Adjustments (Ctrl+Shift+C)',
+    '🎨 トーン調整をペースト (Ctrl+Shift+V)': '🎨 Paste Tone Adjustments (Ctrl+Shift+V)',
+    '🎨 トーン調整を一括ペースト': '🎨 Batch Paste Tone Adjustments',
+    '📋 画像をクリップボードにコピー (Ctrl+C)': '📋 Copy Image to Clipboard (Ctrl+C)',
     '↺ 回転・調整をリセット': '↺ Reset Adjustments',
     '回転': 'Rotate',
     '↻ 写真を一括回転': '↻ Batch Rotate Photos',
@@ -616,6 +695,13 @@
     '回転・調整をリセット': 'Reset Adjustments',
     '🔄 サムネイルを更新': '🔄 Refresh Thumbnail',
     'サムネイル更新': 'Refresh Thumb',
+    'その他': 'More',
+    '⋯ その他の操作': '⋯ More Actions',
+    'サムネイル更新・ジオタグ準用・ジオタグ削除などの一括操作メニュー': 'More batch actions (Refresh Thumbnails, Infer GPS, Clear GPS)',
+    'ジオタグ準用 (スマホGPS)': 'Infer GPS (Phone GPS)',
+    'ジオタグ情報を削除': 'Clear GPS Info',
+    '📥 取り込み': '📥 Import',
+    '写真ファイルを現在のフォルダ（またはstorage）に取り込む': 'Import photo files into current folder (or storage)',
     '🔍 プレビューを開く': '🔍 Open in Lightbox',
     '🗑️ ライブラリから削除': '🗑️ Remove from Library',
     '削除': 'Remove',
@@ -1274,6 +1360,11 @@
     'でエクスプローラーを開き、': 'in the right inspector to reveal in Explorer, or',
     'で既定ソフトで開けます。外部ソフトで編集した後は、写真を右クリック →「🔄 サムネイルを更新」で表示を最新化できます。':
       'to open in your default editor. After editing externally, right-click the photo → "🔄 Refresh Thumbnail" to update its preview.',
+    '⚙️ 設定・DBメンテナンス:': '⚙️ Settings & DB Maintenance:',
+    '左サイドバー「📁 フォルダ」や「🏷️ タグ」上部の': 'From the',
+    'ボタンから、': 'button in "📁 Folders" or "🏷️ Tags", you can configure',
+    '「🪟 起動時のウィンドウサイズ（最大化／前回記憶／中央80%／左・右半分スナップ／フルスクリーン）」': '"🪟 Startup Window Size (Maximized / Remember Last / Center 80% / Left·Right Half Snap / Fullscreen)"',
+    'や「🏷️ タグの名前順ルール」の変更、および世代バックアップ・データベース容量の最適化（VACUUM）が行えます。': 'and "🏷️ Tag Name Sort Rule", as well as create rotating DB backups and run VACUUM optimization.',
     '⚙️ DBメンテナンス:': '⚙️ DB Maintenance:',
     '左サイドバー「📁 フォルダ」上部の': 'Click the',
     'ボタンで、世代バックアップを取りつつデータベース容量を最適化（VACUUM）できます。':
@@ -1493,6 +1584,50 @@
     '🏷️ タグを全体から削除（確認）': '🏷️ Delete Tag from Library (Confirm)',
     'キャンセル (NG)': 'Cancel (NG)',
     'OK (全体から削除)': 'OK (Delete Tag)',
+    '🪟 起動時のウィンドウサイズ': '🪟 Startup Window Size',
+    'アプリ起動時のウィンドウ状態を設定します（選択すると即座に現在の画面にも反映されます）': 'Set initial window state on launch (selecting applies immediately to current window)',
+    '🖥️ 最大化（標準・タスクバーあり）': '🖥️ Maximized (Default · Show Taskbar)',
+    '🔄 前回のサイズ・位置を記憶（システム標準）': '🔄 Remember Last Size & Position (System Default)',
+    '🪟 画面中央（約80%サイズ）': '🪟 Centered Window (~80% Size)',
+    '◧ 画面の左半分にスナップ（50%）': '◧ Snap to Left Half (50%)',
+    '◨ 画面の右半分にスナップ（50%）': '◨ Snap to Right Half (50%)',
+    '📺 フルスクリーン（枠なし全画面 / F11）': '📺 Fullscreen (Borderless / F11)',
+    '🪟 起動時のウィンドウサイズを保存・反映しました': '🪟 Saved and applied startup window size',
+    '🏷️ タグツリーの名前順ルールを保存・反映しました': '🏷️ Saved and applied tag name sort rule',
+    '左ペインの「📊 枚数順」がオフのときに使われる名前ソート順を保存します': 'Saves the name sort order used when "📊 By Count" in the left sidebar is OFF',
+
+    // --- シャッター速度ソート & 詳細属性フィルタ & 撮影日時一括シフト補正 ---
+    'シャッター速度 (高速→低速)': 'Shutter Speed (Fast → Slow)',
+    'シャッター速度 (低速→高速)': 'Shutter Speed (Slow → Fast)',
+    'シャッター速度 (高速 → 低速)': 'Shutter Speed (Fast → Slow)',
+    'シャッター速度 (低速 → 高速)': 'Shutter Speed (Slow → Fast)',
+    '詳細属性...': 'More...',
+  '詳細...': 'More...',
+    '🖼️ JPEG/一般のみ': '🖼️ JPEG Only',
+    '🔗 RAW+JPGペア': '🔗 RAW+JPG Pair',
+    '📄 XMPあり': '📄 Has XMP',
+    '🕒 撮影日時を一括補正...': '🕒 Batch Shift Date/Time...',
+    '🕒 撮影日時の一括シフト補正': '🕒 Batch Shift Date Taken',
+    'カメラの内蔵時計ズレや海外時差を非破壊で一括補正します（元ファイルは変更されません）': 'Non-destructively shift Date Taken in DB to fix camera clock drift or timezone offset',
+    '＋ 進める（未来へ）': '+ Forward (Add Time)',
+    '－ 戻す（過去へ）': '- Backward (Subtract Time)',
+    '🕒 シフト補正を適用': '🕒 Apply Shift',
+    '↩️ 元のEXIF日時に戻す': '↩️ Reset to Original EXIF Date',
+    '📂 簡易フォルダコピー (take_out/)': '📂 Quick Copy to take_out/',
+    '📊 撮影カルテ・選別発掘': '📊 Karte & Discovery',
+    '🔭 光線・露出・記念日スマート抽出': '🔭 Smart Light & OTD Filters',
+    'シフト方向': 'Shift Direction',
+    '日': 'Days',
+    '時間': 'Hours',
+    '分': 'Min',
+    '秒': 'Sec',
+    'クイックプリセット': 'Quick Presets',
+    'クイックプリセット:': 'Quick Presets:',
+    '変更プレビュー (先頭5件)': 'Preview (First 5 Items)',
+    'シフト補正前の元のEXIF撮影日時に復元します': 'Restore to original EXIF Date Taken before shift',
+    '選択中の写真にシフト補正履歴（元のEXIF日時）はありません': 'No shift history (original EXIF date) on selected photos',
+    'シフトする時間（日・時・分・秒）を指定してください': 'Please specify the shift offset (days, hours, minutes, or seconds)',
+    '撮影日時を補正する写真を選択してください': 'Please select photos to shift Date Taken',
   };
 
   const MONTH_NAMES_SHORT = [
@@ -1711,6 +1846,11 @@
     [/^XMPサイドカー検出:\s*(.+)$/, 'XMP sidecar detected: $1'],
     [/^XMPサイドカーファイルが検出されました\s*\((.+)\)$/, 'XMP sidecar file detected ($1)'],
     [/^押している間だけXMPの調整データを反映します\s*\((.+)\)$/, 'Hold to preview XMP adjustments ($1)'],
+    [/^🕒\s*(\d+)枚の写真の撮影日時を一括シフト補正しました$/, '🕒 Shifted Date Taken for $1 photos'],
+    [/^↩️\s*(\d+)枚の写真の撮影日時を元のEXIF日時に戻しました$/, '↩️ Restored original EXIF Date Taken for $1 photos'],
+    [/^📥\s*(\d+)枚の写真を\s*storage\s*に取り込みました$/, '📥 Imported $1 photos into storage'],
+    [/^\(元:\s*(.+)\)$/, '(Orig: $1)'],
+    [/^…他\s*(\d+)\s*枚$/, '...and $1 more'],
     [/^XMPサイドカーから取り込み\s*\((.+)\)$/, 'Import from XMP sidecar ($1)'],
     [/^📥\s*XMPからメタデータを取り込みました（タグ\s*(\d+)件）$/, '📥 Imported metadata from XMP ($1 tags)'],
   ];
@@ -1903,12 +2043,12 @@
 
     if (!btn) return;
     if (currentLang === 'en') {
-      if (iconEl) iconEl.textContent = '🇺🇸';
+      if (iconEl) iconEl.textContent = '';
       if (labelEl) labelEl.textContent = 'EN';
       btn.title = 'Switch UI Language (English ⇄ 日本語)';
       btn.classList.add('is-en');
     } else {
-      if (iconEl) iconEl.textContent = '🇯🇵';
+      if (iconEl) iconEl.textContent = '';
       if (labelEl) labelEl.textContent = 'JP';
       btn.title = 'UI言語切り替え (日本語 ⇄ English)';
       btn.classList.remove('is-en');
@@ -1919,10 +2059,28 @@
    * 言語を切り替えて即時反映する
    * @param {'ja'|'en'} lang
    */
+  let _i18nObserver = null;
+
+  function syncObserverState() {
+    if (!_i18nObserver || !document.body) return;
+    if (currentLang === 'en') {
+      _i18nObserver.observe(document.body, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+        attributes: true,
+        attributeFilter: TARGET_ATTRS,
+      });
+    } else {
+      _i18nObserver.disconnect();
+    }
+  }
+
   function setLanguage(lang) {
     currentLang = lang === 'en' ? 'en' : 'ja';
     localStorage.setItem(STORAGE_KEY, currentLang);
     updateLangToggleButton();
+    syncObserverState();
     processSubtree(document.body);
   }
 
@@ -1934,9 +2092,9 @@
     setLanguage(nextLang);
     if (typeof showToast === 'function') {
       if (nextLang === 'en') {
-        showToast('🇺🇸 Switched UI to English (Washi / Urusi & Slang Edition)', 'info', 2200);
+        showToast('Switched UI to English (Washi / Urusi & Slang Edition)', 'info', 2200);
       } else {
-        showToast('🇯🇵 表示言語を日本語に切り替えました', 'info', 2200);
+        showToast('表示言語を日本語に切り替えました', 'info', 2200);
       }
     }
   }
@@ -1982,13 +2140,8 @@
       }
     });
 
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-      characterData: true,
-      attributes: true,
-      attributeFilter: TARGET_ATTRS,
-    });
+    _i18nObserver = observer;
+    syncObserverState();
   }
 
   if (document.readyState === 'loading') {

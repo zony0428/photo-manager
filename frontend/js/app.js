@@ -255,6 +255,10 @@ async function fetchPhotos() {
       params.append('ratings', Array.from(state.ratingFilter).join(','));
     }
 
+    if (state.attrFilter && state.attrFilter !== 'all') {
+      params.append('attr_filter', state.attrFilter);
+    }
+
     if (state.searchQuery.trim()) {
       params.append('search', state.searchQuery.trim());
     }
@@ -840,8 +844,9 @@ function renderActiveFilterChips() {
     hasFilter = true;
     const chip = document.createElement('span');
     chip.className = `filter-chip ${extraClass}`.trim();
+    const labelHtml = icon ? `${escapeHtml(icon)} ${escapeHtml(text)}` : escapeHtml(text);
     chip.innerHTML = `
-      <span class="chip-label">${escapeHtml(icon)} ${escapeHtml(text)}</span>
+      <span class="chip-label">${labelHtml}</span>
       <button class="chip-remove-btn" title="このフィルタを解除">&times;</button>
     `;
     chip.querySelector('.chip-remove-btn').addEventListener('click', (e) => {
@@ -1012,6 +1017,22 @@ function renderActiveFilterChips() {
     });
   }
 
+  // 8b. 属性フィルタ（RAWのみ / 調整済のみ / JPEGのみ / RAW+JPGペア / XMPあり）
+  if (state.attrFilter && state.attrFilter !== 'all') {
+    const attrLabels = {
+      raw: 'RAWのみ',
+      adjusted: '調整済みのみ',
+      jpeg: '🖼️ JPEG/一般のみ',
+      raw_pair: '🔗 RAW+JPGペア',
+      xmp: '📄 XMPあり',
+    };
+    const attrIcons = { raw: '📷', adjusted: '✂', jpeg: '', raw_pair: '', xmp: '' };
+    const icon = attrIcons[state.attrFilter] !== undefined ? attrIcons[state.attrFilter] : '🎞️';
+    createChip(icon, attrLabels[state.attrFilter] || state.attrFilter, () => {
+      setAttrFilter('all');
+    }, 'chip-tag-include');
+  }
+
   // 9. ジオタグツリーフィルタ
   if (state.activeLocation) {
     if (state.activeLocation.no_location) {
@@ -1042,9 +1063,33 @@ function renderActiveFilterChips() {
     labAccordion.classList.toggle('has-filter', hasLab);
   }
 
+  // 垂直タブレール (.rail-tab-btn) へのフィルタ適用インジケータ同期
+  const sectionFilterMap = {
+    quick: Boolean(state.untaggedOnly || (state.connectionFilter && state.connectionFilter !== 'all') || (state.currentFilter && state.currentFilter.type === 'duplicates')),
+    folder: Boolean(state.currentFilter && (state.currentFilter.type === 'folder' || state.currentFilter.type === 'folder_exclude' || state.currentFilter.type === 'unlinked')),
+    tags: Boolean(state.tagFilters && state.tagFilters.size > 0),
+    location: Boolean(state.activeLocation),
+    timeline: Boolean(state.selectedYearMonths && state.selectedYearMonths.size > 0),
+    camera: Boolean((state.cameraFilters && state.cameraFilters.size > 0) || (state.lensFilters && state.lensFilters.size > 0) || (state.selectedCameras && state.selectedCameras.size > 0)),
+    lab: Boolean(state.labFilter || state.onThisDay || state.focalRange || state.apertureRange),
+    search: Boolean(state.searchQuery && state.searchQuery.trim().length > 0),
+  };
+  document.querySelectorAll('#sidebarRail .rail-tab-btn').forEach(btn => {
+    const sec = btn.dataset.section;
+    if (sec && sec in sectionFilterMap) {
+      btn.classList.toggle('has-filter', sectionFilterMap[sec]);
+    }
+  });
+
   // すべて解除ボタンとサイドバーリセットボタンの表示制御
   if (elements.clearFilterBtn) {
     elements.clearFilterBtn.style.display = hasFilter ? 'inline-flex' : 'none';
+  }
+  const chipBar = document.getElementById('viewHeaderChipBar');
+  const purgeBtn = document.getElementById('purgeUnlinkedBtn');
+  const isPurgeVisible = purgeBtn && purgeBtn.style.display !== 'none';
+  if (chipBar) {
+    chipBar.style.display = (hasFilter || isPurgeVisible) ? 'flex' : 'none';
   }
 
   const resetBtn = document.getElementById('sidebarResetFilterBtn');
@@ -1076,6 +1121,45 @@ function updateRatingFilterUI() {
     btn.classList.toggle('active', state.ratingFilter.has(rv));
   });
 }
+
+/**
+ * 属性フィルタ（すべて / RAW / 調整済 / 詳細属性セレクト）のUI同期関数
+ */
+function syncAttrFilterButtons() {
+  const cur = state.attrFilter || 'all';
+  document.querySelectorAll('#attrFilterToggles .attr-toggle, .attr-toggle[data-attr]').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.attr === cur);
+  });
+  const subSelect = elements.attrSubFilterSelect || document.getElementById('attrSubFilterSelect');
+  if (subSelect) {
+    if (['jpeg', 'raw_pair', 'xmp'].includes(cur)) {
+      subSelect.value = cur;
+      subSelect.classList.add('active');
+    } else {
+      subSelect.value = '';
+      subSelect.classList.remove('active');
+    }
+  }
+}
+const updateAttrFilterUI = syncAttrFilterButtons;
+
+/**
+ * 属性フィルタ（すべて / RAW / 調整済 / JPEG / RAW+JPGペア / XMP）の切替
+ */
+function setAttrFilter(attr) {
+  const nextAttr = attr || 'all';
+  // 同じピル（all以外）を再クリックした場合は 'all' に戻すトグル動作
+  if (state.attrFilter === nextAttr && nextAttr !== 'all') {
+    state.attrFilter = 'all';
+  } else {
+    state.attrFilter = nextAttr;
+  }
+  syncAttrFilterButtons();
+  fetchPhotos();
+}
+window.syncAttrFilterButtons = syncAttrFilterButtons;
+window.updateAttrFilterUI = updateAttrFilterUI;
+window.setAttrFilter = setAttrFilter;
 
 /**
  * 評価フィルタの6パターン遷移ロジック
@@ -1186,6 +1270,9 @@ function resetAllFilters() {
   // 1. フィルタ条件のリセット
   state.ratingFilter = new Set([0, 1, 2]);
   updateRatingFilterUI();
+
+  state.attrFilter = 'all';
+  updateAttrFilterUI();
 
   state.searchQuery = '';
   if (elements.searchInput) elements.searchInput.value = '';
@@ -1345,6 +1432,11 @@ function setFilter(type, value, titleText) {
 function removePhotoFromView(photoId) {
   const photoIdx = state.photos.findIndex(p => p.id === photoId);
   if (photoIdx === -1) return;  // スタック展開中のメンバー等、一覧に無い写真は対象外
+  const wasSingleFocused = (
+    state.currentPhotoIndex < 0 &&
+    ((state.selectedPhotoIds.size === 1 && state.selectedPhotoIds.has(photoId)) ||
+     (state.selectedPhotoIds.size === 0 && state.activeInspectorPhotoId === photoId))
+  );
   state.photos.splice(photoIdx, 1);
 
   // 選択状態のクリーンアップ
@@ -1361,6 +1453,13 @@ function removePhotoFromView(photoId) {
       state.lastSelectedIndex = -1;
     } else if (photoIdx < state.lastSelectedIndex) {
       state.lastSelectedIndex--;
+    }
+  }
+  if (state.selectionAnchorIndex !== undefined && state.selectionAnchorIndex !== -1) {
+    if (state.selectionAnchorIndex === photoIdx) {
+      state.selectionAnchorIndex = -1;
+    } else if (photoIdx < state.selectionAnchorIndex) {
+      state.selectionAnchorIndex--;
     }
   }
 
@@ -1386,6 +1485,21 @@ function removePhotoFromView(photoId) {
       card.remove();
     }
     checkAndAppendGridChunksIfNeeded();
+
+    // 単一フォーカス中の写真が評価変更等で一覧から除外された場合、次の写真へ自動的にフォーカスを引き継ぐ
+    if (wasSingleFocused && state.photos.length > 0) {
+      const nextIdx = Math.min(photoIdx, state.photos.length - 1);
+      const nextPhoto = state.photos[nextIdx];
+      if (nextPhoto) {
+        state.selectedPhotoIds.clear();
+        state.selectedPhotoIds.add(nextPhoto.id);
+        state.lastSelectedIndex = nextIdx;
+        state.selectionAnchorIndex = nextIdx;
+        state.activeInspectorPhotoId = nextPhoto.id;
+        updateCardSelectionClasses();
+        updateSelectionUI();
+      }
+    }
   }
 
   // ヘッダー件数表示の更新
@@ -1466,6 +1580,10 @@ async function updatePhotoRating(photoId, newRating) {
     });
 
     if (!response.ok) throw new Error('評価の更新に失敗しました');
+
+    if (state.currentPhotoIndex < 0 && state.selectedPhotoIds && state.selectedPhotoIds.has(photoId)) {
+      state.activeInspectorPhotoId = photoId;
+    }
   } catch (error) {
     console.error('評価更新エラー:', error);
     showToast('評価の更新に失敗しました', 'error');
@@ -1482,18 +1600,20 @@ async function updatePhotoRating(photoId, newRating) {
 function initSidebarAccordion() {
   const sidebar = document.getElementById('sidebar');
   const items = document.querySelectorAll('.sidebar-accordion .accordion-item');
+  const railBtns = document.querySelectorAll('#sidebarRail .rail-tab-btn');
   const resetBtn = document.getElementById('sidebarResetFilterBtn');
   const toggleAllBtn = document.getElementById('sidebarToggleAllBtn');
   if (!items.length || !sidebar) return;
 
-  // 排他開閉状態の永続化キー（現在開いているセクション名、全閉じ時は null）
+  // 2段階サイドバー用：現在選択中のタブセクション名（常に1つを表示）
   const STORAGE_KEY = 'pm_accordion_active_section';
-  let activeSection = 'quick'; // デフォルトはクイックアクセス
+  const validSections = new Set(['quick', 'folder', 'tags', 'location', 'timeline', 'camera', 'lab', 'search']);
+  let activeSection = 'quick';
 
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved !== null) {
-      activeSection = saved || null;
+    if (saved && validSections.has(saved)) {
+      activeSection = saved;
     }
   } catch (e) {
     activeSection = 'quick';
@@ -1501,29 +1621,48 @@ function initSidebarAccordion() {
 
   function saveState() {
     try {
-      localStorage.setItem(STORAGE_KEY, activeSection || '');
+      localStorage.setItem(STORAGE_KEY, activeSection || 'quick');
     } catch (e) {}
   }
 
+  function syncRailButtons() {
+    const isMenuVisible = state.isSidebarOpen || sidebar.classList.contains('is-overlay-open');
+    railBtns.forEach(btn => {
+      const sec = btn.dataset.section;
+      btn.classList.toggle('active', isMenuVisible && sec === activeSection);
+    });
+  }
+  window.syncSidebarRailActiveState = syncRailButtons;
+
   function applyActiveSection() {
+    if (!activeSection || !validSections.has(activeSection)) {
+      activeSection = 'quick';
+    }
     items.forEach(item => {
       const sec = item.dataset.section;
       const isOpen = (sec === activeSection);
       item.classList.toggle('is-open', isOpen);
     });
+    syncRailButtons();
     saveState();
 
-    if (toggleAllBtn) {
-      toggleAllBtn.title = activeSection ? '開いているメニューを閉じる' : 'クイックアクセスを開く';
-    }
+    const isMenuVisible = state.isSidebarOpen || sidebar.classList.contains('is-overlay-open');
+    if (!isMenuVisible) return;
 
     // 検索セクションが開いた場合は入力欄にフォーカス
     if (activeSection === 'search' && elements.searchInput) {
-      setTimeout(() => elements.searchInput.focus(), 100);
+      setTimeout(() => elements.searchInput.focus(), 80);
     }
-    // クイックアクセス（プリセット統合）が開いた場合はチップ描画
+    // クイックアクセスが開いた場合はチップ描画
     if ((activeSection === 'quick' || activeSection === 'presets') && window.renderPresetCurrentChips) {
       window.renderPresetCurrentChips();
+    }
+    // フォルダセクションが開いた場合は初回ロード確認
+    if (activeSection === 'folder' && typeof window.loadFolderTree === 'function') {
+      const folderList = document.getElementById('folderList');
+      if (!folderList || folderList.children.length === 0 || folderList.querySelector('.empty-hint')) {
+        window.loadFolderTree();
+      }
     }
     // 場所セクションが開いた場合はツリーを最新化
     if (activeSection === 'location' && window.loadLocationTree) {
@@ -1532,20 +1671,31 @@ function initSidebarAccordion() {
   }
 
   function setSectionOpen(sectionName, isOpen) {
-    if (isOpen) {
+    if (isOpen && validSections.has(sectionName)) {
       activeSection = sectionName;
-    } else if (activeSection === sectionName) {
-      activeSection = null;
+      if (!state.isSidebarOpen) {
+        sidebar.classList.add('is-overlay-open');
+      }
+    } else if (!isOpen && !state.isSidebarOpen) {
+      sidebar.classList.remove('is-overlay-open');
     }
     applyActiveSection();
   }
 
   function toggleSection(sectionName) {
-    if (activeSection === sectionName) {
-      // 既に開いているセクションをクリックした場合は閉じる（全折りたたみ可能）
-      activeSection = null;
+    if (!validSections.has(sectionName)) return;
+    if (!state.isSidebarOpen) {
+      // メニューオフ（アイコン列のみ）モード時：
+      // 既にオーバーレイ表示中の同じタブを押したらオーバーレイを閉じ、別タブならオーバーレイ展開して切替
+      const isOverlayOpen = sidebar.classList.contains('is-overlay-open');
+      if (isOverlayOpen && activeSection === sectionName) {
+        sidebar.classList.remove('is-overlay-open');
+      } else {
+        activeSection = sectionName;
+        sidebar.classList.add('is-overlay-open');
+      }
     } else {
-      // 別のセクションをクリックした場合は他を閉じてこれだけ開く（排他制御）
+      // 通常ドック表示モード時：即座にセクション切替
       activeSection = sectionName;
     }
     applyActiveSection();
@@ -1554,12 +1704,32 @@ function initSidebarAccordion() {
   // 初期開閉状態を反映
   applyActiveSection();
 
-  // 各セクションのヘッダークリックで排他開閉
+  // 左端 垂直タブレール (.rail-tab-btn) のクリックでメニューエリアを切替（メニューオフ時はオーバーレイ展開）
+  railBtns.forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const sectionName = btn.dataset.section;
+      if (sectionName) {
+        toggleSection(sectionName);
+      }
+    });
+  });
+
+  // オーバーレイ展開中にサイドバー外側（写真グリッドやヘッダー等）をクリックしたら自動でオーバーレイを閉じる
+  document.addEventListener('mousedown', (e) => {
+    if (!state.isSidebarOpen && sidebar.classList.contains('is-overlay-open')) {
+      if (!sidebar.contains(e.target) && !e.target.closest('.modal-overlay, .context-menu, .floating-popover')) {
+        sidebar.classList.remove('is-overlay-open');
+        syncRailButtons();
+      }
+    }
+  });
+
+  // 各セクションのヘッダークリック互換
   items.forEach(item => {
     const header = item.querySelector('.accordion-header');
     if (!header) return;
     header.addEventListener('click', (e) => {
-      // 内部のアクションボタン・入力欄クリック時は開閉を防止
       if (e.target.closest('button') || e.target.closest('input')) {
         return;
       }
@@ -1569,18 +1739,6 @@ function initSidebarAccordion() {
       }
     });
   });
-
-  // 開いているメニューを閉じるトグルボタン
-  if (toggleAllBtn) {
-    toggleAllBtn.addEventListener('click', () => {
-      if (activeSection) {
-        activeSection = null;
-      } else {
-        activeSection = 'quick';
-      }
-      applyActiveSection();
-    });
-  }
 
   // 外部公開・互換API
   window.openSidebarSection = (sectionName) => {
@@ -1612,12 +1770,51 @@ function setupEventListeners() {
   // アコーディオン式サイドバーの初期化
   initSidebarAccordion();
 
+  // ヘッダー右端「メニュー (⚙)」ドロップダウンの開閉制御
+  const sysMenuBtn = document.getElementById('headerSystemMenuBtn');
+  const sysDropdown = document.getElementById('headerSystemDropdown');
+  const sysWrap = document.getElementById('headerSystemMenuWrap');
+  if (sysMenuBtn && sysDropdown) {
+    sysMenuBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isOpen = sysDropdown.style.display !== 'none';
+      sysDropdown.style.display = isOpen ? 'none' : 'flex';
+      sysMenuBtn.classList.toggle('active', !isOpen);
+    });
+    // メニュー項目（設定・スマホ・ヘルプ・終了）クリック時にドロップダウンを自動で閉じる（テーマ・言語トグルは開いたまま確認可能）
+    ['folderDbMaintenanceBtn', 'openMobileModalBtn', 'openHelpModalBtn', 'openShutdownModalBtn'].forEach(btnId => {
+      const b = document.getElementById(btnId);
+      if (b) {
+        b.addEventListener('click', () => {
+          sysDropdown.style.display = 'none';
+          sysMenuBtn.classList.remove('active');
+        });
+      }
+    });
+    document.addEventListener('mousedown', (e) => {
+      if (sysDropdown.style.display !== 'none' && sysWrap && !sysWrap.contains(e.target)) {
+        sysDropdown.style.display = 'none';
+        sysMenuBtn.classList.remove('active');
+      }
+    });
+  }
+
   // 左サイドバー開閉ボタン
   if (elements.toggleSidebarBtn) {
     elements.toggleSidebarBtn.addEventListener('click', () => toggleSidebar());
   }
   if (elements.sidebarCloseBtn) {
-    elements.sidebarCloseBtn.addEventListener('click', () => toggleSidebar(false));
+    elements.sidebarCloseBtn.addEventListener('click', () => {
+      const sb = document.getElementById('sidebar');
+      if (!state.isSidebarOpen && sb && sb.classList.contains('is-overlay-open')) {
+        sb.classList.remove('is-overlay-open');
+        if (typeof window.syncSidebarRailActiveState === 'function') {
+          window.syncSidebarRailActiveState();
+        }
+      } else {
+        toggleSidebar(false);
+      }
+    });
   }
 
   // インスペクタのタブ切替イベント初期化
@@ -1961,6 +2158,21 @@ function setupEventListeners() {
       fetchPhotos();
     });
   });
+
+  // 属性フィルタピル（すべて / RAW / 調整済）＆ 詳細属性セレクト（jpeg / raw_pair / xmp）
+  document.querySelectorAll('#attrFilterToggles .attr-toggle').forEach(btn => {
+    btn.addEventListener('click', () => {
+      setAttrFilter(btn.dataset.attr || 'all');
+    });
+  });
+
+  const attrSubSelect = elements.attrSubFilterSelect || document.getElementById('attrSubFilterSelect');
+  if (attrSubSelect) {
+    attrSubSelect.addEventListener('change', (e) => {
+      const val = e.target.value;
+      setAttrFilter(val || 'all');
+    });
+  }
 
   if (elements.onlineOnlyNavItem) {
     elements.onlineOnlyNavItem.addEventListener('click', () => setConnectionFilter('online'));
@@ -2314,6 +2526,15 @@ function setupEventListeners() {
       return;
     }
 
+    // 撮影日時一括シフトモーダル表示中
+    const dateShiftModalEl = elements.dateShiftModal || document.getElementById('dateShiftModal');
+    if (dateShiftModalEl && dateShiftModalEl.style.display !== 'none') {
+      if (e.key === 'Escape' && typeof window.closeDateShiftModal === 'function') {
+        window.closeDateShiftModal();
+      }
+      return;
+    }
+
     // タグ完全削除確認モーダル表示中
     if (elements.deleteTagModal && elements.deleteTagModal.style.display !== 'none') {
       if (e.key === 'Escape' && typeof closeDeleteTagModal === 'function') {
@@ -2383,6 +2604,62 @@ function setupEventListeners() {
       }
     }
 
+    // トーン調整のコピー (Ctrl+Shift+C) / ペースト (Ctrl+Shift+V) / 画像クリップボードコピー (Ctrl+C)
+    if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+      if (e.shiftKey && (e.key === 'c' || e.key === 'C')) {
+        e.preventDefault();
+        let targetPhoto = null;
+        if (state.currentPhotoIndex >= 0) {
+          targetPhoto = getCurrentLightboxPhoto();
+        } else if (state.selectedPhotoIds.size > 0) {
+          const firstId = Array.from(state.selectedPhotoIds)[0];
+          targetPhoto = state.photos.find(p => p.id === firstId);
+        } else if (state.activeInspectorPhotoId) {
+          targetPhoto = state.photos.find(p => p.id === state.activeInspectorPhotoId);
+        }
+        if (targetPhoto && typeof window.copyPhotoToneAdjustments === 'function') {
+          window.copyPhotoToneAdjustments(targetPhoto);
+        }
+        return;
+      }
+      if (e.shiftKey && (e.key === 'v' || e.key === 'V')) {
+        e.preventDefault();
+        let targetIds = [];
+        if (state.currentPhotoIndex >= 0) {
+          const cur = getCurrentLightboxPhoto();
+          if (cur) targetIds = [cur.id];
+        } else if (state.selectedPhotoIds.size > 0) {
+          targetIds = Array.from(state.selectedPhotoIds);
+        } else if (state.activeInspectorPhotoId) {
+          targetIds = [state.activeInspectorPhotoId];
+        }
+        if (targetIds.length > 0 && typeof window.batchPastePhotoToneAdjustments === 'function') {
+          window.batchPastePhotoToneAdjustments(targetIds);
+        }
+        return;
+      }
+      if (!e.shiftKey && (e.key === 'c' || e.key === 'C')) {
+        // テキスト選択中であればブラウザ標準のテキストコピーを優先
+        const selText = window.getSelection ? window.getSelection().toString().trim() : '';
+        if (!selText) {
+          let targetPhoto = null;
+          if (state.currentPhotoIndex >= 0) {
+            targetPhoto = getCurrentLightboxPhoto();
+          } else if (state.selectedPhotoIds.size > 0) {
+            const firstId = Array.from(state.selectedPhotoIds)[0];
+            targetPhoto = state.photos.find(p => p.id === firstId);
+          } else if (state.activeInspectorPhotoId) {
+            targetPhoto = state.photos.find(p => p.id === state.activeInspectorPhotoId);
+          }
+          if (targetPhoto && typeof window.copyPhotoImageToClipboard === 'function') {
+            e.preventDefault();
+            window.copyPhotoImageToClipboard(targetPhoto);
+            return;
+          }
+        }
+      }
+    }
+
     // ライトボックス表示中のショートカット
     if (state.currentPhotoIndex >= 0) {
       if (e.key === 'Escape') {
@@ -2430,21 +2707,21 @@ function setupEventListeners() {
           const newRating = current.rating === -1 ? 0 : -1;
           updatePhotoRating(current.id, newRating);
         }
-      } else if (e.key === 'r' || e.key === 'R') {
+      } else if ((e.key === 'r' || e.key === 'R') && !e.ctrlKey && !e.metaKey && !e.altKey) {
         // Rキーで時計回りに90度回転
         e.preventDefault();
         const current = getCurrentLightboxPhoto();
         if (current && typeof window.rotatePhotoQuick === 'function') {
           window.rotatePhotoQuick(current.id, 90);
         }
-      } else if (e.key === 'l' || e.key === 'L') {
+      } else if ((e.key === 'l' || e.key === 'L') && !e.ctrlKey && !e.metaKey && !e.altKey) {
         // Lキーで反時計回りに90度回転
         e.preventDefault();
         const current = getCurrentLightboxPhoto();
         if (current && typeof window.rotatePhotoQuick === 'function') {
           window.rotatePhotoQuick(current.id, -90);
         }
-      } else if (e.key === 'c' || e.key === 'C') {
+      } else if ((e.key === 'c' || e.key === 'C') && !e.ctrlKey && !e.metaKey && !e.altKey) {
         // Cキーでクロップ・画像調整モーダルを開く
         e.preventDefault();
         const current = getCurrentLightboxPhoto();
@@ -2456,7 +2733,10 @@ function setupEventListeners() {
         closeLightbox();
       }
     } else {
-      if (e.key === ' ' || e.key === 'Enter') {
+      if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        navigateGridByArrow(e.key, e.shiftKey);
+      } else if (e.key === ' ' || e.key === 'Enter') {
         // 選択中の写真（または最初の写真）をライトボックスで開く
         if (state.photos.length > 0) {
           e.preventDefault();
@@ -2472,10 +2752,10 @@ function setupEventListeners() {
           }
           openLightbox(targetIdx);
         }
-      } else if (e.key === 'i' || e.key === 'I') {
+      } else if ((e.key === 'i' || e.key === 'I') && !e.ctrlKey && !e.metaKey && !e.altKey) {
         // i キーで情報表示ON/OFFトグル
         toggleMinimalView();
-      } else if (e.key === 'r' || e.key === 'R') {
+      } else if ((e.key === 'r' || e.key === 'R') && !e.ctrlKey && !e.metaKey && !e.altKey) {
         // Rキーで選択写真を時計回りに90度回転
         e.preventDefault();
         const ids = Array.from(state.selectedPhotoIds);
@@ -2484,7 +2764,7 @@ function setupEventListeners() {
         } else if (state.activeInspectorPhotoId && typeof window.rotatePhotoQuick === 'function') {
           window.rotatePhotoQuick(state.activeInspectorPhotoId, 90);
         }
-      } else if (e.key === 'l' || e.key === 'L') {
+      } else if ((e.key === 'l' || e.key === 'L') && !e.ctrlKey && !e.metaKey && !e.altKey) {
         // Lキーで選択写真を反時計回りに90度回転
         e.preventDefault();
         const ids = Array.from(state.selectedPhotoIds);
@@ -2493,7 +2773,7 @@ function setupEventListeners() {
         } else if (state.activeInspectorPhotoId && typeof window.rotatePhotoQuick === 'function') {
           window.rotatePhotoQuick(state.activeInspectorPhotoId, -90);
         }
-      } else if (e.key === 'c' || e.key === 'C') {
+      } else if ((e.key === 'c' || e.key === 'C') && !e.ctrlKey && !e.metaKey && !e.altKey) {
         // Cキーで選択写真（またはアクティブ写真）のクロップ・画像調整モーダルを開く
         e.preventDefault();
         let targetPhoto = null;
@@ -2554,6 +2834,165 @@ let _zoomBadgeTimer = null;
  * ズーム倍率バッジの表示
 
  */
+/**
+ * 一覧グリッド表示中の矢印キー移動（← → ↑ ↓ ＆ Shift範囲選択）
+ * 通常グリッド・びっしり（Justified）・スライドマウントのすべてで実座標から上下行を判定する。
+ */
+function navigateGridByArrow(key, isShift = false) {
+  const total = state.photos.length;
+  if (total === 0 || !elements.photoGrid) return;
+
+  // 現在の基準インデックスを特定
+  let curIdx = state.lastSelectedIndex;
+  if (curIdx < 0 || curIdx >= total) {
+    if (state.activeInspectorPhotoId) {
+      curIdx = state.photos.findIndex(p => p.id === state.activeInspectorPhotoId);
+    }
+  }
+  if (curIdx < 0 || curIdx >= total) {
+    if (state.selectedPhotoIds.size > 0) {
+      const firstId = Array.from(state.selectedPhotoIds)[0];
+      curIdx = state.photos.findIndex(p => p.id === firstId);
+    }
+  }
+
+  let targetIdx = 0;
+
+  if (curIdx < 0) {
+    // 未選択時は先頭カードを選択
+    targetIdx = 0;
+  } else if (key === 'ArrowRight') {
+    targetIdx = Math.min(total - 1, curIdx + 1);
+  } else if (key === 'ArrowLeft') {
+    targetIdx = Math.max(0, curIdx - 1);
+  } else if (key === 'ArrowDown' || key === 'ArrowUp') {
+    // 下方向移動時は十分なチャンクがDOM上に描画されていることを保証
+    if (key === 'ArrowDown') {
+      ensureCardsRenderedUpTo(Math.min(total, curIdx + 40));
+    } else {
+      ensureCardsRenderedUpTo(curIdx + 1);
+    }
+
+    const curCard = elements.photoGrid.querySelector(`.photo-card[data-index="${curIdx}"]`);
+    const curRect = curCard ? curCard.getBoundingClientRect() : null;
+
+    if (curRect && (curRect.width > 0 || curRect.height > 0)) {
+      const curCenterX = curRect.left + curRect.width / 2;
+      const curCenterY = curRect.top + curRect.height / 2;
+      const rowThreshold = Math.max(18, curRect.height * 0.45);
+
+      let targetRowCenterY = null;
+      let targetRowHeight = curRect.height;
+      let bestIdx = curIdx;
+      let bestDistX = Infinity;
+
+      if (key === 'ArrowDown') {
+        for (let i = curIdx + 1; i < renderedGridCount; i++) {
+          const c = elements.photoGrid.querySelector(`.photo-card[data-index="${i}"]`);
+          if (!c) continue;
+          const r = c.getBoundingClientRect();
+          const cy = r.top + r.height / 2;
+          const cx = r.left + r.width / 2;
+
+          if (targetRowCenterY === null) {
+            if (cy - curCenterY > rowThreshold) {
+              targetRowCenterY = cy;
+              targetRowHeight = r.height || curRect.height;
+              bestIdx = i;
+              bestDistX = Math.abs(cx - curCenterX);
+            }
+          } else {
+            if (Math.abs(cy - targetRowCenterY) <= Math.max(18, targetRowHeight * 0.45)) {
+              const distX = Math.abs(cx - curCenterX);
+              if (distX < bestDistX) {
+                bestDistX = distX;
+                bestIdx = i;
+              }
+            } else if (cy - targetRowCenterY > Math.max(18, targetRowHeight * 0.45)) {
+              // さらに次の行に入ったので探索終了
+              break;
+            }
+          }
+        }
+      } else {
+        for (let i = curIdx - 1; i >= 0; i--) {
+          const c = elements.photoGrid.querySelector(`.photo-card[data-index="${i}"]`);
+          if (!c) continue;
+          const r = c.getBoundingClientRect();
+          const cy = r.top + r.height / 2;
+          const cx = r.left + r.width / 2;
+
+          if (targetRowCenterY === null) {
+            if (curCenterY - cy > rowThreshold) {
+              targetRowCenterY = cy;
+              targetRowHeight = r.height || curRect.height;
+              bestIdx = i;
+              bestDistX = Math.abs(cx - curCenterX);
+            }
+          } else {
+            if (Math.abs(cy - targetRowCenterY) <= Math.max(18, targetRowHeight * 0.45)) {
+              const distX = Math.abs(cx - curCenterX);
+              if (distX < bestDistX) {
+                bestDistX = distX;
+                bestIdx = i;
+              }
+            } else if (targetRowCenterY - cy > Math.max(18, targetRowHeight * 0.45)) {
+              // さらに上の行に入ったので探索終了
+              break;
+            }
+          }
+        }
+      }
+      targetIdx = bestIdx;
+    } else {
+      // レイアウト座標が取得できない環境（テスト等）のフォールバック（4列換算）
+      targetIdx = key === 'ArrowDown'
+        ? Math.min(total - 1, curIdx + 4)
+        : Math.max(0, curIdx - 4);
+    }
+  }
+
+  ensureCardsRenderedUpTo(targetIdx + 1);
+  const targetPhoto = state.photos[targetIdx];
+  if (!targetPhoto) return;
+
+  if (isShift) {
+    if (state.selectionAnchorIndex === undefined || state.selectionAnchorIndex < 0 || state.selectionAnchorIndex >= total) {
+      state.selectionAnchorIndex = curIdx >= 0 ? curIdx : targetIdx;
+    }
+    const start = Math.min(state.selectionAnchorIndex, targetIdx);
+    const end = Math.max(state.selectionAnchorIndex, targetIdx);
+    state.selectedPhotoIds.clear();
+    for (let i = start; i <= end; i++) {
+      if (state.photos[i]) {
+        state.selectedPhotoIds.add(state.photos[i].id);
+      }
+    }
+    state.lastSelectedIndex = targetIdx;
+    state.activeInspectorPhotoId = targetPhoto.id;
+    clearShiftPreview();
+    updateCardSelectionClasses();
+    updateSelectionUI();
+  } else {
+    state.selectedPhotoIds.clear();
+    state.selectedPhotoIds.add(targetPhoto.id);
+    state.lastSelectedIndex = targetIdx;
+    state.selectionAnchorIndex = targetIdx;
+    state.selectionBaseIds = null;
+    clearShiftPreview();
+    state.activeInspectorPhotoId = targetPhoto.id;
+    updateCardSelectionClasses();
+    updateSelectionUI();
+  }
+
+  const targetCard = elements.photoGrid.querySelector(`.photo-card[data-index="${targetIdx}"]`);
+  if (targetCard && typeof targetCard.scrollIntoView === 'function') {
+    targetCard.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+  checkAndAppendGridChunksIfNeeded();
+}
+window.navigateGridByArrow = navigateGridByArrow;
+
 function setupPhotoGridDelegation() {
   if (!elements.photoGrid) return;
 
@@ -2573,6 +3012,8 @@ function setupPhotoGridDelegation() {
       e.stopPropagation();
       state.selectedPhotoIds.clear();
       state.selectedPhotoIds.add(photo.id);
+      state.lastSelectedIndex = index;
+      state.selectionAnchorIndex = index;
       state.activeInspectorPhotoId = photo.id;
       updateCardSelectionClasses();
       updateSelectionUI();
@@ -2614,19 +3055,26 @@ function setupPhotoGridDelegation() {
       // 複数選択モード中のクリックはトグル
       togglePhotoSelection(photo.id, index);
     } else {
-      // 単一選択
+      // ダブルクリックの2回目クリック(e.detail >= 2)で既に同一写真が単一選択済みの場合は、
+      // 直後の dblclick → openLightbox を妨げないようインスペクタ再構築をスキップ
+      if (
+        e.detail >= 2 &&
+        state.selectedPhotoIds.size === 1 &&
+        state.selectedPhotoIds.has(photo.id) &&
+        state.activeInspectorPhotoId === photo.id
+      ) {
+        return;
+      }
+      // 単一選択（updateSelectionUI 内で updateInspectorView も1回呼ばれる）
       state.selectedPhotoIds.clear();
       state.selectedPhotoIds.add(photo.id);
       state.lastSelectedIndex = index;
+      state.selectionAnchorIndex = index;
       state.selectionBaseIds = null;
       clearShiftPreview();
       state.activeInspectorPhotoId = photo.id;
       updateCardSelectionClasses();
       updateSelectionUI();
-
-      if (state.isInspectorOpen) {
-        updateInspectorView();
-      }
     }
   });
 
@@ -2661,12 +3109,19 @@ function setupPhotoGridDelegation() {
     if (!photo) return;
 
     e.stopPropagation();
-    state.selectedPhotoIds.clear();
-    state.selectedPhotoIds.add(photo.id);
-    state.lastSelectedIndex = index;
-    state.activeInspectorPhotoId = photo.id;
-    updateCardSelectionClasses();
-    updateSelectionUI();
+    const alreadySingleSelected = (
+      state.selectedPhotoIds.size === 1 &&
+      state.selectedPhotoIds.has(photo.id) &&
+      state.activeInspectorPhotoId === photo.id
+    );
+    if (!alreadySingleSelected) {
+      state.selectedPhotoIds.clear();
+      state.selectedPhotoIds.add(photo.id);
+      state.lastSelectedIndex = index;
+      state.activeInspectorPhotoId = photo.id;
+      updateCardSelectionClasses();
+      updateSelectionUI();
+    }
 
     openLightbox(index);
   });
@@ -2775,18 +3230,22 @@ async function uploadPhotos(fileList) {
     if (!response.ok) throw new Error(data.detail || '取り込み失敗');
 
     console.log(`[UPLOAD] ${data.uploaded_count}枚の写真を取り込みました`);
-    showToast(`📥 ${data.uploaded_count}枚の写真を取り込みました`, 'success', 3500);
+    showToast(`📥 ${data.uploaded_count}枚の写真を storage に取り込みました`, 'success', 3500);
+    if (typeof window.refreshStorageFolders === 'function') {
+      await window.refreshStorageFolders();
+    }
     await refreshAll();
   } catch (err) {
     showToast(`取り込みエラー: ${err.message}`, 'error');
   } finally {
     elements.uploadFilesBtn.disabled = false;
-    elements.uploadFilesBtn.innerHTML = `
-      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-      <span class="btn-label">取り込み</span>
-    `;
+    const isEn = (window.pmI18n && typeof window.pmI18n.getLang === 'function' && window.pmI18n.getLang() === 'en');
+    elements.uploadFilesBtn.textContent = isEn ? '📥 Import' : '📥 取り込み';
   }
 }
+const handleFileUpload = uploadPhotos;
+window.uploadPhotos = uploadPhotos;
+window.handleFileUpload = handleFileUpload;
 
 let _diffChecking = false;
 

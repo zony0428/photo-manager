@@ -386,6 +386,10 @@ async function importPhotosToStorage(photoIds, destination, displayName = '') {
       showToast(`📥 ${importedCount}枚の写真を「${destLabel}」へインポートしました${skipMsg}`, 'success', 4000);
     }
 
+    if (typeof clearSelection === 'function' && state.selectedPhotoIds && state.selectedPhotoIds.size > 0) {
+      clearSelection();
+    }
+
     // フォルダ一覧・左ツリー・写真一覧・集計を最新化
     await fetchStorageFolders();
     if (typeof refreshFolderTree === 'function') {
@@ -452,6 +456,10 @@ async function movePhotosInStorage(photoIds, destination, displayName = '') {
 
     if (typeof showToast === 'function') {
       showToast(`📦 ${movedCount}枚の写真を「${destLabel}」へ移動しました${skipMsg}`, 'success', 3500);
+    }
+
+    if (typeof clearSelection === 'function' && state.selectedPhotoIds && state.selectedPhotoIds.size > 0) {
+      clearSelection();
     }
 
     await fetchStorageFolders();
@@ -1091,6 +1099,11 @@ async function submitSinglePhotoRename(photoId, newFullName) {
     if (typeof showToast === 'function') {
       showToast(`✏️ ファイル名を「${data.new_name || trimmed}」に変更しました`, 'success', 3500);
     }
+
+    if (state.currentPhotoIndex < 0 && state.selectedPhotoIds && state.selectedPhotoIds.size > 0 && typeof clearSelection === 'function') {
+      state.activeInspectorPhotoId = photoId;
+      clearSelection();
+    }
   } catch (err) {
     console.error('単一写真リネームエラー:', err);
     if (typeof showToast === 'function') {
@@ -1130,6 +1143,10 @@ async function submitBatchPhotoRename(photoIds, namingRule, customPrefix, startN
 
     if (typeof showToast === 'function') {
       showToast(`✏️ ${renamedCount}枚の写真を一括リネームしました${skipMsg}`, 'success', 4000);
+    }
+
+    if (typeof clearSelection === 'function' && state.selectedPhotoIds && state.selectedPhotoIds.size > 0) {
+      clearSelection();
     }
 
     if (typeof fetchPhotos === 'function') {

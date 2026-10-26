@@ -62,6 +62,9 @@ from .database import (
     get_all_volumes,
     update_photo_gps,
     update_photo_adjustments,
+    batch_update_photo_tone,
+    batch_shift_photo_dates,
+    add_scan_root,
     rotate_photo,
     reset_photo_adjustments,
     batch_reset_photo_adjustments,
@@ -372,6 +375,19 @@ class BatchResetAdjustRequest(BaseModel):
     photo_ids: List[int]
 
 
+class BatchToneAdjustRequest(BaseModel):
+    photo_ids: List[int]
+    brightness: int = 0
+    contrast: int = 0
+    saturation: int = 0
+
+
+class BatchDateShiftRequest(BaseModel):
+    photo_ids: List[int]
+    offset_seconds: int = 0
+    reset: bool = False
+
+
 class AdjustRequest(BaseModel):
     rotation: int = 0
     fine_angle: float = 0.0
@@ -415,6 +431,11 @@ class OpenImportFolderRequest(BaseModel):
     destination: Optional[str] = None
 
 
+class WindowSettingsRequest(BaseModel):
+    startup_mode: str
+    apply_now: bool = True
+
+
 @app.post("/api/heartbeat")
 def api_heartbeat():
     """ブラウザからの生存確認を受け取り、スマホからのWi-Fi同期イベント連番を返す"""
@@ -426,13 +447,38 @@ def api_heartbeat():
     }
 
 
+@app.get("/api/window/settings")
+def api_get_window_settings():
+    """起動時ウィンドウモードの設定値を取得する"""
+    from .window_utils import get_startup_window_mode
+
+    return {"status": "ok", "startup_mode": get_startup_window_mode()}
+
+
+@app.post("/api/window/settings")
+def api_set_window_settings(req: WindowSettingsRequest):
+    """起動時ウィンドウモードを保存し、必要に応じて現在のウィンドウへ即座に適用する"""
+    from .window_utils import apply_window_mode, set_startup_window_mode
+
+    saved_mode = set_startup_window_mode(req.startup_mode)
+    applied_count = 0
+    if req.apply_now:
+        applied_count = apply_window_mode(mode=saved_mode, port=8088)
+    return {
+        "status": "ok",
+        "startup_mode": saved_mode,
+        "applied_count": applied_count,
+    }
+
+
 @app.post("/api/window/maximize")
 def api_window_maximize():
-    """フロントエンド起動完了時にブラウザウィンドウをWindows標準の最大化状態（タスクバー表示あり）にする"""
-    from .window_utils import maximize_photo_manager_window
+    """フロントエンド起動完了時に設定されたウィンドウモード（既定は最大化）を適用する"""
+    from .window_utils import get_startup_window_mode, maximize_photo_manager_window
 
+    mode = get_startup_window_mode()
     count = maximize_photo_manager_window(port=8088)
-    return {"status": "ok", "maximized_count": count}
+    return {"status": "ok", "startup_mode": mode, "maximized_count": count}
 
 
 @app.post("/api/shutdown")
@@ -502,8 +548,9 @@ def api_get_photos(
     on_this_day: Optional[str] = None,
     focal_range: Optional[str] = None,
     aperture_range: Optional[str] = None,
+    attr_filter: Optional[str] = None,
 ):
-    """写真一覧を取得する（タグの含む/除外排他検索、年月OR条件、カメラ・レンズ含む/除外条件、場所階層絞り込み、ラボ分析フィルタ、ブラケットスタック表示、重複抽出対応）"""
+    """写真一覧を取得する（タグの含む/除外排他検索、年月OR条件、カメラ・レンズ含む/除外条件、場所階層絞り込み、ラボ分析フィルタ、ブラケットスタック表示、重複抽出、属性フィルタ対応）"""
     if missing_only:
         photos = get_missing_photos()
         for p in photos:
@@ -547,6 +594,7 @@ def api_get_photos(
         on_this_day=on_this_day,
         focal_range=focal_range,
         aperture_range=aperture_range,
+        attr_filter=attr_filter,
     )
 
     # ポータブル運用・オフライン状態判定および実体消失判定
@@ -1102,6 +1150,56 @@ def api_batch_reset_photo_adjust(req: BatchResetAdjustRequest):
     return {"status": "ok", "affected": affected}
 
 
+@app.post("/api/photos/batch-adjust-tone")
+def api_batch_adjust_photo_tone(req: BatchToneAdjustRequest):
+    """複数写真のトーン微調整（明るさ・コントラスト・彩度）のみを一括更新し、既存の回転・傾き・クロップを維持したままサムネイルを再生成する"""
+    if not req.photo_ids:
+        raise HTTPException(status_code=400, detail="対象写真が指定されていません")
+    unique_ids = list(dict.fromkeys(req.photo_ids))
+    affected = batch_update_photo_tone(
+        unique_ids,
+        brightness=req.brightness,
+        contrast=req.contrast,
+        saturation=req.saturation,
+    )
+
+    def _refresh_one(pid: int) -> None:
+        try:
+            refresh_photo_thumbnail_transform(pid)
+        except Exception as e:
+            logger.warning(f"トーン一括ペースト後のサムネイル更新失敗 ({pid}): {e}")
+
+    if len(unique_ids) == 1:
+        _refresh_one(unique_ids[0])
+    elif len(unique_ids) > 1:
+        max_workers = min(4, os.cpu_count() or 2)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            list(executor.map(_refresh_one, unique_ids))
+
+    return {
+        "status": "ok",
+        "affected": affected,
+        "brightness": req.brightness,
+        "contrast": req.contrast,
+        "saturation": req.saturation,
+    }
+
+
+@app.post("/api/photos/batch-shift-date")
+def api_batch_shift_photo_dates(req: BatchDateShiftRequest):
+    """複数写真の撮影日時（date_taken）を指定秒数だけ一括シフト、または初期撮影日時（original_date_taken）へ非破壊リセットする"""
+    res = batch_shift_photo_dates(
+        photo_ids=req.photo_ids,
+        offset_seconds=req.offset_seconds,
+        reset=req.reset,
+    )
+    return {
+        "status": "ok",
+        "updated_count": res["updated_count"],
+        "photos": res["photos"],
+    }
+
+
 @app.get("/api/photo/{photo_id}/thumbnail")
 def api_get_thumbnail(photo_id: int, request: Request):
     """写真の軽量WebPサムネイルを高速配信する（DBキャッシュ直引き ＋ オンデマンド生成フォールバック）"""
@@ -1181,7 +1279,7 @@ def api_get_photo_view(photo_id: int, request: Request, raw: int = Query(default
     import io as _io
     from PIL import Image as _Image, ImageOps as _ImageOps
 
-    photo = get_photo_by_id(photo_id)
+    photo = get_photo_brief(photo_id)
     if not photo:
         raise HTTPException(status_code=404, detail="写真が見つかりません")
 
@@ -2327,13 +2425,21 @@ class PhotoUploadItem(BaseModel):
 class PhotoUploadRequest(BaseModel):
     files: List[PhotoUploadItem]
     destination: Optional[str] = None
+    target_folder: Optional[str] = None
 
 
 @app.post("/api/upload")
 def api_upload_photos(req: PhotoUploadRequest):
     """ブラウザからのドラッグ＆ドロップまたはファイル選択で直接 storage へ写真・付随サイドカーを追加する (Base64方式)"""
+    STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+    add_scan_root(str(STORAGE_DIR))
+
+    dest_spec = req.destination or req.target_folder
     try:
-        target_dir = resolve_storage_target_dir(req.destination, must_exist=False)
+        if not dest_spec or not str(dest_spec).strip():
+            target_dir = STORAGE_DIR
+        else:
+            target_dir = resolve_storage_target_dir(dest_spec, must_exist=False)
         target_dir.mkdir(parents=True, exist_ok=True)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -2408,6 +2514,7 @@ def api_upload_photos(req: PhotoUploadRequest):
         "files": saved_photos,
         "sidecar_files": saved_sidecars,
         "destination": str(target_dir),
+        "folder": str(target_dir),
         "errors": errors,
     }
 

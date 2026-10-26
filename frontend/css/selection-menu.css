@@ -58,13 +58,14 @@ body.selection-active .card-select-checkbox {
 /* ==========================================================================
    右クリック コンテキストメニュー（日の丸UI・高コントラスト対応 v1.87）
    ========================================================================== */
-.context-menu {
+.context-menu,
+.selection-context-menu {
   position: fixed;
   background: rgba(251, 249, 244, 0.98);
   backdrop-filter: blur(20px);
-  border: 1.5px solid var(--accent-primary, #e14d2a);
-  border-radius: var(--radius-md, 2px);
-  box-shadow: 0 10px 30px rgba(42, 41, 38, 0.18), 0 0 12px rgba(225, 77, 42, 0.12);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md, 4px);
+  box-shadow: 0 10px 30px rgba(42, 41, 38, 0.16);
   width: 210px;
   z-index: 10000;
   padding: 6px 0;
@@ -131,9 +132,9 @@ body.selection-active .card-select-checkbox {
   max-height: 360px;
   background: rgba(251, 249, 244, 0.98);
   backdrop-filter: blur(20px);
-  border: 1.5px solid var(--accent-primary, #e14d2a);
-  border-radius: var(--radius-md, 2px);
-  box-shadow: 0 10px 30px rgba(42, 41, 38, 0.18), 0 0 12px rgba(225, 77, 42, 0.12);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md, 4px);
+  box-shadow: 0 10px 30px rgba(42, 41, 38, 0.16);
   padding: 8px;
   display: none;
   flex-direction: column;
@@ -419,10 +420,11 @@ body.selection-active .card-select-checkbox {
 
 /* 夜墨モード（Sumi）コンテキストメニュー */
 [data-theme="sumi"] .context-menu,
+[data-theme="sumi"] .selection-context-menu,
 [data-theme="sumi"] .context-submenu {
   background: rgba(24, 28, 36, 0.98);
-  border: 1.5px solid var(--accent-primary, #e14d2a);
-  box-shadow: 0 10px 36px rgba(0, 0, 0, 0.8), 0 0 16px rgba(225, 77, 42, 0.2);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 10px 36px rgba(0, 0, 0, 0.75);
   color: #f8fafc;
 }
 
@@ -544,17 +546,18 @@ body.selection-active .card-select-checkbox {
 /* ==========================================================================
    下部フローティング選択バー（日の丸UI・高コントラスト対応 v1.87）
    ========================================================================== */
-.selection-floating-bar {
+.selection-floating-bar,
+.batch-action-bar {
   position: fixed;
   bottom: 24px;
   left: 50%;
   transform: translateX(-50%);
   background: rgba(251, 249, 244, 0.98);
   backdrop-filter: blur(20px);
-  border: 1.5px solid var(--accent-primary, #e14d2a);
-  border-radius: 30px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
   padding: 8px 18px;
-  box-shadow: 0 12px 36px rgba(42, 41, 38, 0.22), 0 0 16px rgba(225, 77, 42, 0.2);
+  box-shadow: 0 12px 36px rgba(42, 41, 38, 0.18);
   display: flex;
   align-items: center;
   gap: 14px;
@@ -651,10 +654,11 @@ body.selection-active .card-select-checkbox {
 }
 
 /* 夜墨モード（Sumi）フローティング選択バー */
-[data-theme="sumi"] .selection-floating-bar {
+[data-theme="sumi"] .selection-floating-bar,
+[data-theme="sumi"] .batch-action-bar {
   background: rgba(24, 28, 36, 0.98);
-  border: 1.5px solid var(--accent-primary, #e14d2a);
-  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.85), 0 0 20px rgba(225, 77, 42, 0.3);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.8);
 }
 
 [data-theme="sumi"] .selection-bar-info {
@@ -707,9 +711,9 @@ body.selection-active .card-select-checkbox {
   max-height: 400px;
   background: rgba(251, 249, 244, 0.98);
   backdrop-filter: blur(20px);
-  border: 1.5px solid var(--accent-primary, #e14d2a);
-  border-radius: var(--radius-md, 8px);
-  box-shadow: 0 14px 40px rgba(42, 41, 38, 0.22), 0 0 18px rgba(225, 77, 42, 0.15);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md, 6px);
+  box-shadow: 0 14px 40px rgba(42, 41, 38, 0.18);
   padding: 10px 12px;
   z-index: 4200;
   display: flex;
@@ -736,12 +740,12 @@ body.selection-active .card-select-checkbox {
 .floating-popover::before {
   content: '';
   position: absolute;
-  bottom: -9px;
+  bottom: -8px;
   left: 50%;
   transform: translateX(-50%);
-  border-width: 9px 9px 0 9px;
+  border-width: 8px 8px 0 8px;
   border-style: solid;
-  border-color: var(--accent-primary, #e14d2a) transparent transparent transparent;
+  border-color: var(--border-color) transparent transparent transparent;
   pointer-events: none;
 }
 
@@ -899,9 +903,14 @@ body.selection-active .card-select-checkbox {
   border-radius: 4px;
 }
 
-/* 評価設定ポップオーバー (v1.86-v1.87) */
-.floating-rate-popover {
-  width: 220px;
+/* 評価設定・その他ポップオーバー (v1.86-v2.43) */
+.floating-rate-popover,
+.floating-more-popover {
+  width: 230px;
+}
+
+.floating-popover .btn .btn-label {
+  display: inline !important;
 }
 
 .popover-rate-list {
@@ -968,8 +977,8 @@ body.selection-active .card-select-checkbox {
 /* 夜墨モード（Sumi）ポップオーバー */
 [data-theme="sumi"] .floating-popover {
   background: rgba(24, 28, 36, 0.98);
-  border: 1.5px solid var(--accent-primary, #e14d2a);
-  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.85), 0 0 20px rgba(225, 77, 42, 0.25);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.8);
   color: #f8fafc;
 }
 
@@ -978,7 +987,7 @@ body.selection-active .card-select-checkbox {
 }
 
 [data-theme="sumi"] .floating-popover::before {
-  border-color: var(--accent-primary, #e14d2a) transparent transparent transparent;
+  border-color: var(--border-color) transparent transparent transparent;
 }
 
 [data-theme="sumi"] .floating-popover-header {
@@ -1073,12 +1082,14 @@ body.selection-active .card-select-checkbox {
   #floatingAddTagBtn .btn-label,
   #floatingRateBtn .btn-label,
   #floatingImportBtn .btn-label,
+  #floatingMoreBtn .btn-label,
   #floatingRefreshThumbBtn .btn-label {
     display: none;
   }
   #floatingAddTagBtn,
   #floatingRateBtn,
   #floatingImportBtn,
+  #floatingMoreBtn,
   #floatingRefreshThumbBtn {
     padding: 6px 10px;
     gap: 0;
@@ -1102,12 +1113,14 @@ body.selection-active .card-select-checkbox {
 .floating-compact-1 #floatingAddTagBtn .btn-label,
 .floating-compact-1 #floatingRateBtn .btn-label,
 .floating-compact-1 #floatingImportBtn .btn-label,
+.floating-compact-1 #floatingMoreBtn .btn-label,
 .floating-compact-1 #floatingRefreshThumbBtn .btn-label {
   display: none !important;
 }
 .floating-compact-1 #floatingAddTagBtn,
 .floating-compact-1 #floatingRateBtn,
 .floating-compact-1 #floatingImportBtn,
+.floating-compact-1 #floatingMoreBtn,
 .floating-compact-1 #floatingRefreshThumbBtn {
   padding: 6px 10px !important;
   gap: 0 !important;
@@ -1213,4 +1226,14 @@ body.selection-active .card-select-checkbox {
   font-size: 0.75rem !important;
   max-width: 54px !important;
 }
+
+/* ==========================================================================
+   右インスペクタ表示時の下部フローティングバー重複ボタン自動退避
+   右ペインで「一括評価」「一括タグ」が見えている間は、下部バーを
+   クイックアクションバー（テイクアウト・回転・比較・選択解除・削除）に専念させる
+   ========================================================================== */
+body:not(.inspector-collapsed) .selection-floating-bar .floating-dup-when-inspector-open {
+  display: none !important;
+}
+
 

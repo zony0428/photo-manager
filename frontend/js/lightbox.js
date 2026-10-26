@@ -3,6 +3,9 @@
  * 全画面写真プレビュー、EXIFドロワー、スタック切替、ズーム・パン、フィルムストリップを管理する。
  */
 
+let _lightboxOpenRafId = null;
+let _lightboxViewPreloadImg = null;
+
 function openLightbox(index) {
   if (index < 0 || index >= state.photos.length) return;
 
@@ -13,8 +16,24 @@ function openLightbox(index) {
   elements.lightboxModal.style.display = 'flex';
   document.body.style.overflow = 'hidden';
 
-  renderFilmstrip(true);
-  loadLightboxPhoto(true);
+  // 1. メイン画像・EXIF・スタックバーを最優先で即時反映（0msでモーダル描画開始）
+  loadLightboxPhoto(true, true);
+
+  // 2. フィルムストリップが構築済みなら即時スクロール、未構築（1万枚超の初回等）なら次フレームで非同期構築
+  const currentKey = `${state.photos.length}-${state.photos[0]?.id || 0}`;
+  if (filmstripRenderedPhotosKey === currentKey && elements.filmstrip && elements.filmstrip.children.length === state.photos.length) {
+    updateFilmstripActive(true);
+  } else {
+    if (_lightboxOpenRafId) {
+      cancelAnimationFrame(_lightboxOpenRafId);
+    }
+    _lightboxOpenRafId = requestAnimationFrame(() => {
+      _lightboxOpenRafId = null;
+      if (state.currentPhotoIndex >= 0 && elements.lightboxModal.style.display !== 'none') {
+        renderFilmstrip(true);
+      }
+    });
+  }
 }
 
 /**
@@ -31,8 +50,9 @@ function getCurrentLightboxPhoto() {
 /**
  * ライトボックスの写真をロード
  * @param {boolean} [instantFilmstrip=false] trueの場合はフィルムストリップをアニメーションなしで即座に中央配置
+ * @param {boolean} [skipFilmstrip=false] trueの場合はフィルムストリップ更新を呼び出し側に委ねる
  */
-function loadLightboxPhoto(instantFilmstrip = false) {
+function loadLightboxPhoto(instantFilmstrip = false, skipFilmstrip = false) {
   const photo = state.photos[state.currentPhotoIndex];
   if (!photo) return;
 
@@ -40,7 +60,9 @@ function loadLightboxPhoto(instantFilmstrip = false) {
   updateLightboxContent(photo);
 
   // フィルムストリップのアクティブ更新＆ドック波形スクロール
-  updateFilmstripActive(instantFilmstrip);
+  if (!skipFilmstrip) {
+    updateFilmstripActive(instantFilmstrip);
+  }
 
   // 露出ブラケット / 連写バースト比較バーの初期化＆描画
   renderLightboxBracketBar(photo);
@@ -60,10 +82,46 @@ function updateLightboxContent(photo) {
     elements.lightboxMeta.textContent = `${photo.date_taken || '日付不明'} | ${photo.camera_model || 'カメラ不明'}`;
   }
 
-  // 実画像読み込み（詳細メタデータ取得後の再描画等で同一画像を再読込しないよう、URLが変わる場合のみ設定）
+  // 実画像読み込み:
+  // 1) グリッドで既にキャッシュ済みのサムネイルを即時表示して前回の残像や空白待ち時間をゼロにする
+  // 2) フル解像度画像 (/view) をバックグラウンドでロードし、完了次第シームレスに差し替える
   const viewSrc = getPhotoViewUrl(photo);
-  if (elements.lightboxImage.getAttribute('src') !== viewSrc) {
-    elements.lightboxImage.src = viewSrc;
+  const thumbSrc = getThumbnailUrl(photo);
+  const currentSrc = elements.lightboxImage.getAttribute('src') || '';
+  if (currentSrc !== viewSrc) {
+    if (_lightboxViewPreloadImg) {
+      _lightboxViewPreloadImg.onload = null;
+      _lightboxViewPreloadImg.onerror = null;
+      _lightboxViewPreloadImg = null;
+    }
+    if (thumbSrc && currentSrc !== thumbSrc) {
+      elements.lightboxImage.src = thumbSrc;
+    }
+    const targetPhotoId = photo.id;
+    const preloader = new Image();
+    _lightboxViewPreloadImg = preloader;
+    preloader.onload = () => {
+      if (_lightboxViewPreloadImg !== preloader) return;
+      _lightboxViewPreloadImg = null;
+      const activePhoto = getCurrentLightboxPhoto();
+      if (activePhoto && activePhoto.id === targetPhotoId && elements.lightboxImage) {
+        elements.lightboxImage.src = viewSrc;
+      }
+    };
+    preloader.onerror = () => {
+      if (_lightboxViewPreloadImg !== preloader) return;
+      _lightboxViewPreloadImg = null;
+      const activePhoto = getCurrentLightboxPhoto();
+      if (activePhoto && activePhoto.id === targetPhotoId && elements.lightboxImage) {
+        elements.lightboxImage.src = viewSrc;
+      }
+    };
+    preloader.src = viewSrc;
+    // ブラウザキャッシュに既にフル解像度画像がある場合は同期で即時反映
+    if (preloader.complete && preloader.naturalWidth > 0) {
+      _lightboxViewPreloadImg = null;
+      elements.lightboxImage.src = viewSrc;
+    }
   }
   if (elements.lightboxImage.complete && typeof window.refreshLightboxHistogram === 'function') {
     window.refreshLightboxHistogram();
@@ -617,8 +675,10 @@ async function promoteTagForPhoto(photoId, tag) {
         detail.confidence = 1.0;
       }
     }
-    // インスペクタ再描画
-    if (state.isInspectorOpen && state.activeInspectorPhotoId === photoId) {
+    if (state.currentPhotoIndex < 0 && state.selectedPhotoIds && state.selectedPhotoIds.size > 0 && typeof clearSelection === 'function') {
+      state.activeInspectorPhotoId = photoId;
+      clearSelection();
+    } else if (state.isInspectorOpen && state.activeInspectorPhotoId === photoId) {
       updateInspectorView();
     }
     // ライトボックス再描画
@@ -653,7 +713,10 @@ async function triggerAiTagForSinglePhoto(photoId, btnElement) {
       photo.tags = photo.tag_details.map(d => d.tag);
     }
 
-    if (state.isInspectorOpen && state.activeInspectorPhotoId === photoId) {
+    if (state.currentPhotoIndex < 0 && state.selectedPhotoIds && state.selectedPhotoIds.size > 0 && typeof clearSelection === 'function') {
+      state.activeInspectorPhotoId = photoId;
+      clearSelection();
+    } else if (state.isInspectorOpen && state.activeInspectorPhotoId === photoId) {
       updateInspectorView();
     }
     const curLight = state.photos[state.currentPhotoIndex];
@@ -862,19 +925,30 @@ function updateFilmstripDockWave() {
     }
   }
 
+  // 画面中央付近（±18枚）のサムネイル<img>をオンデマンド生成・ロード（1万枚超でも初期DOM生成を極小化）
+  const loadStart = Math.max(0, centerIdx - 18);
+  const loadEnd = Math.min(len - 1, centerIdx + 18);
+  for (let i = loadStart; i <= loadEnd; i++) {
+    const el = children[i];
+    if (!el) continue;
+    if (!el.firstChild) {
+      const p = state.photos[i];
+      if (p) {
+        const img = document.createElement('img');
+        img.src = getThumbnailUrl(p);
+        img.alt = p.file_name || '';
+        el.appendChild(img);
+      }
+    } else if (el.firstChild.dataset && el.firstChild.dataset.src) {
+      el.firstChild.src = el.firstChild.dataset.src;
+      el.firstChild.removeAttribute('data-src');
+    }
+  }
+
   // 画面中央付近（±9枚）のみ連続コサイン・ベルカーブで scale / opacity をリアルタイム反映
   for (let i = startIdx; i <= endIdx; i++) {
     const el = children[i];
     if (!el) continue;
-
-    // 中央付近のサムネイルが未ロードなら即ロード
-    if (Math.abs(i - centerIdx) <= 6) {
-      const img = el.querySelector('img[data-src]');
-      if (img && img.dataset.src) {
-        img.src = img.dataset.src;
-        img.removeAttribute('data-src');
-      }
-    }
 
     const itemCenter = el.offsetLeft + el.offsetWidth * 0.5;
     const distPx = Math.abs(itemCenter - viewportCenter);
@@ -946,25 +1020,13 @@ function renderFilmstrip(instant = false) {
 
   elements.filmstrip.innerHTML = '';
 
-  // IntersectionObserver で画面に入ったサムネイルだけ遅延ロード
-  filmstripObserver = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-      if (entry.isIntersecting) {
-        const img = entry.target.querySelector('img[data-src]');
-        if (img && img.dataset.src) {
-          img.src = img.dataset.src;
-          img.removeAttribute('data-src');
-        }
-        filmstripObserver.unobserve(entry.target);
-      }
-    });
-  }, {
-    root: elements.filmstrip,
-    rootMargin: '240px',
-  });
-
   const fragment = document.createDocumentFragment();
-  state.photos.forEach((photo, idx) => {
+  const photos = state.photos;
+  const total = photos.length;
+  const curIdx = state.currentPhotoIndex;
+
+  for (let idx = 0; idx < total; idx++) {
+    const photo = photos[idx];
     const item = document.createElement('div');
     item.className = 'filmstrip-item';
     item.dataset.index = idx;
@@ -984,17 +1046,15 @@ function renderFilmstrip(instant = false) {
     const itemWidth = Math.round(FILMSTRIP_BASE_HEIGHT * ar);
     item.style.width = `${itemWidth}px`;
 
-    // 現在選択中インデックスの前後6枚は即座にロード、それ以外は遅延ロード
-    const isNearby = Math.abs(idx - state.currentPhotoIndex) <= 6;
-    const url = getThumbnailUrl(photo);
-    if (isNearby) {
-      item.innerHTML = `<img src="${url}" alt="${escapeHtml(photo.file_name)}">`;
-    } else {
-      item.innerHTML = `<img data-src="${url}" alt="${escapeHtml(photo.file_name)}">`;
-      filmstripObserver.observe(item);
+    // 現在選択中インデックスの前後12枚のみ初期<img>を生成し、それ以外は updateFilmstripDockWave で遅延生成
+    if (Math.abs(idx - curIdx) <= 12) {
+      const img = document.createElement('img');
+      img.src = getThumbnailUrl(photo);
+      img.alt = photo.file_name || '';
+      item.appendChild(img);
     }
     fragment.appendChild(item);
-  });
+  }
   elements.filmstrip.appendChild(fragment);
   scrollToActiveFilmstrip(true);
 }
@@ -1062,6 +1122,15 @@ function updateFilmstripActive(instant = false) {
  * ライトボックスを閉じる
  */
 function closeLightbox() {
+  if (_lightboxOpenRafId) {
+    cancelAnimationFrame(_lightboxOpenRafId);
+    _lightboxOpenRafId = null;
+  }
+  if (_lightboxViewPreloadImg) {
+    _lightboxViewPreloadImg.onload = null;
+    _lightboxViewPreloadImg.onerror = null;
+    _lightboxViewPreloadImg = null;
+  }
   if (filmstripScrollRafId) {
     cancelAnimationFrame(filmstripScrollRafId);
     filmstripScrollRafId = null;

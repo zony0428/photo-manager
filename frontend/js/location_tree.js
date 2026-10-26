@@ -143,12 +143,6 @@ function createCountryNode(country) {
   }
   row.appendChild(toggle);
 
-  // 国フラグアイコン（国名に応じて絵文字）
-  const icon = document.createElement('span');
-  icon.className = 'location-node-icon';
-  icon.textContent = getCountryEmoji(country.country);
-  row.appendChild(icon);
-
   // 国名テキスト
   const nameSpan = document.createElement('span');
   nameSpan.className = 'location-node-name';
@@ -218,11 +212,6 @@ function createStateNode(countryName, state) {
   }
   row.appendChild(toggle);
 
-  const icon = document.createElement('span');
-  icon.className = 'location-node-icon';
-  icon.textContent = '📍';
-  row.appendChild(icon);
-
   const nameSpan = document.createElement('span');
   nameSpan.className = 'location-node-name';
   nameSpan.textContent = state.state;
@@ -275,11 +264,6 @@ function createCityNode(countryName, stateName, city) {
   dot.className = 'location-node-toggle';
   dot.textContent = '•';
   row.appendChild(dot);
-
-  const icon = document.createElement('span');
-  icon.className = 'location-node-icon';
-  icon.textContent = '🏙️';
-  row.appendChild(icon);
 
   const nameSpan = document.createElement('span');
   nameSpan.className = 'location-node-name';
@@ -338,7 +322,7 @@ function selectLocationFilter(loc) {
   };
 
   if (elements.viewTitle) {
-    elements.viewTitle.textContent = `🗺️ ${loc.label}`;
+    elements.viewTitle.textContent = loc.label;
   }
 
   updateLocationTreeActiveState();
@@ -374,7 +358,7 @@ function toggleNoLocationFilter() {
   };
 
   if (elements.viewTitle) {
-    elements.viewTitle.textContent = '🗺️ ジオタグなしの写真';
+    elements.viewTitle.textContent = 'ジオタグなしの写真';
   }
 
   updateLocationTreeActiveState();
@@ -387,7 +371,7 @@ function toggleNoLocationFilter() {
  */
 function clearLocationFilter() {
   state.activeLocation = null;
-  if (elements.viewTitle && elements.viewTitle.textContent.startsWith('🗺️')) {
+  if (elements.viewTitle) {
     elements.viewTitle.textContent = 'すべての写真';
   }
   updateLocationTreeActiveState();

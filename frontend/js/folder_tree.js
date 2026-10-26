@@ -12,8 +12,23 @@ const folderTreeState = {
   renderToken: 0,              // 古い取得結果で描画し直さないための世代番号
 };
 
-const FOLDER_TREE_SHORTCUT_ICONS = { storage: '📦', pictures: '🖼️', documents: '📄', desktop: '🖥️' };
-const FOLDER_TREE_DRIVE_ICONS = { fixed: '💽', removable: '💾', network: '🌐', cdrom: '💿', ramdisk: '⚡' };
+const FOLDER_SVG_CLOSED = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
+const FOLDER_SVG_OPEN = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="2" y1="10" x2="22" y2="10"/></svg>';
+const DRIVE_SVG_DEFAULT = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="12" x2="2" y2="12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" y1="16" x2="6.01" y2="16"/><line x1="10" y1="16" x2="10.01" y2="16"/></svg>';
+
+const FOLDER_TREE_SHORTCUT_ICONS = {
+  storage: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>',
+  pictures: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>',
+  documents: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
+  desktop: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>',
+};
+const FOLDER_TREE_DRIVE_ICONS = {
+  fixed: DRIVE_SVG_DEFAULT,
+  removable: DRIVE_SVG_DEFAULT,
+  network: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>',
+  cdrom: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>',
+  ramdisk: DRIVE_SVG_DEFAULT,
+};
 
 /** 比較用のパス正規化（区切りを \ に統一・末尾区切り除去・小文字化） */
 function _ftNormPath(path) {
@@ -37,7 +52,7 @@ function _ftShortcutNode(s) {
   const isStorageRoot = !!s.is_storage_root || s.key === 'storage';
   return {
     kind: 'shortcut', scope: 'sc', key: _ftKey('sc', s.path), name: s.name, path: s.path,
-    icon: s.icon || FOLDER_TREE_SHORTCUT_ICONS[s.key] || '📁', status: isStorage ? 'managed' : 'root', count: 0, total: s.total,
+    icon: FOLDER_TREE_SHORTCUT_ICONS[s.key] || (isStorage ? FOLDER_TREE_SHORTCUT_ICONS.storage : FOLDER_SVG_CLOSED), status: isStorage ? 'managed' : 'root', count: 0, total: s.total,
     hasManaged: !!s.has_managed || isStorage, hasChildren: true, isMissing: false, isOffline: false,
     volumeSerial: null, serialMode: 'any', isStorage, isStorageRoot,
   };
@@ -46,7 +61,7 @@ function _ftShortcutNode(s) {
 function _ftDriveNode(d) {
   return {
     kind: 'drive', scope: 'on', key: _ftKey('on', d.path), name: d.name, path: d.path,
-    icon: FOLDER_TREE_DRIVE_ICONS[d.drive_type] || '💽', status: 'root', count: 0, total: d.total,
+    icon: FOLDER_TREE_DRIVE_ICONS[d.drive_type] || DRIVE_SVG_DEFAULT, status: 'root', count: 0, total: d.total,
     hasManaged: !!d.has_managed, hasChildren: true, isMissing: false, isOffline: false,
     volumeSerial: d.volume_serial || null, serialMode: d.serial_mode || 'any', driveType: d.drive_type,
   };
@@ -56,7 +71,7 @@ function _ftOfflineNode(v) {
   const scope = `off:${v.key}`;
   return {
     kind: 'offline', scope, key: _ftKey(scope, v.path), name: v.name, path: v.path,
-    icon: '💾', status: 'root', count: 0, total: v.total, hasManaged: true, hasChildren: true,
+    icon: DRIVE_SVG_DEFAULT, status: 'root', count: 0, total: v.total, hasManaged: true, hasChildren: true,
     isMissing: false, isOffline: true, volumeSerial: v.volume_serial || null,
     serialMode: v.serial_mode || 'any', letter: v.letter, label: v.label,
   };
@@ -66,7 +81,7 @@ function _ftChildNode(parent, c) {
   const isStorage = !!c.is_storage || !!parent?.isStorage;
   return {
     kind: 'folder', scope: parent.scope, key: _ftKey(parent.scope, c.path), name: c.name, path: c.path,
-    icon: '📁', status: c.status, count: c.count, total: c.total, hasManaged: !!c.has_managed || isStorage,
+    icon: FOLDER_SVG_CLOSED, status: c.status, count: c.count, total: c.total, hasManaged: !!c.has_managed || isStorage,
     hasChildren: !!c.has_children, isMissing: !!c.is_missing, isOffline: parent.isOffline,
     volumeSerial: parent.volumeSerial, serialMode: parent.serialMode, isStorage, isStorageRoot: false,
   };
@@ -184,10 +199,10 @@ function renderFolderTree() {
 
   const frag = document.createDocumentFragment();
   if (shortcuts.length > 0) {
-    frag.appendChild(_ftSectionLi('⭐ ショートカット'));
+    frag.appendChild(_ftSectionLi('ショートカット'));
     shortcuts.forEach(s => frag.appendChild(_ftBuildNodeLi(_ftShortcutNode(s))));
   }
-  frag.appendChild(_ftSectionLi('💻 接続中のドライブ'));
+  frag.appendChild(_ftSectionLi('接続中のドライブ'));
   if (drives.length > 0) {
     drives.forEach(d => frag.appendChild(_ftBuildNodeLi(_ftDriveNode(d))));
   } else {
@@ -195,7 +210,7 @@ function renderFolderTree() {
   }
   if (offline.length > 0) {
     frag.appendChild(_ftSeparatorLi());
-    frag.appendChild(_ftSectionLi('🔌 未接続（キャッシュのみ）'));
+    frag.appendChild(_ftSectionLi('未接続（キャッシュのみ）'));
     offline.forEach(v => frag.appendChild(_ftBuildNodeLi(_ftOfflineNode(v))));
   }
   container.replaceChildren(frag);
@@ -210,23 +225,23 @@ function renderFolderTree() {
 }
 
 function _ftIcon(node, isExpanded) {
-  if (node.kind === 'folder') return isExpanded ? '📂' : '📁';
-  return node.icon;
+  if (node.kind === 'folder') return isExpanded ? FOLDER_SVG_OPEN : FOLDER_SVG_CLOSED;
+  return node.icon || FOLDER_SVG_CLOSED;
 }
 
 function _ftTooltip(node) {
   const lines = [node.path];
   if (node.kind === 'offline') {
-    lines.push(`🔌 未接続のドライブです（前回 ${node.letter}${node.label ? ` / ${node.label}` : ''}）`);
+    lines.push(`未接続のドライブです（前回 ${node.letter}${node.label ? ` / ${node.label}` : ''}）`);
     lines.push('保存済みのサムネイルで閲覧・絞り込みができます');
   } else if (node.isOffline) {
-    lines.push('🔌 未接続のドライブ上のフォルダです（キャッシュのみ）');
+    lines.push('未接続のドライブ上のフォルダです（キャッシュのみ）');
   } else if (node.isMissing) {
-    lines.push('⚠️ ライブラリに写真がありますが、実フォルダが見つかりません');
+    lines.push('ライブラリに写真がありますが、実フォルダが見つかりません');
   } else if (node.status === 'managed') {
-    lines.push('✅ 管理中のフォルダ');
+    lines.push('管理中のフォルダ');
   } else if (node.status === 'ignored') {
-    lines.push('🚫 管理対象外（除外）');
+    lines.push('管理対象外（除外）');
   } else if (node.status === 'unmanaged') {
     lines.push('未登録のフォルダ（右クリックで管理に追加）');
   }
@@ -250,7 +265,7 @@ function _ftBadges(node) {
   if (node.isMissing) {
     const b = document.createElement('span');
     b.className = 'badge-folder-missing';
-    b.textContent = '⚠️ 消失';
+    b.textContent = '消失';
     badges.push(b);
   }
   if (node.total > 0) {
@@ -310,7 +325,7 @@ function _ftBuildNodeLi(node) {
 
   const icon = document.createElement('span');
   icon.className = 'folder-tree-icon';
-  icon.textContent = _ftIcon(node, isExpanded);
+  icon.innerHTML = _ftIcon(node, isExpanded);
 
   const name = document.createElement('span');
   name.className = 'folder-tree-name';
@@ -432,7 +447,7 @@ function _ftToggle(node, li) {
     toggle.textContent = willExpand ? '▼' : '▶';
     toggle.title = willExpand ? '折りたたむ' : '展開';
   }
-  if (icon) icon.textContent = _ftIcon(node, willExpand);
+  if (icon) icon.innerHTML = _ftIcon(node, willExpand);
 }
 
 /* --------------------------------------------------------------------------
@@ -443,7 +458,7 @@ function _ftHandleClick(node) {
   const current = _ftFilterState(node);
   if (current === 'include') {
     // 2回目: 除外絞り込み
-    setFilter('folder_exclude', node.path, `🚫 除外: ${node.name}`);
+    setFilter('folder_exclude', node.path, `除外: ${node.name}`);
     return;
   }
   if (current === 'exclude') {
@@ -452,11 +467,11 @@ function _ftHandleClick(node) {
     return;
   }
   // 1回目: 通常絞り込み
-  let prefix = node.isStorageRoot ? '📦 ' : '📁 ';
-  if (node.isOffline) prefix = '🔌 [未接続] ';
-  else if (node.isMissing) prefix = '⚠️ [消失] ';
-  else if (node.status === 'ignored') prefix = '🚫 [除外] ';
-  else if (node.status === 'unmanaged' && !node.hasManaged && !node.isStorage) prefix = '📁 [未登録] ';
+  let prefix = '';
+  if (node.isOffline) prefix = '[未接続] ';
+  else if (node.isMissing) prefix = '[消失] ';
+  else if (node.status === 'ignored') prefix = '[除外] ';
+  else if (node.status === 'unmanaged' && !node.hasManaged && !node.isStorage) prefix = '[未登録] ';
   setFilter('folder', node.path, `${prefix}${node.name}`);
 
   // 接続中かつ実フォルダが存在する場合、バックグラウンドで差分または管理登録判定
@@ -886,7 +901,7 @@ function _ftInitAutoAiToggle() {
   const isAuto = localStorage.getItem('pm_auto_ai_tag') === 'true';
   const updateUi = (on) => {
     btn.classList.toggle('active', on);
-    btn.textContent = on ? '🤖 ON' : '🤖 OFF';
+    btn.textContent = on ? 'AI: ON' : 'AI: OFF';
     btn.title = on
       ? 'スキャン完了後にAI自動タグ付けを実行します（クリックでOFF）'
       : 'スキャン完了後にAI自動タグ付けを実行しません（クリックでON）';
@@ -897,7 +912,7 @@ function _ftInitAutoAiToggle() {
     const next = !current;
     localStorage.setItem('pm_auto_ai_tag', next ? 'true' : 'false');
     updateUi(next);
-    showToast(next ? '🤖 スキャン後のAI自動タグ付けを有効にしました' : '🤖 スキャン後のAI自動タグ付けを無効にしました', 'info');
+    showToast(next ? 'スキャン後のAI自動タグ付けを有効にしました' : 'スキャン後のAI自動タグ付けを無効にしました', 'info');
   });
 }
 
@@ -1290,21 +1305,23 @@ function _ftInitDbMaintenanceModal() {
         if (hasChildren) {
           toggleBtnHtml = `<span class="tree-toggle-btn ${isExpanded ? '' : 'collapsed'}" title="${isExpanded ? '折りたたむ' : '展開する'}">▼</span>`;
         }
-        const icon = hasChildren ? '📁' : '🏷️';
+        const icon = hasChildren
+          ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>'
+          : '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>';
         const countVal = node.count || 0;
 
         item.innerHTML = `
           <div class="inspector-tree-item-left">
             <span class="settings-tag-drag-handle" title="ドラッグして他のタグ配下やルートへ移動">⋮⋮</span>
             ${toggleBtnHtml}
-            <span style="flex-shrink:0;">${icon}</span>
+            <span style="flex-shrink:0; display:inline-flex; align-items:center;">${icon}</span>
             <span class="inspector-tree-name" title="${escapeHtml(node.fullPath)}">${escapeHtml(node.name)}</span>
             <span class="inspector-tree-count" title="付与されている写真枚数">${countVal}枚</span>
           </div>
           <div class="inspector-tree-item-actions settings-tag-item-actions">
             <button type="button" class="inspector-tag-edit-btn settings-tag-subadd-btn" title="「${escapeHtml(node.name)}」の子タグを作成">+子</button>
-            <button type="button" class="inspector-tag-edit-btn settings-tag-rename-btn" title="タグ「${escapeHtml(node.name)}」の名前を変更">✏</button>
-            <button type="button" class="inspector-tag-edit-btn settings-tag-delete-btn" title="タグ「${escapeHtml(node.fullPath)}」をライブラリ全体から削除">🗑️</button>
+            <button type="button" class="inspector-tag-edit-btn settings-tag-rename-btn" title="タグ「${escapeHtml(node.name)}」の名前を変更">編集</button>
+            <button type="button" class="inspector-tag-edit-btn settings-tag-delete-btn" title="タグ「${escapeHtml(node.fullPath)}」をライブラリ全体から削除">削除</button>
           </div>
         `;
 
@@ -1578,6 +1595,19 @@ function _ftInitDbMaintenanceModal() {
   }
 
   const openModal = () => {
+    const winSelect = elements.settingStartupWindowModeSelect || document.getElementById('settingStartupWindowModeSelect');
+    if (winSelect) {
+      winSelect.value = localStorage.getItem('pm_startup_window_mode') || 'maximized';
+      fetch('/api/window/settings')
+        .then(r => (r.ok ? r.json() : null))
+        .then(d => {
+          if (d && d.startup_mode) {
+            winSelect.value = d.startup_mode;
+            localStorage.setItem('pm_startup_window_mode', d.startup_mode);
+          }
+        })
+        .catch(() => {});
+    }
     const sortSelect = elements.settingTagSortModeSelect || document.getElementById('settingTagSortModeSelect');
     if (sortSelect) {
       sortSelect.value = (state.tagSortMode && state.tagSortMode !== 'count_desc')
@@ -1595,6 +1625,33 @@ function _ftInitDbMaintenanceModal() {
   const closeModal = () => {
     modal.style.display = 'none';
   };
+
+  const winSelectEl = elements.settingStartupWindowModeSelect || document.getElementById('settingStartupWindowModeSelect');
+  if (winSelectEl && !winSelectEl.dataset.bound) {
+    winSelectEl.dataset.bound = 'true';
+    winSelectEl.value = localStorage.getItem('pm_startup_window_mode') || 'maximized';
+    winSelectEl.addEventListener('change', async () => {
+      const winMode = winSelectEl.value || 'maximized';
+      localStorage.setItem('pm_startup_window_mode', winMode);
+      if (typeof window.applyClientWindowMode === 'function') {
+        window.applyClientWindowMode(winMode, true);
+      }
+      try {
+        await fetch('/api/window/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ startup_mode: winMode, apply_now: true }),
+        });
+        if (typeof showToast === 'function') {
+          showToast('🪟 起動時のウィンドウサイズを保存・反映しました', 'success', 2200);
+        }
+      } catch (err) {
+        if (typeof showToast === 'function') {
+          showToast(`ウィンドウ設定エラー: ${err.message}`, 'error');
+        }
+      }
+    });
+  }
 
   const sortSelectEl = elements.settingTagSortModeSelect || document.getElementById('settingTagSortModeSelect');
   if (sortSelectEl && !sortSelectEl.dataset.bound) {

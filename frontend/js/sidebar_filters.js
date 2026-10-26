@@ -93,7 +93,6 @@ function renderTimeline(timelineItems) {
 
       const displayMonth = m.month ? `${m.month}月` : m.year_month;
       monthLi.innerHTML = `
-        <span class="nav-icon">📅</span>
         <span class="nav-text">${escapeHtml(displayMonth)}</span>
         <span class="nav-count">${m.count}</span>
       `;
@@ -165,11 +164,11 @@ function updateTimelineFilterState() {
   } else if (selectedCount === 1) {
     const singleYm = Array.from(state.selectedYearMonths)[0];
     state.currentFilter = { type: 'year_month', value: singleYm };
-    elements.viewTitle.textContent = `📅 ${singleYm}`;
+    elements.viewTitle.textContent = `${singleYm}`;
   } else {
     const sortedYearMonths = Array.from(state.selectedYearMonths).sort();
     state.currentFilter = { type: 'year_months', value: sortedYearMonths };
-    elements.viewTitle.textContent = `📅 複数月選択 (${selectedCount}ヶ月: ${sortedYearMonths.join(', ')})`;
+    elements.viewTitle.textContent = `複数月選択 (${selectedCount}ヶ月: ${sortedYearMonths.join(', ')})`;
   }
 
   updateTimelineActiveClasses();
@@ -321,7 +320,6 @@ function renderCameras(cameraItems) {
 
     rowDiv.innerHTML = `
       <span class="camera-tree-expander ${hasLenses ? '' : 'empty'}" data-camera="${escapeHtml(camModel)}" title="${hasLenses ? 'レンズ一覧を展開/折りたたみ' : ''}">${expanderChar}</span>
-      <span class="nav-icon">📷</span>
       <span class="nav-text" title="${escapeHtml(camModel)}">${escapeHtml(camModel)}</span>
       <span class="camera-state-badge">${badgeText}</span>
       <span class="nav-count">${item.count}</span>
@@ -377,7 +375,6 @@ function renderCameras(cameraItems) {
         lensLi.dataset.lensLabel = lensLabel;
 
         lensLi.innerHTML = `
-          <span class="lens-tree-icon">🔭</span>
           <span class="nav-text lens-nav-text" title="${escapeHtml(camModel)} / ${escapeHtml(lensModel)}">${escapeHtml(lensLabel)}</span>
           <span class="camera-state-badge">${lensBadge}</span>
           <span class="nav-count">${lens.count}</span>
@@ -442,14 +439,14 @@ function syncCameraAndLensFilterTitle() {
     const [lensKey, mode] = Array.from(state.lensFilters.entries())[0];
     const displayName = lensKey.includes('::') ? lensKey.split('::')[1] : lensKey;
     state.currentFilter = { type: 'cameras', value: [lensKey] };
-    elements.viewTitle.textContent = mode === 'exclude' ? `🔭 除外: ${displayName}` : `🔭 ${displayName}`;
+    elements.viewTitle.textContent = mode === 'exclude' ? `除外: ${displayName}` : `${displayName}`;
   } else if (camCount === 1 && lensCount === 0) {
     const [singleCam, mode] = Array.from(state.cameraFilters.entries())[0];
     state.currentFilter = { type: 'camera', value: mode === 'include' ? singleCam : null };
-    elements.viewTitle.textContent = mode === 'exclude' ? `📷 除外: ${singleCam}` : `📷 ${singleCam}`;
+    elements.viewTitle.textContent = mode === 'exclude' ? `除外: ${singleCam}` : `${singleCam}`;
   } else {
     state.currentFilter = { type: 'cameras', value: Array.from(state.selectedCameras) };
-    elements.viewTitle.textContent = `📷 カメラ・レンズ絞り込み (${camCount + lensCount}件)`;
+    elements.viewTitle.textContent = `カメラ・レンズ絞り込み (${camCount + lensCount}件)`;
   }
 
   updateCameraActiveClasses();
@@ -521,7 +518,7 @@ function selectLensFilter(filterKey, label) {
   renderCameras(state.availableCameras);
   syncCameraAndLensFilterTitle();
   if (label && elements.viewTitle) {
-    elements.viewTitle.textContent = `🔭 ${label}`;
+    elements.viewTitle.textContent = `${label}`;
   }
 }
 window.selectLensFilter = selectLensFilter;
@@ -985,8 +982,8 @@ function renderTagList() {
         if (typeof showToast === 'function') {
           showToast(
             state.tagSortByCount
-              ? '📊 タグを「写真枚数が多い順」に並べ替えました'
-              : '🔤 タグを「名前順（設定ルール）」に並べ替えました',
+              ? 'タグを「写真枚数が多い順」に並べ替えました'
+              : 'タグを「名前順（設定ルール）」に並べ替えました',
             'info',
             2000
           );

@@ -156,6 +156,7 @@ photo-manager/
 ## 6. 詳細ルールへのリファレンス
 
 詳細なコンテキストや仕様は、以下のプロジェクト内ファイルを参照すること：
+- **UI/UXデザインシステム & 編集規約 (v3.00 Tiat志向設計)**: `.agents/rules/ui-design-system.md` / `docs/knowledge/ui-design-system-and-tiat-guidelines.md`
 - **コーディング規約詳細**: `.agents/rules/coding-standards.md`
 - **PowerShell文字化け対策**: `.agents/rules/powershell-encoding.md`
 - **アーキテクチャ & パフォーマンス**: `.agents/rules/architecture-and-performance.md`

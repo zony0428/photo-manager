@@ -32,6 +32,7 @@ function getCurrentFilterState() {
   return {
     currentFilter: state.currentFilter ? { ...state.currentFilter } : { type: 'all', value: null },
     ratingFilter: Array.from(state.ratingFilter || []),
+    attrFilter: state.attrFilter || 'all',
     searchQuery: state.searchQuery || '',
     sortBy: state.sortBy || 'date_taken DESC',
     untaggedOnly: !!state.untaggedOnly,
@@ -152,6 +153,12 @@ function renderPresetCurrentChips() {
     chips.push({ icon: '\u2B50', label: labels.join('/') });
   }
 
+  // 8b. attrFilter
+  if (state.attrFilter && state.attrFilter !== 'all') {
+    const attrLabels = { raw: 'RAWのみ', adjusted: '調整済のみ' };
+    chips.push({ icon: state.attrFilter === 'raw' ? '📷' : '✂', label: attrLabels[state.attrFilter] || state.attrFilter });
+  }
+
   if (chips.length === 0) {
     container.innerHTML = '<span class="preset-empty-chip">\u6761\u4EF6\u306A\u3057\uFF08\u3059\u3079\u3066\u306E\u5199\u771F\uFF09</span>';
     return;
@@ -234,6 +241,10 @@ function renderFilterPresetsList() {
     if (f.ratingFilter && f.ratingFilter.length > 0 && f.ratingFilter.length < 3) {
       const rMap = { 2: '\u511A', 1: '\u826F', 0: '\u53EF', '-1': '\u68C4' };
       condBadges.push(`\u2B50 ${f.ratingFilter.map(r => rMap[r] || r).join('/')}`);
+    }
+    if (f.attrFilter && f.attrFilter !== 'all') {
+      const attrLabels = { raw: '📷 RAW', adjusted: '✂ 調整済' };
+      condBadges.push(escapeHtml(attrLabels[f.attrFilter] || f.attrFilter));
     }
 
     const condHtml = condBadges.length > 0
@@ -342,6 +353,8 @@ function applyFilterPreset(preset) {
     const rv = parseInt(btn.dataset.rating, 10);
     btn.classList.toggle('active', state.ratingFilter.has(rv));
   });
+  state.attrFilter = f.attrFilter || 'all';
+  if (typeof window.updateAttrFilterUI === 'function') window.updateAttrFilterUI();
 
   // 2. search
   state.searchQuery = f.searchQuery || '';

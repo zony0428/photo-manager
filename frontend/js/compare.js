@@ -1023,8 +1023,8 @@
     }
 
     // 2. 下部フローティング選択バーに「⚖️ 2枚比較 (V)」ボタンを追加
-    const floatingRefreshBtn = document.getElementById('floatingRefreshThumbBtn');
-    if (floatingRefreshBtn && !document.getElementById('floatingCompareBtn')) {
+    const floatingAnchorEl = document.getElementById('floatingMoreGroup') || document.getElementById('floatingClearSelectionBtn');
+    if (floatingAnchorEl && !document.getElementById('floatingCompareBtn')) {
       const fBtn = document.createElement('button');
       fBtn.type = 'button';
       fBtn.className = 'btn btn-secondary btn-sm';
@@ -1035,7 +1035,7 @@
         <span class="btn-label">2枚比較 (V)</span>
       `;
       fBtn.addEventListener('click', () => openCompareModal());
-      floatingRefreshBtn.insertAdjacentElement('beforebegin', fBtn);
+      floatingAnchorEl.insertAdjacentElement('beforebegin', fBtn);
     }
 
     // 3. 右クリックメニューの「🔍 プレビューを開く」の下に「⚖️ 2枚並べて比較 (V)」を追加

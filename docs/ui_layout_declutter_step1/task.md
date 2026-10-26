@@ -1,0 +1,29 @@
+# タスクリスト：ステップ1「UIの交通整理（グチャグチャ感の解消）」
+
+- [x] 要件整理・ユーザー方針確認（`ask_question` による合意形成）
+  - [x] 「🔍 ファイル名検索」は左サイドバーの一番下に配置
+  - [x] 「📤 テイクアウト」メニューは旧 `take_out` 単純コピー欄を廃止し、「⚡ スマート・テイクアウト...」と「🎞️ ベタ焼きHTML出力...」の2択に統一
+  - [x] 上部ヘッダーから「📥 取り込み」を外し、左サイドバー「📁 フォルダ」内ツールバーへ移設＆上部ヘッダー右側にセパレータ追加
+  - [x] 左サイドバー「🗺️ ジオタグ」の重複ボタン「🗾 制覇マップ」を削除し、「🧪 ラボ」に実験的機能を集約
+  - [x] 下部フローティング選択バーに「`⋯ その他`」メニューを新設し、「🔄 サムネイル更新」「📍 ジオタグ準用」「🗑️ ジオタグ削除」を格納
+  - [x] 右インスペクタのプレビュー画像直下に単一写真クイックアクションバー（`✂ 調整`・`📊 波形`・`↺`・`↻`）を新設し、EXIFタブ奥の重複ボタンを廃止
+- [x] `frontend/index.html` のUI構造整理
+  - [x] 上部ヘッダー整理＆セパレータ追加、「📥 取り込み」を `#folderToolbar` へ移設
+  - [x] 左サイドバーのアコーディオン順序変更（「🧪 ラボ」の下、一番下に「🔍 ファイル名検索」を配置）＆「🗺️ ジオタグ」内の「🗾 制覇マップ」削除
+  - [x] 右インスペクタ上部 `#inspectorFixedPreview` に `#inspectorQuickActionsBar` を追加
+  - [x] 右クリックメニュー＆下部バーの「📤 テイクアウト」ポップオーバーから旧 `take_out` リストを廃止し2択に整理
+  - [x] 下部フローティングバーに `#floatingMoreGroup`（`⋯ その他`）を追加し3ボタンを格納
+- [x] JavaScript モジュール群のイベント結線・調整
+  - [x] `frontend/js/selection.js`: `#floatingMoreBtn` / `#floatingMorePopover` の開閉制御、テイクアウトメニュー開閉の軽量化
+  - [x] `frontend/js/location_map.js`: `#locationToolbar` への `🗾 制覇マップ` 自動注入処理 (`ensureSidebarTriggerButton`) の呼び出し停止＆ `#labOpenMapShortcutBtn` 結線
+  - [x] `frontend/js/compare.js`: 下部フローティングバーへの「⚖️ 2枚比較 (V)」ボタン挿入基準を `#floatingMoreGroup` の直前に修正
+  - [x] `frontend/js/inspector.js` & `frontend/js/histogram.js`: `#inspectorQuickActionsBar` の4ボタン結線と EXIF タブ内 `#inspectorHistMetaRow` 動的挿入の廃止
+  - [x] `frontend/js/app.js`: `uploadPhotos()` 完了時の `#uploadFilesBtn` ラベル復元を `.btn-mini-text` 用に調整
+  - [x] `frontend/js/i18n.js`: 新設ボタン・ポップオーバーの日英翻訳辞書追加
+- [x] CSS スタイルの追加・調整
+  - [x] `frontend/css/inspector.css`: `.inspector-quick-actions-bar` / `.inspector-quick-action-btn` のスタイル追加（和紙・夜墨テーマ対応）
+  - [x] `frontend/css/selection-menu.css`: `.floating-more-popover` およびコンパクト表示時のスタイル調整
+- [x] ドキュメント・マニュアル同期更新と動作検証
+  - [x] `MANUAL.md` および `frontend/index.html` 内 `#helpModal` の同期更新
+  - [x] `docs/knowledge/feature-code-map.md` および `VERSION`（最終更新日時）の更新
+  - [x] DOM ID 重複・欠落検証および `walkthrough.md` の作成

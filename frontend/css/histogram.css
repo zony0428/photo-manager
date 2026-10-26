@@ -9,6 +9,7 @@
    ========================================================================= */
 
 .inspector-hist-toggle-btn {
+  display: none !important;
   position: absolute;
   right: 8px;
   bottom: 8px;

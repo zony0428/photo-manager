@@ -33,7 +33,7 @@
 }
 
 .preset-empty-chip {
-  font-size: 0.72rem;
+  font-size: 0.65rem;
   color: var(--text-dim);
   font-style: italic;
 }
@@ -98,10 +98,10 @@
 }
 
 .preset-empty-message {
-  font-size: 0.75rem;
+  font-size: 0.65rem;
   color: var(--text-dim);
   text-align: center;
-  padding: 16px 8px;
+  padding: 12px 8px;
   font-style: italic;
 }
 
@@ -774,37 +774,39 @@
   color: #ffffff;
 }
 
-/* タグ種別切替タブナビゲーション (インスペクタ準拠の一体型アンダーラインタブ) */
-.tag-type-segmented-control {
-  display: flex;
-  background: rgba(0, 0, 0, 0.22);
-  border-bottom: 1px solid var(--border-color, #2d3748);
-  border-radius: var(--radius-sm, 3px) var(--radius-sm, 3px) 0 0;
-  padding: 0;
-  margin: 6px 0 10px 0;
-  gap: 0;
+/* タグ種別切替セグメントコントロール (手動 / AI / すべて - P2-B) */
+.tag-type-segmented-control,
+[data-theme="paper"] .tag-type-segmented-control,
+[data-theme="sumi"] .tag-type-segmented-control {
+  display: grid !important;
+  grid-template-columns: repeat(3, 1fr);
+  width: 100%;
+  background: var(--bg-tertiary);
+  padding: 2px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  gap: 2px;
+  margin: 0 0 8px 0;
   overflow: hidden;
 }
 
-[data-theme="paper"] .tag-type-segmented-control {
-  background: rgba(0, 0, 0, 0.04);
-  border-bottom-color: var(--border-color, #bcb7aa);
-}
-
-.tag-segment-btn {
-  flex: 1;
+.tag-type-tab,
+.tag-segment-btn,
+[data-theme="paper"] .tag-type-tab,
+[data-theme="paper"] .tag-segment-btn {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 4px;
   background: transparent;
-  border: none;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  color: var(--text-dim, #94a3b8);
+  border: none !important;
+  border-bottom: none !important;
+  border-radius: 4px;
+  color: var(--text-muted);
   font-size: 0.74rem;
-  font-weight: 600;
-  padding: 7px 4px;
+  font-weight: 500;
+  height: 24px;
+  padding: 0 6px;
   cursor: pointer;
   transition: all var(--transition-fast, 0.15s ease);
   text-align: center;
@@ -813,40 +815,27 @@
   position: relative;
 }
 
-.tag-segment-btn:hover {
-  color: var(--text-normal, #f1f5f9);
-  background: rgba(255, 255, 255, 0.04);
-}
-
-[data-theme="paper"] .tag-segment-btn {
-  color: var(--text-muted, #737067);
-}
-
+.tag-type-tab:hover,
+.tag-segment-btn:hover,
+[data-theme="paper"] .tag-type-tab:hover,
 [data-theme="paper"] .tag-segment-btn:hover {
-  color: var(--text-main, #2a2926);
-  background: rgba(0, 0, 0, 0.03);
+  color: var(--text-main);
+  background: rgba(128, 128, 128, 0.08);
 }
 
-.tag-segment-btn.active {
-  color: var(--accent-primary, #38bdf8);
-  background: var(--bg-secondary, #1e2430);
-  border-bottom: 2px solid var(--accent-primary, #38bdf8);
-  font-weight: 700;
-  box-shadow: none;
-}
-
-[data-theme="paper"] .tag-segment-btn.active {
-  color: var(--accent-primary, #1e70a0);
-  background: #fbf9f5;
-  border-bottom: 2px solid var(--accent-primary, #1e70a0);
-  box-shadow: none;
-}
-
+.tag-type-tab.active,
+.tag-segment-btn.active,
+[data-theme="paper"] .tag-type-tab.active,
+[data-theme="paper"] .tag-segment-btn.active,
+[data-theme="sumi"] .tag-type-tab.active,
 [data-theme="sumi"] .tag-segment-btn.active {
-  color: var(--accent-primary, #38bdf8);
-  background: var(--bg-secondary, #1e2430);
-  border-bottom: 2px solid var(--accent-primary, #38bdf8);
-  box-shadow: none;
+  background: var(--bg-panel) !important;
+  color: var(--text-main) !important;
+  border: none !important;
+  border-bottom: none !important;
+  border-radius: 4px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  font-weight: 600;
 }
 
 /* タグツリー/一覧内のAIバッジ */
@@ -1554,7 +1543,7 @@ body.theme-dark .card-thumb-wrapper .thumb-corner-cut {
   border-color: transparent #262c35 transparent transparent; /* 夜墨ダークスレート背景色 */
 }
 
-/* 切断面のフチに控えめな朱色の折り目アクセント（折り紙・ドッグイヤーの折り返し） */
+/* 切断面のフチに控えめな折り目アクセント（折り紙・ドッグイヤーの折り返し） */
 .card-thumb-wrapper .thumb-corner-cut::after {
   content: '';
   position: absolute;
@@ -1564,8 +1553,8 @@ body.theme-dark .card-thumb-wrapper .thumb-corner-cut {
   height: 0;
   border-style: solid;
   border-width: 14px 0 0 14px;
-  border-color: rgba(225, 77, 42, 0.85) transparent transparent transparent;
-  opacity: 0.95;
+  border-color: rgba(140, 140, 140, 0.65) transparent transparent transparent;
+  opacity: 0.9;
   transition: opacity 0.15s ease;
 }
 
@@ -1587,11 +1576,12 @@ body.theme-dark .card-thumb-wrapper .thumb-corner-cut {
 
 .location-toolbar {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
   gap: 4px;
-  padding: 2px 4px 6px 4px;
-  border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
-  margin-bottom: 4px;
+  padding: 0 0 8px 0;
+  border-bottom: 1px solid var(--border-soft, rgba(255, 255, 255, 0.08));
+  margin-bottom: 8px;
 }
 
 .location-tree,
@@ -1695,10 +1685,10 @@ body.theme-dark .card-thumb-wrapper .thumb-corner-cut {
 }
 
 .location-empty {
-  padding: 12px 8px;
+  padding: 10px 8px;
   text-align: center;
-  font-size: 0.75rem;
-  color: var(--text-muted, #94a3b8);
+  font-size: 0.65rem;
+  color: var(--text-dim, #94a3b8);
 }
 
 /* ==========================================================================
@@ -1750,6 +1740,51 @@ body.theme-dark .card-thumb-wrapper .thumb-corner-cut {
   font-size: 1rem;
   font-weight: 600;
   color: var(--text-main, #eceae4);
+}
+
+.image-adjust-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.adjust-header-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  border-radius: var(--radius-sm, 4px);
+  user-select: none;
+  cursor: pointer;
+}
+
+.adjust-compare-orig-btn.is-holding {
+  background: var(--accent-primary, #e14d2a) !important;
+  color: #ffffff !important;
+  border-color: var(--accent-primary, #e14d2a) !important;
+}
+
+.adjust-before-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 25;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: #ffffff;
+  background: rgba(225, 77, 42, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 999px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  user-select: none;
 }
 
 .image-adjust-close-btn {
@@ -2954,4 +2989,216 @@ body.theme-dark .card-thumb-wrapper .thumb-corner-cut {
 .settings-tag-root-input:focus {
   border-color: var(--accent-primary, #e14d2a);
 }
+
+/* ==========================================================================
+   テイクアウトメニュー内 簡易フォルダコピー折りたたみ (.legacy-takeout-details)
+   ========================================================================== */
+.legacy-takeout-details {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border-soft, rgba(148, 163, 184, 0.25));
+}
+
+.legacy-takeout-summary {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-dim, #7a766e);
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 4px;
+  user-select: none;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.legacy-takeout-summary:hover {
+  color: var(--accent-primary, #e14d2a);
+  background: rgba(225, 77, 42, 0.08);
+}
+
+.legacy-takeout-body {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+/* ==========================================================================
+   撮影日時 一括シフト補正モーダル (#dateShiftModal)
+   ========================================================================== */
+.date-shift-modal-body {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.date-shift-summary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--bg-tertiary, #cecabf);
+  border: 1px solid var(--border-soft, #bcb7aa);
+  border-radius: 5px;
+  font-size: 0.82rem;
+}
+
+[data-theme="sumi"] .date-shift-summary-row {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.date-shift-summary-label {
+  font-weight: 600;
+  color: var(--text-muted, #4a4843);
+}
+
+.date-shift-section {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.date-shift-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-main, #2a2926);
+}
+
+.date-shift-preset-group {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+}
+
+.date-shift-preset-btn {
+  padding: 5px 4px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--text-main, #2a2926);
+  background: var(--bg-tertiary, #cecabf);
+  border: 1px solid var(--border-soft, #bcb7aa);
+  border-radius: var(--ui-radius-click, 5px);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: center;
+}
+
+.date-shift-preset-btn:hover {
+  border-color: var(--accent-primary, #e14d2a);
+  color: var(--accent-primary, #e14d2a);
+  background: var(--accent-subtle, rgba(225, 77, 42, 0.12));
+}
+
+.date-shift-preset-btn.active {
+  color: #ffffff;
+  background: var(--accent-primary, #e14d2a);
+  border-color: var(--accent-primary, #e14d2a);
+}
+
+.date-shift-direction-row {
+  margin-bottom: 2px;
+}
+
+.date-shift-controls-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.date-shift-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.date-shift-field label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted, #4a4843);
+}
+
+.date-shift-field input[type="number"] {
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 0.86rem;
+  font-weight: 600;
+  font-family: 'Outfit', monospace;
+  color: var(--text-main, #2a2926);
+  background: var(--bg-tertiary, #cecabf);
+  border: 1px solid var(--border-color, #2a2926);
+  border-radius: 4px;
+  outline: none;
+}
+
+[data-theme="sumi"] .date-shift-field input[type="number"] {
+  background: rgba(0, 0, 0, 0.28);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: var(--text-main, #f0f2f5);
+}
+
+.date-shift-field input[type="number"]:focus {
+  border-color: var(--accent-primary, #e14d2a);
+}
+
+.date-shift-preview-box {
+  background: var(--bg-tertiary, #cecabf);
+  border: 1px solid var(--border-soft, #bcb7aa);
+  border-radius: 6px;
+  padding: 9px 12px;
+}
+
+[data-theme="sumi"] .date-shift-preview-box {
+  background: rgba(0, 0, 0, 0.22);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.date-shift-preview-header {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--text-muted, #4a4843);
+  margin-bottom: 6px;
+}
+
+.date-shift-preview-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-family: monospace;
+  font-size: 0.76rem;
+  max-height: 130px;
+  overflow-y: auto;
+}
+
+.date-shift-preview-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.date-shift-preview-row .preview-file {
+  color: var(--text-dim, #7a766e);
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
+}
+
+.date-shift-preview-row .preview-old-date {
+  color: var(--text-muted, #4a4843);
+}
+
+.date-shift-preview-row .preview-arrow {
+  color: var(--accent-primary, #e14d2a);
+  font-weight: 700;
+}
+
+.date-shift-preview-row .preview-new-date {
+  color: var(--text-main, #2a2926);
+  font-weight: 700;
+}
+
 

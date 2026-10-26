@@ -10,6 +10,7 @@
   --bg-primary: #e5e3dc;          /* 和紙の地色 */
   --bg-secondary: #d9d6cc;        /* 深和紙（サイドバー・カード・パネル） */
   --bg-tertiary: #cecabf;         /* 淡墨混じり和紙（入力欄・サブ背景） */
+  --bg-panel: #fbf9f4;            /* セグメントアクティブ・浮き上がりパネル面 */
   --bg-hover: #c4c0b3;            /* ホバー時の和紙 */
   --bg-glass: rgba(229, 227, 220, 0.94);
   --bg-modal: rgba(229, 227, 220, 0.98);
@@ -44,21 +45,21 @@
   --tag-exclude-badge-bg: #dc2626;
   --tag-exclude-badge-text: #ffffff;
 
-  --border-color: #2a2926;        /* 墨の1px線 */
-  --border-soft: #bcb7aa;         /* 和紙の繊細な区切り線 */
+  --border-color: rgba(42, 41, 38, 0.14); /* 軟化した繊細な境界線 */
+  --border-soft: rgba(42, 41, 38, 0.07);  /* 和紙の微細な区切り線 */
   --border-focus: #e14d2a;
 
   --thumbnail-size: 220px;
   --sidebar-width: 260px;
-  --header-height: 56px;
+  --header-height: 44px;
 
   --radius-sm: 2px;
-  --radius-md: 2px;
-  --radius-lg: 3px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
 
-  --shadow-sm: none;
-  --shadow-md: none;
-  --shadow-lg: 0 4px 20px rgba(42, 41, 38, 0.12);
+  --shadow-sm: 0 1px 2px rgba(42, 41, 38, 0.06);
+  --shadow-md: 0 4px 12px rgba(42, 41, 38, 0.08);
+  --shadow-lg: 0 8px 24px rgba(42, 41, 38, 0.12);
   --transition-fast: 0.12s ease;
   --transition-normal: 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -67,7 +68,8 @@
   /* 夜墨モード（Sumi / Dark） - 銀墨・スレートダーク調色 (v1.83) */
   --bg-primary: #16181b;          /* 漆黒スレート（写真表示エリア） */
   --bg-secondary: #262c35;        /* 銀墨（左右サイドバー・インスペクタ・カード） */
-  --bg-tertiary: #303844;         /* 墨淡（入力欄・サブ背景） */
+  --bg-tertiary: #1e232b;         /* 墨淡（入力欄・凹みグループ背景） */
+  --bg-panel: #2d3542;            /* セグメントアクティブ・浮き上がりパネル面 */
   --bg-hover: #3c4554;            /* ホバー時 */
   --bg-glass: rgba(22, 24, 27, 0.94);
   --bg-modal: rgba(22, 24, 27, 0.98);
@@ -102,21 +104,21 @@
   --tag-exclude-badge-bg: #dc2626;
   --tag-exclude-badge-text: #ffffff;
 
-  --border-color: #3d4756;        /* スレート境界線 */
-  --border-soft: #2f3642;         /* 繊細な区切り線 */
+  --border-color: rgba(255, 255, 255, 0.10); /* スレート境界線 */
+  --border-soft: rgba(255, 255, 255, 0.05);  /* 繊細な区切り線 */
   --border-focus: #e14d2a;
 
   --thumbnail-size: 220px;
   --sidebar-width: 260px;
-  --header-height: 56px;
+  --header-height: 44px;
 
   --radius-sm: 2px;
-  --radius-md: 2px;
-  --radius-lg: 3px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
 
-  --shadow-sm: none;
-  --shadow-md: none;
-  --shadow-lg: 0 4px 20px rgba(0, 0, 0, 0.5);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.25);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
   --transition-fast: 0.12s ease;
   --transition-normal: 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -129,7 +131,10 @@
 }
 
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Shippori Mincho", sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", "Yu Gothic UI", "Hiragino Sans", "Meiryo", sans-serif;
+  font-feature-settings: "palt" 1;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
   background-color: var(--bg-primary);
   color: var(--text-main);
   height: 100vh;
@@ -137,6 +142,39 @@ body {
   user-select: none;
   -webkit-user-select: none;
   transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+
+button, input, select, textarea {
+  font-family: inherit;
+}
+
+/* 全スクロール領域のネイティブ細線化 (P4) */
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(128, 128, 128, 0.3);
+  border-radius: 3px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(128, 128, 128, 0.5);
+}
+
+*::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 /* アプリ全体レイアウト */
@@ -587,6 +625,40 @@ body {
   gap: 0 !important;
 }
 
+/* 1.5. 幅1440px以下: ノートPC画面幅での上部メインヘッダー・ビューヘッダー省スペース最適化 */
+@media (max-width: 1440px) {
+  .app-header {
+    padding: 0 12px;
+  }
+  .header-left,
+  .header-right {
+    gap: 6px;
+  }
+  .app-header .btn {
+    padding: 5px 8px;
+    font-size: 0.78rem;
+  }
+  .thumbnail-size-control input[type="range"],
+  .thumbnail-slider-group input[type="range"],
+  #thumbnailSizeSlider {
+    width: 70px;
+  }
+  .mode-btn {
+    padding: 4px 7px;
+    gap: 4px;
+  }
+  .mode-btn .mode-label {
+    font-size: 0.74rem;
+  }
+  #sortBySelect {
+    padding: 5px 8px;
+    font-size: 0.78rem;
+  }
+  .view-header {
+    padding: 6px 14px;
+  }
+}
+
 /* 2. 幅1350px以下 または コンパクトLv2: トグルボタン群（スタック・文字・スライドショー）もアイコン化 */
 @media (max-width: 1350px) {
   #startSlideshowBtn .btn-label,
@@ -788,11 +860,13 @@ body {
   flex-shrink: 0;
 }
 
-/* アコーディオンヘッダー */
+/* アコーディオンヘッダー（高さを32pxに引き締め、8セクションすべてが圧迫感なく収まるように調整） */
 .accordion-header {
   display: flex;
   align-items: center;
-  padding: 9px 12px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0 10px;
   cursor: pointer;
   background: transparent;
   transition: background var(--transition-fast);
@@ -885,12 +959,24 @@ body {
   display: none;
 }
 
-/* 展開中のボディ: 内部独立スクロール */
+/* 展開中のボディ: 左ペインの縦方向を広く使い、単一スクロールバーで快適に一覧可能にする */
 .accordion-item.is-open .accordion-body {
   flex: 1 1 auto;
   min-height: 0;
+  max-height: calc(100vh - 360px);
   overflow-y: auto;
   overflow-x: hidden;
+}
+
+/* 覗き穴スクロールの廃止: 各ツリーコンテナの高さ上限を解放し .accordion-body の単一スクロールに統合 */
+.folder-tree,
+.tag-tree,
+.tag-pill-list,
+.location-tree,
+.camera-tree,
+.camera-tree-list,
+.timeline-tree {
+  max-height: none;
 }
 
 /* 上品な細幅カスタムスクロールバー */
@@ -908,8 +994,9 @@ body {
   background: rgba(120, 120, 120, 0.45);
 }
 
-/* フォルダ操作ツールバー */
-.folder-toolbar {
+/* フォルダ・ジオタグ・カメラ操作ツールバー */
+.folder-toolbar,
+.location-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -920,39 +1007,56 @@ body {
   flex-wrap: nowrap;
 }
 
-[data-theme="paper"] .folder-toolbar {
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+[data-theme="paper"] .folder-toolbar,
+[data-theme="paper"] .location-toolbar {
+  border-bottom: 1px solid var(--border-soft);
 }
 
-.folder-toolbar-group {
+.folder-toolbar-group,
+.location-toolbar-group {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
 }
 
-.folder-toolbar .btn-mini-text {
-  font-size: 0.68rem;
-  padding: 2px 5px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius-sm, 2px);
+.btn-mini-text,
+.folder-toolbar .btn-mini-text,
+.location-toolbar .btn-mini-text {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: inherit;
+  font-size: 0.7rem;
+  height: 24px;
+  padding: 0 7px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
   cursor: pointer;
-  color: var(--text-dim);
+  color: var(--text-muted);
   transition: all var(--transition-fast);
   white-space: nowrap;
-  line-height: 1.2;
+  line-height: 1;
+  box-sizing: border-box;
 }
 
-[data-theme="paper"] .folder-toolbar .btn-mini-text {
-  background: rgba(0, 0, 0, 0.04);
-  border-color: rgba(0, 0, 0, 0.12);
+[data-theme="paper"] .btn-mini-text,
+[data-theme="paper"] .folder-toolbar .btn-mini-text,
+[data-theme="paper"] .location-toolbar .btn-mini-text {
+  background: transparent;
+  border-color: transparent;
   color: var(--text-muted);
 }
 
-.folder-toolbar .btn-mini-text:hover {
+.btn-mini-text:hover,
+.folder-toolbar .btn-mini-text:hover,
+.location-toolbar .btn-mini-text:hover,
+[data-theme="paper"] .btn-mini-text:hover,
+[data-theme="paper"] .folder-toolbar .btn-mini-text:hover,
+[data-theme="paper"] .location-toolbar .btn-mini-text:hover {
   background: var(--bg-hover);
   color: var(--text-main);
-  border-color: var(--border-color);
+  border-color: transparent;
 }
 
 .drawer-pin-btn.pinned:hover {
@@ -1140,10 +1244,19 @@ body.resizing .resize-handle {
   padding: 0 8px;
 }
 
-.badge-sub {
-  font-size: 0.65rem;
-  color: var(--text-dim);
-  font-weight: 400;
+.badge-sub,
+.tag-Click-guide,
+.tag-click-guide,
+.filename-search-hint,
+.sidebar-hint-text,
+.tag-mode-hint,
+.tag-filter-mode-bar,
+.tag-filter-hint > span {
+  display: none !important;
+}
+
+.nav-count.badge-sub {
+  display: inline-block !important;
 }
 
 .nav-list {
@@ -1475,8 +1588,9 @@ body.resizing .resize-handle {
 
 /* ツリー内の補助表示（読み込み中・サブフォルダなし等） */
 .folder-tree-hint {
-  font-size: 0.72rem;
+  font-size: 0.65rem;
   padding: 3px 8px;
+  color: var(--text-dim);
 }
 
 /* ドライブ・ショートカット行 */
@@ -1884,17 +1998,19 @@ body.resizing .resize-handle {
 /* ==========================================================================
    タグ（アルバム）アコーディオン ＆ 3ステートタグピル
    ========================================================================== */
-.accordion-header {
+.accordion-section .accordion-header {
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 8px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0 10px;
   border-radius: var(--radius-sm);
   transition: background var(--transition-fast);
 }
 
-.accordion-header:hover {
+.accordion-section .accordion-header:hover {
   background: var(--bg-tertiary);
 }
 
@@ -1967,13 +2083,18 @@ body.resizing .resize-handle {
 .tag-filter-hint {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 6px;
   font-size: 0.65rem;
   color: var(--text-dim);
-  padding: 4px 6px 8px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-  margin-bottom: 6px;
+  padding: 0 0 6px 0;
+  border-bottom: none;
+  margin-bottom: 4px;
+  line-height: 1.4;
+}
+
+[data-theme="paper"] .tag-filter-hint {
+  border-bottom: none;
 }
 
 .tag-filter-hint-actions {
@@ -1986,14 +2107,16 @@ body.resizing .resize-handle {
 .tag-sort-count-toggle-btn {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  padding: 2px 7px;
-  font-size: 0.66rem;
-  font-weight: 600;
-  color: var(--text-muted, #94a3b8);
-  background: var(--bg-tertiary, rgba(148, 163, 184, 0.12));
-  border: 1px solid var(--border-color, rgba(148, 163, 184, 0.25));
-  border-radius: 999px;
+  justify-content: center;
+  gap: 3px;
+  height: 26px;
+  padding: 0 9px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 5px;
   cursor: pointer;
   white-space: nowrap;
   user-select: none;
@@ -2001,15 +2124,17 @@ body.resizing .resize-handle {
 }
 
 .tag-sort-count-toggle-btn:hover {
-  color: var(--text-main, #eceae4);
-  border-color: var(--accent-primary, #e14d2a);
+  color: var(--text-main);
+  background: var(--bg-hover);
+  border-color: var(--text-muted);
 }
 
 .tag-sort-count-toggle-btn.active {
-  color: #ffffff;
-  background: var(--accent-primary, #e14d2a);
-  border-color: var(--accent-primary, #e14d2a);
-  box-shadow: 0 1px 4px rgba(225, 77, 42, 0.35);
+  color: var(--text-main);
+  background: var(--bg-hover);
+  border-color: var(--text-muted);
+  box-shadow: none;
+  font-weight: 600;
 }
 
 .inspector-open-tag-editor-btn {
@@ -2394,11 +2519,12 @@ body.resizing .resize-handle {
 
 .tag-search-input {
   width: 100%;
-  padding: 5px 28px 5px 9px;
-  font-size: 0.76rem;
+  height: 26px;
+  padding: 0 28px 0 9px;
+  font-size: 0.74rem;
   background: var(--bg-primary);
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius-sm, 2px);
+  border: 1px solid var(--border-color);
+  border-radius: 5px;
   color: var(--text-main);
   outline: none;
   transition: all 0.15s ease;
@@ -2607,7 +2733,7 @@ body.resizing .resize-handle {
 
 .empty-hint {
   padding: 8px 10px;
-  font-size: 0.8rem;
+  font-size: 0.65rem;
   color: var(--text-dim);
   font-style: italic;
 }

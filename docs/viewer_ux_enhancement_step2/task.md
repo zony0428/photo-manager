@@ -1,0 +1,22 @@
+# タスクリスト：ステップ2 基本ビューア体験の強化（他ソフト比較での弱点解消）
+
+- [x] **計画策定・ユーザー承認**
+  - [x] `implementation_plan.md` の作成（4大機能の設計と対象ファイルの特定）
+- [x] **1. 一覧グリッド画面での矢印キー移動（`←` `→` `↑` `↓` ＆ `Shift + 矢印` 範囲選択）**
+  - [x] `frontend/js/common.js` / `frontend/js/selection.js`: `state.selectionAnchorIndex` による連続範囲選択アンカー管理
+  - [x] `frontend/js/app.js`: 一覧表示中 (`state.currentPhotoIndex === -1`) の `ArrowLeft` / `ArrowRight` / `ArrowUp` / `ArrowDown` ナビゲーション (`navigateGridByArrow`) 実装
+  - [x] `frontend/js/app.js`: カード中心座標による視覚的な上下行の特定（通常グリッド・びっしり・マウント全対応）、画面外への自動スクロール追従、右インスペクタ即時連動、および評価選別（「棄」除外）時の次カードへの自動フォーカス引き継ぎ
+- [x] **2. 画像調整画面の「👁️ 元画像と比較（Before/After）」＆「トーン調整（3項目）のコピー / 一括ペースト」**
+  - [x] `server/database/photos.py` & `server/app.py`: トーン調整3項目（`brightness`, `contrast`, `saturation`）のみを一括適用し、既存の回転・水平傾き・クロップ枠を維持する `batch_update_photo_tone` と `POST /api/photos/batch-adjust-tone` の追加
+  - [x] `frontend/index.html` & `frontend/css/modals-features.css`: `#imageAdjustModal` ヘッダーへの「📋 トーンをコピー」「🎨 トーンをペースト」「👁️ 元画像と比較 (`\`)」ボタン追加、および `#contextMenu`・`#floatingRotatePopover` へのメニュー追加
+  - [x] `frontend/js/adjust.js` & `frontend/js/selection.js` & `frontend/js/app.js`: ボタンホールドおよび `\` / `Space` キー長押しによる無加工Before比較表示、トーン3項目のコピー (`Ctrl+Shift+C`) ＆ 一括ペースト (`Ctrl+Shift+V`) 実装
+- [x] **3. `Ctrl + C`（＆右クリック）で選択中の写真をクリップボードへ画像コピー**
+  - [x] `frontend/index.html` & `frontend/js/selection.js`: 右クリックメニュー `#contextMenuCopyImageItem`（「📋 画像をクリップボードにコピー (Ctrl+C)」）の追加
+  - [x] `frontend/js/adjust.js` & `frontend/js/app.js`: 非破壊調整反映済みの表示画像を Canvas 経由で PNG Blob 化し `navigator.clipboard.write` でOSクリップボードへコピーする `copyPhotoImageToClipboard` と `Ctrl+C` ショートカット実装
+- [x] **4. ソート順の拡充 ＆ ビューヘッダー属性フィルタピル（すべて / RAW / 調整済）**
+  - [x] `server/database/photos.py` & `server/app.py`: `get_photos()` の `sort_by` 12種類対応（ファイル名逆順、ファイルサイズ順、焦点距離順、F値順、ISO感度順）と `attr_filter`（`raw` / `adjusted`）のSQL実装
+  - [x] `frontend/index.html` & `frontend/css/grid-lightbox.css` & `frontend/js/app.js` & `frontend/js/presets.js`: `#sortBySelect` の拡充と、評価フィルタ横への属性フィルタピル（`すべて` / `RAW` / `✂ 調整済`）配置・フィルタチップ・全解除・プリセット連動
+- [x] **5. 翻訳辞書・マニュアル・ヘルプの同期更新と動作検証**
+  - [x] `frontend/js/i18n.js` の日英翻訳辞書更新
+  - [x] `frontend/index.html` (`#helpModal`) および `MANUAL.md`、`docs/knowledge/feature-code-map.md`、`VERSION` の更新
+  - [x] 自動検証スクリプトによるバックエンドSQL・API・フロントエンドDOM/JS結合確認と `walkthrough.md` の保存

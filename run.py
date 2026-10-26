@@ -59,16 +59,22 @@ def is_port_in_use(port: int, host: str = "127.0.0.1") -> bool:
         return s.connect_ex((host, port)) == 0
 
 
-from server.window_utils import ensure_maximized_loop
+from server.window_utils import (
+    ensure_window_mode_loop,
+    get_startup_chromium_args,
+    get_startup_window_mode,
+)
 
 
-def _maximize_app_window_win32(timeout_sec: float = 6.0) -> None:
-    """Windows API (user32) を用いて起動した Photo Manager ウィンドウを確実に最大化する"""
-    ensure_maximized_loop(port=PORT, timeout_sec=timeout_sec, hold_sec=2.5)
+def _apply_startup_window_win32(mode: str = None, timeout_sec: float = 6.0) -> None:
+    """Windows API (user32) を用いて起動した Photo Manager ウィンドウを設定されたサイズ・状態にする"""
+    ensure_window_mode_loop(mode=mode, port=PORT, timeout_sec=timeout_sec, hold_sec=2.5)
 
 
 def launch_app_window() -> None:
-    """デスクトップアプリ風ウィンドウ（または通常ブラウザ）を最大化状態で開く"""
+    """デスクトップアプリ風ウィンドウ（または通常ブラウザ）を設定されたウィンドウモードで開く"""
+    startup_mode = get_startup_window_mode()
+
     # Edge または Chrome の実行ファイルを探す
     edge_paths = [
         r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
@@ -87,30 +93,32 @@ def launch_app_window() -> None:
 
     if browser_exe:
         try:
-            print(f"[INFO] アプリモード（最大化）でウィンドウを起動します: {browser_exe}")
+            print(f"[INFO] アプリモード (mode={startup_mode}) でウィンドウを起動します: {browser_exe}")
             # --app オプションにより、URLバーやタブのない単体アプリウィンドウとして起動
-            subprocess.Popen([
-                browser_exe,
-                f"--app={APP_URL}",
-                "--start-maximized",
-                "--window-position=0,0",
-            ])
-            threading.Thread(
-                target=_maximize_app_window_win32,
-                daemon=False,
-                name="MaximizeAppWindow",
-            ).start()
+            cmd = [browser_exe, f"--app={APP_URL}"]
+            cmd.extend(get_startup_chromium_args(startup_mode))
+
+            subprocess.Popen(cmd)
+            if startup_mode != "remember":
+                threading.Thread(
+                    target=_apply_startup_window_win32,
+                    args=(startup_mode,),
+                    daemon=False,
+                    name="StartupAppWindowMode",
+                ).start()
             return
         except Exception as e:
             print(f"[WARN] アプリモード起動失敗、既定のブラウザで開きます: {e}")
 
     # フォールバック: 通常の既定ブラウザで開く
     webbrowser.open(APP_URL)
-    threading.Thread(
-        target=_maximize_app_window_win32,
-        daemon=False,
-        name="MaximizeAppWindowFallback",
-    ).start()
+    if startup_mode != "remember":
+        threading.Thread(
+            target=_apply_startup_window_win32,
+            args=(startup_mode,),
+            daemon=False,
+            name="StartupAppWindowFallback",
+        ).start()
 
 
 def main() -> None:

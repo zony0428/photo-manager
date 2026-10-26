@@ -21,6 +21,7 @@
     isDragging: false,
     dragMode: null, // 'move' またはハンドル名 ('nw', 'ne', 'sw', 'se', 'n', 's', 'e', 'w')
     dragStart: { mouseX: 0, mouseY: 0, cropX: 0, cropY: 0, cropW: 0, cropH: 0 },
+    isComparingOriginal: false, // 👁️ 元画像と比較 (Before) ホールド中フラグ
   };
 
   // DOM要素キャッシュ
@@ -29,6 +30,11 @@
   let containerEl = null;
   let imgEl = null;
   let cropBoxEl = null;
+  let cropOverlayEl = null;
+  let beforeBadgeEl = null;
+  let compareOrigBtnEl = null;
+  let copyToneBtnEl = null;
+  let pasteToneBtnEl = null;
   let aspectBtns = [];
   let fineAngleRangeEl = null;
   let fineAngleValEl = null;
@@ -111,9 +117,32 @@
   /**
    * ステージ上の画像に対して回転・水平傾き補正（内接自動ズーム付き）・トーン微調整フィルタを即時反映する
    */
+  function setCompareOriginalMode(isComparing) {
+    const nextVal = Boolean(isComparing);
+    if (adjustState.isComparingOriginal === nextVal) return;
+    adjustState.isComparingOriginal = nextVal;
+    if (compareOrigBtnEl) {
+      compareOrigBtnEl.classList.toggle('is-holding', nextVal);
+    }
+    if (cropOverlayEl) {
+      cropOverlayEl.style.opacity = nextVal ? '0' : '1';
+    }
+    if (beforeBadgeEl) {
+      beforeBadgeEl.style.display = nextVal ? 'inline-flex' : 'none';
+    }
+    applyImageStagePreview(true);
+  }
+
   function applyImageStagePreview(isImmediate = false) {
     if (!imgEl || !adjustState.photo) return;
     imgEl.style.transition = isImmediate ? 'none' : 'transform 0.15s ease-out';
+
+    if (adjustState.isComparingOriginal) {
+      const baseDeg = adjustState.rotation || 0;
+      imgEl.style.transform = `translate(-50%, -50%) rotate(${baseDeg}deg) scale(1)`;
+      imgEl.style.filter = 'none';
+      return;
+    }
 
     const fa = Number(adjustState.fineAngle) || 0;
     let autoScale = 1.0;
@@ -156,6 +185,11 @@
     containerEl = document.getElementById('imageAdjustContainer');
     imgEl = document.getElementById('imageAdjustImg');
     cropBoxEl = document.getElementById('cropBox');
+    cropOverlayEl = document.getElementById('cropOverlay');
+    beforeBadgeEl = document.getElementById('adjustBeforeBadge');
+    compareOrigBtnEl = document.getElementById('adjustCompareOrigBtn');
+    copyToneBtnEl = document.getElementById('adjustCopyToneBtn');
+    pasteToneBtnEl = document.getElementById('adjustPasteToneBtn');
 
     fineAngleRangeEl = document.getElementById('adjustFineAngleRange');
     fineAngleValEl = document.getElementById('adjustFineAngleVal');
@@ -315,19 +349,64 @@
       }
     });
 
-    // キーボード操作（Escで閉じる、R/Lで回転）
+    // 👁️ 元画像と比較 (Before/After) ホールドボタン
+    if (compareOrigBtnEl) {
+      compareOrigBtnEl.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        setCompareOriginalMode(true);
+      });
+      ['pointerup', 'pointerleave', 'pointercancel'].forEach(evName => {
+        compareOrigBtnEl.addEventListener(evName, () => {
+          setCompareOriginalMode(false);
+        });
+      });
+    }
+
+    // 📋 トーン調整をコピー / 🎨 ペースト ボタン（モーダル内）
+    if (copyToneBtnEl) {
+      copyToneBtnEl.addEventListener('click', () => {
+        copyCurrentModalToneAdjustments();
+      });
+    }
+    if (pasteToneBtnEl) {
+      pasteToneBtnEl.addEventListener('click', () => {
+        pasteToneAdjustmentsToModal();
+      });
+    }
+
+    // キーボード操作（Escで閉じる、R/Lで回転、\ または Space ホールドで元画像比較、Ctrl+Shift+C/V でトーンコピー＆ペースト）
     window.addEventListener('keydown', (e) => {
       if (modalEl && modalEl.style.display !== 'none') {
         if (e.key === 'Escape') {
           e.preventDefault();
           e.stopPropagation();
           closeImageAdjustModal();
-        } else if (e.key === 'r' || e.key === 'R') {
+        } else if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'c' || e.key === 'C')) {
+          e.preventDefault();
+          e.stopPropagation();
+          copyCurrentModalToneAdjustments();
+        } else if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'v' || e.key === 'V')) {
+          e.preventDefault();
+          e.stopPropagation();
+          pasteToneAdjustmentsToModal();
+        } else if (e.key === '\\' || e.key === '¥' || e.code === 'Backslash' || e.code === 'IntlYen' || e.code === 'IntlRo' || e.key === ' ') {
+          e.preventDefault();
+          e.stopPropagation();
+          setCompareOriginalMode(true);
+        } else if ((e.key === 'r' || e.key === 'R') && !e.ctrlKey && !e.metaKey) {
           e.preventDefault();
           rotateInModal(90);
-        } else if (e.key === 'l' || e.key === 'L') {
+        } else if ((e.key === 'l' || e.key === 'L') && !e.ctrlKey && !e.metaKey) {
           e.preventDefault();
           rotateInModal(-90);
+        }
+      }
+    }, true);
+
+    window.addEventListener('keyup', (e) => {
+      if (modalEl && modalEl.style.display !== 'none' && adjustState.isComparingOriginal) {
+        if (e.key === '\\' || e.key === '¥' || e.code === 'Backslash' || e.code === 'IntlYen' || e.code === 'IntlRo' || e.key === ' ') {
+          setCompareOriginalMode(false);
         }
       }
     }, true);
@@ -348,11 +427,14 @@
     adjustState.saturation = Number(photo.saturation) || 0;
     adjustState.aspect = photo.crop_aspect || 'original';
 
+    setCompareOriginalMode(false);
+
     // 比率ボタン・微調整スライダーの初期状態反映
     aspectBtns.forEach(btn => {
       btn.classList.toggle('active', btn.dataset.aspect === adjustState.aspect);
     });
     syncFineSlidersUI();
+    syncPasteToneButtonsUI();
 
     // 先にモーダルを表示してステージのレンダリング寸法を確定させる
     modalEl.style.display = 'flex';
@@ -381,6 +463,7 @@
    * モーダルを閉じる
    */
   function closeImageAdjustModal() {
+    setCompareOriginalMode(false);
     if (modalEl) modalEl.style.display = 'none';
     adjustState.photo = null;
     if (imgEl) {
@@ -760,6 +843,11 @@
       // サムネイルおよびライトボックス表示に即時反映
       applyTransformToPhotoViews(photo);
 
+      if (typeof state !== 'undefined' && state.currentPhotoIndex < 0 && state.selectedPhotoIds && state.selectedPhotoIds.size > 0 && typeof clearSelection === 'function') {
+        state.activeInspectorPhotoId = photo.id;
+        clearSelection();
+      }
+
       if (typeof showToast === 'function') {
         showToast('画像の調整を保存しました');
       }
@@ -800,6 +888,11 @@
       photo._thumbBust = Date.now();
 
       applyTransformToPhotoViews(photo);
+
+      if (typeof state !== 'undefined' && state.currentPhotoIndex < 0 && state.selectedPhotoIds && state.selectedPhotoIds.size > 0 && typeof clearSelection === 'function') {
+        state.activeInspectorPhotoId = photo.id;
+        clearSelection();
+      }
 
       if (typeof showToast === 'function') {
         showToast('調整を初期状態に戻しました');
@@ -873,6 +966,11 @@
         applyTransformToPhotoViews(photo);
       }
 
+      if (typeof state !== 'undefined' && state.currentPhotoIndex < 0 && state.selectedPhotoIds && state.selectedPhotoIds.has(photoId) && typeof clearSelection === 'function') {
+        state.activeInspectorPhotoId = photoId;
+        clearSelection();
+      }
+
       const dirName = delta > 0 ? '右へ90°' : '左へ90°';
       if (typeof showToast === 'function') {
         showToast(`${dirName}回転しました`);
@@ -928,8 +1026,9 @@
         });
       }
 
-      // インスペクタが開いていれば更新
-      if (typeof updateInspectorView === 'function' && typeof state !== 'undefined' && state.isInspectorOpen) {
+      if (typeof state !== 'undefined' && state.currentPhotoIndex < 0 && state.selectedPhotoIds && state.selectedPhotoIds.size > 0 && typeof clearSelection === 'function') {
+        clearSelection();
+      } else if (typeof updateInspectorView === 'function' && typeof state !== 'undefined' && state.isInspectorOpen) {
         updateInspectorView();
       }
 
@@ -987,7 +1086,10 @@
         applyTransformToPhotoViews(photo);
       }
 
-      if (typeof updateInspectorView === 'function' && typeof state !== 'undefined' && state.isInspectorOpen) {
+      if (typeof state !== 'undefined' && state.currentPhotoIndex < 0 && state.selectedPhotoIds && state.selectedPhotoIds.has(photoId) && typeof clearSelection === 'function') {
+        state.activeInspectorPhotoId = photoId;
+        clearSelection();
+      } else if (typeof updateInspectorView === 'function' && typeof state !== 'undefined' && state.isInspectorOpen) {
         updateInspectorView();
       }
 
@@ -1036,7 +1138,9 @@
         });
       }
 
-      if (typeof updateInspectorView === 'function' && typeof state !== 'undefined' && state.isInspectorOpen) {
+      if (typeof state !== 'undefined' && state.currentPhotoIndex < 0 && state.selectedPhotoIds && state.selectedPhotoIds.size > 0 && typeof clearSelection === 'function') {
+        clearSelection();
+      } else if (typeof updateInspectorView === 'function' && typeof state !== 'undefined' && state.isInspectorOpen) {
         updateInspectorView();
       }
 
@@ -1146,6 +1250,272 @@
     initAdjustModule();
   }
 
+  /* ==========================================================================
+     トーン調整（明るさ・コントラスト・彩度）のコピー＆一括ペースト ＋ 画像クリップボードコピー
+     ※ユーザー指定により、コピー・ペースト対象はトーン3項目（明・比・彩）のみとし、
+       水平傾き（fine_angle）・90度回転（rotation）・クロップ枠（crop_*）は各写真の既存値を維持する。
+     ========================================================================== */
+
+  const TONE_CLIPBOARD_KEY = 'pm_copied_tone_adjust';
+
+  /**
+   * コピー済みのトーン調整値 ({ brightness, contrast, saturation }) を取得する
+   */
+  function getCopiedToneAdjustments() {
+    if (typeof state !== 'undefined' && state.copiedToneAdjustments) {
+      return state.copiedToneAdjustments;
+    }
+    try {
+      const raw = localStorage.getItem(TONE_CLIPBOARD_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          const clean = {
+            brightness: dialIndexToBrightness(brightnessToDialIndex(Number(parsed.brightness) || 0)),
+            contrast: Math.max(-100, Math.min(100, Math.round(Number(parsed.contrast) || 0))),
+            saturation: Math.max(-100, Math.min(100, Math.round(Number(parsed.saturation) || 0))),
+          };
+          if (typeof state !== 'undefined') state.copiedToneAdjustments = clean;
+          return clean;
+        }
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  /**
+   * トーン調整値を保存し、関連UIボタンのツールチップ等を同期する
+   */
+  function setCopiedToneAdjustments(tone) {
+    const clean = {
+      brightness: dialIndexToBrightness(brightnessToDialIndex(Number(tone.brightness) || 0)),
+      contrast: Math.max(-100, Math.min(100, Math.round(Number(tone.contrast) || 0))),
+      saturation: Math.max(-100, Math.min(100, Math.round(Number(tone.saturation) || 0))),
+    };
+    if (typeof state !== 'undefined') {
+      state.copiedToneAdjustments = clean;
+    }
+    try {
+      localStorage.setItem(TONE_CLIPBOARD_KEY, JSON.stringify(clean));
+    } catch (e) {}
+    syncPasteToneButtonsUI();
+    return clean;
+  }
+
+  /**
+   * トーン調整値の人間向けサマリー文字列を生成する
+   */
+  function formatToneSummary(tone) {
+    if (!tone) return '';
+    const b = Number(tone.brightness) || 0;
+    const c = Number(tone.contrast) || 0;
+    const s = Number(tone.saturation) || 0;
+    const evStr = `${b > 0 ? '+' : ''}${(b / 10.0).toFixed(1)}EV`;
+    const cStr = `${c > 0 ? '+' : ''}${c}`;
+    const sStr = `${s > 0 ? '+' : ''}${s}`;
+    const isEn = typeof window.getCurrentLang === 'function' && window.getCurrentLang() === 'en';
+    if (isEn) {
+      return `EV:${evStr} / Con:${cStr} / Sat:${sStr}`;
+    }
+    return `明:${evStr} / 比:${cStr} / 彩:${sStr}`;
+  }
+
+  /**
+   * ペーストボタンの有効状態・ツールチップを同期する
+   */
+  function syncPasteToneButtonsUI() {
+    const copied = getCopiedToneAdjustments();
+    const summary = copied ? ` (${formatToneSummary(copied)})` : '';
+    if (pasteToneBtnEl) {
+      pasteToneBtnEl.disabled = !copied;
+      pasteToneBtnEl.style.opacity = copied ? '1' : '0.55';
+      pasteToneBtnEl.title = copied
+        ? `コピー済みのトーン調整をペースト${summary} (Ctrl+Shift+V)`
+        : '先に「トーンをコピー」を実行してください (Ctrl+Shift+C)';
+    }
+  }
+
+  /**
+   * 画像調整モーダル内の現在スライダー値からトーン3項目（明・比・彩）をコピーする
+   */
+  function copyCurrentModalToneAdjustments() {
+    const saved = setCopiedToneAdjustments({
+      brightness: adjustState.brightness,
+      contrast: adjustState.contrast,
+      saturation: adjustState.saturation,
+    });
+    if (typeof showToast === 'function') {
+      showToast(`📋 トーン調整をコピーしました（${formatToneSummary(saved)}）`, 'info');
+    }
+  }
+
+  /**
+   * 画像調整モーダル内のスライダーへコピー済みトーン3項目をペーストする（傾き・回転・クロップは維持）
+   */
+  function pasteToneAdjustmentsToModal() {
+    const copied = getCopiedToneAdjustments();
+    if (!copied) {
+      if (typeof showToast === 'function') {
+        showToast('⚠️ コピーされたトーン調整がありません（先にコピーしてください）', 'warning');
+      }
+      return;
+    }
+    adjustState.brightness = copied.brightness;
+    adjustState.contrast = copied.contrast;
+    adjustState.saturation = copied.saturation;
+    syncFineSlidersUI();
+    applyImageStagePreview(false);
+    if (typeof showToast === 'function') {
+      showToast(`🎨 トーン調整を反映しました（${formatToneSummary(copied)}）`, 'info');
+    }
+  }
+
+  /**
+   * 指定写真（一覧・ライトボックス）のトーン調整値（明・比・彩）をコピーする
+   */
+  function copyPhotoToneAdjustments(photoOrId) {
+    let photo = null;
+    if (photoOrId && typeof photoOrId === 'object') {
+      photo = photoOrId;
+    } else if (photoOrId && typeof state !== 'undefined' && state.photos) {
+      photo = state.photos.find(p => p.id === Number(photoOrId));
+    }
+    if (!photo) return;
+
+    const saved = setCopiedToneAdjustments({
+      brightness: Number(photo.brightness) || 0,
+      contrast: Number(photo.contrast) || 0,
+      saturation: Number(photo.saturation) || 0,
+    });
+    if (typeof showToast === 'function') {
+      showToast(`📋 「${photo.file_name}」のトーン調整をコピーしました（${formatToneSummary(saved)}）`, 'info');
+    }
+  }
+
+  /**
+   * コピー済みのトーン調整値（明・比・彩）を複数写真へ一括ペーストする（各写真の回転・傾き・クロップは維持）
+   */
+  async function batchPastePhotoToneAdjustments(photoIds) {
+    if (!photoIds || !photoIds.length) return;
+    const copied = getCopiedToneAdjustments();
+    if (!copied) {
+      if (typeof showToast === 'function') {
+        showToast('⚠️ 先にトーン調整をコピーしてください (Ctrl+Shift+C)', 'warning');
+      }
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/photos/batch-adjust-tone', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          photo_ids: photoIds,
+          brightness: copied.brightness,
+          contrast: copied.contrast,
+          saturation: copied.saturation,
+        }),
+      });
+      if (!res.ok) throw new Error('トーン調整の一括ペーストに失敗しました');
+      const data = await res.json();
+
+      if (typeof state !== 'undefined' && state.photos) {
+        state.photos.forEach(p => {
+          if (photoIds.includes(p.id)) {
+            p.brightness = copied.brightness;
+            p.contrast = copied.contrast;
+            p.saturation = copied.saturation;
+            p._thumbBust = Date.now();
+            applyTransformToPhotoViews(p);
+          }
+        });
+      }
+
+      if (typeof updateInspectorView === 'function' && typeof state !== 'undefined' && state.isInspectorOpen) {
+        updateInspectorView();
+      }
+
+      if (typeof showToast === 'function') {
+        showToast(`🎨 ${data.affected || photoIds.length}枚にトーン調整をペーストしました（${formatToneSummary(copied)}）`, 'success');
+      }
+    } catch (e) {
+      console.error(e);
+      if (typeof showToast === 'function') {
+        showToast('トーン調整の一括ペーストに失敗しました', 'error');
+      }
+    }
+  }
+
+  /**
+   * 指定写真（非破壊調整反映済み）をOSのクリップボードへPNG画像としてコピーする (Ctrl+C)
+   */
+  async function copyPhotoImageToClipboard(photoOrId) {
+    let photo = null;
+    if (photoOrId && typeof photoOrId === 'object') {
+      photo = photoOrId;
+    } else if (photoOrId && typeof state !== 'undefined' && state.photos) {
+      photo = state.photos.find(p => p.id === Number(photoOrId));
+    }
+    if (!photo) return;
+
+    if (!navigator.clipboard || typeof window.ClipboardItem === 'undefined') {
+      if (typeof showToast === 'function') {
+        showToast('⚠️ お使いのブラウザ環境ではクリップボードへの画像コピーに対応していません', 'warning');
+      }
+      return;
+    }
+
+    try {
+      const pngBlobPromise = new Promise((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          try {
+            // /api/photo/{id}/view はクロップ・傾き・トーン調整がある場合は回転ごと焼き込み済みを返し、
+            // 90度単位の回転のみの場合は元画像を返すため、未焼き込みの90度回転のみCanvas上で適用する
+            const hasBaked = (typeof hasBakedViewAdjustments === 'function') && hasBakedViewAdjustments(photo);
+            const clientRot = hasBaked ? 0 : (((photo.rotation || 0) % 360 + 360) % 360);
+            const swapDim = (clientRot === 90 || clientRot === 270);
+            const srcW = img.naturalWidth || img.width || 800;
+            const srcH = img.naturalHeight || img.height || 600;
+            const canvas = document.createElement('canvas');
+            canvas.width = swapDim ? srcH : srcW;
+            canvas.height = swapDim ? srcW : srcH;
+            const ctx = canvas.getContext('2d');
+            if (clientRot !== 0) {
+              ctx.translate(canvas.width / 2, canvas.height / 2);
+              ctx.rotate((clientRot * Math.PI) / 180);
+              ctx.drawImage(img, -srcW / 2, -srcH / 2, srcW, srcH);
+            } else {
+              ctx.drawImage(img, 0, 0, srcW, srcH);
+            }
+            canvas.toBlob((blob) => {
+              if (blob) resolve(blob);
+              else reject(new Error('PNG変換に失敗しました'));
+            }, 'image/png');
+          } catch (err) {
+            reject(err);
+          }
+        };
+        img.onerror = () => reject(new Error('画像の読み込みに失敗しました'));
+        img.src = `/api/photo/${photo.id}/view?t=${photo._thumbBust || Date.now()}`;
+      });
+
+      await navigator.clipboard.write([
+        new ClipboardItem({ 'image/png': pngBlobPromise }),
+      ]);
+
+      if (typeof showToast === 'function') {
+        showToast(`📋 「${photo.file_name}」をクリップボードにコピーしました (Ctrl+V で貼り付け可能)`, 'success');
+      }
+    } catch (e) {
+      console.error('Clipboard image copy error:', e);
+      if (typeof showToast === 'function') {
+        showToast('クリップボードへの画像コピーに失敗しました', 'error');
+      }
+    }
+  }
+
   // グローバル公開
   window.openImageAdjustModal = openImageAdjustModal;
   window.closeImageAdjustModal = closeImageAdjustModal;
@@ -1154,5 +1524,9 @@
   window.resetPhotoAdjustmentsQuick = resetPhotoAdjustmentsQuick;
   window.batchResetPhotoAdjustmentsQuick = batchResetPhotoAdjustmentsQuick;
   window.applyTransformToPhotoViews = applyTransformToPhotoViews;
+  window.getCopiedToneAdjustments = getCopiedToneAdjustments;
+  window.copyPhotoToneAdjustments = copyPhotoToneAdjustments;
+  window.batchPastePhotoToneAdjustments = batchPastePhotoToneAdjustments;
+  window.copyPhotoImageToClipboard = copyPhotoImageToClipboard;
 
 })();

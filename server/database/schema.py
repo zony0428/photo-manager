@@ -80,6 +80,7 @@ def initialize_database() -> None:
             ("brightness", "INTEGER DEFAULT 0"),
             ("contrast", "INTEGER DEFAULT 0"),
             ("saturation", "INTEGER DEFAULT 0"),
+            ("original_date_taken", "TEXT"),
         ]
         for col_name, col_type in new_cols:
             if col_name not in existing_cols:
