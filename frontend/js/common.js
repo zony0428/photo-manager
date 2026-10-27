@@ -297,6 +297,7 @@ const elements = {
   lightboxModal: document.getElementById('lightboxModal'),
   lightboxFileName: document.getElementById('lightboxFileName'),
   lightboxMeta: document.getElementById('lightboxMeta'),
+  lightboxPrimaryBtn: document.getElementById('lightboxPrimaryBtn'),
   lightboxRatingWidget: document.getElementById('lightboxRatingWidget'),
   lightboxRotateLeftBtn: document.getElementById('lightboxRotateLeftBtn'),
   rotateBtn: document.getElementById('rotateBtn'),

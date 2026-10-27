@@ -881,6 +881,10 @@
     'トーン調整・切り抜き枠にリアルタイム連動するRGBヒストグラムを表示/非表示 (H)': 'Toggle real-time RGB Histogram linked to tone & crop (H)',
 
     'この写真を一覧の代表写真にする': 'Set this photo as the stack primary (Crown)',
+    '現在のグループ代表写真です': 'Current stack primary photo (Crown)',
+    'クリックしてこの写真をグループの代表に設定': 'Click to set this photo as stack primary (Crown)',
+    'グループの代表写真に設定しました': 'Set as the stack primary photo (Crown)',
+    '代表写真の変更に失敗しました': 'Failed to change the stack primary photo',
     '一括編集': 'Batch Edit',
     '一括解除': 'Remove All',
     'タグなし': 'No tags',

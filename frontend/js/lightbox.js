@@ -56,16 +56,19 @@ function loadLightboxPhoto(instantFilmstrip = false, skipFilmstrip = false) {
   const photo = state.photos[state.currentPhotoIndex];
   if (!photo) return;
 
-  // 写真の表示内容（画像・EXIF・評価・タグ）を更新
+  // 前の写真のスタック選択状態をクリアしてから露出ブラケット / 連写バースト比較バーを初期化＆描画
+  state.currentLightboxStackPhotos = [];
+  state.currentLightboxStackIndex = -1;
+  state.currentLightboxStackType = null;
+  renderLightboxBracketBar(photo);
+
+  // 写真の表示内容（画像・EXIF・評価・代表バッジ・タグ）を更新
   updateLightboxContent(photo);
 
   // フィルムストリップのアクティブ更新＆ドック波形スクロール
   if (!skipFilmstrip) {
     updateFilmstripActive(instantFilmstrip);
   }
-
-  // 露出ブラケット / 連写バースト比較バーの初期化＆描画
-  renderLightboxBracketBar(photo);
 }
 
 /**
@@ -129,8 +132,9 @@ function updateLightboxContent(photo) {
   state.currentRotation = (typeof hasBakedViewAdjustments === 'function' && hasBakedViewAdjustments(photo)) ? 0 : (photo.rotation || 0);
   applyLightboxTransform();
 
-  // 評価ウィジェット更新
+  // 評価ウィジェット＆スタック代表バッジ更新
   updateLightboxRating(photo.rating);
+  updateLightboxPrimaryBtn(photo);
 
   // EXIFテーブル更新
   elements.exifFileName.textContent = photo.file_name;
@@ -276,7 +280,8 @@ function renderLightboxBracketBar(photo, initialMemberId = null) {
       const rawDir = sp.directory_path || '';
       const folderParts = rawDir.split(/[\\/]/).filter(Boolean);
       const folderName = folderParts.length > 0 ? folderParts[folderParts.length - 1] : `コピー${idx + 1}`;
-      const isPri = sp.is_stack_primary === 1;
+      const isPri = Number(sp.is_stack_primary) === 1;
+      if (isPri) pill.classList.add('is-primary');
       const labelText = isPri ? `[代表] ${folderName}` : folderName;
 
       pill.innerHTML = `
@@ -308,6 +313,7 @@ function renderLightboxBracketBar(photo, initialMemberId = null) {
       const pill = document.createElement('button');
       pill.className = 'bracket-pill';
       if (idx === activeIdx) pill.classList.add('active');
+      if (Number(sp.is_stack_primary) === 1) pill.classList.add('is-primary');
 
       let labelText = '';
       let diffSec = 0;
@@ -354,6 +360,7 @@ function renderLightboxBracketBar(photo, initialMemberId = null) {
       const pill = document.createElement('button');
       pill.className = 'bracket-pill';
       if (idx === activeIdx) pill.classList.add('active');
+      if (Number(sp.is_stack_primary) === 1) pill.classList.add('is-primary');
 
       const biasVal = sp.exposure_bias || 0.0;
       const sign = biasVal > 0 ? '+' : '';
@@ -752,6 +759,175 @@ function updateLightboxRating(rating) {
     const ratingVal = parseInt(btn.dataset.rating, 10);
     btn.classList.toggle('active', ratingVal === curRating);
   });
+}
+
+/**
+ * ライトボックス上部「代表」バッジボタンの表示・点灯状態を更新する
+ */
+function updateLightboxPrimaryBtn(photo) {
+  const btn = elements.lightboxPrimaryBtn || document.getElementById('lightboxPrimaryBtn');
+  if (!btn) return;
+
+  const parentPhoto = state.photos[state.currentPhotoIndex];
+  const hasStack = (state.currentLightboxStackPhotos && state.currentLightboxStackPhotos.length > 1)
+    || (parentPhoto && Array.isArray(parentPhoto.stack_photos) && parentPhoto.stack_photos.length > 1)
+    || (photo && Array.isArray(photo.stack_photos) && photo.stack_photos.length > 1);
+
+  if (!photo || !hasStack) {
+    btn.style.display = 'none';
+    btn.classList.remove('active');
+    return;
+  }
+
+  btn.style.display = 'inline-flex';
+  const isPrimary = Number(photo.is_stack_primary) === 1;
+  btn.classList.toggle('active', isPrimary);
+  btn.title = isPrimary
+    ? '現在のグループ代表写真です'
+    : 'クリックしてこの写真をグループの代表に設定';
+}
+
+/**
+ * 現在ライトボックスで表示中のスタックメンバーをグループの代表（Primary）に設定する
+ */
+async function setCurrentLightboxPhotoAsPrimary() {
+  const current = getCurrentLightboxPhoto();
+  if (!current) return;
+  if (!state.currentLightboxStackPhotos || state.currentLightboxStackPhotos.length <= 1) return;
+  if (Number(current.is_stack_primary) === 1) return;
+
+  const btn = elements.lightboxPrimaryBtn || document.getElementById('lightboxPrimaryBtn');
+  if (btn) btn.disabled = true;
+
+  try {
+    const res = await fetch(`/api/photo/${current.id}/set-primary`, { method: 'POST' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    const newPrimaryId = current.id;
+    const oldPrimary = state.currentLightboxStackPhotos.find(p => Number(p.is_stack_primary) === 1);
+    const oldPrimaryId = oldPrimary ? oldPrimary.id : (current.stack_id || newPrimaryId);
+
+    // 1. ライトボックス内のスタック配列の代表フラグと stack_id を更新
+    state.currentLightboxStackPhotos.forEach(sp => {
+      sp.stack_id = newPrimaryId;
+      sp.is_stack_primary = (sp.id === newPrimaryId) ? 1 : 0;
+    });
+    current.stack_id = newPrimaryId;
+    current.is_stack_primary = 1;
+
+    // 2. 上部「代表」バッジを即時ON（色つき）に更新
+    updateLightboxPrimaryBtn(current);
+
+    // 3. 下部ブラケット/バースト比較バーのピル表示（is-primary クラスや重複スタックの [代表] 表記）を更新
+    if (elements.lightboxBracketPills) {
+      const pills = elements.lightboxBracketPills.querySelectorAll('.bracket-pill');
+      const isDuplicate = (state.currentLightboxStackType === 'duplicate');
+      pills.forEach((pill, idx) => {
+        const sp = state.currentLightboxStackPhotos[idx];
+        if (!sp) return;
+        const isPri = Number(sp.is_stack_primary) === 1;
+        pill.classList.toggle('is-primary', isPri);
+        if (isDuplicate) {
+          const rawDir = sp.directory_path || '';
+          const folderParts = rawDir.split(/[\\/]/).filter(Boolean);
+          const folderName = folderParts.length > 0 ? folderParts[folderParts.length - 1] : `コピー${idx + 1}`;
+          const labelEl = pill.querySelector('.bracket-pill-label');
+          if (labelEl) {
+            labelEl.textContent = isPri ? `[代表] ${folderName}` : folderName;
+          }
+          const sizeStr = sp.file_size ? `${(sp.file_size / (1024 * 1024)).toFixed(2)}MB` : '';
+          const resStr = (sp.width && sp.height) ? `${sp.width}×${sp.height}` : '';
+          pill.title = `${sp.file_name}\n保存先: ${sp.directory_path || '不明'}\n解像度: ${resStr || '-'}\nサイズ: ${sizeStr || '-'}${isPri ? '\n(代表マスター写真)' : ''}`;
+        }
+      });
+    }
+
+    // 4. 一覧（state.photos）・グリッドカード・フィルムストリップ・右インスペクタの同期更新
+    await ensureStackMemberDetail(current);
+
+    if (state.isStacked) {
+      const idx = state.currentPhotoIndex;
+      const oldGridPhoto = state.photos[idx];
+      if (oldGridPhoto) {
+        const syncedStackPhotos = (oldGridPhoto.stack_photos || state.currentLightboxStackPhotos).map(sp => {
+          sp.stack_id = newPrimaryId;
+          sp.is_stack_primary = (sp.id === newPrimaryId) ? 1 : 0;
+          return sp;
+        });
+        const newGridPhoto = {
+          ...oldGridPhoto,
+          ...current,
+          stack_id: newPrimaryId,
+          is_stack_primary: 1,
+          stack_photos: syncedStackPhotos,
+          stack_count: oldGridPhoto.stack_count || state.currentLightboxStackPhotos.length,
+          stack_type: oldGridPhoto.stack_type || state.currentLightboxStackType,
+          duplicate_count: oldGridPhoto.duplicate_count,
+        };
+        state.photos[idx] = newGridPhoto;
+
+        // メイングリッド上の該当カードを新しい代表写真カードに差し替え
+        if (elements.photoGrid && typeof createPhotoCard === 'function') {
+          const oldCard = elements.photoGrid.querySelector(`.photo-card[data-id="${oldPrimaryId}"], .photo-card[data-index="${idx}"]`);
+          if (oldCard) {
+            const newCard = createPhotoCard(newGridPhoto, idx);
+            oldCard.replaceWith(newCard);
+          }
+        }
+
+        // フィルムストリップ上の該当サムネイルを新しい代表写真に差し替え
+        if (elements.filmstrip && elements.filmstrip.children[idx]) {
+          const stripItem = elements.filmstrip.children[idx];
+          const img = stripItem.querySelector('img');
+          if (img) {
+            img.src = getThumbnailUrl(newGridPhoto);
+            img.alt = newGridPhoto.file_name || '';
+          }
+        }
+
+        // 選択状態・右インスペクタの対象IDも新代表へ引き継ぎ
+        if (state.selectedPhotoIds && state.selectedPhotoIds.has(oldPrimaryId)) {
+          state.selectedPhotoIds.delete(oldPrimaryId);
+          state.selectedPhotoIds.add(newPrimaryId);
+        }
+        if (state.activeInspectorPhotoId === oldPrimaryId) {
+          state.activeInspectorPhotoId = newPrimaryId;
+        }
+      }
+    } else {
+      // スタック展開表示中（state.isStacked === false）は該当グループの全要素の stack_id / is_stack_primary を更新
+      const memberIdSet = new Set(state.currentLightboxStackPhotos.map(sp => sp.id));
+      state.photos.forEach(p => {
+        if (memberIdSet.has(p.id) || p.stack_id === oldPrimaryId) {
+          p.stack_id = newPrimaryId;
+          p.is_stack_primary = (p.id === newPrimaryId) ? 1 : 0;
+        }
+        if (Array.isArray(p.stack_photos)) {
+          p.stack_photos.forEach(sp => {
+            if (memberIdSet.has(sp.id) || sp.stack_id === oldPrimaryId) {
+              sp.stack_id = newPrimaryId;
+              sp.is_stack_primary = (sp.id === newPrimaryId) ? 1 : 0;
+            }
+          });
+        }
+      });
+    }
+
+    if (state.isInspectorOpen && typeof updateInspectorView === 'function') {
+      updateInspectorView();
+    }
+
+    if (typeof showToast === 'function') {
+      showToast('グループの代表写真に設定しました', 'success');
+    }
+  } catch (err) {
+    console.error('代表変更失敗:', err);
+    if (typeof showToast === 'function') {
+      showToast('代表写真の変更に失敗しました', 'warning');
+    }
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 let isFilmstripDragging = false;
@@ -1417,6 +1593,13 @@ function initLightboxEvents() {
         elements.exifDrawer.style.display = isHidden ? 'block' : 'none';
         elements.toggleExifBtn.classList.toggle('active', isHidden);
       }
+    });
+  }
+
+  const primaryBtn = elements.lightboxPrimaryBtn || document.getElementById('lightboxPrimaryBtn');
+  if (primaryBtn) {
+    primaryBtn.addEventListener('click', () => {
+      setCurrentLightboxPhotoAsPrimary();
     });
   }
 

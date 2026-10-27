@@ -482,7 +482,58 @@
   color: var(--rating-discard);
 }
 
-/* ② ライトボックス上部の評価セレクト枠 (#lightboxRatingWidget：和紙/夜墨両対応) */
+/* ② ライトボックス上部のスタック代表バッジボタン (#lightboxPrimaryBtn) ＆ 評価セレクト枠 (#lightboxRatingWidget：和紙/夜墨両対応) */
+.lightbox-primary-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.2;
+  padding: 6px 12px;
+  margin-right: -6px;
+  border-radius: var(--ui-radius-click, 5px) !important;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  transition: all var(--transition-fast);
+}
+
+.lightbox-primary-btn:not(.active):not(:disabled):hover {
+  background: var(--bg-hover);
+  border-color: var(--text-muted);
+  color: var(--text-main);
+}
+
+.lightbox-primary-btn.active {
+  background: var(--accent-primary, #e14d2a);
+  border-color: var(--accent-primary, #e14d2a);
+  color: #ffffff;
+  box-shadow: 0 1px 4px rgba(225, 77, 42, 0.35);
+  cursor: default;
+}
+
+.lightbox-primary-btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+/* 下部バースト/ブラケット比較ピルの代表コマ目印ドット */
+.bracket-pill:not(.bracket-pill-dup).is-primary .bracket-pill-label::before {
+  content: "";
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent-primary, #e14d2a);
+  margin-right: 4px;
+  vertical-align: 1px;
+}
+
 #lightboxRatingWidget.rating-widget {
   background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
