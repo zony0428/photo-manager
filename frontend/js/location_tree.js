@@ -34,7 +34,7 @@ function initLocationTree() {
     });
   }
 
-  const mapModalBtn = document.getElementById('openLocationMapModalBtn');
+  const mapModalBtn = document.getElementById('openLocationMapModalBtn') || document.getElementById('locationOpenMapBtn');
   if (mapModalBtn) {
     mapModalBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -432,22 +432,10 @@ function collapseAllLocations() {
 }
 
 /**
- * 国名から絵文字国旗を取得（フォールバックあり）
+ * 国名アイコン（フォールバック）
  */
 function getCountryEmoji(countryName) {
-  if (countryName === '日本') return '🇯🇵';
-  if (countryName.includes('アメリカ')) return '🇺🇸';
-  if (countryName.includes('フランス')) return '🇫🇷';
-  if (countryName.includes('イギリス')) return '🇬🇧';
-  if (countryName.includes('イタリア')) return '🇮🇹';
-  if (countryName.includes('ドイツ')) return '🇩🇪';
-  if (countryName.includes('韓国')) return '🇰🇷';
-  if (countryName.includes('台湾')) return '🇹🇼';
-  if (countryName.includes('中国')) return '🇨🇳';
-  if (countryName.includes('オーストラリア')) return '🇦🇺';
-  if (countryName.includes('カナダ')) return '🇨🇦';
-  if (countryName.includes('スペイン')) return '🇪🇸';
-  return '🗺️';
+  return '';
 }
 
 // グローバル公開

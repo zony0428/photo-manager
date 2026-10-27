@@ -605,7 +605,7 @@ function _ftGetOrCreateInlineProgress(targetItem) {
     _inlineScanProgressEl.id = 'folderInlineScanProgress';
     _inlineScanProgressEl.innerHTML = `
       <div class="folder-inline-progress-header">
-        <span class="folder-inline-progress-title">🔍 スキャン準備中...</span>
+        <span class="folder-inline-progress-title">スキャン準備中...</span>
         <span class="folder-inline-progress-count"></span>
       </div>
       <div class="folder-inline-progress-track">
@@ -679,7 +679,7 @@ function _ftRenderScanProgress(status) {
   }
 
   if (status.phase === 'listing') {
-    const listingText = '🔍 写真ファイルを検索中...';
+    const listingText = '写真ファイルを検索中...';
     if (elements.folderScanProgressTitle) elements.folderScanProgressTitle.textContent = listingText;
     if (elements.folderScanProgressCount) elements.folderScanProgressCount.textContent = '';
     if (elements.folderScanProgressFill) elements.folderScanProgressFill.classList.add('indeterminate');
@@ -698,7 +698,7 @@ function _ftRenderScanProgress(status) {
     }
     if (inlineFileEl) inlineFileEl.textContent = status.folder_path || '';
   } else if (status.phase === 'stacks') {
-    const stackText = '⚡ 連写・露出グループ化中...';
+    const stackText = '連写・露出グループ化中...';
     if (elements.folderScanProgressTitle) elements.folderScanProgressTitle.textContent = stackText;
     if (elements.folderScanProgressCount) elements.folderScanProgressCount.textContent = '';
     if (elements.folderScanProgressFill) elements.folderScanProgressFill.classList.add('indeterminate');
@@ -726,7 +726,7 @@ function _ftRenderScanProgress(status) {
     const pct = typeof status.percent === 'number' && status.percent >= 0
       ? status.percent
       : (total > 0 ? Math.min(100, Math.round((current / total) * 100)) : 0);
-    const scanTitle = '📂 写真スキャン中...';
+    const scanTitle = '写真スキャン中...';
     const countText = total > 0 ? `${current.toLocaleString()} / ${total.toLocaleString()} 枚 (${pct}%)` : `${current.toLocaleString()} 枚`;
     const fileName = status.current_file || '';
 
@@ -826,7 +826,7 @@ async function executeScan(folderPath, recursive = true, cleanupOrphans = false)
     const inlineEl = _ftGetOrCreateInlineProgress(immediateItem);
     const titleEl = inlineEl.querySelector('.folder-inline-progress-title');
     const fillEl = inlineEl.querySelector('.folder-inline-progress-fill');
-    if (titleEl) titleEl.textContent = '🔍 スキャン準備中...';
+    if (titleEl) titleEl.textContent = 'スキャン準備中...';
     if (fillEl) fillEl.classList.add('indeterminate');
   }
 
@@ -851,12 +851,12 @@ async function executeScan(folderPath, recursive = true, cleanupOrphans = false)
     _ftStopScanPolling();
 
     // スキャン完了演出（1.8秒間完了を表示してフェードアウト）
-    if (elements.globalScanTitle) elements.globalScanTitle.textContent = '✅ スキャン完了';
+    if (elements.globalScanTitle) elements.globalScanTitle.textContent = 'スキャン完了';
     if (elements.globalScanFill) elements.globalScanFill.style.width = '100%';
     if (_inlineScanProgressEl) {
       const inlineTitle = _inlineScanProgressEl.querySelector('.folder-inline-progress-title');
       const inlineFill = _inlineScanProgressEl.querySelector('.folder-inline-progress-fill');
-      if (inlineTitle) inlineTitle.textContent = '✅ スキャン完了';
+      if (inlineTitle) inlineTitle.textContent = 'スキャン完了';
       if (inlineFill) {
         inlineFill.classList.remove('indeterminate');
         inlineFill.style.width = '100%';
@@ -871,7 +871,7 @@ async function executeScan(folderPath, recursive = true, cleanupOrphans = false)
     const cleanedInfo = (data.result && data.result.cleaned > 0) ? ` / ${data.result.cleaned}枚 削除` : '';
     const scanned = data.result ? data.result.scanned : 0;
     const updated = data.result ? data.result.added_or_updated : 0;
-    showToast(`✅ スキャン完了: ${scanned}枚検出 (${updated}枚更新${cleanedInfo})`, 'success');
+    showToast(`スキャン完了: ${scanned}枚検出 (${updated}枚更新${cleanedInfo})`, 'success');
 
     await Promise.all([
       typeof refreshAll === 'function' ? refreshAll() : null,
@@ -1126,7 +1126,7 @@ function _ftInitDbMaintenanceModal() {
       replaceTagPrefixInLocalPhotos(oldFullPath, newFullPath);
       await syncAfterTagMutation(data);
       if (typeof showToast === 'function') {
-        showToast(successMsg || `🏷️ タグを「${newFullPath}」に更新しました`, 'success', 2600);
+        showToast(successMsg || `タグを「${newFullPath}」に更新しました`, 'success', 2600);
       }
       return true;
     } catch (err) {
@@ -1155,7 +1155,7 @@ function _ftInitDbMaintenanceModal() {
       expandTagAncestorsInAllTrees(cleanTag);
       await syncAfterTagMutation(data);
       if (typeof showToast === 'function') {
-        showToast(`🏷️ タグ「${cleanTag}」を作成しました`, 'success', 2200);
+        showToast(`タグ「${cleanTag}」を作成しました`, 'success', 2200);
       }
       return true;
     } catch (err) {
@@ -1262,7 +1262,7 @@ function _ftInitDbMaintenanceModal() {
         const ok = await executeTagMoveOrRename(
           node.fullPath,
           newFullPath,
-          `✏️ タグを「${newFullPath}」にリネームしました`
+          `タグを「${newFullPath}」にリネームしました`
         );
         if (!ok) {
           input.remove();
@@ -1417,7 +1417,7 @@ function _ftInitDbMaintenanceModal() {
           await executeTagMoveOrRename(
             src.fullPath,
             newFullPath,
-            `📂 タグ「${src.fullPath}」を「${newFullPath}」へ移動しました`
+            `タグ「${src.fullPath}」を「${newFullPath}」へ移動しました`
           );
         });
 
@@ -1470,7 +1470,7 @@ function _ftInitDbMaintenanceModal() {
               replaceTagPrefixInLocalPhotos(node.fullPath, null);
               await syncAfterTagMutation(data);
               if (typeof showToast === 'function') {
-                showToast(`🗑️ タグ「${node.fullPath}」をライブラリ全体から削除しました`, 'info', 2500);
+                showToast(`タグ「${node.fullPath}」をライブラリ全体から削除しました`, 'info', 2500);
               }
             } catch (err) {
               if (typeof showToast === 'function') {
@@ -1539,7 +1539,7 @@ function _ftInitDbMaintenanceModal() {
       await executeTagMoveOrRename(
         src.fullPath,
         newFullPath,
-        `⬆️ タグ「${src.fullPath}」を最上位ルート「${newFullPath}」へ独立移動しました`
+        `タグ「${src.fullPath}」を最上位ルート「${newFullPath}」へ独立移動しました`
       );
     });
   }
@@ -1643,7 +1643,7 @@ function _ftInitDbMaintenanceModal() {
           body: JSON.stringify({ startup_mode: winMode, apply_now: true }),
         });
         if (typeof showToast === 'function') {
-          showToast('🪟 起動時のウィンドウサイズを保存・反映しました', 'success', 2200);
+          showToast('起動時のウィンドウサイズを保存・反映しました', 'success', 2200);
         }
       } catch (err) {
         if (typeof showToast === 'function') {
@@ -1674,7 +1674,7 @@ function _ftInitDbMaintenanceModal() {
         if (p) showSingleInspector(p);
       }
       if (typeof showToast === 'function') {
-        showToast('🏷️ タグツリーの名前順ルールを保存・反映しました', 'success', 2200);
+        showToast('タグツリーの名前順ルールを保存・反映しました', 'success', 2200);
       }
     });
   }
@@ -1691,12 +1691,12 @@ function _ftInitDbMaintenanceModal() {
     elements.dbMaintVacuumBtn.addEventListener('click', async () => {
       elements.dbMaintVacuumBtn.disabled = true;
       const originalText = elements.dbMaintVacuumBtn.textContent;
-      elements.dbMaintVacuumBtn.textContent = '⏳ 最適化中...';
+      elements.dbMaintVacuumBtn.textContent = '最適化中...';
       try {
         const res = await fetch('/api/database/vacuum', { method: 'POST' });
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || '最適化に失敗しました');
-        showToast('🧹 データベースの最適化（VACUUM）が完了しました', 'success');
+        showToast('データベースの最適化（VACUUM）が完了しました', 'success');
         await loadStats();
       } catch (err) {
         showToast(`最適化エラー: ${err.message}`, 'error');
@@ -1712,12 +1712,12 @@ function _ftInitDbMaintenanceModal() {
     elements.dbMaintBackupBtn.addEventListener('click', async () => {
       elements.dbMaintBackupBtn.disabled = true;
       const originalText = elements.dbMaintBackupBtn.textContent;
-      elements.dbMaintBackupBtn.textContent = '⏳ 作成中...';
+      elements.dbMaintBackupBtn.textContent = '作成中...';
       try {
         const res = await fetch('/api/database/backup', { method: 'POST' });
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || 'バックアップ作成に失敗しました');
-        showToast(`💾 バックアップを作成しました (${data.filename || ''})`, 'success');
+        showToast(`バックアップを作成しました (${data.filename || ''})`, 'success');
         await loadStats();
       } catch (err) {
         showToast(`バックアップエラー: ${err.message}`, 'error');

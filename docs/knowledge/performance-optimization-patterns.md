@@ -1,7 +1,7 @@
 # パフォーマンス最適化パターンと委譲開発の教訓（v1.36）
 
 2026-10 のパフォーマンス監査（v1.35→1.36）で確立した実装パターン、計測手法、落とし穴をまとめる。
-詳細な経緯は `docs/performance_audit/`（implementation_plan / delegation_prompts / walkthrough）を参照。
+詳細な経緯は `docs/archive/tasks/performance_audit/`（implementation_plan / delegation_prompts / walkthrough）を参照。
 
 ---
 

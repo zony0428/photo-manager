@@ -7,12 +7,15 @@ import base64
 import html
 import io
 import json
+import logging
 import os
 import re
 import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+logger = logging.getLogger(__name__)
 
 from PIL import Image, ImageOps
 
@@ -42,18 +45,18 @@ def _clear_gps_from_exif(exif: Image.Exif) -> None:
         gps_ifd = exif.get_ifd(0x8825)
         if isinstance(gps_ifd, dict):
             gps_ifd.clear()
-    except Exception as e:
-        pass
+    except (KeyError, AttributeError, ValueError) as e:
+        logger.debug(f"Exif GPS IFDクリアスキップ: {e}")
     if 0x8825 in exif:
         try:
             del exif[0x8825]
-        except Exception as e:
-            pass
+        except (KeyError, AttributeError, ValueError) as e:
+            logger.debug(f"Exif GPSタグ削除スキップ: {e}")
     try:
         if hasattr(exif, "_ifds") and 0x8825 in exif._ifds:
             del exif._ifds[0x8825]
-    except Exception as e:
-        pass
+    except (KeyError, AttributeError, ValueError) as e:
+        logger.debug(f"Exif _ifds GPS削除スキップ: {e}")
 
 
 def filter_exif_data(
@@ -108,8 +111,8 @@ def filter_exif_data(
                             exif_ifd[0xA002] = w
                         if 0xA003 in exif_ifd:
                             exif_ifd[0xA003] = h
-                except Exception as e:
-                    pass
+                except (KeyError, AttributeError, ValueError) as e:
+                    logger.debug(f"Exif画像サイズ設定スキップ: {e}")
             else:
                 # ピクセル非加工時はDBの90度単位回転 (0/90/180/270) を Exif Orientation (1/6/3/8) に反映
                 rot = ((int(photo.get("rotation") or 0)) % 360 + 360) % 360
@@ -181,8 +184,8 @@ def filter_exif_data(
                 for tag in exposure_tags:
                     if tag in exif_ifd:
                         del exif_ifd[tag]
-            except Exception as e:
-                pass
+            except (KeyError, AttributeError, ValueError) as e:
+                logger.debug(f"Exif露出タグ削除スキップ: {e}")
 
         # 3. 📷 カメラ・機材情報（機種名、レンズ名、シリアル等）の消去
         if remove_camera:
@@ -212,8 +215,8 @@ def filter_exif_data(
                 for tag in camera_tags_sub:
                     if tag in exif_ifd:
                         del exif_ifd[tag]
-            except Exception as e:
-                pass
+            except (KeyError, AttributeError, ValueError) as e:
+                logger.debug(f"Exifカメラ機材タグ削除スキップ: {e}")
 
         # 4. 🏷️ その他（コメント、説明文、著作権、ソフトウェア名、埋め込みサムネイル等）の消去
         if remove_other:
@@ -244,19 +247,19 @@ def filter_exif_data(
                 for tag in other_tags_sub:
                     if tag in exif_ifd:
                         del exif_ifd[tag]
-            except Exception as e:
-                pass
+            except (KeyError, AttributeError, ValueError) as e:
+                logger.debug(f"Exifその他タグ削除スキップ: {e}")
 
             # 1st IFD (埋め込みサムネイル等) の消去
             try:
                 if hasattr(exif, "_ifds") and 1 in exif._ifds:
                     del exif._ifds[1]
-            except Exception as e:
-                pass
+            except (KeyError, AttributeError, ValueError) as e:
+                logger.debug(f"Exif第1IFD削除スキップ: {e}")
 
         return exif.tobytes()
     except Exception as e:
-        print(f"[WARN] Exifフィルタリング処理でエラー: {e}")
+        logger.warning(f"Exifフィルタリング処理でエラー: {e}")
         return raw_exif
 
 
@@ -608,14 +611,14 @@ def _format_exif_summary(p: Dict[str, Any]) -> str:
         try:
             fl_f = float(fl)
             parts.append(f"{int(fl_f)}mm" if fl_f.is_integer() else f"{fl_f:.1f}mm")
-        except Exception:
-            pass
+        except (ValueError, TypeError) as e:
+            logger.debug(f"焦点距離変換スキップ ({fl}): {e}")
     fn = p.get("f_number")
     if fn is not None:
         try:
             parts.append(f"F{float(fn):.1f}".replace(".0", ""))
-        except Exception:
-            pass
+        except (ValueError, TypeError) as e:
+            logger.debug(f"F値変換スキップ ({fn}): {e}")
     ss = p.get("shutter_speed")
     if ss:
         s_str = str(ss).strip()

@@ -165,9 +165,15 @@ def is_cloud_or_ondemand_path(file_path: Union[str, Path]) -> bool:
         path = Path(file_path).resolve()
         path_str_upper = str(path).upper()
 
-        # 1. Google Drive の仮想ドライブ (通常 G: ドライブ)
-        if path_str_upper.startswith("G:\\") or "\\DRIVEFS\\" in path_str_upper:
+        # 1. Google Drive の仮想ドライブ（ドライブレター固定ではなくボリュームラベルで判定し、
+        #    USBメモリ等が G: に割り当てられた場合の誤判定を防ぐ）
+        if "\\DRIVEFS\\" in path_str_upper:
             return True
+        if path.drive:
+            from .volume_info import get_volume_info
+            vol = get_volume_info(str(path))
+            if vol and "GOOGLE DRIVE" in (vol.get("label") or "").upper():
+                return True
 
         # 2. OneDrive フォルダ配下
         onedrive_env = os.environ.get("OneDrive")
@@ -186,8 +192,9 @@ def is_cloud_or_ondemand_path(file_path: Union[str, Path]) -> bool:
         if path.exists():
             stat_info = path.stat()
             file_attrs = getattr(stat_info, "st_file_attributes", 0)
-            # FILE_ATTRIBUTE_REPARSE_POINT (0x0400) or FILE_ATTRIBUTE_OFFLINE (0x1000)
-            if file_attrs & (0x0400 | 0x1000):
+            # FILE_ATTRIBUTE_REPARSE_POINT (0x0400) / OFFLINE (0x1000) /
+            # RECALL_ON_OPEN (0x40000) / RECALL_ON_DATA_ACCESS (0x400000: クラウドのプレースホルダー)
+            if file_attrs & (0x0400 | 0x1000 | 0x40000 | 0x400000):
                 return True
 
         return False

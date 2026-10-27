@@ -1,5 +1,9 @@
 # Photo Manager - UI/UX 総合診断・機能配置整理 ＆ ステップ1〜3完全実装記録 (v2.44+)
 
+> [!NOTE]
+> **設計履歴に関する注記**: 本ドキュメントは v2.44 時点の過渡期におけるUI/UX診断・整理記録です。
+> v3.00 で実施されたメジャーUI改修（下部フローティングバー廃止、垂直タブレール＋全高メニューの2段階左サイドバー、1段統合ヘッダー、脱絵文字、4:3インスペクタ等）を経た現行のデザインシステム仕様は、**[ui-design-system-and-tiat-guidelines.md](ui-design-system-and-tiat-guidelines.md)** を参照してください。
+
 本ドキュメントは、Photo Manager において段階的な機能追加に伴って発生していた「機能重複・ボタン過密・導線のねじれ」および「定番写真管理ソフト（Picasa / Tiat / FastStone / Lightroom / Eagle 等）との比較による基本操作のミッシングリンク」を総合診断し、**ステップ1（UIの交通整理）・ステップ2（基本ビューア体験の強化）・ステップ3（残作業6項目の一括完遂）**としてすべて実装・解決した設計記録（KI）である。
 
 ---
@@ -68,7 +72,7 @@
 ---
 
 ## 4. 関連ドキュメント・参照先
-- **ステップ1（UIの交通整理）設計・検証記録**: `docs/ui_layout_declutter_step1/`
-- **ステップ2（基本ビューア体験の強化）設計・検証記録**: `docs/viewer_ux_enhancement_step2/`
-- **ステップ3（残作業6項目の一括完遂）設計・検証記録**: `docs/step3_backlog_completion/`
+- **ステップ1（UIの交通整理）設計・検証記録**: `docs/archive/tasks/ui_layout_declutter_step1/`
+- **ステップ2（基本ビューア体験の強化）設計・検証記録**: `docs/archive/tasks/viewer_ux_enhancement_step2/`
+- **ステップ3（残作業6項目の一括完遂）設計・検証記録**: `docs/archive/tasks/step3_backlog_completion/`
 - **機能別コードマップ**: [feature-code-map.md](feature-code-map.md)

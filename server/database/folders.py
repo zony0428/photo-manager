@@ -3,10 +3,13 @@
 スキャンルート管理、ボリューム管理、写真の年月・フォルダ・カメラ機種別集計を提供する。
 """
 
+import logging
 import os
 import threading
 import time
 from typing import Any, Dict, List, Optional, Tuple
+
+logger = logging.getLogger(__name__)
 
 from .connection import get_connection
 from .photos import _directory_filter_sql
@@ -473,8 +476,8 @@ def get_folders_summary() -> List[Dict[str, Any]]:
                     from ..scanner import resolve_portable_path
                     _, is_online = resolve_portable_path(norm)
                     is_present = is_online
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"フォルダ存在確認でのポータブルパス解決スキップ ({norm}): {e}")
             d["is_missing"] = not is_present
 
             result.append(d)

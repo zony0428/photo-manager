@@ -3,6 +3,7 @@
 写真メタデータの登録・検索・更新・削除、GPS操作、同期・クリーンアップを提供する。
 """
 
+import bisect
 from datetime import datetime, timedelta
 import logging
 import os
@@ -455,8 +456,8 @@ def get_photos(
             f_min, f_max = float(f_min_s), float(f_max_s)
             query += " AND p.focal_length IS NOT NULL AND p.focal_length BETWEEN ? AND ?"
             params.extend([f_min, f_max])
-        except ValueError:
-            pass
+        except ValueError as e:
+            logger.debug(f"焦点距離レンジのパースに失敗しました ({focal_range}): {e}")
 
     # F値レンジ（"min-max" 形式）フィルタ
     if aperture_range and "-" in aperture_range:
@@ -465,8 +466,8 @@ def get_photos(
             a_min, a_max = float(a_min_s), float(a_max_s)
             query += " AND p.f_number IS NOT NULL AND p.f_number BETWEEN ? AND ?"
             params.extend([a_min, a_max])
-        except ValueError:
-            pass
+        except ValueError as e:
+            logger.debug(f"F値レンジのパースに失敗しました ({aperture_range}): {e}")
 
     # 属性フィルタ（RAW / JPEG / RAW+JPEGペア / XMPサイドカー / 非破壊調整済み）
     if attr_filter:
@@ -1238,8 +1239,8 @@ def find_nearby_gps_photos(date_taken: str, minutes: int = 60, exclude_id: Optio
             try:
                 dt = datetime.strptime(str(date_taken).strip(), fmt)
                 break
-            except (ValueError, TypeError):
-                pass
+            except (ValueError, TypeError) as e:
+                logger.debug(f"GPS近傍検索: 日時パース試行失敗 ({fmt}): {e}")
 
         if dt is not None:
             min_dt = (dt - timedelta(minutes=minutes)).strftime("%Y-%m-%d %H:%M:%S")
@@ -1305,6 +1306,7 @@ def batch_infer_gps(
     """
     GPS情報のない写真に対して、撮影時刻が ±max_minutes 以内で最も近い写真のGPSを準用する。
     gps_source = 'inferred' として記録。
+    N+1 を解消し、対象期間のGPS付き写真を一括取得後にメモリ上二分探索して executemany で一括更新する。
     """
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -1347,71 +1349,141 @@ def batch_infer_gps(
         if total_target == 0:
             return {"inferred_count": 0, "skipped_count": 0, "total_target": 0}
 
-        inferred_count = 0
-        skipped_count = 0
+        # ターゲット写真の日時パース
+        parsed_targets: List[Tuple[int, datetime, str]] = []
+        unparsed_targets: List[Tuple[int, str]] = []
 
         for p in target_photos:
             pid = p["id"]
             date_taken = p["date_taken"]
-
             dt = None
             for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M"):
                 try:
                     dt = datetime.strptime(str(date_taken).strip(), fmt)
                     break
-                except (ValueError, TypeError):
-                    pass
+                except (ValueError, TypeError) as e:
+                    logger.debug(f"GPS一括推定: ターゲット日時パース試行失敗 ({fmt}): {e}")
 
             if dt is not None:
-                min_dt = (dt - timedelta(minutes=max_minutes)).strftime("%Y-%m-%d %H:%M:%S")
-                max_dt = (dt + timedelta(minutes=max_minutes)).strftime("%Y-%m-%d %H:%M:%S")
-                cursor.execute(
-                    """
-                    SELECT latitude, longitude, country, state, city,
-                           ABS(CAST((julianday(date_taken) - julianday(?)) * 24 * 60 AS REAL)) AS time_diff_min
-                    FROM photos
-                    WHERE latitude IS NOT NULL AND longitude IS NOT NULL
-                      AND date_taken BETWEEN ? AND ?
-                    ORDER BY time_diff_min ASC
-                    LIMIT 1
-                    """,
-                    (date_taken, min_dt, max_dt)
-                )
+                parsed_targets.append((pid, dt, date_taken))
             else:
-                cursor.execute(
-                    """
-                    SELECT latitude, longitude, country, state, city,
-                           ABS(CAST((julianday(date_taken) - julianday(?)) * 24 * 60 AS REAL)) AS time_diff_min
-                    FROM photos
-                    WHERE latitude IS NOT NULL AND longitude IS NOT NULL
-                      AND ABS(CAST((julianday(date_taken) - julianday(?)) * 24 * 60 AS REAL)) <= ?
-                    ORDER BY time_diff_min ASC
-                    LIMIT 1
-                    """,
-                    (date_taken, date_taken, max_minutes)
-                )
+                unparsed_targets.append((pid, date_taken))
 
+        update_params = []
+
+        # パース成功したターゲットの写真について一括範囲検索
+        if parsed_targets:
+            min_dt_target = min(item[1] for item in parsed_targets)
+            max_dt_target = max(item[1] for item in parsed_targets)
+
+            overall_min = (min_dt_target - timedelta(minutes=max_minutes)).strftime("%Y-%m-%d %H:%M:%S")
+            overall_max = (max_dt_target + timedelta(minutes=max_minutes)).strftime("%Y-%m-%d %H:%M:%S")
+
+            cursor.execute(
+                """
+                SELECT id, latitude, longitude, country, state, city, date_taken
+                FROM photos
+                WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+                  AND date_taken BETWEEN ? AND ?
+                ORDER BY date_taken ASC
+                """,
+                (overall_min, overall_max)
+            )
+            gps_rows = cursor.fetchall()
+
+            # GPS候補写真の日時パース
+            gps_candidates: List[Tuple[datetime, Any]] = []
+            for row in gps_rows:
+                raw_dt = row["date_taken"]
+                c_dt = None
+                for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M"):
+                    try:
+                        c_dt = datetime.strptime(str(raw_dt).strip(), fmt)
+                        break
+                    except (ValueError, TypeError) as e:
+                        logger.debug(f"GPS一括推定: 候補日時パース試行失敗 ({fmt}): {e}")
+                if c_dt is not None:
+                    gps_candidates.append((c_dt, row))
+
+            gps_candidates.sort(key=lambda x: x[0])
+            gps_times = [c[0] for c in gps_candidates]
+
+            for pid, dt, date_taken in parsed_targets:
+                if not gps_times:
+                    continue
+
+                idx = bisect.bisect_left(gps_times, dt)
+                best_diff = None
+                best_candidate = None
+
+                # 直前 (idx - 1)
+                if idx > 0:
+                    diff_before = abs((gps_times[idx - 1] - dt).total_seconds()) / 60.0
+                    if diff_before <= max_minutes:
+                        best_diff = diff_before
+                        best_candidate = gps_candidates[idx - 1][1]
+
+                # 直後 (idx)
+                if idx < len(gps_times):
+                    diff_after = abs((gps_times[idx] - dt).total_seconds()) / 60.0
+                    if diff_after <= max_minutes:
+                        # 直前・直後で等しい場合は直後を採用（SQLite julianday の評価順と合致）
+                        if best_diff is None or diff_after <= best_diff:
+                            best_diff = diff_after
+                            best_candidate = gps_candidates[idx][1]
+
+                if best_candidate and best_candidate["latitude"] is not None:
+                    update_params.append((
+                        best_candidate["latitude"],
+                        best_candidate["longitude"],
+                        best_candidate["country"],
+                        best_candidate["state"],
+                        best_candidate["city"],
+                        pid
+                    ))
+
+        # パース失敗した珍しいターゲットがあれば個別にフォールバック
+        for pid, date_taken in unparsed_targets:
+            cursor.execute(
+                """
+                SELECT latitude, longitude, country, state, city,
+                       ABS(CAST((julianday(date_taken) - julianday(?)) * 24 * 60 AS REAL)) AS time_diff_min
+                FROM photos
+                WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+                  AND ABS(CAST((julianday(date_taken) - julianday(?)) * 24 * 60 AS REAL)) <= ?
+                ORDER BY time_diff_min ASC
+                LIMIT 1
+                """,
+                (date_taken, date_taken, max_minutes)
+            )
             nearest = cursor.fetchone()
             if nearest and nearest["latitude"] is not None:
-                cursor.execute(
-                    """
-                    UPDATE photos
-                    SET latitude = ?, longitude = ?, gps_source = 'inferred',
-                        country = ?, state = ?, city = ?,
-                        meta_dirty = 1, updated_at = CURRENT_TIMESTAMP
-                    WHERE id = ?
-                    """,
-                    (nearest["latitude"], nearest["longitude"],
-                     nearest["country"], nearest["state"], nearest["city"], pid)
-                )
-                inferred_count += 1
-            else:
-                skipped_count += 1
+                update_params.append((
+                    nearest["latitude"],
+                    nearest["longitude"],
+                    nearest["country"],
+                    nearest["state"],
+                    nearest["city"],
+                    pid
+                ))
+
+        if update_params:
+            cursor.executemany(
+                """
+                UPDATE photos
+                SET latitude = ?, longitude = ?, gps_source = 'inferred',
+                    country = ?, state = ?, city = ?,
+                    meta_dirty = 1, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                update_params
+            )
 
         conn.commit()
+        inferred_count = len(update_params)
         return {
             "inferred_count": inferred_count,
-            "skipped_count": skipped_count,
+            "skipped_count": total_target - inferred_count,
             "total_target": total_target,
         }
 
@@ -1541,14 +1613,17 @@ def batch_copy_gps(source_photo_id: int, target_photo_ids: List[int]) -> int:
         lat, lng = source["latitude"], source["longitude"]
         loc = reverse_geocode(lat, lng, db_conn=conn)
         count = 0
-        for pid in target_photo_ids:
+        unique_ids = list(dict.fromkeys(target_photo_ids))
+        for i in range(0, len(unique_ids), 500):
+            chunk = unique_ids[i:i + 500]
+            placeholders = ",".join(["?"] * len(chunk))
             cursor.execute(
-                """UPDATE photos
+                f"""UPDATE photos
                    SET latitude = ?, longitude = ?, gps_source = 'copied',
                        country = ?, state = ?, city = ?,
                        meta_dirty = 1, updated_at = CURRENT_TIMESTAMP
-                   WHERE id = ?""",
-                (lat, lng, loc.get("country"), loc.get("state"), loc.get("city"), pid),
+                   WHERE id IN ({placeholders})""",
+                (lat, lng, loc.get("country"), loc.get("state"), loc.get("city"), *chunk),
             )
             count += cursor.rowcount
         conn.commit()
@@ -1558,7 +1633,7 @@ def batch_copy_gps(source_photo_id: int, target_photo_ids: List[int]) -> int:
 def backfill_photo_locations(limit: int = 5000) -> int:
     """
     GPS座標（latitude, longitude）があるが国・県・市（country）が未設定の写真に対して
-    逆ジオコーディングを一括実行して地名を補完する。
+    逆ジオコーディングを一括実行して地名を補完する。UPDATE を executemany で一括実行。
     """
     from server.geocoder import reverse_geocode
     with get_connection() as conn:
@@ -1577,24 +1652,26 @@ def backfill_photo_locations(limit: int = 5000) -> int:
         if not rows:
             return 0
 
-        updated_count = 0
+        update_params = []
         for row in rows:
             pid = row["id"]
             lat = row["latitude"]
             lon = row["longitude"]
             loc = reverse_geocode(lat, lon, db_conn=conn)
-            cursor.execute(
+            update_params.append((loc.get("country"), loc.get("state"), loc.get("city"), pid))
+
+        if update_params:
+            cursor.executemany(
                 """
                 UPDATE photos
                 SET country = ?, state = ?, city = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
                 """,
-                (loc.get("country"), loc.get("state"), loc.get("city"), pid)
+                update_params
             )
-            updated_count += cursor.rowcount
 
         conn.commit()
-        return updated_count
+        return len(update_params)
 
 
 def backfill_missing_lens_models(
@@ -1658,8 +1735,8 @@ def backfill_missing_lens_models(
             lens = extract_fallback_lens_model(target_path)
             if lens and is_valid_lens_name(lens):
                 return (lens, pid)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"レンズ機種名抽出失敗 ({fpath}): {e}")
         return None
 
     updated_total = 0
@@ -1782,33 +1859,14 @@ def relink_photo_path(photo_id: int, new_path: str, new_dir: str) -> bool:
         return cursor.rowcount > 0
 
 
-def cleanup_missing_photos() -> int:
-    """実ファイルが削除され、移動先も見つからなかった孤立レコード（写真・タグ・サムネイル）を安全に削除する"""
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, file_path FROM photos")
-        rows = cursor.fetchall()
-        missing_ids = [r["id"] for r in rows if not os.path.exists(r["file_path"])]
-
-        if missing_ids:
-            for i in range(0, len(missing_ids), 500):
-                chunk = missing_ids[i:i + 500]
-                placeholders = ",".join(["?"] * len(chunk))
-                cursor.execute(f"DELETE FROM photo_tags WHERE photo_id IN ({placeholders})", chunk)
-                cursor.execute(f"DELETE FROM thumbnails WHERE photo_id IN ({placeholders})", chunk)
-                cursor.execute(f"DELETE FROM photos WHERE id IN ({placeholders})", chunk)
-            # 孤立サムネイルを確実にパージ
-            cursor.execute("DELETE FROM thumbnails WHERE photo_id NOT IN (SELECT id FROM photos)")
-            conn.commit()
-            return len(missing_ids)
-        return 0
-
-
 def cleanup_missing_photos_in_folder(directory_path: str, recursive: bool = False) -> int:
     """指定フォルダのファイル存在チェックを行い、
     実ファイルが消えている写真のDB レコード（写真・タグ・サムネイル）を安全に削除する。
     recursive=False は直下のみ、True は配下サブフォルダも対象とする。
-    スタックメンバーが削除された場合は同じ範囲のスタック整合性を自動修復する。"""
+    スタックメンバーが削除された場合は同じ範囲のスタック整合性を自動修復する。
+    ドライブ未接続（オフライン）やドライブレター変動時に誤って全件削除しないよう、
+    resolve_portable_path でオンラインと判定できた写真のみを削除対象とする。"""
+    from ..scanner import resolve_portable_path
     norm_win = os.path.normpath(directory_path).rstrip("\\/")
     sql_frag, sql_params = _directory_filter_sql(directory_path, recursive=recursive, column_name="directory_path")
 
@@ -1822,7 +1880,11 @@ def cleanup_missing_photos_in_folder(directory_path: str, recursive: bool = Fals
             sql_params,
         )
         rows = cursor.fetchall()
-        missing_ids = [r["id"] for r in rows if not os.path.exists(r["file_path"])]
+        missing_ids = []
+        for r in rows:
+            f_path, is_online = resolve_portable_path(r["file_path"])
+            if is_online and not os.path.exists(str(f_path)):
+                missing_ids.append(r["id"])
 
         if missing_ids:
             for i in range(0, len(missing_ids), 500):
@@ -1928,11 +1990,12 @@ def delete_photo_by_id(photo_id: int, delete_file: bool = False) -> bool:
 
         if delete_file and file_path_str:
             try:
-                p = Path(file_path_str)
-                if p.exists():
-                    p.unlink()
+                from ..scanner import resolve_portable_path
+                real_path, is_online = resolve_portable_path(file_path_str)
+                if is_online and real_path.is_file():
+                    real_path.unlink()
             except Exception as e:
-                print(f"[WARN] 実ファイルの削除に失敗しました: {e}")
+                logger.warning(f"実ファイルの削除に失敗しました: {e}")
 
         return True
 

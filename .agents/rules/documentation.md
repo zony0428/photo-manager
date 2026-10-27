@@ -37,6 +37,10 @@
    - **更新内容（日本語 ＆ 英語の2言語併記）**:
      - 新機能（What's New）、パフォーマンス改善、UI反応性・不具合修正（Bug Fixes）を分かりやすく整理して記載する。
 
+3. **GitHub Releases 自動公開フロー (`scripts/publish_release.py`)**:
+   - ユーザーから「リリースして」「リリースお願い」等の指示があった際は、手動コピペ案内で終わらせず、`build_dist.bat` で配布ZIP 2種を生成した上で `.\python\python.exe scripts\publish_release.py` を実行する。
+   - これにより、公開リポジトリ（`public`: `zony0428/photo-manager`）へのコミット・タグ同期、GitHub Release ページの作成（`docs/release_notes/RELEASE_NOTES_v<VERSION>.md` の反映）、および `PhotoManager_v<VERSION>.zip` / `PhotoManager_v<VERSION>diff.zip` のアップロードまでを完全自動で完了させる。
+
 ---
 
 ## 3. 記述・表現ルール

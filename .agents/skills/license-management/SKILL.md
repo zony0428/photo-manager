@@ -30,7 +30,14 @@ photo-manager/
     ├── LICENSE.Starlette      ← BSD-3-Clause
     ├── LICENSE.Click          ← BSD-3-Clause
     ├── LICENSE.AnyIO          ← MIT
-    └── LICENSE.h11            ← MIT
+    ├── LICENSE.h11            ← MIT
+    ├── LICENSE.pystray        ← LGPL 3.0 / GPL 3.0
+    ├── LICENSE.six            ← MIT
+    ├── LICENSE.onnxruntime    ← MIT
+    ├── LICENSE.sqljs          ← MIT
+    ├── LICENSE.Inter          ← SIL OFL 1.1 (同梱フォント)
+    ├── LICENSE.Outfit         ← SIL OFL 1.1 (同梱フォント)
+    └── LICENSE.Leaflet        ← BSD-2-Clause (同梱地図ライブラリ)
 ```
 
 ---
@@ -93,8 +100,9 @@ LibRaw は **LGPL 2.1 / CDDL 1.0 のデュアルライセンス** であり、�
 
 ---
 
-## exe化（PyInstaller等）する場合の注意
+## exe化・ランチャー配布時の注意
 
-- `--onedir` モードを使う（`--onefile` は LibRaw の LGPL 要件に抵触する可能性がある）
-- 生成された dist/ フォルダに LICENSES/ フォルダをそのままコピーする
-- vcomp140.dll (Visual C++ ランタイム) は rawpy パッケージの一部として再頒布可能
+- 本プロジェクトは Embeddable Python + C#製ネイティブランチャー（`PhotoManager.exe`）を採用しており、通常 PyInstaller は使用しない。
+- 将来的に PyInstaller 等を利用する場合でも、**`--onedir` モード**を使うこと（`--onefile` は LibRaw 等の LGPL 要件に抵触する可能性があるため禁止）。
+- 配布パッケージ生成時（`build_dist.bat`）は、dist/ フォルダに `LICENSES/` フォルダを必ずそのままコピーする。
+- vcomp140.dll (Visual C++ ランタイム) は rawpy パッケージの一部として再頒布可能。

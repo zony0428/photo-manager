@@ -94,7 +94,6 @@ function clearSelection() {
   updateCardSelectionClasses();
   updateSelectionUI();
   closeContextMenu();
-  closeAllFloatingPopovers();
 }
 
 // 直前の選択写真IDセット（差分更新用）
@@ -172,19 +171,8 @@ function hasMissingThumbnailsInSelection() {
 function updateSelectionUI() {
   document.body.classList.toggle('inspector-collapsed', !state.isInspectorOpen);
   const count = state.selectedPhotoIds.size;
-  if (elements.floatingSelectedCount) {
-    elements.floatingSelectedCount.textContent = count;
-  }
-  if (elements.selectionFloatingBar) {
-    elements.selectionFloatingBar.style.display = 'none';
-  }
   if (elements.contextMenuSelectedCount) {
     elements.contextMenuSelectedCount.textContent = `${count}枚の写真を選択中`;
-  }
-
-  // storage 関連ボタンの表示・ラベル動的更新
-  if (typeof window.updateStorageSelectionUI === 'function') {
-    window.updateStorageSelectionUI();
   }
 
   // 右ペインにも現在の選択状態を即座に反映
@@ -209,7 +197,7 @@ function openContextMenu(x, y) {
   if (elements.contextMenuRefreshThumbLabel) {
     const actionText = hasMissing ? 'サムネイルを取得' : 'サムネイルを更新';
     const countText = count > 1 ? ` (${count}枚)` : '';
-    const icon = hasMissing ? '🖼️' : '🔄';
+    const icon = '';
     elements.contextMenuRefreshThumbLabel.textContent = `${icon} ${actionText}${countText}`;
   }
 
@@ -289,8 +277,8 @@ function openFolderContextMenu(x, y, node) {
 
   if (elements.folderContextMenuPath) {
     let prefix = '';
-    if (isOffline) prefix = '🔌 [未接続] ';
-    else if (isMissing) prefix = '⚠️ [消失] ';
+    if (isOffline) prefix = '[未接続] ';
+    else if (isMissing) prefix = '[消失] ';
     elements.folderContextMenuPath.textContent = `${prefix}${folderName}`;
     elements.folderContextMenuPath.title = `${folderPath}${isOffline ? '（ドライブ未接続）' : (isMissing ? '（実フォルダ消失）' : '')}`;
   }
@@ -324,8 +312,8 @@ function openFolderContextMenu(x, y, node) {
       const labelSpan = elements.folderMenuRescanRecursive.querySelector('span');
       if (labelSpan) {
         labelSpan.textContent = (isRootKind && total === 0 && !node.hasManaged)
-          ? '➕ 配下をスキャンして管理に追加'
-          : '🔄 配下も含めて再スキャン';
+          ? '配下をスキャンして管理に追加'
+          : '配下も含めて再スキャン';
       }
     }
     // 写真がある場合のみリフレッシュ・AIタグ・管理解除を表示
@@ -424,7 +412,7 @@ async function loadAndRenderContextImportSubmenu() {
       row.dataset.path = item.path;
       row.innerHTML = `
         <div class="submenu-folder-label">
-          <span>${item.is_root ? '📥' : '📁'}</span>
+          <span></span>
           <span class="submenu-folder-name">${escapeHtml(item.name)}</span>
           <span class="folder-count-badge">${item.count}枚</span>
         </div>
@@ -472,10 +460,10 @@ async function importSelectedPhotos(destinationPath = '', displayName = '') {
     if (data.copied_count === 0) {
       showToast('選択された写真にJPGがありません（RAW単体は除外されます）', 'warning', 4000);
     } else if (data.skipped_count > 0) {
-      showToast(`📤 ${data.copied_count}枚のJPGを「${targetLabel}」にテイクアウトしました（※非JPGの${data.skipped_count}枚はスキップ）`, 'success', 4500);
+      showToast(`${data.copied_count}枚のJPGを「${targetLabel}」にテイクアウトしました（※非JPGの${data.skipped_count}枚はスキップ）`, 'success', 4500);
       clearSelection();
     } else {
-      showToast(`📤 ${data.copied_count}枚のJPGを「${targetLabel}」にテイクアウトしました`, 'success', 3500);
+      showToast(`${data.copied_count}枚のJPGを「${targetLabel}」にテイクアウトしました`, 'success', 3500);
       clearSelection();
     }
   } catch (err) {
@@ -524,7 +512,7 @@ async function openImportFolderInExplorer() {
     if (!res.ok) {
       throw new Error(data.detail || 'フォルダを開けませんでした');
     }
-    showToast('📂 take_outフォルダを開きました', 'info', 2000);
+    showToast('take_outフォルダを開きました', 'info', 2000);
   } catch (err) {
     console.error('[TAKEOUT] open folder error:', err);
     showToast(`エラー: ${err.message}`, 'error', 4500);
@@ -552,7 +540,7 @@ function renderContextTagSubmenu() {
 
       const hasChildren = node.children.size > 0;
       row.innerHTML = `
-        <span class="submenu-tag-label">${hasChildren ? '📁' : '🏷️'} ${escapeHtml(node.name)}</span>
+        <span class="submenu-tag-label">${escapeHtml(node.name)}</span>
         <span class="apply-badge">+付与</span>
       `;
 
@@ -596,7 +584,7 @@ async function batchAddTagToSelection(tagName) {
     if (!res.ok) throw new Error(data.detail || '一括タグ付け失敗');
 
     if (typeof showToast === 'function') {
-      showToast(`🏷️ ${photoIds.length}枚の写真にタグ「${cleanTag}」を付与しました`, 'success', 2500);
+      showToast(`${photoIds.length}枚の写真にタグ「${cleanTag}」を付与しました`, 'success', 2500);
     }
     clearSelection();
     await Promise.all([fetchPhotos(), fetchTags()]);
@@ -616,7 +604,7 @@ async function batchRateSelection(rating) {
   if (state.selectedPhotoIds.size === 0) return;
 
   const photoIds = Array.from(state.selectedPhotoIds);
-  const rateLabels = { 2: '🏅 優', 1: '⭐ 良', 0: '⚪ 可（解除）', '-1': '🗑️ 棄' };
+  const rateLabels = { 2: '優 (Ex)', 1: '良 (Gd)', 0: '可 (Fj)', '-1': '棄 (Dc)' };
   try {
     const res = await fetch('/api/photos/batch-rate', {
       method: 'POST',
@@ -672,361 +660,10 @@ async function applyRatingToSelection(rating) {
  * 右ペインの開閉トグル
 
 
-/* ==========================================================================
-   フローティング選択バー 専用ポップオーバー (v1.85)
-   ========================================================================== */
-
-/**
- * すべてのフローティングポップオーバーを閉じる
- */
 function closeAllFloatingPopovers() {
-  if (elements.floatingTagPopover) elements.floatingTagPopover.style.display = 'none';
-  if (elements.floatingRatePopover) elements.floatingRatePopover.style.display = 'none';
-  if (elements.floatingImportPopover) elements.floatingImportPopover.style.display = 'none';
-  const rotatePopover = document.getElementById('floatingRotatePopover');
-  if (rotatePopover) rotatePopover.style.display = 'none';
-  const morePopover = document.getElementById('floatingMorePopover');
-  if (morePopover) morePopover.style.display = 'none';
-  if (elements.floatingAddTagBtn) elements.floatingAddTagBtn.classList.remove('active');
-  if (elements.floatingRateBtn) elements.floatingRateBtn.classList.remove('active');
-  if (elements.floatingImportBtn) elements.floatingImportBtn.classList.remove('active');
-  const rotateBtn = document.getElementById('floatingRotateBtn');
-  if (rotateBtn) rotateBtn.classList.remove('active');
-  const moreBtn = document.getElementById('floatingMoreBtn');
-  if (moreBtn) moreBtn.classList.remove('active');
-  const storageImportPopover = document.getElementById('floatingStorageImportPopover');
-  if (storageImportPopover) storageImportPopover.style.display = 'none';
-  const storageImportBtn = document.getElementById('floatingStorageImportBtn');
-  if (storageImportBtn) storageImportBtn.classList.remove('active');
-  const storageMovePopover = document.getElementById('floatingStorageMovePopover');
-  if (storageMovePopover) storageMovePopover.style.display = 'none';
-  const storageMoveBtn = document.getElementById('floatingStorageMoveBtn');
-  if (storageMoveBtn) storageMoveBtn.classList.remove('active');
+  // 廃止済み下部フローティングバー用関数の互換スタブ
 }
-
-/**
- * その他の操作ポップオーバーの開閉トグル
- */
-function toggleFloatingMorePopover(e) {
-  if (e) e.stopPropagation();
-  const popover = document.getElementById('floatingMorePopover');
-  const btn = document.getElementById('floatingMoreBtn');
-  if (!popover) return;
-
-  const isOpen = popover.style.display === 'flex';
-  closeAllFloatingPopovers();
-
-  if (!isOpen) {
-    popover.style.display = 'flex';
-    if (btn) btn.classList.add('active');
-  }
-}
-
-/**
- * 写真回転ポップオーバーの開閉トグル
- */
-function toggleFloatingRotatePopover(e) {
-  if (e) e.stopPropagation();
-  const popover = document.getElementById('floatingRotatePopover');
-  const btn = document.getElementById('floatingRotateBtn');
-  if (!popover) return;
-
-  const isOpen = popover.style.display === 'flex';
-  closeAllFloatingPopovers();
-
-  if (!isOpen) {
-    popover.style.display = 'flex';
-    if (btn) btn.classList.add('active');
-  }
-}
-
-/**
- * 評価設定ポップオーバーの開閉トグル (v1.86)
- */
-function toggleFloatingRatePopover(e) {
-  if (e) e.stopPropagation();
-  if (!elements.floatingRatePopover) return;
-
-  const isOpen = elements.floatingRatePopover.style.display === 'flex';
-  closeAllFloatingPopovers();
-
-  if (!isOpen) {
-    elements.floatingRatePopover.style.display = 'flex';
-    if (elements.floatingRateBtn) elements.floatingRateBtn.classList.add('active');
-  }
-}
-
-/**
- * タグ付与ポップオーバーの開閉トグル
- */
-function toggleFloatingTagPopover(e) {
-  if (e) e.stopPropagation();
-  if (!elements.floatingTagPopover) return;
-
-  const isOpen = elements.floatingTagPopover.style.display === 'flex';
-  closeAllFloatingPopovers();
-
-  if (!isOpen) {
-    elements.floatingTagPopover.style.display = 'flex';
-    if (elements.floatingAddTagBtn) elements.floatingAddTagBtn.classList.add('active');
-    renderFloatingTagTree();
-    if (elements.floatingTagInput) {
-      elements.floatingTagInput.value = '';
-      setTimeout(() => elements.floatingTagInput.focus(), 60);
-    }
-  }
-}
-
-/**
- * タグ付与ポップオーバー内のタグツリー描画（リアルタイムインクリメンタルフィルタ・展開式ツリー対応 v2.01）
- */
-function renderFloatingTagTree(filterText = '') {
-  if (!elements.floatingTagTreeContainer) return;
-  elements.floatingTagTreeContainer.innerHTML = '';
-
-  // 既存タグから選択: AI自動タグおよび色タグは除外（通常の手動タグのみ表示）
-  const manualTags = (state.availableTags || []).filter(t => {
-    const isAi = t.source === 'ai';
-    const isColor = (t.tag || t.name) in COLOR_TAG_MAP;
-    return !isAi && !isColor;
-  });
-
-  if (manualTags.length === 0) {
-    elements.floatingTagTreeContainer.innerHTML = `
-      <div class="submenu-folder-empty" style="padding: 10px; font-size: 0.75rem; color: var(--text-dim, #64748b); text-align: center;">
-        登録済みタグがありません
-      </div>
-    `;
-    return;
-  }
-
-  // 展開状態キャッシュの初期化
-  if (!state.floatingTagTreeExpandedPaths) {
-    state.floatingTagTreeExpandedPaths = new Set();
-  }
-
-  const treeRoot = buildTagTree(manualTags);
-  const query = (filterText || '').trim().toLowerCase();
-
-  // クエリがある場合、自身または子孫にマッチするかチェックする関数
-  function nodeMatchesQuery(node) {
-    if (!query) return true;
-    if (node.name.toLowerCase().includes(query) || node.fullPath.toLowerCase().includes(query)) {
-      return true;
-    }
-    for (const child of node.children.values()) {
-      if (nodeMatchesQuery(child)) return true;
-    }
-    return false;
-  }
-
-  let matchCount = 0;
-
-  function appendPopoverNodes(parentNode, container, indent = 0) {
-    parentNode.children.forEach(node => {
-      // 検索中なら自身または子孫がマッチするもののみ処理
-      if (query && !nodeMatchesQuery(node)) {
-        return;
-      }
-
-      matchCount++;
-      const hasChildren = node.children.size > 0;
-      // 検索クエリ入力中はマッチしたノードを見せるため自動展開、通常時は保存された展開状態に従う
-      const isExpanded = query ? true : state.floatingTagTreeExpandedPaths.has(node.fullPath);
-
-      const nodeWrapper = document.createElement('div');
-      nodeWrapper.className = 'popover-tree-node';
-
-      const row = document.createElement('div');
-      row.className = 'submenu-tag-node';
-      row.style.paddingLeft = `${indent * 12 + 6}px`;
-
-      // 展開矢印またはスペーサー (親フォルダはデフォルト閉)
-      let toggleBtnHtml = '<span class="tree-toggle-spacer"></span>';
-      if (hasChildren) {
-        toggleBtnHtml = `<span class="tree-toggle-btn ${isExpanded ? '' : 'collapsed'}" title="${isExpanded ? '折りたたむ' : '展開する'}">▼</span>`;
-      }
-      const icon = hasChildren ? '📁' : '🏷️';
-
-      row.innerHTML = `
-        <div class="submenu-tag-left">
-          ${toggleBtnHtml}
-          <span class="submenu-tag-icon">${icon}</span>
-          <span class="submenu-tag-label" title="${escapeHtml(node.fullPath)}">${escapeHtml(node.name)}</span>
-        </div>
-        <span class="apply-badge" title="「${escapeHtml(node.fullPath)}」を選択写真に付与">+付与</span>
-      `;
-
-      nodeWrapper.appendChild(row);
-
-      // 子ノードコンテナ
-      let childrenContainer = null;
-      if (hasChildren) {
-        childrenContainer = document.createElement('div');
-        childrenContainer.className = `popover-tree-children${isExpanded ? '' : ' hidden'}`;
-        appendPopoverNodes(node, childrenContainer, indent + 1);
-        nodeWrapper.appendChild(childrenContainer);
-      }
-
-      // イベントリスナー
-      if (hasChildren) {
-        // 親ノード:
-        // 1. 右端の「+付与」バッジをクリック ➜ その親タグ自体を選択写真に付与
-        const applyBadge = row.querySelector('.apply-badge');
-        if (applyBadge) {
-          applyBadge.addEventListener('click', async (e) => {
-            e.stopPropagation();
-            closeAllFloatingPopovers();
-            await batchAddTagToSelection(node.fullPath);
-          });
-        }
-
-        // 2. 行（トグル矢印・アイコン・ラベル）をクリック ➜ 展開/折りたたみのトグル
-        row.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const toggleBtn = row.querySelector('.tree-toggle-btn');
-          const nowCollapsed = toggleBtn ? toggleBtn.classList.toggle('collapsed') : false;
-          if (nowCollapsed) {
-            state.floatingTagTreeExpandedPaths.delete(node.fullPath);
-          } else {
-            state.floatingTagTreeExpandedPaths.add(node.fullPath);
-          }
-          if (childrenContainer) {
-            childrenContainer.classList.toggle('hidden', nowCollapsed);
-          }
-          if (toggleBtn) {
-            toggleBtn.title = nowCollapsed ? '展開する' : '折りたたむ';
-          }
-        });
-      } else {
-        // リーフノード: 行クリックで即タグ付与
-        row.addEventListener('click', async (e) => {
-          e.stopPropagation();
-          closeAllFloatingPopovers();
-          await batchAddTagToSelection(node.fullPath);
-        });
-      }
-
-      container.appendChild(nodeWrapper);
-    });
-  }
-
-  appendPopoverNodes(treeRoot, elements.floatingTagTreeContainer);
-
-  if (matchCount === 0) {
-    const emptyMsg = query ? `「${escapeHtml(query)}」に一致するタグはありません` : '登録済みタグがありません';
-    elements.floatingTagTreeContainer.innerHTML = `
-      <div class="submenu-folder-empty" style="padding: 10px; font-size: 0.75rem; color: var(--text-dim, #64748b); text-align: center;">
-        ${emptyMsg}
-      </div>
-    `;
-  }
-}
-
-/**
- * タグ付与ポップオーバー: 入力値からタグ付与実行
- */
-async function executeFloatingNewTag() {
-  if (!elements.floatingTagInput) return;
-  const val = elements.floatingTagInput.value.trim();
-  if (!val || state.selectedPhotoIds.size === 0) return;
-  closeAllFloatingPopovers();
-  await batchAddTagToSelection(val);
-}
-
-/**
- * テイクアウト（持ち出し）ポップオーバーの開閉トグル
- */
-function toggleFloatingImportPopover(e) {
-  if (e) e.stopPropagation();
-  if (!elements.floatingImportPopover) return;
-
-  const isOpen = elements.floatingImportPopover.style.display === 'flex';
-  closeAllFloatingPopovers();
-
-  if (!isOpen) {
-    elements.floatingImportPopover.style.display = 'flex';
-    if (elements.floatingImportBtn) elements.floatingImportBtn.classList.add('active');
-    if (elements.floatingImportFolderList) {
-      loadAndRenderFloatingImportFolders();
-    }
-    if (elements.floatingImportFolderInput) {
-      elements.floatingImportFolderInput.value = '';
-      setTimeout(() => elements.floatingImportFolderInput.focus(), 60);
-    }
-  }
-}
-
-/**
- * テイクアウトポップオーバー内の送り先フォルダ一覧を描画
- */
-async function loadAndRenderFloatingImportFolders() {
-  if (!elements.floatingImportFolderList) return;
-  elements.floatingImportFolderList.innerHTML = '<div class="submenu-folder-loading">読み込み中...</div>';
-
-  try {
-    const res = await fetch('/api/import/destinations');
-    if (!res.ok) throw new Error('送り先フォルダの取得に失敗しました');
-    const data = await res.json();
-    const destinations = data.destinations || [];
-
-    elements.floatingImportFolderList.innerHTML = '';
-
-    destinations.forEach(item => {
-      const row = document.createElement('div');
-      row.className = `submenu-folder-node ${item.is_root ? 'root-folder' : ''}`;
-      row.dataset.path = item.path;
-      row.innerHTML = `
-        <div class="submenu-folder-label">
-          <span>${item.is_root ? '📥' : '📁'}</span>
-          <span class="submenu-folder-name">${escapeHtml(item.name)}</span>
-          <span class="folder-count-badge">${item.count}枚</span>
-        </div>
-        <span class="send-badge">+送信</span>
-      `;
-
-      row.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        closeAllFloatingPopovers();
-        await importSelectedPhotos(item.path, item.name);
-      });
-
-      elements.floatingImportFolderList.appendChild(row);
-    });
-  } catch (err) {
-    console.error('[IMPORT] load destinations error:', err);
-    elements.floatingImportFolderList.innerHTML = '<div class="submenu-folder-empty">取得に失敗しました</div>';
-  }
-}
-
-/**
- * テイクアウトポップオーバー: 新規フォルダ作成して送信
- */
-async function executeFloatingNewImportFolder() {
-  if (!elements.floatingImportFolderInput) return;
-  const folderName = elements.floatingImportFolderInput.value.trim();
-  if (!folderName) return;
-
-  try {
-    const res = await fetch('/api/import/folders', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ folder_name: folderName }),
-    });
-
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.detail || 'フォルダ作成に失敗しました');
-    }
-
-    elements.floatingImportFolderInput.value = '';
-    closeAllFloatingPopovers();
-    await importSelectedPhotos(data.folder_name, data.folder_name);
-  } catch (err) {
-    console.error('[IMPORT] create folder error:', err);
-    showToast(`エラー: ${err.message}`, 'error', 4500);
-  }
-}
+window.closeAllFloatingPopovers = closeAllFloatingPopovers;
 
 /**
  * 複数選択 & コンテキストメニュー関連イベントリスナーの登録
@@ -1040,12 +677,9 @@ function initSelectionEvents() {
     if (!e.target.closest('#folderContextMenu')) {
       closeFolderContextMenu();
     }
-    if (!e.target.closest('.floating-action-group')) {
-      closeAllFloatingPopovers();
-    }
   });
 
-  // Escキーでフローティングポップオーバー・日時シフトモーダルを閉じる
+  // Escキーで日時シフトモーダルを閉じる
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       closeAllFloatingPopovers();
@@ -1055,21 +689,6 @@ function initSelectionEvents() {
       }
     }
   });
-
-  // フローティングポップオーバー内のクリック伝播停止
-  if (elements.floatingTagPopover) {
-    elements.floatingTagPopover.addEventListener('click', (e) => e.stopPropagation());
-  }
-  if (elements.floatingRatePopover) {
-    elements.floatingRatePopover.addEventListener('click', (e) => e.stopPropagation());
-  }
-  if (elements.floatingImportPopover) {
-    elements.floatingImportPopover.addEventListener('click', (e) => e.stopPropagation());
-  }
-  const floatMorePopover = document.getElementById('floatingMorePopover');
-  if (floatMorePopover) {
-    floatMorePopover.addEventListener('click', (e) => e.stopPropagation());
-  }
 
   // コンテキストメニュー内: 新規タグ追加
   const executeContextNewTag = async () => {
@@ -1238,249 +857,6 @@ function initSelectionEvents() {
     });
   }
 
-  // フローティングバー: 回転ポップオーバートグル
-  const floatRotBtn = document.getElementById('floatingRotateBtn');
-  if (floatRotBtn) {
-    floatRotBtn.addEventListener('click', toggleFloatingRotatePopover);
-  }
-  const closeFloatRotBtn = document.getElementById('closeFloatingRotatePopoverBtn');
-  if (closeFloatRotBtn) {
-    closeFloatRotBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      closeAllFloatingPopovers();
-    });
-  }
-  const floatRotRightBtn = document.getElementById('floatingRotateRightBtn');
-  if (floatRotRightBtn) {
-    floatRotRightBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      closeAllFloatingPopovers();
-      const ids = Array.from(state.selectedPhotoIds);
-      if (ids.length > 0 && typeof window.batchRotatePhotosQuick === 'function') {
-        window.batchRotatePhotosQuick(ids, 90);
-      }
-    });
-  }
-  const floatRotLeftBtn = document.getElementById('floatingRotateLeftBtn');
-  if (floatRotLeftBtn) {
-    floatRotLeftBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      closeAllFloatingPopovers();
-      const ids = Array.from(state.selectedPhotoIds);
-      if (ids.length > 0 && typeof window.batchRotatePhotosQuick === 'function') {
-        window.batchRotatePhotosQuick(ids, -90);
-      }
-    });
-  }
-  const floatPasteToneBtn = document.getElementById('floatingPasteToneBtn');
-  if (floatPasteToneBtn) {
-    floatPasteToneBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      closeAllFloatingPopovers();
-      const ids = Array.from(state.selectedPhotoIds);
-      if (ids.length > 0 && typeof window.batchPastePhotoToneAdjustments === 'function') {
-        window.batchPastePhotoToneAdjustments(ids);
-      }
-    });
-  }
-  const floatResetBtn = document.getElementById('floatingResetAdjustBtn');
-  if (floatResetBtn) {
-    floatResetBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      closeAllFloatingPopovers();
-      const ids = Array.from(state.selectedPhotoIds);
-      if (ids.length > 0 && typeof window.batchResetPhotoAdjustmentsQuick === 'function') {
-        window.batchResetPhotoAdjustmentsQuick(ids);
-      }
-    });
-  }
-
-  // 選択写真の削除
-  if (elements.contextMenuDeleteItem && typeof deleteSelectedPhotos === 'function') {
-    elements.contextMenuDeleteItem.addEventListener('click', deleteSelectedPhotos);
-  }
-  if (elements.floatingDeleteBtn && typeof deleteSelectedPhotos === 'function') {
-    elements.floatingDeleteBtn.addEventListener('click', deleteSelectedPhotos);
-  }
-
-  // フローティングバー: 選択解除
-  if (elements.floatingClearSelectionBtn) {
-    elements.floatingClearSelectionBtn.addEventListener('click', () => {
-      clearSelection();
-    });
-  }
-
-  // フローティングバー: その他の操作ポップオーバートグル
-  const floatMoreBtn = document.getElementById('floatingMoreBtn');
-  if (floatMoreBtn) {
-    floatMoreBtn.addEventListener('click', toggleFloatingMorePopover);
-  }
-  const closeFloatMoreBtn = document.getElementById('closeFloatingMorePopoverBtn');
-  if (closeFloatMoreBtn) {
-    closeFloatMoreBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      closeAllFloatingPopovers();
-    });
-  }
-
-  // フローティングバー: GPS一括準用
-  if (elements.floatingInferGpsBtn) {
-    elements.floatingInferGpsBtn.addEventListener('click', () => {
-      closeAllFloatingPopovers();
-      executeBatchInferGps();
-    });
-  }
-
-  // フローティングバー: GPS一括削除
-  if (elements.floatingClearGpsBtn) {
-    elements.floatingClearGpsBtn.addEventListener('click', () => {
-      closeAllFloatingPopovers();
-      executeBatchClearGps();
-    });
-  }
-
-  // フローティングバー: タグ追加ポップオーバートグル
-  if (elements.floatingAddTagBtn) {
-    elements.floatingAddTagBtn.addEventListener('click', toggleFloatingTagPopover);
-  }
-  if (elements.closeFloatingTagPopoverBtn) {
-    elements.closeFloatingTagPopoverBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      closeAllFloatingPopovers();
-    });
-  }
-  if (elements.floatingConfirmTagBtn) {
-    elements.floatingConfirmTagBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      executeFloatingNewTag();
-    });
-  }
-  if (elements.floatingTagInput) {
-    elements.floatingTagInput.addEventListener('input', (e) => {
-      renderFloatingTagTree(e.target.value);
-    });
-    elements.floatingTagInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.stopPropagation();
-        executeFloatingNewTag();
-      }
-    });
-  }
-
-  // フローティングバー: テイクアウトポップオーバートグル
-  if (elements.floatingImportBtn) {
-    elements.floatingImportBtn.addEventListener('click', toggleFloatingImportPopover);
-  }
-  if (elements.closeFloatingImportPopoverBtn) {
-    elements.closeFloatingImportPopoverBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      closeAllFloatingPopovers();
-    });
-  }
-  if (elements.floatingConfirmImportFolderBtn) {
-    elements.floatingConfirmImportFolderBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      executeFloatingNewImportFolder();
-    });
-  }
-  if (elements.floatingImportFolderInput) {
-    elements.floatingImportFolderInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.stopPropagation();
-        executeFloatingNewImportFolder();
-      }
-    });
-  }
-  if (elements.floatingOpenImportFolderBtn) {
-    elements.floatingOpenImportFolderBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      closeAllFloatingPopovers();
-      openImportFolderInExplorer();
-    });
-  }
-
-  // フローティングバー: 評価設定ポップオーバートグル (v1.86)
-  if (elements.floatingRateBtn) {
-    elements.floatingRateBtn.addEventListener('click', toggleFloatingRatePopover);
-  }
-  if (elements.closeFloatingRatePopoverBtn) {
-    elements.closeFloatingRatePopoverBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      closeAllFloatingPopovers();
-    });
-  }
-  if (elements.floatingRatePopover) {
-    elements.floatingRatePopover.querySelectorAll('.popover-rate-btn').forEach(btn => {
-      btn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        const rate = parseInt(btn.dataset.rating, 10);
-        closeAllFloatingPopovers();
-        await batchRateSelection(rate);
-      });
-    });
-  }
-
-  // フローティングバー: 旧評価ドロップダウン変更（フォールバック）
-  if (elements.floatingRateSelect) {
-    elements.floatingRateSelect.addEventListener('change', async (e) => {
-      if (!e.target.value) return;
-      const rate = parseInt(e.target.value, 10);
-      await batchRateSelection(rate);
-      elements.floatingRateSelect.value = '';
-    });
-  }
-
-  // コンテキストメニュー: サムネイル取得・更新
-  if (elements.contextMenuRefreshThumbItem) {
-    elements.contextMenuRefreshThumbItem.addEventListener('click', () => {
-      refreshSelectedThumbnails();
-    });
-  }
-
-  // フローティングバー: サムネイル取得・更新
-  if (elements.floatingRefreshThumbBtn) {
-    elements.floatingRefreshThumbBtn.addEventListener('click', () => {
-      closeAllFloatingPopovers();
-      refreshSelectedThumbnails();
-    });
-  }
-
-  // コンタクトシート（ベタ焼きHTML）出力ボタン（フォールバック連携）
-  const floatingContactBtn = document.getElementById('floatingTriggerContactSheetBtn');
-  if (floatingContactBtn && !floatingContactBtn.dataset.boundSelection) {
-    floatingContactBtn.dataset.boundSelection = '1';
-    floatingContactBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      closeAllFloatingPopovers();
-      if (typeof window.exportContactSheetHtml === 'function') {
-        window.exportContactSheetHtml(Array.from(state.selectedPhotoIds));
-      }
-    });
-  }
-
-  const contextContactBtn = document.getElementById('contextTriggerContactSheetBtn');
-  if (contextContactBtn && !contextContactBtn.dataset.boundSelection) {
-    contextContactBtn.dataset.boundSelection = '1';
-    contextContactBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      closeContextMenu();
-      if (typeof window.exportContactSheetHtml === 'function') {
-        window.exportContactSheetHtml(Array.from(state.selectedPhotoIds));
-      }
-    });
-  }
-
-  // フローティングバー: 撮影日時一括シフト補正
-  const floatShiftDateBtn = elements.floatingShiftDateBtn || document.getElementById('floatingShiftDateBtn');
-  if (floatShiftDateBtn && !floatShiftDateBtn.dataset.boundShiftDate) {
-    floatShiftDateBtn.dataset.boundShiftDate = '1';
-    floatShiftDateBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      closeAllFloatingPopovers();
-      openDateShiftModal();
-    });
-  }
-
   // コンテキストメニュー: 撮影日時一括シフト補正
   const ctxShiftDateItem = elements.contextMenuShiftDateItem || document.getElementById('contextMenuShiftDateItem');
   if (ctxShiftDateItem && !ctxShiftDateItem.dataset.boundShiftDate) {
@@ -1535,7 +911,7 @@ async function deleteSelectedPhotos() {
     if (!res.ok) throw new Error(data.detail || 'ライブラリからの削除に失敗しました');
 
     if (typeof showToast === 'function') {
-      showToast(`🗑️ ${data.deleted || targetIds.size}枚の写真をライブラリから削除しました`, 'info', 3000);
+      showToast(`${data.deleted || targetIds.size}枚の写真をライブラリから削除しました`, 'info', 3000);
     }
     clearSelection();
     await refreshAll();
@@ -1669,7 +1045,7 @@ async function executeBatchInferGps() {
 
     if (data.inferred_count > 0) {
       if (typeof showToast === 'function') {
-        showToast(`📍 ${data.inferred_count} 枚の写真にジオタグを準用しました`, 'success', 3500);
+        showToast(`${data.inferred_count}枚の写真にジオタグを準用しました`, 'success', 3500);
       }
       clearSelection();
       // 再読み込みしてメタデータを画面に反映
@@ -1719,7 +1095,7 @@ async function executeBatchClearGps() {
     const count = data.cleared_count || 0;
     if (count > 0) {
       if (typeof showToast === 'function') {
-        showToast(`🗑️ ${count} 枚の写真からジオタグを削除しました`, 'success', 3500);
+        showToast(`${count}枚の写真からジオタグを削除しました`, 'success', 3500);
       }
       clearSelection();
       // 再読み込みしてメタデータおよびツリーを画面に反映
@@ -1945,7 +1321,7 @@ function updateDateShiftPreview() {
         <span class="preview-fname" style="font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px;" title="${fname}">${fname}</span>
         <div class="preview-dates" style="display: flex; align-items: center; gap: 6px; font-family: monospace; font-size: 0.76rem; flex-wrap: wrap;">
           <span class="preview-date-before" style="color: var(--text-muted, #94a3b8);">${_escHtml(curDate)}${origBadge}</span>
-          <span class="preview-arrow" style="color: var(--text-dim, #64748b);">➜</span>
+          <span class="preview-arrow" style="color: var(--text-dim, #64748b);">→</span>
           <span class="preview-date-after" style="font-weight: 700; color: ${afterColor};">${_escHtml(shiftedDate)}</span>
         </div>
       </div>
@@ -2092,9 +1468,9 @@ async function submitDateShift(resetMode = false) {
     const updatedCount = data.updated_count != null ? data.updated_count : _dateShiftTargetIds.length;
     if (typeof showToast === 'function') {
       if (resetMode) {
-        showToast(`↩️ ${updatedCount}枚の写真の撮影日時を元のEXIF日時に戻しました`, 'success', 3500);
+        showToast(`${updatedCount}枚の写真の撮影日時を元のEXIF日時に戻しました`, 'success', 3500);
       } else {
-        showToast(`🕒 ${updatedCount}枚の写真の撮影日時を一括シフト補正しました`, 'success', 3500);
+        showToast(`${updatedCount}枚の写真の撮影日時を一括シフト補正しました`, 'success', 3500);
       }
     }
 

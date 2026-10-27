@@ -156,7 +156,7 @@ function renderPresetCurrentChips() {
   // 8b. attrFilter
   if (state.attrFilter && state.attrFilter !== 'all') {
     const attrLabels = { raw: 'RAWのみ', adjusted: '調整済のみ' };
-    chips.push({ icon: state.attrFilter === 'raw' ? '📷' : '✂', label: attrLabels[state.attrFilter] || state.attrFilter });
+    chips.push({ icon: '', label: attrLabels[state.attrFilter] || state.attrFilter });
   }
 
   if (chips.length === 0) {
@@ -243,7 +243,7 @@ function renderFilterPresetsList() {
       condBadges.push(`\u2B50 ${f.ratingFilter.map(r => rMap[r] || r).join('/')}`);
     }
     if (f.attrFilter && f.attrFilter !== 'all') {
-      const attrLabels = { raw: '📷 RAW', adjusted: '✂ 調整済' };
+      const attrLabels = { raw: 'RAW', adjusted: '調整済' };
       condBadges.push(escapeHtml(attrLabels[f.attrFilter] || f.attrFilter));
     }
 

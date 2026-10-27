@@ -14,15 +14,17 @@ TARGET_DIR = BASE_DIR / "python"
 PYTHON_VERSION = "3.11.9"
 EMBED_URL = f"https://www.python.org/ftp/python/{PYTHON_VERSION}/python-{PYTHON_VERSION}-embed-amd64.zip"
 GET_PIP_URL = "https://bootstrap.pypa.io/get-pip.py"
+# 動作検証済みバージョンに固定し、上流の破壊的変更・意図しない更新による不具合を防ぐ
+# （更新時は動作確認のうえでこの一覧を書き換え、LICENSES/NOTICE.txt も見直すこと）
 REQUIRED_PACKAGES = [
-    "fastapi",
-    "uvicorn",
-    "pillow",
-    "rawpy",
-    "pystray",
-    "six",
-    "numpy",
-    "onnxruntime",
+    "fastapi==0.141.1",
+    "uvicorn==0.53.0",
+    "pillow==12.3.0",
+    "rawpy==0.27.1",
+    "pystray==0.19.5",
+    "six==1.17.0",
+    "numpy==2.4.6",
+    "onnxruntime==1.30.0",
 ]
 
 
@@ -121,7 +123,6 @@ def main():
             "-m",
             "pip",
             "install",
-            "--upgrade",
             *REQUIRED_PACKAGES,
             "--no-warn-script-location",
         ]

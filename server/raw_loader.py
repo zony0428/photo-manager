@@ -192,16 +192,16 @@ def extract_raw_thumbnail_image(file_path: Union[str, Path]) -> Optional[Image.I
                     # EXIFの向きに基づいて自動回転
                     try:
                         img = ImageOps.exif_transpose(img)
-                    except Exception:
-                        pass
+                    except (ValueError, TypeError, OSError) as e:
+                        logger.debug(f"RAWサムネイルExif回転スキップ: {e}")
                     return img
                 elif thumb.format == rawpy.ThumbFormat.BITMAP:
                     # ビットマップ形式サムネイル
                     img = Image.fromarray(thumb.data)
                     return img
-    except Exception:
+    except Exception as e:
         # rawpyでオープンできなかった場合のフォールバックへ
-        pass
+        logger.debug(f"rawpyサムネイル展開スキップ ({path_obj.name}): {e}")
 
     # 2. フォールバック: DNGなどPillow自身で直接開けるRAWの場合
     try:
@@ -209,16 +209,16 @@ def extract_raw_thumbnail_image(file_path: Union[str, Path]) -> Optional[Image.I
             img.load()
             img = ImageOps.exif_transpose(img)
             return img.copy()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"Pillow RAWオープンフォールバックスキップ ({path_obj.name}): {e}")
 
     # 3. フォールバック: バイナリ中のJPEGマーカーを直接探索（X3F等、rawpyで読めないフォーマット用）
     try:
         img = _extract_embedded_jpeg(path_obj)
         if img:
             return img
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"バイナリJPEG抽出フォールバックスキップ ({path_obj.name}): {e}")
 
     return None
 
@@ -293,11 +293,11 @@ def _extract_embedded_jpeg(file_path: Path) -> Optional[Image.Image]:
             img = Image.open(io.BytesIO(best_jpeg))
             try:
                 img = ImageOps.exif_transpose(img)
-            except Exception:
-                pass
+            except (ValueError, TypeError, OSError) as e:
+                logger.debug(f"埋め込みJPEG Exif回転スキップ: {e}")
             return img
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"埋め込みJPEGデコードスキップ: {e}")
 
     return None
 
@@ -360,10 +360,11 @@ def extract_raw_metadata(file_path: Path) -> Dict[str, Any]:
                 if exif:
                     try:
                         exif_ifd = exif.get_ifd(0x8769)
-                    except Exception:
+                    except Exception as e:
+                        logger.debug(f"Exif IFD取得スキップ: {e}")
                         exif_ifd = {}
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"rawpyメタデータ抽出スキップ ({file_path.name}): {e}")
 
     # バイナリJPEG抽出フォールバック（X3F等、rawpyで読めないフォーマット用）
     if not exif:
@@ -374,10 +375,11 @@ def extract_raw_metadata(file_path: Path) -> Dict[str, Any]:
                 if exif:
                     try:
                         exif_ifd = exif.get_ifd(0x8769)
-                    except Exception:
+                    except Exception as e:
+                        logger.debug(f"Exif IFD取得スキップ: {e}")
                         exif_ifd = {}
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"埋め込みJPEGメタデータ抽出スキップ ({file_path.name}): {e}")
 
     # EXIFデータの解析
     if exif:
@@ -414,8 +416,8 @@ def extract_raw_metadata(file_path: Path) -> Dict[str, Any]:
         if raw_bias is not None:
             try:
                 exposure_bias = round(float(raw_bias), 2)
-            except Exception:
-                pass
+            except (ValueError, TypeError) as e:
+                logger.debug(f"露出補正値変換スキップ: {e}")
 
         # シャッター速度 (ExposureTime: 0x829a)
         raw_exp = exif_ifd.get(0x829a) or exif.get(0x829a)
@@ -427,32 +429,32 @@ def extract_raw_metadata(file_path: Path) -> Dict[str, Any]:
                         shutter_speed = f"1/{int(round(1.0 / exp_val))}"
                     else:
                         shutter_speed = f"{exp_val:.1f}s"
-            except Exception:
-                pass
+            except (ValueError, TypeError, ZeroDivisionError) as e:
+                logger.debug(f"シャッター速度変換スキップ: {e}")
 
         # F値 (FNumber: 0x829d)
         raw_fnum = exif_ifd.get(0x829d) or exif.get(0x829d)
         if raw_fnum is not None:
             try:
                 f_number = round(float(raw_fnum), 1)
-            except Exception:
-                pass
+            except (ValueError, TypeError) as e:
+                logger.debug(f"F値変換スキップ: {e}")
 
         # ISO感度 (ISOSpeedRatings: 0x8827)
         raw_iso = exif_ifd.get(0x8827) or exif.get(0x8827)
         if raw_iso is not None:
             try:
                 iso = int(raw_iso)
-            except Exception:
-                pass
+            except (ValueError, TypeError) as e:
+                logger.debug(f"ISO感度変換スキップ: {e}")
 
         # 焦点距離 (FocalLength: 0x920a)
         raw_focal = exif_ifd.get(0x920a) or exif.get(0x920a)
         if raw_focal is not None:
             try:
                 focal_length = round(float(raw_focal), 1)
-            except Exception:
-                pass
+            except (ValueError, TypeError) as e:
+                logger.debug(f"焦点距離変換スキップ: {e}")
 
         # 画像の向き (Orientation: 0x0112) に応じた幅・高さのスワップ
         # 5, 6, 7, 8 は 90度または 270度回転を表すため、縦横を反転
@@ -473,8 +475,8 @@ def extract_raw_metadata(file_path: Path) -> Dict[str, Any]:
             fn_date = parse_filename_datetime(file_path.name)
             if fn_date:
                 date_taken = fn_date
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"ファイル名日時パーススキップ ({file_path.name}): {e}")
 
     year_month = date_taken[:7] if len(date_taken) >= 7 else ""
 

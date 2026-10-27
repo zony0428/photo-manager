@@ -7,19 +7,34 @@ build_dist.bat から呼び出され、VERSION ファイルのバージョン番
 """
 
 from pathlib import Path
+import sys
 import zipfile
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
+from server.version import get_version
+
+# 配布ZIPに含めてはならない個人データ・実行時生成物（dist/ でアプリを試用した場合の誤混入防止）
+EXCLUDED_TOP_DIRS = {"cache", ".cache", "storage", "carry", "take_out"}
+EXCLUDED_DIR_NAMES = {"__pycache__", ".git"}
+EXCLUDED_FILE_PATTERNS = ("*.log", "mobile_sync*.json", "*.orig_backup", "autorun.inf")
+
+
+def _is_excluded(rel_path: Path) -> bool:
+    """配布物から除外すべきパスか判定する"""
+    parts = rel_path.parts
+    if parts and parts[0].lower() in EXCLUDED_TOP_DIRS:
+        return True
+    if any(p in EXCLUDED_DIR_NAMES for p in parts):
+        return True
+    return any(rel_path.match(pattern) for pattern in EXCLUDED_FILE_PATTERNS)
 
 
 def _read_version() -> str:
     """VERSIONファイルからバージョン番号文字列を取得する"""
-    version_file = ROOT_DIR / "VERSION"
-    if version_file.exists():
-        lines = [line.strip() for line in version_file.read_text(encoding="utf-8").splitlines() if line.strip()]
-        if lines:
-            return lines[0].lstrip("vV").strip()
-    return "latest"
+    return get_version()
 
 
 def _create_zip_from_dir(src_dir: Path, zip_path: Path) -> float:
@@ -28,6 +43,9 @@ def _create_zip_from_dir(src_dir: Path, zip_path: Path) -> float:
         for file_path in src_dir.rglob("*"):
             if file_path.is_file():
                 arcname = file_path.relative_to(src_dir)
+                if _is_excluded(arcname):
+                    print(f"       [SKIP] {arcname}")
+                    continue
                 zf.write(file_path, arcname)
     return zip_path.stat().st_size / (1024 * 1024)
 

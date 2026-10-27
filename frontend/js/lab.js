@@ -4,15 +4,15 @@
  * 機能概要:
  * - 左サイドバー「🧪 ラボ」セクション（#accordionItem-lab）内の特殊フィルタ・発掘ツール制御
  * - ラボ特殊フィルタ:
- *   - 🌅 マジックアワー (golden_hour) / 🌌 ブルーアワー (blue_hour) / ✨ マジック全域 (magic_all) / 🌃 夜景 (night)
- *   - ⚠️ 手ブレ危険度 (shake_risk: シャッター秒数 × 焦点距離 >= 1.0)
+ *   - マジックアワー (golden_hour) / ブルーアワー (blue_hour) / ✨ マジック全域 (magic_all) / 🌃 夜景 (night)
+ *   - 手ブレ危険度 (shake_risk: シャッター秒数 × 焦点距離 >= 1.0)
  *   - 🎂 歴代の今日 (onThisDay: MM-DD 形式、月セレクト1〜12月＋日セレクト1〜31日＋今日ボタン)
  *   - 📐 焦点距離レンジ (focalRange) / 絞りF値レンジ (apertureRange)
  * - 🎲 未整理フォルダ発掘ガチャ (GET /api/lab/random-unrated-folder)
  * - 🏆 勝ちレンズ・得意設定カルテ モーダル (#labKarteModal / GET /api/lab/karte):
  *   - タブ1: 🏆 勝ちレンズ＆カメラ番付 (#karteTabLenses)
  *   - タブ2: 📐 黄金の焦点距離 & F値分析 (#karteTabSettings)
- *   - タブ3: 🕰️ 撮影時間帯 & 光の傾向 (#karteTabHours)
+ *   - タブ3:  撮影時間帯 & 光の傾向 (#karteTabHours)
  */
 
 (function () {
@@ -26,11 +26,11 @@
 
   /** ラボ特殊フィルタの表示名マップ */
   const LAB_FILTER_LABELS = {
-    golden_hour: '🌅 マジックアワー',
-    blue_hour: '🌌 ブルーアワー',
-    magic_all: '✨ マジック＆ブルーアワー',
-    night: '🌃 夜景・天体',
-    shake_risk: '⚠️ 手ブレ注意領域',
+    golden_hour: 'マジックアワー',
+    blue_hour: 'ブルーアワー',
+    magic_all: 'マジック＆ブルーアワー',
+    night: '夜景・天体',
+    shake_risk: '手ブレ注意領域',
   };
 
   /**
@@ -147,29 +147,29 @@
           <!-- 1. 勝ちレンズ・得意設定カルテ & 2枚比較 -->
           <div style="display: flex; flex-direction: column; gap: 6px;">
             <button type="button" class="btn btn-secondary btn-sm" id="openLabKarteModalBtn" style="width: 100%; justify-content: center; gap: 6px; font-weight: 600;">
-              <span>🏆</span> <span>勝ちレンズ・得意設定カルテ</span>
+              <span>勝ちレンズ・得意設定カルテ</span>
             </button>
             <div style="display: flex; gap: 6px;">
               <button type="button" class="btn btn-secondary btn-sm" id="labGachaBtn" style="flex: 1; justify-content: center; gap: 4px;" title="未整理（可）の写真が残っているフォルダをランダムに1つ引き当てます">
-                <span>🎲</span> <span>未整理ガチャ</span>
+                <span>未整理ガチャ</span>
               </button>
               <button type="button" class="btn btn-secondary btn-sm" id="labOpenCompareBtn" style="flex: 1; justify-content: center; gap: 4px;" title="選択した2枚の写真を並べて同期ズーム＆Exif比較 (V)">
-                <span>⚖️</span> <span>2枚比較 (V)</span>
+                <span>2枚比較 (V)</span>
               </button>
             </div>
           </div>
 
-          <!-- 2. 🎂 歴代の今日 (On This Day) -->
+          <!-- 2. 歴代の今日 (On This Day) -->
           <div class="lab-otd-box" style="padding: 8px; border-radius: 6px; background: var(--bg-tertiary, #252b34); border: 1px solid var(--border-soft, #2f3642);">
             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
-              <span style="font-size: 0.76rem; font-weight: 600; color: var(--text-secondary, #cbd5e1);">🎂 歴代の今日・記念日</span>
+              <span style="font-size: 0.76rem; font-weight: 600; color: var(--text-secondary, #cbd5e1);">歴代の今日・記念日</span>
               <button type="button" class="btn-mini-text" id="labOnThisDayTodayBtn" title="今日の日付（${escHtml(today.label)}）に戻す">今日</button>
             </div>
             <div style="display: flex; align-items: center; gap: 4px;">
               <select id="labOnThisDayMonth" class="form-select-sm" style="flex: 1; padding: 4px; border-radius: 4px; background: var(--bg-secondary, #1b2028); color: var(--text-primary, #f1f5f9); border: 1px solid var(--border-soft, #2f3642); font-size: 0.78rem;" title="月を選択"></select>
               <select id="labOnThisDayDay" class="form-select-sm" style="flex: 1; padding: 4px; border-radius: 4px; background: var(--bg-secondary, #1b2028); color: var(--text-primary, #f1f5f9); border: 1px solid var(--border-soft, #2f3642); font-size: 0.78rem;" title="日を選択"></select>
               <button type="button" class="btn btn-secondary btn-xs" id="labOnThisDayBtn" data-lab-action="on-this-day" style="white-space: nowrap; padding: 4px 8px;" title="指定した月日の歴代写真を抽出・解除">
-                🎂 抽出
+                抽出
               </button>
             </div>
           </div>
@@ -182,16 +182,16 @@
             </div>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
               <button type="button" class="btn btn-secondary btn-xs lab-filter-btn" id="labBtnGoldenHour" data-lab-filter="golden_hour" title="太陽高度 -4°〜+6° のドラマチックな光（朝焼け・夕焼け）で撮影した写真を抽出">
-                🌅 マジックアワー
+                マジックアワー
               </button>
               <button type="button" class="btn btn-secondary btn-xs lab-filter-btn" id="labBtnBlueHour" data-lab-filter="blue_hour" title="太陽高度 -8°〜-4° の静謐な蒼い薄明時間帯の写真を抽出">
-                🌌 ブルーアワー
+                ブルーアワー
               </button>
               <button type="button" class="btn btn-secondary btn-xs lab-filter-btn" id="labBtnNight" data-lab-filter="night" title="太陽高度 -8°未満の夜景・星景写真を抽出">
-                🌃 夜景・星景
+                夜景・星景
               </button>
               <button type="button" class="btn btn-secondary btn-xs lab-filter-btn" id="labBtnShakeRisk" data-lab-filter="shake_risk" title="シャッター速度 < 1/焦点距離 秒 の微ブレ危険領域にある写真を抽出">
-                ⚠️ 手ブレ注意
+                手ブレ注意
               </button>
             </div>
           </div>
@@ -245,10 +245,10 @@
           <div class="modal-header" style="display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border-bottom: 1px solid var(--border-soft, #2f3642);">
             <div class="modal-header-title">
               <h2 style="margin: 0; font-size: 1.12rem; display: flex; align-items: center; gap: 8px;">
-                <span>🏆</span> <span>勝ちレンズ・得意設定カルテ（パーソナル撮影ラボ）</span>
+                <span>勝ちレンズ・得意設定カルテ（パーソナル撮影ラボ）</span>
               </h2>
               <span class="modal-subtitle" style="font-size: 0.78rem; color: var(--text-muted, #94a3b8);">
-                これまでの評価（🏅優・👍良）から、あなたと最も相性の良い機材・焦点距離・F値・時間帯を診断します
+                これまでの評価（優・良）から、あなたと最も相性の良い機材・焦点距離・F値・時間帯を診断します
               </span>
             </div>
             <button type="button" class="modal-close-btn" id="closeLabKarteModalBtn" title="閉じる (Esc)">&times;</button>
@@ -260,13 +260,13 @@
           <!-- アンダーラインタブバー（四角い枠線を持たない .lab-tab-btn） -->
           <div class="lab-tabs-nav" id="labKarteTabsNav" style="display: flex; gap: 20px; padding: 0 20px; border-bottom: 1px solid var(--border-soft, #2f3642); background: var(--bg-secondary, #1b2028);">
             <button type="button" class="lab-tab-btn active" data-karte-tab="lenses" style="padding: 11px 4px; background: transparent; border: none; border-bottom: 2px solid var(--accent-primary, #e14d2a); color: var(--text-primary, #f1f5f9); font-weight: 600; font-size: 0.88rem; cursor: pointer;">
-              🏆 勝ちレンズ＆カメラ番付
+              勝ちレンズ＆カメラ番付
             </button>
             <button type="button" class="lab-tab-btn" data-karte-tab="settings" style="padding: 11px 4px; background: transparent; border: none; border-bottom: 2px solid transparent; color: var(--text-muted, #94a3b8); font-weight: 600; font-size: 0.88rem; cursor: pointer;">
-              📐 黄金の焦点距離 &amp; F値分析
+              黄金の焦点距離 &amp; F値分析
             </button>
             <button type="button" class="lab-tab-btn" data-karte-tab="hours" style="padding: 11px 4px; background: transparent; border: none; border-bottom: 2px solid transparent; color: var(--text-muted, #94a3b8); font-weight: 600; font-size: 0.88rem; cursor: pointer;">
-              🕰️ 撮影時間帯 &amp; 光の傾向
+               撮影時間帯 &amp; 光の傾向
             </button>
           </div>
 
@@ -368,7 +368,7 @@
         if (monthSelect && parts[0]) monthSelect.value = parts[0];
         if (daySelect && parts[1]) daySelect.value = parts[1];
         if (typeof showToast === 'function') {
-          showToast(`🎂 歴代の ${formatMmDdJapanese(targetMmDd)} に撮影された写真を表示します`, 'info', 2600);
+          showToast(`歴代の ${formatMmDdJapanese(targetMmDd)} に撮影された写真を表示します`, 'info', 2600);
         }
       }
       notifyLabFilterChanged();
@@ -478,7 +478,7 @@
     notifyLabFilterChanged();
 
     if (typeof showToast === 'function') {
-      showToast(`🔍 レンズ「${fullLabel}」で絞り込みました`, 'info', 2800);
+      showToast(`レンズ「${fullLabel}」で絞り込みました`, 'info', 2800);
     }
   }
 
@@ -516,7 +516,7 @@
     notifyLabFilterChanged();
 
     if (typeof showToast === 'function') {
-      showToast(`📷 カメラ「${cameraModel}」で絞り込みました`, 'info', 2800);
+      showToast(`カメラ「${cameraModel}」で絞り込みました`, 'info', 2800);
     }
   }
 
@@ -535,7 +535,7 @@
 
       if (!data || !data.found || !data.folder_path) {
         if (typeof showToast === 'function') {
-          showToast('🎉 未整理（評価：可）の写真が残っているフォルダはありません！すべて整理済みです。', 'success', 3500);
+          showToast('未整理（評価：可）の写真が残っているフォルダはありません！すべて整理済みです。', 'success', 3500);
         }
         return;
       }
@@ -560,7 +560,7 @@
 
       const viewTitleEl = document.getElementById('viewTitle');
       if (viewTitleEl) {
-        viewTitleEl.textContent = `📁 ${data.folder_name || data.folder_path}`;
+        viewTitleEl.textContent = `${data.folder_name || data.folder_path}`;
       }
 
       // フォルダツリーの選択ハイライト同期（存在すれば）
@@ -572,7 +572,7 @@
 
       if (typeof showToast === 'function') {
         showToast(
-          `🎲 発掘ガチャ: 「${data.folder_name}」（未整理 ${data.unrated_count}枚）を引き当てました！`,
+          `発掘ガチャ: 「${data.folder_name}」（未整理 ${data.unrated_count}枚）を引き当てました`,
           'success',
           4000
         );
@@ -619,7 +619,7 @@
       const isOtdActive = Boolean(state.onThisDay);
       btn.classList.toggle('active', isOtdActive);
       if (btn.id === 'labOnThisDayBtn') {
-        btn.textContent = isOtdActive ? `🎂 抽出中` : `🎂 抽出`;
+        btn.textContent = isOtdActive ? `抽出中` : `抽出`;
       }
     });
 
@@ -663,19 +663,19 @@
         </div>
       </div>
       <div class="lab-stat-box" style="padding: 8px 12px; border-radius: 6px; background: var(--bg-secondary, #1b2028); border: 1px solid var(--border-soft, #2f3642);">
-        <div style="font-size: 0.72rem; color: var(--text-muted, #94a3b8);">🏅「優」獲得数 / 打率</div>
+        <div style="font-size: 0.72rem; color: var(--text-muted, #94a3b8);">「優」獲得数 / 打率</div>
         <div style="font-size: 1.08rem; font-weight: 700; color: var(--accent-primary, #e14d2a); margin-top: 2px;">
           ${exc.toLocaleString()}枚 <span class="badge-sub" style="margin-left: 4px;">${excRate}%</span>
         </div>
       </div>
       <div class="lab-stat-box" style="padding: 8px 12px; border-radius: 6px; background: var(--bg-secondary, #1b2028); border: 1px solid var(--border-soft, #2f3642);">
-        <div style="font-size: 0.72rem; color: var(--text-muted, #94a3b8);">👍 好評価（優＋良）率</div>
+        <div style="font-size: 0.72rem; color: var(--text-muted, #94a3b8);">好評価（優＋良）率</div>
         <div style="font-size: 1.08rem; font-weight: 700; color: #f59e0b; margin-top: 2px;">
           ${(exc + good).toLocaleString()}枚 <span class="badge-sub" style="margin-left: 4px;">${hitRate}%</span>
         </div>
       </div>
       <div class="lab-stat-box" style="padding: 8px 12px; border-radius: 6px; background: var(--bg-secondary, #1b2028); border: 1px solid var(--border-soft, #2f3642);">
-        <div style="font-size: 0.72rem; color: var(--text-muted, #94a3b8);">🌅 薄明マジック＆ブルー</div>
+        <div style="font-size: 0.72rem; color: var(--text-muted, #94a3b8);">薄明マジック＆ブルー</div>
         <div style="font-size: 1.08rem; font-weight: 700; color: var(--text-primary, #f1f5f9); margin-top: 2px;">
           ${magicCount.toLocaleString()} <span style="font-size: 0.76rem; font-weight: 400; color: var(--text-muted, #94a3b8);">枚</span>
         </div>
@@ -704,7 +704,7 @@
 
     const lensRowsHtml = lenses.map((item, idx) => {
       const rank = idx + 1;
-      const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `${rank}.`;
+      const medal = `${rank}.`;
       const excRate = Number(item.excellent_rate || 0).toFixed(1);
       const hitRate = Number(item.hit_rate || 0).toFixed(1);
       const totalPct = Math.min(100, Math.round((Number(item.total || 0) / maxLensTotal) * 100));
@@ -714,16 +714,16 @@
           <div style="font-weight: 700; font-size: 0.92rem; text-align: center; color: var(--text-secondary, #cbd5e1);">${medal}</div>
           <div style="min-width: 0;">
             <div style="font-weight: 600; font-size: 0.88rem; color: var(--text-primary, #f1f5f9); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escHtml(item.label)}">
-              🔭 ${escHtml(item.label)}
+              ${escHtml(item.label)}
             </div>
             <div style="font-size: 0.74rem; color: var(--text-muted, #94a3b8); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escHtml(item.camera_model)}">
-              📷 ${escHtml(item.camera_model)}
+              ${escHtml(item.camera_model)}
             </div>
           </div>
           <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
             <span class="badge-sub" title="総撮影枚数">${Number(item.total || 0).toLocaleString()}枚</span>
-            <span class="badge-sub" style="color: var(--accent-primary, #e14d2a);" title="優 (Excellent) 枚数">🏅優 ${Number(item.excellent || 0)}</span>
-            <span class="badge-sub" style="color: #f59e0b;" title="良 (Good) 枚数">👍良 ${Number(item.good || 0)}</span>
+            <span class="badge-sub" style="color: var(--accent-primary, #e14d2a);" title="優 (Excellent) 枚数">優 ${Number(item.excellent || 0)}</span>
+            <span class="badge-sub" style="color: #f59e0b;" title="良 (Good) 枚数">良 ${Number(item.good || 0)}</span>
           </div>
           <div>
             <div style="display: flex; justify-content: space-between; font-size: 0.74rem; margin-bottom: 3px;">
@@ -737,7 +737,7 @@
           </div>
           <div style="text-align: right;">
             <button type="button" class="btn btn-secondary btn-xs js-karte-filter-lens-btn" data-lens-index="${idx}" title="このカメラ＆レンズの組み合わせでメイングリッドを絞り込む">
-              🔍 このレンズで絞り込む
+              このレンズで絞り込む
             </button>
           </div>
         </div>
@@ -752,12 +752,12 @@
         <div class="lab-karte-row" style="display: grid; grid-template-columns: 36px minmax(180px, 1.5fr) minmax(160px, 1.1fr) minmax(140px, 1fr) auto; align-items: center; gap: 12px; padding: 9px 12px; border-bottom: 1px solid var(--border-soft, #2f3642); background: var(--bg-secondary, #1b2028);">
           <div style="font-weight: 700; font-size: 0.85rem; text-align: center; color: var(--text-muted, #94a3b8);">${rank}.</div>
           <div style="font-weight: 600; font-size: 0.86rem; color: var(--text-primary, #f1f5f9); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escHtml(cam.camera_model)}">
-            📷 ${escHtml(cam.camera_model)}
+            ${escHtml(cam.camera_model)}
           </div>
           <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
             <span class="badge-sub">${Number(cam.total || 0).toLocaleString()}枚</span>
-            <span class="badge-sub" style="color: var(--accent-primary, #e14d2a);">🏅優 ${Number(cam.excellent || 0)}</span>
-            <span class="badge-sub" style="color: #f59e0b;">👍良 ${Number(cam.good || 0)}</span>
+            <span class="badge-sub" style="color: var(--accent-primary, #e14d2a);">優 ${Number(cam.excellent || 0)}</span>
+            <span class="badge-sub" style="color: #f59e0b;">良 ${Number(cam.good || 0)}</span>
           </div>
           <div>
             <div style="display: flex; justify-content: space-between; font-size: 0.73rem; margin-bottom: 3px;">
@@ -771,7 +771,7 @@
           </div>
           <div style="text-align: right;">
             <button type="button" class="btn btn-secondary btn-xs js-karte-filter-camera-btn" data-camera-model="${escHtml(cam.camera_model)}">
-              🔍 このカメラで絞り込む
+              このカメラで絞り込む
             </button>
           </div>
         </div>
@@ -782,7 +782,7 @@
       <div style="display: flex; flex-direction: column; gap: 18px;">
         <div>
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-            <h3 style="margin: 0; font-size: 0.95rem; color: var(--text-primary, #f1f5f9);">🔭 レンズ別「🏅優」獲得打率ランキング</h3>
+            <h3 style="margin: 0; font-size: 0.95rem; color: var(--text-primary, #f1f5f9);">レンズ別「優」獲得打率ランキング</h3>
             <span class="badge-sub">${lenses.length} 本のレンズを分析</span>
           </div>
           <div style="border: 1px solid var(--border-soft, #2f3642); border-radius: 8px; overflow: hidden;">
@@ -792,7 +792,7 @@
 
         <div>
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-            <h3 style="margin: 0; font-size: 0.95rem; color: var(--text-primary, #f1f5f9);">📷 カメラボディ別 歩留まり番付</h3>
+            <h3 style="margin: 0; font-size: 0.95rem; color: var(--text-primary, #f1f5f9);">カメラボディ別 歩留まり番付</h3>
             <span class="badge-sub">${cameras.length} 機種</span>
           </div>
           <div style="border: 1px solid var(--border-soft, #2f3642); border-radius: 8px; overflow: hidden;">
@@ -867,8 +867,8 @@
               <div style="font-weight: 600; font-size: 0.86rem; color: var(--text-primary, #f1f5f9);">${escHtml(item.label)}</div>
               <div style="display: flex; gap: 6px; margin-top: 3px;">
                 <span class="badge-sub">${tot.toLocaleString()}枚</span>
-                <span class="badge-sub" style="color: var(--accent-primary, #e14d2a);">🏅優 ${exc}</span>
-                <span class="badge-sub" style="color: #f59e0b;">👍良 ${good}</span>
+                <span class="badge-sub" style="color: var(--accent-primary, #e14d2a);">優 ${exc}</span>
+                <span class="badge-sub" style="color: #f59e0b;">良 ${good}</span>
               </div>
             </div>
             <div>
@@ -879,7 +879,7 @@
             </div>
             <div>
               <div style="display: flex; justify-content: space-between; font-size: 0.73rem; margin-bottom: 3px;">
-                <span style="color: var(--accent-primary, #e14d2a); font-weight: 700;">🏅優打率 ${excRate}%</span>
+                <span style="color: var(--accent-primary, #e14d2a); font-weight: 700;">優打率 ${excRate}%</span>
                 <span style="color: var(--text-muted, #94a3b8);">好評価 ${hitRate}%</span>
               </div>
               <div style="height: 7px; border-radius: 4px; background: var(--bg-tertiary, #252b34); overflow: hidden; position: relative;">
@@ -889,7 +889,7 @@
             </div>
             <div style="text-align: right;">
               <button type="button" class="btn ${isCurrentActive ? 'btn-primary' : 'btn-secondary'} btn-xs js-karte-range-btn" data-range-type="${rangeType}" data-range-index="${idx}">
-                🔍 絞り込む
+                絞り込む
               </button>
             </div>
           </div>
@@ -902,7 +902,7 @@
         <!-- スイートスポット診断カード (静的枠 .lab-stat-box) -->
         <div class="lab-stat-box" style="padding: 12px 16px; border-radius: 8px; background: var(--bg-tertiary, #252b34); border: 1px solid var(--border-soft, #2f3642); display: flex; flex-wrap: wrap; gap: 16px; align-items: center; justify-content: space-between;">
           <div>
-            <div style="font-size: 0.75rem; color: var(--text-muted, #94a3b8);">💡 あなたの黄金スイートスポット診断</div>
+            <div style="font-size: 0.75rem; color: var(--text-muted, #94a3b8);">あなたの黄金スイートスポット診断</div>
             <div style="font-size: 0.9rem; color: var(--text-primary, #f1f5f9); margin-top: 4px;">
               焦点距離は <strong style="color: var(--accent-primary, #e14d2a);">${escHtml(bestFocal ? bestFocal.label : '-')}</strong>（優打率 ${bestFocal ? Number(bestFocal.excellent_rate || 0).toFixed(1) : '0.0'}%）、
               絞りは <strong style="color: var(--accent-primary, #e14d2a);">${escHtml(bestAperture ? bestAperture.label : '-')}</strong>（優打率 ${bestAperture ? Number(bestAperture.excellent_rate || 0).toFixed(1) : '0.0'}%）で最高傑作が生まれやすい傾向にあります。
@@ -913,7 +913,7 @@
         <!-- 焦点距離 5区分 -->
         <div>
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-            <h3 style="margin: 0; font-size: 0.95rem; color: var(--text-primary, #f1f5f9);">📐 焦点距離5区分別 枚数 &amp;「🏅優」打率</h3>
+            <h3 style="margin: 0; font-size: 0.95rem; color: var(--text-primary, #f1f5f9);">焦点距離5区分別 枚数 &amp;「優」打率</h3>
             <span class="badge-sub">超広角 〜 超望遠</span>
           </div>
           <div style="border: 1px solid var(--border-soft, #2f3642); border-radius: 8px; overflow: hidden;">
@@ -924,7 +924,7 @@
         <!-- 絞り F値 5区分 -->
         <div>
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-            <h3 style="margin: 0; font-size: 0.95rem; color: var(--text-primary, #f1f5f9);">🔆 F値（絞り）5区分別 枚数 &amp;「🏅優」打率</h3>
+            <h3 style="margin: 0; font-size: 0.95rem; color: var(--text-primary, #f1f5f9);">F値（絞り）5区分別 枚数 &amp;「優」打率</h3>
             <span class="badge-sub">開放ボケ 〜 パンフォーカス・小絞り</span>
           </div>
           <div style="border: 1px solid var(--border-soft, #2f3642); border-radius: 8px; overflow: hidden;">
@@ -945,7 +945,7 @@
           closeLabKarteModal();
           notifyLabFilterChanged();
           if (typeof showToast === 'function') {
-            showToast(`📐 焦点距離「${item.label}」で絞り込みました`, 'info', 2600);
+            showToast(`焦点距離「${item.label}」で絞り込みました`, 'info', 2600);
           }
         } else if (rType === 'aperture' && apertureRanges[idx]) {
           const item = apertureRanges[idx];
@@ -954,7 +954,7 @@
           closeLabKarteModal();
           notifyLabFilterChanged();
           if (typeof showToast === 'function') {
-            showToast(`🔆 絞り「${item.label}」で絞り込みました`, 'info', 2600);
+            showToast(`絞り「${item.label}」で絞り込みました`, 'info', 2600);
           }
         }
       });
@@ -962,7 +962,7 @@
   }
 
   /**
-   * タブ3: 🕰️ 撮影時間帯 & 光の傾向 (#karteTabHours) を描画する
+   * タブ3:  撮影時間帯 & 光の傾向 (#karteTabHours) を描画する
    * @param {Object} data カルテAPIレスポンス
    */
   function renderKarteHoursTab(data) {
@@ -987,7 +987,7 @@
       const bestHrStr = bestQualityHour
         ? `${bestQualityHour.hour}時台（優打率 ${Number(bestQualityHour.excellent_rate || 0).toFixed(1)}%）`
         : activeHrStr;
-      goldenTimeComment = `最も多くシャッターを切る時間帯は <strong>${escHtml(activeHrStr)}</strong>、最も「🏅優」が生まれやすいあなたのゴールデンタイムは <strong style="color: var(--accent-primary, #e14d2a);">${escHtml(bestHrStr)}</strong> です！`;
+      goldenTimeComment = `最も多くシャッターを切る時間帯は <strong>${escHtml(activeHrStr)}</strong>、最も「優」が生まれやすいあなたのゴールデンタイムは <strong style="color: var(--accent-primary, #e14d2a);">${escHtml(bestHrStr)}</strong> です！`;
     }
 
     const barsHtml = hours.map(h => {
@@ -999,7 +999,7 @@
       const excHeightPct = exc > 0 ? Math.max(3, Math.round((exc / maxHourCount) * 100)) : 0;
 
       return `
-        <div class="lab-hour-bar-col" style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 22px;" title="${hr}時台: 計 ${cnt}枚 / 🏅優 ${exc}枚 (優打率 ${excRate}%)">
+        <div class="lab-hour-bar-col" style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 22px;" title="${hr}時台: 計 ${cnt}枚 / 優 ${exc}枚 (優打率 ${excRate}%)">
           <div style="font-size: 0.66rem; color: var(--text-muted, #94a3b8); height: 14px;">${cnt > 0 ? cnt : ''}</div>
           <div style="width: 100%; max-width: 20px; height: 130px; background: var(--bg-tertiary, #252b34); border-radius: 4px 4px 0 0; position: relative; display: flex; align-items: flex-end; overflow: hidden;">
             <div style="width: 100%; height: ${heightPct}%; background: rgba(59, 130, 246, 0.55); border-radius: 3px 3px 0 0; position: relative;"></div>
@@ -1019,17 +1019,17 @@
       <div style="display: flex; flex-direction: column; gap: 18px;">
         <!-- ゴールデンタイム自動診断コメント (静的枠 .lab-stat-box) -->
         <div class="lab-stat-box" style="padding: 12px 16px; border-radius: 8px; background: var(--bg-tertiary, #252b34); border: 1px solid var(--border-soft, #2f3642);">
-          <div style="font-size: 0.75rem; color: var(--text-muted, #94a3b8); margin-bottom: 4px;">🕰️ あなたのゴールデンタイム分析</div>
+          <div style="font-size: 0.75rem; color: var(--text-muted, #94a3b8); margin-bottom: 4px;"> あなたのゴールデンタイム分析</div>
           <div style="font-size: 0.9rem; color: var(--text-primary, #f1f5f9); line-height: 1.5;">${goldenTimeComment}</div>
         </div>
 
         <!-- 0時〜23時 24時間ヒストグラム -->
         <div style="padding: 14px 16px; border-radius: 8px; background: var(--bg-secondary, #1b2028); border: 1px solid var(--border-soft, #2f3642);">
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
-            <h3 style="margin: 0; font-size: 0.94rem; color: var(--text-primary, #f1f5f9);">📊 24時間シャッターリズム（0時〜23時）</h3>
+            <h3 style="margin: 0; font-size: 0.94rem; color: var(--text-primary, #f1f5f9);">24時間シャッターリズム（0時〜23時）</h3>
             <div style="display: flex; gap: 12px; font-size: 0.75rem; color: var(--text-muted, #94a3b8);">
               <span><span style="display: inline-block; width: 10px; height: 10px; background: rgba(59, 130, 246, 0.65); border-radius: 2px; margin-right: 4px;"></span>総撮影枚数</span>
-              <span><span style="display: inline-block; width: 10px; height: 10px; background: var(--accent-primary, #e14d2a); border-radius: 2px; margin-right: 4px;"></span>🏅優 獲得枚数</span>
+              <span><span style="display: inline-block; width: 10px; height: 10px; background: var(--accent-primary, #e14d2a); border-radius: 2px; margin-right: 4px;"></span>優 獲得枚数</span>
             </div>
           </div>
           <div style="display: flex; align-items: flex-end; gap: 4px; overflow-x: auto; padding-bottom: 4px;">
@@ -1040,20 +1040,20 @@
         <!-- ワンクリック光・露出リスク抽出ボタン群 -->
         <div style="padding: 14px 16px; border-radius: 8px; background: var(--bg-secondary, #1b2028); border: 1px solid var(--border-soft, #2f3642);">
           <div style="font-size: 0.84rem; font-weight: 600; color: var(--text-primary, #f1f5f9); margin-bottom: 10px;">
-            🔭 太陽高度（天文計算）＆ 露出条件でワンクリック抽出
+            太陽高度（天文計算）＆ 露出条件でワンクリック抽出
           </div>
           <div style="display: flex; flex-wrap: wrap; gap: 10px;">
             <button type="button" class="btn btn-secondary btn-sm js-karte-quick-filter" data-lab-filter="golden_hour">
-              🌅 マジックアワー (${goldenCount.toLocaleString()}枚)
+              マジックアワー (${goldenCount.toLocaleString()}枚)
             </button>
             <button type="button" class="btn btn-secondary btn-sm js-karte-quick-filter" data-lab-filter="blue_hour">
-              🌌 ブルーアワー (${blueCount.toLocaleString()}枚)
+              ブルーアワー (${blueCount.toLocaleString()}枚)
             </button>
             <button type="button" class="btn btn-secondary btn-sm js-karte-quick-filter" data-lab-filter="night">
-              🌃 夜景・星景 (${nightCount.toLocaleString()}枚)
+              夜景・星景 (${nightCount.toLocaleString()}枚)
             </button>
             <button type="button" class="btn btn-secondary btn-sm js-karte-quick-filter" data-lab-filter="shake_risk">
-              ⚠️ 手ブレ危険度 (${shakeCount.toLocaleString()}枚)
+              手ブレ危険度 (${shakeCount.toLocaleString()}枚)
             </button>
           </div>
         </div>
@@ -1088,7 +1088,7 @@
 
     const lensesPane = document.getElementById('karteTabLenses');
     if (lensesPane && !latestKarteData) {
-      lensesPane.innerHTML = `<div class="empty-hint" style="padding: 36px; text-align: center;">🧪 撮影カルテを集計中...</div>`;
+      lensesPane.innerHTML = `<div class="empty-hint" style="padding: 36px; text-align: center;">撮影カルテを集計中...</div>`;
     }
 
     try {

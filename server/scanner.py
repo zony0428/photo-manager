@@ -25,7 +25,6 @@ from .database import (
     get_existing_photos_map,
     get_photo_by_path,
     get_photo_brief,
-    cleanup_missing_photos,
     cleanup_missing_photos_in_folder,
     recalculate_stacks,
     save_thumbnail,
@@ -380,8 +379,8 @@ def extract_metadata(file_path: Path) -> Dict[str, Any]:
                 exif_ifd = {}
                 try:
                     exif_ifd = exif.get_ifd(0x8769)
-                except Exception:
-                    pass
+                except (KeyError, AttributeError, ValueError) as e:
+                    logger.debug(f"Exif IFD取得スキップ: {e}")
 
                 # 撮影日時（DateTimeOriginal または DateTime）
                 raw_date = (
@@ -417,8 +416,8 @@ def extract_metadata(file_path: Path) -> Dict[str, Any]:
                 if raw_bias is not None:
                     try:
                         exposure_bias = round(float(raw_bias), 2)
-                    except Exception:
-                        pass
+                    except (ValueError, TypeError) as e:
+                        logger.debug(f"露出補正値変換スキップ: {e}")
 
                 # シャッター速度（ExposureTime: 0x829a）
                 raw_exp = exif_ifd.get(0x829a) or exif.get(0x829a)
@@ -430,32 +429,32 @@ def extract_metadata(file_path: Path) -> Dict[str, Any]:
                                 shutter_speed = f"1/{int(round(1.0 / exp_val))}"
                             else:
                                 shutter_speed = f"{exp_val:.1f}s"
-                    except Exception:
-                        pass
+                    except (ValueError, TypeError, ZeroDivisionError) as e:
+                        logger.debug(f"シャッター速度変換スキップ: {e}")
 
                 # F値（FNumber: 0x829d）
                 raw_fnum = exif_ifd.get(0x829d) or exif.get(0x829d)
                 if raw_fnum is not None:
                     try:
                         f_number = round(float(raw_fnum), 1)
-                    except Exception:
-                        pass
+                    except (ValueError, TypeError) as e:
+                        logger.debug(f"F値変換スキップ: {e}")
 
                 # ISO感度（ISOSpeedRatings: 0x8827）
                 raw_iso = exif_ifd.get(0x8827) or exif.get(0x8827)
                 if raw_iso is not None:
                     try:
                         iso = int(raw_iso)
-                    except Exception:
-                        pass
+                    except (ValueError, TypeError) as e:
+                        logger.debug(f"ISO感度変換スキップ: {e}")
 
                 # 焦点距離（FocalLength: 0x920a）
                 raw_focal = exif_ifd.get(0x920a) or exif.get(0x920a)
                 if raw_focal is not None:
                     try:
                         focal_length = round(float(raw_focal), 1)
-                    except Exception:
-                        pass
+                    except (ValueError, TypeError) as e:
+                        logger.debug(f"焦点距離変換スキップ: {e}")
 
                 # 画像の向き（Orientation: 0x0112）に応じた幅・高さのスワップ
                 # 5, 6, 7, 8 は 90度または 270度回転を表すため、縦横を反転
@@ -476,11 +475,11 @@ def extract_metadata(file_path: Path) -> Dict[str, Any]:
                             if abs(latitude) < 0.0001 and abs(longitude) < 0.0001:
                                 latitude = None
                                 longitude = None
-                except Exception:
-                    pass
-    except Exception:
+                except (KeyError, AttributeError, ValueError, TypeError) as e:
+                    logger.debug(f"GPS情報パーススキップ: {e}")
+    except Exception as e:
         # 画像オープンエラー時は基本情報のみで進める
-        pass
+        logger.debug(f"画像メタデータ読み出しスキップ ({file_path.name}): {e}")
 
     # 標準EXIF (0xA434) でレンズ機種名が取得できなかった場合、Panasonic MakerNote / XMP からフォールバック抽出
     if not is_valid_lens_name(lens_model):

@@ -196,7 +196,7 @@ async function openPhotoFolder(photoId) {
   try {
     const res = await fetch(`/api/photo/${photoId}/open-folder`, { method: 'POST' });
     if (res.ok) {
-      showToast('📁 フォルダを開きました', 'info');
+      showToast('フォルダを開きました', 'info');
     } else {
       const err = await res.json();
       showToast(err.detail || 'フォルダを開けませんでした', 'warning');
@@ -214,7 +214,7 @@ async function openPhotoFile(photoId) {
   try {
     const res = await fetch(`/api/photo/${photoId}/open-file`, { method: 'POST' });
     if (res.ok) {
-      showToast('🖼️ 規定のアプリで写真を開きました', 'info');
+      showToast('規定のアプリで写真を開きました', 'info');
     } else {
       const err = await res.json();
       showToast(err.detail || 'ファイルを開けませんでした', 'warning');
@@ -235,7 +235,7 @@ function renderExposureTags(container, photo) {
 
   // シャッタースピード
   if (photo.shutter_speed) {
-    tags.push(`<span class="meta-exposure-tag is-shutter" title="シャッター速度">⏱️ ${escapeHtml(photo.shutter_speed)}</span>`);
+    tags.push(`<span class="meta-exposure-tag is-shutter" title="シャッター速度">${escapeHtml(photo.shutter_speed)}</span>`);
   }
   // 絞り（F値）
   if (photo.f_number != null) {
@@ -507,7 +507,7 @@ function showSingleInspector(photo) {
               if (typeof fetchPhotos === 'function') fetchPhotos();
               if (typeof showToast === 'function') {
                 const importedTagCount = Array.isArray(result.imported_tags) ? result.imported_tags.length : xmpTags.length;
-                showToast(`📥 XMPからメタデータを取り込みました（タグ ${importedTagCount}件）`, 'success');
+                showToast(`XMPからメタデータを取り込みました（タグ ${importedTagCount}件）`, 'success');
               }
             } catch (err) {
               console.error('[ERROR] XMPメタデータ取込失敗:', err);
@@ -636,14 +636,14 @@ function showSingleInspector(photo) {
       const hasDiff = (startT > 0) && timestamps.some(t => Math.abs(t - startT) > 0.005);
 
       if (isDuplicate) {
-        elements.inspectorBracketLabel.textContent = `📋 重複写真グループ (${stackPhotos.length}枚)`;
+        elements.inspectorBracketLabel.textContent = `重複写真グループ (${stackPhotos.length}枚)`;
         elements.inspectorBracketTypeBadge.textContent = 'DUP';
       } else if (isBurst) {
-        elements.inspectorBracketLabel.textContent = `⚡ 連写グループ (${stackPhotos.length}枚)`;
+        elements.inspectorBracketLabel.textContent = `連写グループ (${stackPhotos.length}枚)`;
         elements.inspectorBracketTypeBadge.textContent = 'BURST';
       } else {
         const rawSuffix = (hasRaw && hasJpg) ? ' | RAW+JPG' : '';
-        elements.inspectorBracketLabel.textContent = `⚡ 露出ブラケット (${stackPhotos.length}枚${rawSuffix})`;
+        elements.inspectorBracketLabel.textContent = `露出ブラケット (${stackPhotos.length}枚${rawSuffix})`;
         elements.inspectorBracketTypeBadge.textContent = 'BKT';
       }
       elements.inspectorBracketList.innerHTML = '';
@@ -661,7 +661,7 @@ function showSingleInspector(photo) {
           const rawDir = sp.directory_path || '';
           const folderParts = rawDir.split(/[\\/]/).filter(Boolean);
           const folderName = folderParts.length > 0 ? folderParts[folderParts.length - 1] : 'フォルダ';
-          biasText = `📁 ${folderName}`;
+          biasText = folderName;
         } else if (isBurst) {
           if (idx === 0) {
             biasText = '0.00s';
@@ -684,7 +684,7 @@ function showSingleInspector(photo) {
 
         const isPrimary = sp.is_stack_primary === 1;
         const primaryHtml = isPrimary 
-          ? '<span class="bracket-primary-badge">★ 代表</span>' 
+          ? '<span class="bracket-primary-badge">代表</span>' 
           : `<button class="btn-make-primary" data-photo-id="${sp.id}" title="この写真を一覧の代表写真にする">代表に設定</button>`;
 
         const formatPill = sp.is_raw 
@@ -703,8 +703,8 @@ function showSingleInspector(photo) {
         } else {
           detailsHtml = `
             <span>${escapeHtml(sp.file_name)}</span>
-            ${sp.shutter_speed ? `<span>・${sp.shutter_speed}</span>` : ''}
-            ${sp.f_number ? `<span>・F${sp.f_number}</span>` : ''}
+            ${sp.shutter_speed ? `<span>・${escapeHtml(sp.shutter_speed)}</span>` : ''}
+            ${sp.f_number ? `<span>・F${escapeHtml(sp.f_number)}</span>` : ''}
           `;
         }
 
@@ -731,19 +731,19 @@ function showSingleInspector(photo) {
             e.stopPropagation();
             try {
               const res = await fetch(`/api/photo/${sp.id}/set-primary`, { method: 'POST' });
-              if (res.ok) {
-                state.activeInspectorPhotoId = sp.id;
-                if (typeof clearSelection === 'function') {
-                  clearSelection();
-                } else {
-                  state.selectedPhotoIds.clear();
-                }
-                await fetchPhotos();
-                const updated = state.photos.find(p => p.id === sp.id);
-                if (updated) showSingleInspector(updated);
+              if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+              state.activeInspectorPhotoId = sp.id;
+              if (typeof clearSelection === 'function') {
+                clearSelection();
+              } else {
+                state.selectedPhotoIds.clear();
               }
+              await fetchPhotos();
+              const updated = state.photos.find(p => p.id === sp.id);
+              if (updated) showSingleInspector(updated);
             } catch (err) {
               console.error('代表変更失敗:', err);
+              if (typeof showToast === 'function') showToast('代表写真の変更に失敗しました', 'warning');
             }
           });
         }
@@ -823,6 +823,7 @@ function showSingleInspector(photo) {
                 detailPhoto = await res.json();
               } else {
                 const photoRes = await fetch(`/api/photos?search=${encodeURIComponent(sp.file_name)}&stacked=false`);
+                if (!photoRes.ok) throw new Error(`写真情報の取得に失敗しました (HTTP ${photoRes.status})`);
                 const pData = await photoRes.json();
                 if (pData.photos && pData.photos.length > 0) {
                   detailPhoto = pData.photos[0];
@@ -1036,12 +1037,12 @@ function showSingleInspector(photo) {
       <div class="multi-meta-list">
         ${dups.map((dup) => {
           const isCurrent = (dup.id === photo.id);
-          const dir = dup.is_unlinked ? '🔗 実体パス未登録（リンク消失）' : getParentDirPath(dup.file_path);
+          const dir = dup.is_unlinked ? '実体パス未登録（リンク消失）' : getParentDirPath(dup.file_path);
           const fullPath = dup.file_path || '';
           return `
             <div class="multi-meta-item${isCurrent ? ' active' : ''}" data-photo-id="${dup.id}">
               ${dup.is_unlinked ? `
-                <span class="multi-meta-text" style="color:var(--warning, #e67e22);">🔗 実体パス未登録</span>
+                <span class="multi-meta-text" style="color:var(--warning, #e67e22);">実体パス未登録</span>
               ` : `
                 <a href="javascript:void(0)" class="multi-meta-link" data-photo-id="${dup.id}" title="${escapeHtml(fullPath)}&#10;クリックでフォルダを開く">${escapeHtml(dir)}</a>
               `}
@@ -1059,7 +1060,7 @@ function showSingleInspector(photo) {
       elements.inspectorPathRow.classList.remove('is-multi-row');
     }
     if (photo.is_unlinked) {
-      elements.inspectorPath.innerHTML = '<span style="color:var(--warning, #e67e22);">🔗 実体パス未登録（リンク消失）</span>';
+      elements.inspectorPath.innerHTML = '<span style="color:var(--warning, #e67e22);">実体パス未登録（リンク消失）</span>';
       elements.inspectorPath.title = photo.file_path ? `元の保存パス: ${photo.file_path}` : '実体ファイルとの紐付けが外れています';
     } else if (photo.file_path) {
       elements.inspectorPath.textContent = getParentDirPath(photo.file_path);
@@ -1082,7 +1083,7 @@ function showSingleInspector(photo) {
         <div class="multi-meta-list">
           ${dups.map((dup) => {
             const isCurrent = (dup.id === photo.id);
-            const icon = dup.is_offline ? '🔴' : '🟢';
+            const icon = dup.is_offline ? '○' : '●';
             const driveInfo = dup.volume_drive ? ` (${dup.volume_drive})` : '';
             const label = dup.volume_label || 'ラベルなし';
             return `
@@ -1102,7 +1103,7 @@ function showSingleInspector(photo) {
       if (photo.volume_label !== undefined && photo.volume_label !== null) {
         elements.inspectorVolumeRow.style.display = '';
         const driveInfo = photo.volume_drive ? ` (${photo.volume_drive})` : '';
-        const icon = photo.is_offline ? '🔴' : '🟢';
+        const icon = photo.is_offline ? '○' : '●';
         elements.inspectorVolume.textContent = `${icon} ${photo.volume_label || 'ラベルなし'}${driveInfo}`;
         elements.inspectorVolume.title = `ボリュームシリアル: ${photo.volume_serial || '不明'}`;
       } else {
@@ -1189,6 +1190,7 @@ function showSingleInspector(photo) {
 async function showGpsCandidateModal(photo) {
   try {
     const res = await fetch(`/api/photo/${photo.id}/gps-candidates?minutes=60`);
+    if (!res.ok) throw new Error(`GPS候補の取得に失敗しました (HTTP ${res.status})`);
     const data = await res.json();
     const candidates = data.candidates || [];
     const beforeCand = data.before || null;
@@ -1204,7 +1206,7 @@ async function showGpsCandidateModal(photo) {
     const header = document.createElement('div');
     header.className = 'gps-candidate-header';
     header.innerHTML = `
-      <h3>📍 近隣のジオタグ付き写真 (±60分)</h3>
+      <h3>近隣のジオタグ付き写真 (±60分)</h3>
       <button class="modal-close-btn gps-close-btn">&times;</button>
     `;
     modal.appendChild(header);
@@ -1245,7 +1247,7 @@ async function showGpsCandidateModal(photo) {
             fetchPhotos();
           }
           if (typeof showToast === 'function') {
-            showToast('📍 スマホ写真からジオタグを準用しました', 'success', 3000);
+            showToast('スマホ写真からジオタグを準用しました', 'success', 3000);
           }
         } else {
           const err = await copyRes.json();
@@ -1272,7 +1274,7 @@ async function showGpsCandidateModal(photo) {
         compareSection.className = 'gps-compare-section';
         compareSection.innerHTML = `
           <div class="gps-compare-title">
-            <span>🎯 直前 / 直後の候補から選ぶ</span>
+            <span>直前 / 直後の候補から選ぶ</span>
           </div>
           <div class="gps-compare-grid"></div>
         `;
@@ -1288,8 +1290,8 @@ async function showGpsCandidateModal(photo) {
             <div class="gps-compare-badge">◀ 撮影前 (${diffMin}分前)</div>
             <img class="gps-compare-thumb" src="${getThumbnailUrl(beforeCand)}" alt="" loading="lazy">
             <div class="gps-compare-info">
-              <div class="gps-compare-loc">📍 ${escapeHtml(formatLoc(beforeCand))}</div>
-              <div class="gps-compare-meta">📷 ${escapeHtml(beforeCand.camera_model || '不明')}</div>
+              <div class="gps-compare-loc">${escapeHtml(formatLoc(beforeCand))}</div>
+              <div class="gps-compare-meta">${escapeHtml(beforeCand.camera_model || '不明')}</div>
               <div class="gps-compare-time">${escapeHtml(beforeCand.date_taken || '')}</div>
             </div>
             <button class="btn btn-primary btn-sm gps-adopt-btn">この位置を採用</button>
@@ -1306,8 +1308,8 @@ async function showGpsCandidateModal(photo) {
             <div class="gps-compare-badge">撮影後 ▶ (${diffMin}分後)</div>
             <img class="gps-compare-thumb" src="${getThumbnailUrl(afterCand)}" alt="" loading="lazy">
             <div class="gps-compare-info">
-              <div class="gps-compare-loc">📍 ${escapeHtml(formatLoc(afterCand))}</div>
-              <div class="gps-compare-meta">📷 ${escapeHtml(afterCand.camera_model || '不明')}</div>
+              <div class="gps-compare-loc">${escapeHtml(formatLoc(afterCand))}</div>
+              <div class="gps-compare-meta">${escapeHtml(afterCand.camera_model || '不明')}</div>
               <div class="gps-compare-time">${escapeHtml(afterCand.date_taken || '')}</div>
             </div>
             <button class="btn btn-primary btn-sm gps-adopt-btn">この位置を採用</button>
@@ -1323,7 +1325,7 @@ async function showGpsCandidateModal(photo) {
       if (candidates.length > 2) {
         const subListTitle = document.createElement('div');
         subListTitle.className = 'gps-all-candidates-title';
-        subListTitle.textContent = `📋 その他の候補 (${candidates.length}件)`;
+        subListTitle.textContent = `その他の候補 (${candidates.length}件)`;
         bodyContainer.appendChild(subListTitle);
 
         const list = document.createElement('div');
@@ -1337,9 +1339,9 @@ async function showGpsCandidateModal(photo) {
           item.innerHTML = `
             <img class="gps-candidate-thumb" src="${getThumbnailUrl(c)}" alt="" loading="lazy">
             <div class="gps-candidate-info">
-              <div class="gps-candidate-name">${escapeHtml(c.file_name)} ${locStr ? `<span class="badge-sub">📍 ${escapeHtml(locStr)}</span>` : ''}</div>
+              <div class="gps-candidate-name">${escapeHtml(c.file_name)} ${locStr ? `<span class="badge-sub">${escapeHtml(locStr)}</span>` : ''}</div>
               <div class="gps-candidate-meta">
-                📷 ${escapeHtml(c.camera_model || '不明')} ・ ⏱ ${timeDiff}分差 ・ 📍 ${c.latitude.toFixed(4)}, ${c.longitude.toFixed(4)}
+                ${escapeHtml(c.camera_model || '不明')} ・ ${timeDiff}分差 ・ ${c.latitude.toFixed(4)}, ${c.longitude.toFixed(4)}
               </div>
             </div>
           `;
@@ -1484,7 +1486,7 @@ function showBatchInspector() {
         const colorConf = COLOR_TAG_MAP[tag];
         const iconOrDot = colorConf 
           ? `<span class="tag-color-dot" style="background:${colorConf.color}; margin-right:4px;"></span>` 
-          : '🏷️ ';
+          : '';
 
         chip.innerHTML = `
           <span style="display:inline-flex; align-items:center;">${iconOrDot}${escapeHtml(tag)} <small style="opacity:0.7; margin-left:4px;">(${cnt}/${count})</small></span>
@@ -1538,7 +1540,7 @@ function renderInspectorTagChips(photo) {
 
     const colorConf = COLOR_TAG_MAP[tag];
     const colorDot = colorConf ? `<span class="tag-color-dot" style="background:${colorConf.color};"></span>` : '';
-    const icon = isAi ? '<span class="ai-tag-pill-badge">AI</span> ' : (colorConf ? '' : '🏷️ ');
+    const icon = isAi ? '<span class="ai-tag-pill-badge">AI</span> ' : '';
     const confSpan = (isAi && confidence) ? `<span class="ai-confidence-label">${confidence}%</span>` : '';
     const promoteBtn = isAi ? `<button type="button" class="promote-chip-btn" title="手動タグとして確定（昇格）">✓</button>` : '';
 
@@ -1699,7 +1701,7 @@ function renderInspectorQuickTree(container, onSelect) {
       if (hasChildren) {
         toggleBtnHtml = `<span class="tree-toggle-btn ${isExpanded ? '' : 'collapsed'}" title="${isExpanded ? '折りたたむ' : '展開する'}">▼</span>`;
       }
-      const icon = hasChildren ? '📁' : '🏷️';
+      const icon = '';
       const countText = node.count != null ? `<span class="inspector-tree-count" title="付与されている写真枚数">${node.count}</span>` : '';
       const badgeText = isAssigned ? '✓付与済' : '+追加';
       const badgeTitle = isAssigned
@@ -2296,12 +2298,20 @@ function initInspectorEvents() {
         const pid = parseInt(item.dataset.photoId, 10);
         if (pid) {
           fetch(`/api/photo/${pid}`)
-            .then(res => res.json())
-            .then(p => {
-              state.activeInspectorPhotoId = p.id;
-              showSingleInspector(p);
+            .then(res => {
+              if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+              return res.json();
             })
-            .catch(err => console.error('写真切り替え失敗:', err));
+            .then(p => {
+              if (p) {
+                state.activeInspectorPhotoId = p.id;
+                showSingleInspector(p);
+              }
+            })
+            .catch(err => {
+              console.error('写真切り替え失敗:', err);
+              if (typeof showToast === 'function') showToast('写真情報の取得に失敗しました', 'warning');
+            });
         }
       }
     });
@@ -2315,12 +2325,20 @@ function initInspectorEvents() {
         const pid = parseInt(item.dataset.photoId, 10);
         if (pid) {
           fetch(`/api/photo/${pid}`)
-            .then(res => res.json())
-            .then(p => {
-              state.activeInspectorPhotoId = p.id;
-              showSingleInspector(p);
+            .then(res => {
+              if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+              return res.json();
             })
-            .catch(err => console.error('写真切り替え失敗:', err));
+            .then(p => {
+              if (p) {
+                state.activeInspectorPhotoId = p.id;
+                showSingleInspector(p);
+              }
+            })
+            .catch(err => {
+              console.error('写真切り替え失敗:', err);
+              if (typeof showToast === 'function') showToast('写真情報の取得に失敗しました', 'warning');
+            });
         }
       }
     });
@@ -2359,7 +2377,7 @@ function initInspectorEvents() {
         }
         showSingleInspector(photo);
         if (typeof showToast === 'function') {
-          showToast('🗑️ ジオタグ情報を削除しました', 'info');
+          showToast('ジオタグ情報を削除しました', 'info');
         }
         if (window.loadLocationTree) window.loadLocationTree();
         if (state.activeLocation && typeof fetchPhotos === 'function') {
@@ -2386,9 +2404,7 @@ function initInspectorEvents() {
   const batchInferGpsBtnEl = elements.batchInferGpsBtn || document.getElementById('batchInferGpsBtn');
   if (batchInferGpsBtnEl) {
     batchInferGpsBtnEl.addEventListener('click', () => {
-      const floatingInferBtn = document.getElementById('floatingInferGpsBtn');
-      if (floatingInferBtn) floatingInferBtn.click();
-      else if (typeof executeBatchInferGps === 'function') executeBatchInferGps();
+      if (typeof executeBatchInferGps === 'function') executeBatchInferGps();
     });
   }
 }

@@ -14,14 +14,14 @@ _VERSION_FILE = Path(__file__).resolve().parent.parent / "VERSION"
 
 def get_version_info() -> Dict[str, str]:
     """現在のバージョン番号と最終更新日時を辞書で取得する"""
-    version_str = "1.00"
+    version_str = "1.0.0"
     updated_at = ""
     try:
         if _VERSION_FILE.exists():
             raw = _VERSION_FILE.read_text(encoding="utf-8").strip()
             lines = [line.strip() for line in raw.splitlines() if line.strip()]
             if lines:
-                # 1行目: "2.23" または "2.23 (2026-10-16 17:25)" 等に対応
+                # 1行目: "3.0.1" または "3.0.1 (2026-10-27 15:40)" 等に対応
                 first = lines[0]
                 m_inline = re.match(r"^v?([0-9]+(?:\.[0-9]+)*)\s*(?:\((.+?)\))?$", first, re.IGNORECASE)
                 if m_inline:
@@ -52,7 +52,7 @@ def get_version_info() -> Dict[str, str]:
 
 
 def get_version() -> str:
-    """現在のバージョン番号文字列を取得する（フォールバック: 1.00）"""
+    """現在のバージョン番号文字列を取得する（フォールバック: 1.0.0）"""
     return get_version_info()["version"]
 
 

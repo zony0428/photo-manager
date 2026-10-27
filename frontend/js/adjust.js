@@ -1345,7 +1345,7 @@
       saturation: adjustState.saturation,
     });
     if (typeof showToast === 'function') {
-      showToast(`📋 トーン調整をコピーしました（${formatToneSummary(saved)}）`, 'info');
+      showToast(`トーン調整をコピーしました（${formatToneSummary(saved)}）`, 'info');
     }
   }
 
@@ -1356,7 +1356,7 @@
     const copied = getCopiedToneAdjustments();
     if (!copied) {
       if (typeof showToast === 'function') {
-        showToast('⚠️ コピーされたトーン調整がありません（先にコピーしてください）', 'warning');
+        showToast('コピーされたトーン調整がありません（先にコピーしてください）', 'warning');
       }
       return;
     }
@@ -1366,7 +1366,7 @@
     syncFineSlidersUI();
     applyImageStagePreview(false);
     if (typeof showToast === 'function') {
-      showToast(`🎨 トーン調整を反映しました（${formatToneSummary(copied)}）`, 'info');
+      showToast(`トーン調整を反映しました（${formatToneSummary(copied)}）`, 'info');
     }
   }
 
@@ -1388,7 +1388,7 @@
       saturation: Number(photo.saturation) || 0,
     });
     if (typeof showToast === 'function') {
-      showToast(`📋 「${photo.file_name}」のトーン調整をコピーしました（${formatToneSummary(saved)}）`, 'info');
+      showToast(`「${photo.file_name}」のトーン調整をコピーしました（${formatToneSummary(saved)}）`, 'info');
     }
   }
 
@@ -1400,7 +1400,7 @@
     const copied = getCopiedToneAdjustments();
     if (!copied) {
       if (typeof showToast === 'function') {
-        showToast('⚠️ 先にトーン調整をコピーしてください (Ctrl+Shift+C)', 'warning');
+        showToast('先にトーン調整をコピーしてください (Ctrl+Shift+C)', 'warning');
       }
       return;
     }
@@ -1436,7 +1436,7 @@
       }
 
       if (typeof showToast === 'function') {
-        showToast(`🎨 ${data.affected || photoIds.length}枚にトーン調整をペーストしました（${formatToneSummary(copied)}）`, 'success');
+        showToast(`${data.affected || photoIds.length}枚にトーン調整をペーストしました（${formatToneSummary(copied)}）`, 'success');
       }
     } catch (e) {
       console.error(e);
@@ -1460,7 +1460,7 @@
 
     if (!navigator.clipboard || typeof window.ClipboardItem === 'undefined') {
       if (typeof showToast === 'function') {
-        showToast('⚠️ お使いのブラウザ環境ではクリップボードへの画像コピーに対応していません', 'warning');
+        showToast('お使いのブラウザ環境ではクリップボードへの画像コピーに対応していません', 'warning');
       }
       return;
     }
@@ -1506,7 +1506,7 @@
       ]);
 
       if (typeof showToast === 'function') {
-        showToast(`📋 「${photo.file_name}」をクリップボードにコピーしました (Ctrl+V で貼り付け可能)`, 'success');
+        showToast(`「${photo.file_name}」をクリップボードにコピーしました (Ctrl+V で貼り付け可能)`, 'success');
       }
     } catch (e) {
       console.error('Clipboard image copy error:', e);

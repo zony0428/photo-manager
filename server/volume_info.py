@@ -4,9 +4,12 @@
 Windows API (GetVolumeInformationW) を ctypes 経由で呼び出す（外部依存なし）。
 """
 
+import logging
 import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
+
+logger = logging.getLogger(__name__)
 
 
 def get_volume_info(file_path: str) -> Optional[Dict[str, Any]]:
@@ -38,16 +41,16 @@ def get_volume_info(file_path: str) -> Optional[Dict[str, Any]]:
         max_component_length = wintypes.DWORD(0)
         fs_flags = wintypes.DWORD(0)
 
-        # GetVolumeInformationW 呼び出し
+        # GetVolumeInformationW 呼び出し（バッファサイズは文字数 len() を指定）
         result = ctypes.windll.kernel32.GetVolumeInformationW(
             root_path,
             volume_name_buf,
-            ctypes.sizeof(volume_name_buf),
+            len(volume_name_buf),
             ctypes.byref(serial_number),
             ctypes.byref(max_component_length),
             ctypes.byref(fs_flags),
             fs_name_buf,
-            ctypes.sizeof(fs_name_buf),
+            len(fs_name_buf),
         )
 
         if not result:
@@ -62,7 +65,8 @@ def get_volume_info(file_path: str) -> Optional[Dict[str, Any]]:
             "drive": drive,
         }
 
-    except Exception:
+    except Exception as e:
+        logger.debug(f"ボリューム情報取得失敗 ({file_path}): {e}")
         return None
 
 

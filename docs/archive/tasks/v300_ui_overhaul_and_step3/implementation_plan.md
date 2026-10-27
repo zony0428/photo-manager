@@ -1,6 +1,6 @@
 # 実装計画書：ステップ3 残作業6項目の一括完遂（サブエージェント並列オーケストレーション）
 
-[ui-ux-diagnosis-and-roadmap.md](file:///c:/Users/zony0/Documents/photo-manager/docs/knowledge/ui-ux-diagnosis-and-roadmap.md) に記録した未実施の残作業6項目を、ファイル競合ゼロの **3つの専門サブエージェント（Backend / Frontend JS / Frontend HTML&CSS）** に分割して並列実装し、メインエージェントが統合検証・ドキュメント同期を行います。
+[ui-ux-diagnosis-and-roadmap.md](../../../../docs/knowledge/ui-ux-diagnosis-and-roadmap.md) に記録した未実施の残作業6項目を、ファイル競合ゼロの **3つの専門サブエージェント（Backend / Frontend JS / Frontend HTML&CSS）** に分割して並列実装し、メインエージェントが統合検証・ドキュメント同期を行います。
 
 ---
 

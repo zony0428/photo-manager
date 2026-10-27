@@ -68,7 +68,13 @@ USBメモリやポータブルSSDでの持ち歩き運用（完全スタンド�
 - **サニタイズ (XSS防止)**:
   - テンプレートリテラルでDOMに挿入するユーザー入力値・ファイル名は必ずエスケープ関数（`_escHtml`, `_escAttr`）を通す。
 - **CSS変数**:
-  - `var(--var-name, fallback)` のように必ずフォールバック値を指定する。
+  - テーマ定義（`:root` / `[data-theme]` 等）に存在しない変数のみフォールバック必須。既存の共通テーマ変数はフォールバックを省略可。
+
+### セキュリティ規約 (Security)
+- **新規APIは既定でlocalhost専用**: すべての新規APIは既定で `127.0.0.1` / `localhost` 専用とし、LANアクセスを許可する場合は安全性を検証した上で `server/lan_access.py` のホワイトリストに明示追加すること（PC操作・ファイル削除・DB変更等のAPIはLAN公開厳禁）。
+- **innerHTMLへのXSS防止**: DOM（`innerHTML` 等）へ挿入する外部由来文字列（ファイル名・ボリュームラベル・EXIF・タグ名等）は必ず `escapeHtml` を通す。
+- **外部プロセス起動の安全性**: `os.startfile` や `subprocess` は検証済みパス・ホワイトリスト拡張子のみを対象とし、シェル文字列連結によるコマンド構築は禁止（引数リスト形式を使用）。
+- **回帰テストの更新・実行**: セキュリティや認証周りを変更した際は必ず `tests/test_security.py` を更新し、テストを実行して合格を確認する。
 
 ### データベース & パフォーマンス
 - **全件取得の禁止**:
@@ -78,12 +84,15 @@ USBメモリやポータブルSSDでの持ち歩き運用（完全スタンド�
 - **SQLite PRAGMA**:
   - WALモード、RAMキャッシュ（`cache_size`）、メモリマップドI/O（`mmap_size`）の設定を維持する。
 
-### バージョン管理・自動カウントアップ規約
-- **起点バージョン**: 2026-10-06 時点を `1.00` とする。
+### バージョン管理・自動カウントアップ規約 (SemVer: MAJOR.MINOR.PATCH)
+- **バージョニング方式**: `v3.0.1` 以降は一般的なセマンティックバージョニング（`MAJOR.MINOR.PATCH`）を採用する。
 - **カウントアップ原則（検証・コミット時更新）**:
   - 通常の作業途中・微修正のたびに細かくバージョン番号を上げてはならない。
-  - **動作検証・確認が完了し、Gitコミットを行うタイミングで `0.01` 単位でカウントアップ**する（例: `2.23` → `2.24`）。
-  - 大幅な機能変更等でバージョンを大きく上げる場合は、ユーザーからの明示的な指示に従う。
+  - **動作検証・確認が完了し、Gitコミットを行うタイミングで変更規模に応じてカウントアップ**する：
+    - **PATCH（`+0.0.1`、例: `3.0.0` → `3.0.1`）**: 内部修正・バグ修正・セキュリティ強化・パフォーマンス改善。
+    - **MINOR（`+0.1.0`、例: `3.0.1` → `3.1.0`）**: 新機能の追加・UI改善（下位のPATCHは `.0` にリセット）。
+    - **MAJOR（`+1.0.0`、例: `3.1.0` → `4.0.0`）**: 大規模なアーキテクチャ・デザイン刷新（ユーザーからの明示的な指示に従う）。
+  - `VERSION` ファイル更新時は `frontend/index.html`・`frontend/mobile.html`（`#appVersion` および `?v=` キャッシュバスター）と `launcher/Launcher.cs`（`AssemblyVersion`）も同期する。
 - **最終更新日時の併記**:
   - バージョン値はプロジェクトルートの `VERSION` ファイルおよび `server/version.py` で一元管理する。
   - `VERSION` ファイルにはバージョン番号とあわせて **最終更新日時（`Updated: YYYY-MM-DD HH:MM`）** を記載し、改修時は最終更新日時を最新化する（UIの `#appVersion` および `/api/version` へ反映させる）。
@@ -97,6 +106,11 @@ USBメモリやポータブルSSDでの持ち歩き運用（完全スタンド�
   - バージョン番号を更新してリリースビルド（`build_dist.bat` による `PhotoManager_v<VERSION>.zip` / `PhotoManager_v<VERSION>diff.zip` 生成）を行う際は、必ずプロジェクト配下に以下のリリースノートを生成・更新する：
     1. **`docs/release_notes/RELEASE_NOTES_v<VERSION>.md`**: バージョン別のリリースノート保存用（GitHub Releases 投稿用に Tag・Title・差分版 `PhotoManager_v<VERSION>diff.zip` 上書き案内・フル版案内・日本語/英語の更新内容を完備）。
     2. **`RELEASE_NOTES.md`（プロジェクトルート直下）**: 最新バージョンのリリースノートおよび過去の更新履歴（Changelog）を収録し、`dist/` および `dist_update/` にも同梱する。
+- **GitHub Releases 自動公開（ユーザーが「リリースお願い」等と指示した場合）**:
+  - `origin`（`photo-manager-dev`）へのコミット・タグプッシュおよび `build_dist.bat` の実行後、`.\python\python.exe scripts\publish_release.py` を実行して以下を自動完遂する：
+    1. 公開用リポジトリ `public`（`zony0428/photo-manager`）の `main` ブランチへ単一コミットとして反映し、タグ `v<VERSION>` をプッシュ。
+    2. GitHub REST API により `zony0428/photo-manager` の Releases に `v<VERSION>` を作成（本文は `docs/release_notes/RELEASE_NOTES_v<VERSION>.md`）。
+    3. 生成済みの `PhotoManager_v<VERSION>.zip`（フル版）と `PhotoManager_v<VERSION>diff.zip`（差分版）の2ファイルを Release Assets として自動アップロード。
 
 
 ---
@@ -106,12 +120,12 @@ USBメモリやポータブルSSDでの持ち歩き運用（完全スタンド�
 Windows PowerShell の文字化け（cp932）および UTF-16 LE BOM 書き込み事故を防ぐため、以下を厳守する。
 
 1. **`git diff` の直接実行禁止**:
-   - 日本語ファイルでは文字化けするため実行しない。ファイル確認には IDE の専用ツール（`view_file`）を使う。
+   - 日本語ファイルでは文字化けするため実行しない。ファイル確認には専用のファイル閲覧・差分確認ツールを使う。
 2. **PowerShell リダイレクト（`>` / `Out-File` / `Set-Content`）でのファイル書き込み禁止**:
-   - UTF-16 LE BOM が付与されファイルが破損する。ファイル生成は IDE ツール（`write_to_file`）または Python（`encoding='utf-8'`）で行う。
+   - UTF-16 LE BOM が付与されファイルが破損する。ファイル生成は専用のファイル編集ツールまたは Python（`encoding='utf-8'`）で行う。
 3. **PowerShell のテキスト操作コマンド禁止**:
    - `Select-String`, `-replace`, `Get-Content`, `findstr` は文字化け・型崩れの原因となるため使用禁止。
-   - 検索は `grep_search`、置換は `replace_file_content` / `multi_replace_file_content` を使う。
+   - 検索・置換・閲覧には専用のファイル検索・編集ツール（または Python スクリプト）を使う。
 
 ---
 
@@ -119,36 +133,56 @@ Windows PowerShell の文字化け（cp932）および UTF-16 LE BOM 書き込�
 
 ```text
 photo-manager/
-├── PhotoManager.exe           ★ 専用ネイティブGUIランチャー（アイコン付き・DOS窓なし）
+├── PhotoManager.exe           ★ 専用ネイティブGUIランチャー（C#製・アイコン付き・DOS窓なし）
 ├── MANUAL.md                  ★ 操作マニュアル（ユーザー向け完全ガイド）
+├── README.md / README_EN.md   ★ プロジェクト概要（日本語 / 英語）
+├── README_USB.md              ★ USBポータブル運用ガイド
 ├── RELEASE_NOTES.md           ★ 最新リリースノート＆更新履歴（配布パッケージ同梱）
 ├── VERSION                    ★ バージョン管理ファイル
+├── Build.bat                  ★ C#ランチャー（PhotoManager.exe）ビルドスクリプト
+├── build_dist.bat             ★ ポータブル配布パッケージ生成スクリプト（dist/・dist_update/・ZIP自動生成）
+├── build_launcher.bat         ★ ランチャー再コンパイルバッチ
+├── setup_portable_python.bat  ★ ポータブルPython自動構築バッチ
 ├── start.bat                  ★ 予備起動用バッチ（開発・トラブル対応用）
 ├── run.py                     ★ サーバー起動＆ブラウザアプリウィンドウ立ち上げ（ルート/server両対応）
-├── build_dist.bat             ★ ポータブル配布パッケージ生成スクリプト（dist/・dist_update/・ZIPを自動生成）
-├── build_launcher.bat         ★ ランチャー（PhotoManager.exe）再コンパイルバッチ
-├── setup_portable_python.bat  ★ ポータブルPython自動構築バッチ（開発用）
+├── launcher/                  ★ C#ランチャーソース（Launcher.cs）
 ├── python/                    ★ 同梱のポータブルPython（3.11 embeddable）
 ├── cache/                     ★ SQLiteデータベース（library.db）
-├── .agents/                   ★ AIエージェント設定（Rules & Skills）
-│   ├── rules/                 ★ 詳細ルール（coding, encoding, architecture, license, documentation）
-│   └── skills/                ★ 専門スキル（license-management, documentation-manual）
-├── docs/                      ★ 設計ドキュメント
-│   ├── release_notes/         ★ 各バージョンのリリースノートアーカイブ（RELEASE_NOTES_vX.XX.md）
-│   └── knowledge/             ★ 過去の改修知見・技術ノウハウアーカイブ
+├── storage/                   ★ 内部ストレージ（取り込み写真・実ファイル保存領域）
+├── models/                    ★ ローカルAI推論モデル（CLIP ONNXモデル・トークナイザー）
+├── tests/                     ★ 自動テスト（test_security.py, test_core_regression.py）
+├── LICENSES/                  ★ 各種OSSライセンス全文および NOTICE.txt
+├── .agents/                   ★ AIエージェント設定（Rules, Skills, Agents）
+│   ├── rules/                 ★ 詳細ルール（coding, encoding, architecture, license, documentation, ui）
+│   ├── skills/                ★ 専門スキル（license-management, documentation-manual）
+│   └── agents/                ★ 役割別エージェント定義（oss-editorial-director, ui-design-critic）
+├── docs/                      ★ 設計ドキュメント・ナレッジ
+│   ├── README.md              ★ ドキュメント索引ポータル
+│   ├── release_notes/         ★ バージョン別リリースノートアーカイブ（RELEASE_NOTES_vX.XX.md）
+│   ├── knowledge/             ★ 技術知見・アーキテクチャ・コードマップ集
+│   └── archive/tasks/         ★ 過去の実装タスク・作業計画アーカイブ
 ├── frontend/                  ★ UI画面（Vanilla HTML / CSS / JS）
-│   ├── index.html
-│   ├── css/
-│   └── js/
+│   ├── index.html             ★ メインUI画面
+│   ├── mobile.html            ★ モバイル（スマホ）用軽量UI
+│   ├── css/                   ★ モジュール別スタイルシート
+│   ├── js/                    ★ 機能別Vanilla JSスクリプト
+│   ├── icons/                 ★ アプリアイコン群
+│   └── vendor/                ★ オフライン同梱アセット（fonts/, leaflet/, sqljs/）
 └── server/                    ★ バックエンド（FastAPI）
     ├── app.py                 ★ APIエンドポイントルーティング
-    ├── database/              ★ SQLiteスキーマ定義・CRUD操作・DB管理パッケージ
+    ├── lan_access.py          ★ LANアクセス制御・Hostヘッダ検証・トークン認証
+    ├── storage_manager.py     ★ 内部ストレージ管理・ファイル操作
+    ├── sidecar.py             ★ XMPサイドカーファイル読み書き・同期
     ├── scanner.py             ★ 画像スキャン・メタデータ抽出・WebPサムネイル生成
     ├── raw_loader.py          ★ 各社RAWファイル解析・LibRaw連携
     ├── shell_thumbnail.py     ★ Windows Shell APIサムネイルフォールバック
     ├── volume_info.py         ★ ドライブVSN・ボリュームラベル取得
     ├── heartbeat.py           ★ ブラウザ生存監視・自動シャットダウン
-    └── tray.py                ★ システムトレイアイコン・メニュー（pystray）
+    ├── tray.py                ★ システムトレイアイコン・メニュー（pystray）
+    ├── make_release_zips.py   ★ 配布用ZIP生成（除外ルール適用）
+    ├── ai/                    ★ ローカルAI自動タグ付けエンジン（ONNX推論）
+    ├── database/              ★ SQLiteスキーマ定義・CRUD操作・DB管理パッケージ
+    └── geocoder/              ★ オフライン逆ジオコーディング（市区町村判定）
 ```
 
 ---

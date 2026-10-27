@@ -545,11 +545,11 @@ function createPhotoCard(photo, index) {
   let stackBadgeHtml = '';
   if (state.isStacked && photo.stack_count > 1) {
     if (photo.stack_type === 'duplicate') {
-      stackBadgeHtml = `<span class="stack-badge stack-badge-dup" data-photo-id="${photo.id}" title="重複写真 ${photo.stack_count}枚 (他フォルダにコピーあり・クリックで一覧表示)">📋 重複 ${photo.stack_count}</span>`;
+      stackBadgeHtml = `<span class="stack-badge stack-badge-dup" data-photo-id="${photo.id}" title="重複写真 ${photo.stack_count}枚 (他フォルダにコピーあり・クリックで一覧表示)">重複 ${photo.stack_count}</span>`;
     } else {
       const bktType = photo.stack_type === 'burst' ? 'BURST' : 'BKT';
       const isWithRaw = hasRawPair ? ' (RAW+JPG)' : '';
-      stackBadgeHtml = `<span class="stack-badge" data-photo-id="${photo.id}" title="グループ ${photo.stack_count}枚${isWithRaw} (クリックで露出一覧を表示)">⚡ ${bktType} ${photo.stack_count}</span>`;
+      stackBadgeHtml = `<span class="stack-badge" data-photo-id="${photo.id}" title="グループ ${photo.stack_count}枚${isWithRaw} (クリックで露出一覧を表示)">${bktType} ${photo.stack_count}</span>`;
     }
   }
 
@@ -738,37 +738,37 @@ function renderPhotoGrid() {
         const isFolderMissing = matched ? !!matched.is_missing : false;
 
         if (isFolderMissing) {
-          if (iconEl) iconEl.textContent = '⚠️';
+          if (iconEl) iconEl.textContent = '!';
           if (titleEl) titleEl.textContent = '実フォルダが見つかりません（未接続）';
           if (descEl) descEl.textContent = `実フォルダ（${state.currentFilter.value}）が存在しないか、ドライブが未接続です。ドライブの接続状態を確認してください。`;
           if (elements.emptyStateActionBtn) {
-            elements.emptyStateActionBtn.textContent = '🔄 接続を再確認';
+            elements.emptyStateActionBtn.textContent = '接続を再確認';
             elements.emptyStateActionBtn.onclick = async (e) => {
               e.stopPropagation();
-              showToast('🔄 ドライブ・フォルダの接続状態を確認中...', 'info');
+              showToast('ドライブ・フォルダの接続状態を確認中...', 'info');
               await fetchFolders();
               await fetchPhotos();
               showToast('接続状態を更新しました', 'success');
             };
           }
         } else if (folderStatus === 'unmanaged') {
-          if (iconEl) iconEl.textContent = '📁';
+          if (iconEl) iconEl.textContent = '';
           if (titleEl) titleEl.textContent = 'このフォルダはライブラリ未登録です';
           if (descEl) descEl.textContent = '実ディスク上に存在する未登録フォルダです。「管理に追加」を押すと写真をスキャンしてライブラリに登録します。';
           if (elements.emptyStateActionBtn) {
-            elements.emptyStateActionBtn.textContent = '➕ 管理に追加してスキャン';
+            elements.emptyStateActionBtn.textContent = '管理に追加してスキャン';
             elements.emptyStateActionBtn.onclick = async (e) => {
               e.stopPropagation();
-              showToast(`➕ 「${state.currentFilter.value}」を管理に追加・スキャン中...`, 'info');
+              showToast(`「${state.currentFilter.value}」を管理に追加・スキャン中...`, 'info');
               await executeScan(state.currentFilter.value, false, false);
             };
           }
         } else if (folderStatus === 'ignored') {
-          if (iconEl) iconEl.textContent = '🚫';
+          if (iconEl) iconEl.textContent = '';
           if (titleEl) titleEl.textContent = 'このフォルダは管理対象外（除外設定中）です';
           if (descEl) descEl.textContent = '自動スキャンの対象から除外されています。「除外を解除」を押すと未登録状態に戻せます。';
           if (elements.emptyStateActionBtn) {
-            elements.emptyStateActionBtn.textContent = '↩️ 除外を解除する';
+            elements.emptyStateActionBtn.textContent = '除外を解除する';
             elements.emptyStateActionBtn.onclick = async (e) => {
               e.stopPropagation();
               try {
@@ -778,7 +778,7 @@ function renderPhotoGrid() {
                   body: JSON.stringify({ folder_path: state.currentFilter.value }),
                 });
                 if (res.ok) {
-                  showToast('↩️ 除外を解除しました', 'success');
+                  showToast('除外を解除しました', 'success');
                   await refreshAll();
                 }
               } catch (err) {
@@ -787,22 +787,22 @@ function renderPhotoGrid() {
             };
           }
         } else {
-          if (iconEl) iconEl.textContent = '📷';
+          if (iconEl) iconEl.textContent = '';
           if (titleEl) titleEl.textContent = '写真が見つかりません';
           if (descEl) descEl.textContent = '指定された条件の写真がないか、まだスキャンされていません。';
           if (elements.emptyStateActionBtn) {
-            elements.emptyStateActionBtn.textContent = '📁 フォルダ一覧を開く';
+            elements.emptyStateActionBtn.textContent = 'フォルダ一覧を開く';
             elements.emptyStateActionBtn.onclick = () => {
               if (window.openSidebarSection) window.openSidebarSection('folder');
             };
           }
         }
       } else {
-        if (iconEl) iconEl.textContent = '📷';
+        if (iconEl) iconEl.textContent = '';
         if (titleEl) titleEl.textContent = '写真が見つかりません';
         if (descEl) descEl.textContent = '指定された条件の写真がないか、まだスキャンされていません。';
         if (elements.emptyStateActionBtn) {
-          elements.emptyStateActionBtn.textContent = '📁 フォルダ一覧を開く';
+          elements.emptyStateActionBtn.textContent = 'フォルダ一覧を開く';
           elements.emptyStateActionBtn.onclick = () => {
             if (window.openSidebarSection) window.openSidebarSection('folder');
           };
@@ -860,13 +860,13 @@ function renderActiveFilterChips() {
   if (state.currentFilter.type === 'folder' && state.currentFilter.value) {
     const rawP = state.currentFilter.value;
     const name = rawP.split(/[/\\]/).filter(Boolean).pop() || rawP;
-    createChip('📁', name, () => {
+    createChip('', name, () => {
       setFilter('all', null, 'すべての写真');
     });
   } else if (state.currentFilter.type === 'folder_exclude' && state.currentFilter.value) {
     const rawP = state.currentFilter.value;
     const name = rawP.split(/[/\\]/).filter(Boolean).pop() || rawP;
-    createChip('🚫', `除外: ${name}`, () => {
+    createChip('', `除外: ${name}`, () => {
       setFilter('all', null, 'すべての写真');
     }, 'chip-tag-exclude');
   }
@@ -874,7 +874,7 @@ function renderActiveFilterChips() {
   // 2. タイムライン年月 (OR条件)
   if (state.selectedYearMonths && state.selectedYearMonths.size > 0) {
     Array.from(state.selectedYearMonths).sort().forEach(ym => {
-      createChip('📅', ym, () => {
+      createChip('', ym, () => {
         toggleTimelineYearMonth(ym);
       });
     });
@@ -887,7 +887,7 @@ function renderActiveFilterChips() {
       handledCams.add(cam);
       const prefix = mode === 'include' ? '[+] ' : '[-] ';
       const chipClass = mode === 'include' ? 'chip-tag-include' : 'chip-tag-exclude';
-      createChip('📷', `${prefix}${cam}`, () => {
+      createChip('', `${prefix}${cam}`, () => {
         toggleCameraFilter(cam, true);
       }, chipClass);
     });
@@ -895,7 +895,7 @@ function renderActiveFilterChips() {
   if (state.selectedCameras && state.selectedCameras.size > 0) {
     Array.from(state.selectedCameras).sort().forEach(cam => {
       if (handledCams.has(cam)) return;
-      createChip('📷', `[+] ${cam}`, () => {
+      createChip('', `[+] ${cam}`, () => {
         state.selectedCameras.delete(cam);
         toggleCameraFilter(cam, true);
       }, 'chip-tag-include');
@@ -907,7 +907,7 @@ function renderActiveFilterChips() {
       const prefix = mode === 'include' ? '[+] ' : '[-] ';
       const chipClass = mode === 'include' ? 'chip-tag-include' : 'chip-tag-exclude';
       const displayName = lensKey.includes('::') ? lensKey.replace('::', ' / ') : lensKey;
-      createChip('🔭', `${prefix}${displayName}`, () => {
+      createChip('', `${prefix}${displayName}`, () => {
         toggleLensFilter(lensKey, displayName, true);
       }, chipClass);
     });
@@ -923,13 +923,13 @@ function renderActiveFilterChips() {
       shake_risk: '手ブレ注意',
     };
     const labIcons = {
-      golden_hour: '🌅',
-      blue_hour: '🌌',
-      magic_all: '🌅',
-      night: '🌃',
-      shake_risk: '⚠️',
+      golden_hour: '',
+      blue_hour: '',
+      magic_all: '',
+      night: '',
+      shake_risk: '',
     };
-    createChip(labIcons[state.labFilter] || '🧪', labLabels[state.labFilter] || state.labFilter, () => {
+    createChip('', labLabels[state.labFilter] || state.labFilter, () => {
       state.labFilter = null;
       if (typeof window.updateLabUIState === 'function') window.updateLabUIState();
       fetchPhotos();
@@ -939,7 +939,7 @@ function renderActiveFilterChips() {
   if (state.onThisDay) {
     const parts = String(state.onThisDay).split('-');
     const otdLabel = parts.length === 2 ? `歴代の ${parseInt(parts[0], 10)}月${parseInt(parts[1], 10)}日` : `歴代の今日: ${state.onThisDay}`;
-    createChip('🎂', otdLabel, () => {
+    createChip('', otdLabel, () => {
       state.onThisDay = null;
       if (typeof window.updateLabUIState === 'function') window.updateLabUIState();
       fetchPhotos();
@@ -947,7 +947,7 @@ function renderActiveFilterChips() {
   }
 
   if (state.focalRange) {
-    createChip('🔭', `焦点距離: ${state.focalRangeLabel || state.focalRange}`, () => {
+    createChip('', `焦点距離: ${state.focalRangeLabel || state.focalRange}`, () => {
       state.focalRange = null;
       state.focalRangeLabel = null;
       if (typeof window.updateLabUIState === 'function') window.updateLabUIState();
@@ -956,7 +956,7 @@ function renderActiveFilterChips() {
   }
 
   if (state.apertureRange) {
-    createChip('💠', `F値: ${state.apertureRangeLabel || state.apertureRange}`, () => {
+    createChip('', `F値: ${state.apertureRangeLabel || state.apertureRange}`, () => {
       state.apertureRange = null;
       state.apertureRangeLabel = null;
       if (typeof window.updateLabUIState === 'function') window.updateLabUIState();
@@ -969,7 +969,7 @@ function renderActiveFilterChips() {
     state.tagFilters.forEach((mode, tag) => {
       const prefix = mode === 'include' ? '+' : '−';
       const chipClass = mode === 'include' ? 'chip-tag-include' : 'chip-tag-exclude';
-      createChip('🏷️', `${prefix}${tag}`, () => {
+      createChip('', `${prefix}${tag}`, () => {
         removeTagFilter(tag);
       }, chipClass);
     });
@@ -977,25 +977,25 @@ function renderActiveFilterChips() {
 
   // 5. 未分類
   if (state.untaggedOnly) {
-    createChip('🏷️', '未分類', () => {
+    createChip('', '未分類', () => {
       clearAllTagFilters();
     });
   }
 
   // 6. 接続状態 (接続中 / 未接続)
   if (state.connectionFilter === 'online') {
-    createChip('🟢', '接続中のみ', () => {
+    createChip('', '接続中のみ', () => {
       setConnectionFilter('online');
     });
   } else if (state.connectionFilter === 'offline') {
-    createChip('⚪', '未接続のみ', () => {
+    createChip('', '未接続のみ', () => {
       setConnectionFilter('offline');
     });
   }
 
   // 7. ファイル名検索
   if (state.searchQuery && state.searchQuery.trim() !== '') {
-    createChip('🔍', `"${state.searchQuery.trim()}"`, () => {
+    createChip('', `"${state.searchQuery.trim()}"`, () => {
       elements.clearSearchBtn.click();
     });
   }
@@ -1010,7 +1010,7 @@ function renderActiveFilterChips() {
     if (state.ratingFilter.has(0)) rNames.push('可');
     if (state.ratingFilter.has(-1)) rNames.push('棄');
     const rText = rNames.length > 0 ? rNames.join(',') : 'なし';
-    createChip('⭐', `評価: ${rText}`, () => {
+    createChip('', `評価: ${rText}`, () => {
       state.ratingFilter = new Set([0, 1, 2]);
       updateRatingFilterUI();
       fetchPhotos();
@@ -1022,12 +1022,12 @@ function renderActiveFilterChips() {
     const attrLabels = {
       raw: 'RAWのみ',
       adjusted: '調整済みのみ',
-      jpeg: '🖼️ JPEG/一般のみ',
-      raw_pair: '🔗 RAW+JPGペア',
-      xmp: '📄 XMPあり',
+      jpeg: 'JPEG/一般のみ',
+      raw_pair: 'RAW+JPGペア',
+      xmp: 'XMPあり',
     };
-    const attrIcons = { raw: '📷', adjusted: '✂', jpeg: '', raw_pair: '', xmp: '' };
-    const icon = attrIcons[state.attrFilter] !== undefined ? attrIcons[state.attrFilter] : '🎞️';
+    const attrIcons = { raw: '', adjusted: '', jpeg: '', raw_pair: '', xmp: '' };
+    const icon = attrIcons[state.attrFilter] !== undefined ? attrIcons[state.attrFilter] : '';
     createChip(icon, attrLabels[state.attrFilter] || state.attrFilter, () => {
       setAttrFilter('all');
     }, 'chip-tag-include');
@@ -1036,12 +1036,12 @@ function renderActiveFilterChips() {
   // 9. ジオタグツリーフィルタ
   if (state.activeLocation) {
     if (state.activeLocation.no_location) {
-      createChip('🗺️', 'ジオタグなし', () => {
+      createChip('', 'ジオタグなし', () => {
         if (typeof clearLocationFilter === 'function') clearLocationFilter();
       });
     } else {
       const locLabel = state.activeLocation.label || state.activeLocation.city || state.activeLocation.state || state.activeLocation.country;
-      createChip('🗺️', `ジオタグ: ${locLabel}`, () => {
+      createChip('', `ジオタグ: ${locLabel}`, () => {
         if (typeof clearLocationFilter === 'function') clearLocationFilter();
       });
     }
@@ -1249,13 +1249,13 @@ function setConnectionFilter(type) {
   } else {
     state.connectionFilter = type;
     if (type === 'online') {
-      elements.viewTitle.textContent = '🟢 接続中の写真';
+      elements.viewTitle.textContent = '接続中の写真';
     } else if (type === 'offline') {
-      elements.viewTitle.textContent = '⚪ 未接続の写真';
+      elements.viewTitle.textContent = '未接続の写真';
     } else if (type === 'unlinked' || type === 'missing') {
-      elements.viewTitle.textContent = '🔗 リンク消失の写真（実体パス未登録）';
+      elements.viewTitle.textContent = 'リンク消失の写真（実体パス未登録）';
     } else if (type === 'duplicates') {
-      elements.viewTitle.textContent = '📋 重複のある写真';
+      elements.viewTitle.textContent = '重複のある写真';
     }
   }
   state.onlineOnly = (state.connectionFilter === 'online');
@@ -1718,7 +1718,7 @@ function initSidebarAccordion() {
   // オーバーレイ展開中にサイドバー外側（写真グリッドやヘッダー等）をクリックしたら自動でオーバーレイを閉じる
   document.addEventListener('mousedown', (e) => {
     if (!state.isSidebarOpen && sidebar.classList.contains('is-overlay-open')) {
-      if (!sidebar.contains(e.target) && !e.target.closest('.modal-overlay, .context-menu, .floating-popover')) {
+      if (!sidebar.contains(e.target) && !e.target.closest('.modal-overlay, .context-menu')) {
         sidebar.classList.remove('is-overlay-open');
         syncRailButtons();
       }
@@ -1833,9 +1833,8 @@ function setupEventListeners() {
     }
   });
 
-  // ヘッダーツールバー＆下部選択バーの自動レスポンシブ（幅が狭まった際の段階的なアイコン化判定）
+  // ヘッダーツールバーの自動レスポンシブ（幅が狭まった際の段階的なアイコン化判定）
   const appHeader = document.querySelector('.app-header');
-  const floatingBar = document.getElementById('selectionFloatingBar');
   if (appHeader && window.ResizeObserver) {
     const headerObserver = new ResizeObserver(entries => {
       for (const entry of entries) {
@@ -1843,11 +1842,6 @@ function setupEventListeners() {
         appHeader.classList.toggle('toolbar-compact-1', w < 1550);
         appHeader.classList.toggle('toolbar-compact-2', w < 1350);
         appHeader.classList.toggle('toolbar-compact-3', w < 1150);
-        if (floatingBar) {
-          floatingBar.classList.toggle('floating-compact-1', w < 1150);
-          floatingBar.classList.toggle('floating-compact-2', w < 860);
-          floatingBar.classList.toggle('floating-compact-3', w < 640);
-        }
       }
     });
     headerObserver.observe(appHeader);
@@ -2006,7 +2000,7 @@ function setupEventListeners() {
     state.untaggedOnly = true;
     state.tagFilters.clear();
     state.currentFilter = { type: 'untagged', value: null };
-    elements.viewTitle.textContent = '🏷️ 未分類の写真';
+    elements.viewTitle.textContent = '未分類の写真';
 
     document.querySelectorAll('.sidebar .nav-item').forEach(el => el.classList.remove('active'));
     elements.untaggedNavItem.classList.add('active');
@@ -2194,7 +2188,7 @@ function setupEventListeners() {
   if (elements.purgeUnlinkedBtn) {
     elements.purgeUnlinkedBtn.addEventListener('click', async () => {
       const confirmed = confirm(
-        '🗑️ リンク消失しているすべての写真レコード（サムネイル・タグ含む）をDBから完全に消去しますか？\n' +
+        'リンク消失しているすべての写真レコード（サムネイル・タグ含む）をDBから完全に消去しますか？\n' +
         'この操作は取り消せません。'
       );
       if (!confirmed) return;
@@ -2207,7 +2201,7 @@ function setupEventListeners() {
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || '消去に失敗しました');
-        showToast(`🗑️ ${data.purged}枚の写真レコードを完全に消去しました`, 'success');
+        showToast(`${data.purged}枚の写真レコードを完全に消去しました`, 'success');
         setConnectionFilter('all');
         await refreshAll();
       } catch (err) {
@@ -2241,10 +2235,10 @@ function setupEventListeners() {
       closeFolderContextMenu();
       if (!node) return;
       if (node.isMissing) {
-        showToast('⚠️ 実フォルダが存在しないか、ドライブが未接続のため再スキャンできません', 'warning');
+        showToast('実フォルダが存在しないか、ドライブが未接続のため再スキャンできません', 'warning');
         return;
       }
-      showToast(`🔄 「${node.name}」の直下を再スキャン中...`, 'info');
+      showToast(`「${node.name}」の直下を再スキャン中...`, 'info');
       await executeScan(node.fullPath, false, false);
     });
   }
@@ -2256,7 +2250,7 @@ function setupEventListeners() {
       closeFolderContextMenu();
       if (!node) return;
       if (node.isMissing) {
-        showToast('⚠️ 実フォルダが存在しないか、ドライブが未接続のため再スキャンできません', 'warning');
+        showToast('実フォルダが存在しないか、ドライブが未接続のため再スキャンできません', 'warning');
         return;
       }
       // ドライブ全体やルート種別の場合は警告ダイアログを表示
@@ -2265,7 +2259,7 @@ function setupEventListeners() {
         const msg = `「${node.name}」はドライブ全体です。配下のすべてのサブフォルダをスキャンすると時間がかかる場合があります。\n\nスキャンを開始しますか？`;
         if (!confirm(msg)) return;
       }
-      showToast(`🔄 「${node.name}」配下を再帰スキャン中...`, 'info');
+      showToast(`「${node.name}」配下を再帰スキャン中...`, 'info');
       await executeScan(node.fullPath, true, false);
     });
   }
@@ -2277,13 +2271,13 @@ function setupEventListeners() {
       closeFolderContextMenu();
       if (!node) return;
       if (node.isMissing || node.isOffline) {
-        showToast('⚠️ ドライブが未接続または実フォルダが存在しないためリフレッシュできません', 'warning');
+        showToast('ドライブが未接続または実フォルダが存在しないためリフレッシュできません', 'warning');
         return;
       }
       const msg = `フォルダ「${node.name}」内の写真フォルダを再スキャンし、PC上から移動・削除された写真をライブラリから削除（リフレッシュ）します。\n\nよろしいですか？`;
       if (!confirm(msg)) return;
 
-      showToast(`♻️ 「${node.name}」をリフレッシュ中（消失写真のDB整理を含む）...`, 'info');
+      showToast(`「${node.name}」をリフレッシュ中（消失写真のDB整理を含む）...`, 'info');
       await executeScan(node.fullPath, true, true);
     });
   }
@@ -2299,7 +2293,7 @@ function setupEventListeners() {
       if (!confirm(msg)) return;
 
       try {
-        showToast(`🤖 「${node.name}」のAIタグ付けを開始しました...`, 'info');
+        showToast(`「${node.name}」のAIタグ付けを開始しました...`, 'info');
         const res = await fetch('/api/ai/tag-folder', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -2341,7 +2335,7 @@ function setupEventListeners() {
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || '除外に失敗しました');
 
-        showToast(`🗑️ 「${node.name}」を管理から外しました (${data.deleted_count}枚解除)`, 'info');
+        showToast(`「${node.name}」を管理から外しました (${data.deleted_count}枚解除)`, 'info');
         await refreshAll();
       } catch (err) {
         showToast(`エラー: ${err.message}`, 'error');
@@ -2367,7 +2361,7 @@ function setupEventListeners() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || '除外設定に失敗しました');
 
-      showToast(`🚫 「${node.name}」を管理対象外に設定しました`, 'info');
+      showToast(`「${node.name}」を管理対象外に設定しました`, 'info');
       await refreshAll();
     } catch (err) {
       showToast(`エラー: ${err.message}`, 'error');
@@ -2396,7 +2390,7 @@ function setupEventListeners() {
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || '除外解除に失敗しました');
 
-        showToast(`↩️ 「${node.name}」の除外を解除しました`, 'success');
+        showToast(`「${node.name}」の除外を解除しました`, 'success');
         await refreshAll();
       } catch (err) {
         showToast(`エラー: ${err.message}`, 'error');
@@ -2410,11 +2404,11 @@ function setupEventListeners() {
     closeFolderContextMenu();
     if (!node) return;
     if (node.isMissing) {
-      showToast('⚠️ 実フォルダが存在しないか、ドライブが未接続のためスキャンできません', 'warning');
+      showToast('実フォルダが存在しないか、ドライブが未接続のためスキャンできません', 'warning');
       return;
     }
 
-    showToast(`➕ 「${node.name}」を管理に追加・スキャン中...`, 'info');
+    showToast(`「${node.name}」を管理に追加・スキャン中...`, 'info');
     await executeScan(node.fullPath, false, false);
   };
   if (elements.folderMenuAddAndScan) {
@@ -2431,7 +2425,7 @@ function setupEventListeners() {
       closeFolderContextMenu();
       if (!node) return;
       if (node.isMissing) {
-        showToast('⚠️ 実フォルダが存在しないか、ドライブが未接続のためエクスプローラーで開けません', 'warning');
+        showToast('実フォルダが存在しないか、ドライブが未接続のためエクスプローラーで開けません', 'warning');
         return;
       }
 
@@ -2445,7 +2439,7 @@ function setupEventListeners() {
           const data = await res.json();
           throw new Error(data.detail || 'フォルダを開けませんでした');
         }
-        showToast('📁 フォルダを開きました', 'info', 2000);
+        showToast('フォルダを開きました', 'info', 2000);
       } catch (err) {
         showToast(`エラー: ${err.message}`, 'error');
       }
@@ -2455,7 +2449,7 @@ function setupEventListeners() {
   // 8. メインエリア警告バナーの再確認ボタン
   if (elements.warningBannerReloadBtn) {
     elements.warningBannerReloadBtn.addEventListener('click', async () => {
-      showToast('🔄 ドライブ・フォルダの接続状態を確認中...', 'info');
+      showToast('ドライブ・フォルダの接続状態を確認中...', 'info');
       try {
         await fetchFolders();
         if (state.currentFilter.type === 'folder') {
@@ -3230,7 +3224,7 @@ async function uploadPhotos(fileList) {
     if (!response.ok) throw new Error(data.detail || '取り込み失敗');
 
     console.log(`[UPLOAD] ${data.uploaded_count}枚の写真を取り込みました`);
-    showToast(`📥 ${data.uploaded_count}枚の写真を storage に取り込みました`, 'success', 3500);
+    showToast(`${data.uploaded_count}枚の写真を storage に取り込みました`, 'success', 3500);
     if (typeof window.refreshStorageFolders === 'function') {
       await window.refreshStorageFolders();
     }
@@ -3240,7 +3234,7 @@ async function uploadPhotos(fileList) {
   } finally {
     elements.uploadFilesBtn.disabled = false;
     const isEn = (window.pmI18n && typeof window.pmI18n.getLang === 'function' && window.pmI18n.getLang() === 'en');
-    elements.uploadFilesBtn.textContent = isEn ? '📥 Import' : '📥 取り込み';
+    elements.uploadFilesBtn.textContent = isEn ? 'Import' : '取り込み';
   }
 }
 const handleFileUpload = uploadPhotos;
@@ -3282,7 +3276,7 @@ async function checkAndPromptFolderRefresh(folderPath, folderName, node) {
 
       const isRecursive = choice === 'recursive';
       const rangeText = isRecursive ? '（子フォルダ含む）' : '（直下のみ）';
-      showToast(`📂 「${name}」を管理フォルダとして登録・スキャン中${rangeText}...`, 'info');
+      showToast(`「${name}」を管理フォルダとして登録・スキャン中${rangeText}...`, 'info');
       await executeScan(folderPath, isRecursive, false);
       return;
     }
@@ -3300,18 +3294,18 @@ async function checkAndPromptFolderRefresh(folderPath, folderName, node) {
     const msg1 = `フォルダ「${name}」の内容が更新された可能性があります。${detailText}\n\nライブラリをリフレッシュ（最新化）しますか？`;
     if (!confirm(msg1)) return;
 
-    showToast(`♻️ 「${name}」の変更を取り込み中...`, 'info');
+    showToast(`「${name}」の変更を取り込み中...`, 'info');
     // 直下の差分スキャン（cleanupなしで安全に取り込み）
     await executeScan(folderPath, false, false);
 
     if (diff.added > 0) {
-      showToast(`✅ ${diff.added}枚の写真が新しく追加されました`, 'success');
+      showToast(`${diff.added}枚の写真が新しく追加されました`, 'success');
     }
 
     // もし削除（見つからない写真）がある場合: 第2ダイアログでリンク解除（リンク消失）確認
     if (diff.deleted > 0) {
       setTimeout(async () => {
-        const msg2 = `🔗 フォルダ「${name}」内に実体ファイルが見つからない写真が ${diff.deleted}枚 あります。\n\n実体へのパス紐付けを解除（リンク消失）しますか？\n※写真のサムネイルやタグ、評価は保持されます。\n※後からクイックアクセスやフォルダツリーの「🔗 リンク消失の写真」で確認・完全消去が可能です。\n（「キャンセル」を押すと、パスの紐付けをそのまま残します）`;
+        const msg2 = `フォルダ「${name}」内に実体ファイルが見つからない写真が ${diff.deleted}枚 あります。\n\n実体へのパス紐付けを解除（リンク消失）しますか？\n※写真のサムネイルやタグ、評価は保持されます。\n※後からクイックアクセスやフォルダツリーの「リンク消失の写真」で確認・完全消去が可能です。\n（「キャンセル」を押すと、パスの紐付けをそのまま残します）`;
         if (confirm(msg2)) {
           try {
             const cleanRes = await fetch('/api/folders/unlink-missing', {
@@ -3319,8 +3313,9 @@ async function checkAndPromptFolderRefresh(folderPath, folderName, node) {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ folder_path: folderPath, recursive: false }),
             });
+            if (!cleanRes.ok) throw new Error(`リンク解除に失敗しました (HTTP ${cleanRes.status})`);
             const cleanData = await cleanRes.json();
-            showToast(`🔗 ${cleanData.unlinked || diff.deleted}枚の写真のリンクを解除しました（サムネイル・タグは保持）`, 'success');
+            showToast(`${cleanData.unlinked || diff.deleted}枚の写真のリンクを解除しました（サムネイル・タグは保持）`, 'success');
             await fetchPhotos();
             await refreshFolderTree();
             if (typeof fetchUnlinkedCount === 'function') fetchUnlinkedCount();

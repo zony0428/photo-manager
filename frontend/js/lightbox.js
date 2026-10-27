@@ -76,7 +76,7 @@ function updateLightboxContent(photo) {
 
   elements.lightboxFileName.textContent = photo.file_name;
   if (photo.is_offline) {
-    const volInfo = photo.volume_label ? ` — ${photo.volume_label}` : '';
+    const volInfo = photo.volume_label ? ` — ${escapeHtml(photo.volume_label)}` : '';
     elements.lightboxMeta.innerHTML = `<span class="lightbox-offline-pill">プレビュー表示${volInfo}</span>${escapeHtml(photo.date_taken || '日付不明')} | ${escapeHtml(photo.camera_model || 'カメラ不明')}`;
   } else {
     elements.lightboxMeta.textContent = `${photo.date_taken || '日付不明'} | ${photo.camera_model || 'カメラ不明'}`;
@@ -258,11 +258,11 @@ function renderLightboxBracketBar(photo, initialMemberId = null) {
 
   if (elements.lightboxBracketBarLabel) {
     if (isDuplicate) {
-      elements.lightboxBracketBarLabel.textContent = `📋 重複写真グループ (${stackPhotos.length}枚) [↑/↓ または ホイールで比較]:`;
+      elements.lightboxBracketBarLabel.textContent = `重複写真グループ (${stackPhotos.length}枚) [↑/↓ または ホイールで比較]:`;
     } else if (isBurst) {
-      elements.lightboxBracketBarLabel.textContent = `⚡ 連写バースト (${stackPhotos.length}コマ) [↑:時間戻り / ↓:時間進み または ホイール]:`;
+      elements.lightboxBracketBarLabel.textContent = `連写バースト (${stackPhotos.length}コマ) [↑:時間戻り / ↓:時間進み または ホイール]:`;
     } else {
-      elements.lightboxBracketBarLabel.textContent = `⚡ 露出ブラケット (${stackPhotos.length}枚) [↑:EV+ / ↓:EV- または ホイール]:`;
+      elements.lightboxBracketBarLabel.textContent = `露出ブラケット (${stackPhotos.length}枚) [↑:EV+ / ↓:EV- または ホイール]:`;
     }
   }
 
@@ -277,13 +277,13 @@ function renderLightboxBracketBar(photo, initialMemberId = null) {
       const folderParts = rawDir.split(/[\\/]/).filter(Boolean);
       const folderName = folderParts.length > 0 ? folderParts[folderParts.length - 1] : `コピー${idx + 1}`;
       const isPri = sp.is_stack_primary === 1;
-      const labelText = isPri ? `★ ${folderName}` : folderName;
+      const labelText = isPri ? `[代表] ${folderName}` : folderName;
 
       pill.innerHTML = `
         <div class="bracket-pill-thumb">
           <img src="${getThumbnailUrl(sp)}" alt="${escapeHtml(sp.file_name)}" loading="lazy">
         </div>
-        <span class="bracket-pill-label" title="${escapeHtml(sp.directory_path || '')}">${labelText}</span>
+        <span class="bracket-pill-label" title="${escapeHtml(sp.directory_path || '')}">${escapeHtml(labelText)}</span>
       `;
 
       const sizeStr = sp.file_size ? `${(sp.file_size / (1024 * 1024)).toFixed(2)}MB` : '';
@@ -688,7 +688,7 @@ async function promoteTagForPhoto(photoId, tag) {
     }
     renderPhotoGrid();
     fetchTags();
-    showToast(`🏷️ 「${tag}」を手動タグとして確定しました`, 'success');
+    showToast(`「${tag}」を手動タグとして確定しました`, 'success');
   } catch (err) {
     alert('エラー: ' + err.message);
   }
@@ -700,7 +700,7 @@ async function promoteTagForPhoto(photoId, tag) {
 async function triggerAiTagForSinglePhoto(photoId, btnElement) {
   if (btnElement) {
     btnElement.disabled = true;
-    btnElement.textContent = '🤖 解析中...';
+    btnElement.textContent = '解析中...';
   }
   try {
     const res = await fetch(`/api/ai/tag-photo/${photoId}`, { method: 'POST' });
@@ -728,16 +728,16 @@ async function triggerAiTagForSinglePhoto(photoId, btnElement) {
 
     const addedTags = (data.predicted || []).map(p => p.tag).join(', ');
     if (addedTags) {
-      showToast(`🤖 AIタグを付与しました: ${addedTags}`, 'success');
+      showToast(`AIタグを付与しました: ${addedTags}`, 'success');
     } else {
-      showToast('🤖 この写真に該当するタグは見つかりませんでした', 'info');
+      showToast('この写真に該当するタグは見つかりませんでした', 'info');
     }
   } catch (err) {
     alert('AIタグ付けエラー: ' + err.message);
   } finally {
     if (btnElement) {
       btnElement.disabled = false;
-      btnElement.textContent = '🤖 AIタグ';
+      btnElement.textContent = 'AIタグ';
     }
   }
 }

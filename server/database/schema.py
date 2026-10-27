@@ -3,10 +3,13 @@
 テーブル作成、インデックス構築、カラム追加、データ移行を管理する。
 """
 
+import logging
 import os
 from .connection import get_connection
 from .thumbnails import compute_thumbnail_hash
 from .fingerprint import extract_folder_fingerprint
+
+logger = logging.getLogger(__name__)
 def initialize_database() -> None:
     """データベースの初期テーブル構造を作成する"""
     with get_connection() as conn:
@@ -298,8 +301,8 @@ def initialize_database() -> None:
                             (fp, f_path)
                         )
                         conn.commit()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"スキャンルートのフィンガープリント更新失敗 ({f_path}): {e}")
 
         # クエリオプティマイザのインデックス統計を最新化
         cursor.execute("PRAGMA optimize")

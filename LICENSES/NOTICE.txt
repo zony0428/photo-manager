@@ -117,32 +117,39 @@
 
 
 --------------------------------------------------------------------------------
-  ウェブフォント（CDN経由で使用・同梱なし）
+  ウェブフォント（同梱: frontend/vendor/fonts/）
 --------------------------------------------------------------------------------
 
-■ Inter / Outfit / Shippori Mincho
+■ Inter
+  - 著作権: Copyright (c) 2016 The Inter Project Authors
   - ライセンス: SIL Open Font License 1.1
-  - 配信元: Google Fonts (https://fonts.google.com/)
-  - 備考: インターネット接続時にCDNから読み込みます。
-          フォントファイルは本ソフトウェアに同梱されていません。
+  - URL: https://github.com/rsms/inter
+  - ライセンス全文: LICENSE.Inter
+  - 備考: latin / latin-ext サブセット（woff2）を同梱し、オフライン環境でも同一表示を保証します。
+
+■ Outfit
+  - 著作権: Copyright 2021 The Outfit Project Authors
+  - ライセンス: SIL Open Font License 1.1
+  - URL: https://github.com/Outfitio/Outfit-Fonts
+  - ライセンス全文: LICENSE.Outfit
+  - 備考: latin / latin-ext サブセット（woff2）を同梱しています。
 
 --------------------------------------------------------------------------------
-  地図ライブラリ（CDN経由で使用・同梱なし）
+  地図ライブラリ（同梱: frontend/vendor/leaflet/）
 --------------------------------------------------------------------------------
 
 ■ Leaflet.js 1.9.4
-  - 著作権: Copyright (c) Volodymyr Agafonkin
+  - 著作権: Copyright (c) 2010-2023, Volodymyr Agafonkin / Copyright (c) 2010-2011, CloudMade
   - ライセンス: BSD 2-Clause License
   - URL: https://leafletjs.com/
-  - 備考: GPS位置情報のミニマップ表示に使用。
-          インターネット接続時にCDNから読み込みます。
-          ライブラリ本体は本ソフトウェアに同梱されていません。
+  - ライセンス全文: LICENSE.Leaflet
+  - 備考: GPS位置情報のミニマップ・ヒートマップ表示に使用。ライブラリ本体を同梱しています。
 
 ■ OpenStreetMap タイルデータ
   - 著作権: © OpenStreetMap contributors
   - ライセンス: ODbL (Open Data Commons Open Database License)
   - URL: https://www.openstreetmap.org/copyright
-  - 備考: 地図表示に使用するタイル画像の提供元です。
+  - 備考: 地図の背景タイル画像の提供元です（インターネット接続時のみ取得。本ソフトウェアには同梱していません）。
 
 --------------------------------------------------------------------------------
   オフライン逆ジオコーディング（位置情報）データ（server/geocoder/data/）

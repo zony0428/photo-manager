@@ -128,7 +128,7 @@ class TrayManager:
         if self._icon is not None:
             try:
                 self._icon.stop()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"トレイアイコン停止時の警告: {e}")
             self._icon = None
         logger.info("タスクトレイアイコンを停止しました。")

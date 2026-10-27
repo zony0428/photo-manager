@@ -158,6 +158,19 @@ from .sidecar import (
     is_sidecar_file,
     parse_xmp_for_photo,
 )
+from .lan_access import (
+    LAN_TOKEN,
+    LAN_TOKEN_COOKIE,
+    LAN_TOKEN_QUERY,
+    build_lan_cookie_header,
+    detect_local_ip_addresses as _detect_local_ip_addresses,
+    ensure_lan_listeners,
+    is_host_header_allowed,
+    is_lan_path_allowed,
+    is_lan_token_valid,
+    is_loopback_client,
+    touch_lan_activity,
+)
 
 
 import logging
@@ -237,26 +250,8 @@ _NULL_ORIGIN_ALLOWED_PATHS = {
     "/api/version",
 }
 
-# PC本体 (127.0.0.1) からのみ実行を許可し、LAN (スマホ等) からの呼び出しを拒否するPC管理系パスプレフィックス
-_LOCAL_ONLY_PATH_PREFIXES = (
-    "/api/shutdown",
-    "/api/window/",
-    "/api/scan",
-    "/api/folders",
-    "/api/folder-tree",
-    "/api/browse",
-    "/api/upload",
-    "/api/storage",
-    "/api/import",
-    "/api/export",
-    "/api/database",
-    "/api/photos/purge-unlinked",
-    "/api/photos/batch-delete",
-)
-
-
 def _is_origin_allowed(origin: Optional[str], path: str) -> bool:
-    """クロスオリジンリクエストのOriginヘッダを検証し、外部悪성サイトからのCSRF/Localhost攻撃を遮断する"""
+    """クロスオリジンリクエストのOriginヘッダを検証し、外部悪意サイトからのCSRF/Localhost攻撃を遮断する"""
     if not origin:
         return True
     if origin == "null":
@@ -265,45 +260,50 @@ def _is_origin_allowed(origin: Optional[str], path: str) -> bool:
 
 
 def _is_lan_request_allowed(client_host: str, method: str, path: str) -> bool:
-    """LAN経由（スマホ等）からのリクエストに対し、PCローカル操作やファイル削除系APIをブロックする"""
-    if client_host in ("127.0.0.1", "::1", "localhost", "testclient"):
+    """LAN経由（スマホ等）のリクエストはホワイトリスト（スマホ画面の閲覧・評価・タグ付け）のみ許可する"""
+    if is_loopback_client(client_host):
         return True
-    if any(path.startswith(prefix) for prefix in _LOCAL_ONLY_PATH_PREFIXES):
-        return False
-    if path.startswith("/api/photo/") and (
-        path.endswith("/open-raw")
-        or path.endswith("/open-folder")
-        or path.endswith("/open-file")
-        or method.upper() == "DELETE"
-    ):
-        return False
-    return True
+    return is_lan_path_allowed(method, path)
+
+
+def _json_error(status_code: int, detail: str) -> Response:
+    """ミドルウェアから返すJSONエラーレスポンスを生成する"""
+    return Response(
+        content=json.dumps({"detail": detail}),
+        status_code=status_code,
+        media_type="application/json",
+    )
 
 
 @app.middleware("http")
 async def add_no_cache_header(request: Request, call_next):
     """
-    1. 外部Webサイトからの不正なクロスオリジン要求（Drive-by Localhost Attack）を遮断
-    2. LAN経由アクセス時にPC専用操作APIを保護
-    3. 静的ファイル変更の即時反映およびモバイル単体HTMLからのLAN同期ヘッダを付与
+    1. Host ヘッダ検証による DNS Rebinding 攻撃の遮断
+    2. 外部Webサイトからの不正なクロスオリジン要求（Drive-by Localhost Attack）を遮断
+    3. LAN経由アクセスはトークン認証＋ホワイトリストのAPIのみ許可
+    4. 静的ファイル変更の即時反映およびモバイル単体HTMLからのLAN同期ヘッダを付与
     """
     path = request.url.path
     origin = request.headers.get("origin")
     client_host = request.client.host if request.client else "127.0.0.1"
 
-    if not _is_origin_allowed(origin, path):
-        return Response(
-            content=json.dumps({"detail": "Forbidden origin"}),
-            status_code=403,
-            media_type="application/json",
-        )
+    if not is_host_header_allowed(request.headers.get("host")):
+        return _json_error(400, "Invalid Host header")
 
-    if not _is_lan_request_allowed(client_host, request.method, path):
-        return Response(
-            content=json.dumps({"detail": "This operation is restricted to localhost only"}),
-            status_code=403,
-            media_type="application/json",
-        )
+    if not _is_origin_allowed(origin, path):
+        return _json_error(403, "Forbidden origin")
+
+    set_lan_cookie = False
+    if not is_loopback_client(client_host):
+        if not _is_lan_request_allowed(client_host, request.method, path):
+            return _json_error(403, "This operation is restricted to localhost only")
+        cookie_token = request.cookies.get(LAN_TOKEN_COOKIE)
+        query_token = request.query_params.get(LAN_TOKEN_QUERY)
+        if not is_lan_token_valid(cookie_token, query_token):
+            return _json_error(401, "LAN access token required. Please scan the QR code on the PC again.")
+        touch_lan_activity()
+        # QRコードURL (?t=...) で初回アクセスした場合、以降のリクエスト用にトークンをCookieへ保存する
+        set_lan_cookie = not is_lan_token_valid(cookie_token, None)
 
     cors_origin = origin if origin else "http://127.0.0.1:8088"
 
@@ -319,6 +319,8 @@ async def add_no_cache_header(request: Request, call_next):
         return Response(status_code=204, headers=headers)
 
     response = await call_next(request)
+    if set_lan_cookie:
+        response.headers.append("set-cookie", build_lan_cookie_header())
     if origin:
         response.headers["Access-Control-Allow-Origin"] = cors_origin
         response.headers["Vary"] = "Origin"
@@ -434,6 +436,15 @@ class OpenImportFolderRequest(BaseModel):
 class WindowSettingsRequest(BaseModel):
     startup_mode: str
     apply_now: bool = True
+
+
+def _resolve_paired_raw_path(photo: Dict[str, Any]) -> Optional[str]:
+    """ペアRAWパスをポータブル解決し（ドライブレター変動対応）、XMP探索に渡せる文字列を返す"""
+    raw_path_str = photo.get("paired_raw_path")
+    if not raw_path_str:
+        return None
+    resolved, _ = resolve_portable_path(raw_path_str)
+    return str(resolved)
 
 
 @app.post("/api/heartbeat")
@@ -673,7 +684,7 @@ def api_get_photo_detail(photo_id: int):
     if file_path_str:
         real_path, is_online = resolve_portable_path(file_path_str)
         if is_online and real_path.exists():
-            photo["xmp_info"] = parse_xmp_for_photo(real_path, photo.get("paired_raw_path"))
+            photo["xmp_info"] = parse_xmp_for_photo(real_path, _resolve_paired_raw_path(photo))
         else:
             photo["xmp_info"] = {"has_xmp": False}
     else:
@@ -709,7 +720,7 @@ def api_get_photo_xmp_preview(photo_id: int, mode: str = Query(default="thumb"))
     if not is_online or not real_path.exists():
         raise HTTPException(status_code=404, detail="元写真ファイルが未接続です")
 
-    xmp_info = parse_xmp_for_photo(real_path, photo.get("paired_raw_path"))
+    xmp_info = parse_xmp_for_photo(real_path, _resolve_paired_raw_path(photo))
     adj = xmp_info.get("adjustments") or {}
     rot_val = int(adj.get("rotation") or 0)
     fa_val = float(adj.get("fine_angle") or 0.0)
@@ -817,7 +828,7 @@ def api_import_xmp_metadata(
     if not is_online or not real_path.exists():
         raise HTTPException(status_code=404, detail="元写真ファイルが未接続です")
 
-    xmp_info = parse_xmp_for_photo(real_path, photo.get("paired_raw_path"))
+    xmp_info = parse_xmp_for_photo(real_path, _resolve_paired_raw_path(photo))
     if not xmp_info.get("has_xmp"):
         raise HTTPException(status_code=404, detail="XMPサイドカーファイルが見つかりません")
 
@@ -1390,8 +1401,8 @@ def api_get_photo_view(photo_id: int, request: Request, raw: int = Query(default
                         "ETag": etag_val,
                     },
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"調整適用プレビュー生成失敗、スマートプレビューへフォールバック (id={photo_id}): {e}")
         else:
             return FileResponse(
                 str(target_path),
@@ -2109,10 +2120,10 @@ def _get_windows_quick_access() -> list:
                     exp_val = os.path.expandvars(raw_val)
                     if os.path.isdir(exp_val):
                         folder_paths[k] = exp_val
-                except Exception:
-                    pass
-    except Exception:
-        pass
+                except (OSError, FileNotFoundError) as e:
+                    logger.debug(f"レジストリ特殊フォルダ取得スキップ ({val_name}): {e}")
+    except (OSError, FileNotFoundError) as e:
+        logger.debug(f"Windows レジストリ User Shell Folders オープンスキップ: {e}")
 
     # 特殊フォルダの定義リスト
     special_defs = [
@@ -2205,8 +2216,8 @@ def api_browse_folders(path: Optional[str] = None):
                         drive_path, buf, 256, None, None, None, None, 0
                     )
                     label = buf.value
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"ドライブラベル取得スキップ ({drive_path}): {e}")
                 display = f"{letter}: ({label})" if label else f"{letter}:"
                 drives.append({"name": display, "path": drive_path, "is_drive": True, "icon": "💿"})
             except (OSError, PermissionError):
@@ -2233,8 +2244,8 @@ def api_browse_folders(path: Optional[str] = None):
                     "path": str(entry),
                     "icon": "📁",
                 })
-    except PermissionError:
-        pass  # アクセス権限がないフォルダは空を返す
+    except PermissionError as e:
+        logger.debug(f"ディレクトリ走査アクセス権限なしスキップ ({path}): {e}")
 
     parent = str(target.parent) if target.parent != target else None
     return {"folders": children, "parent": parent, "current": str(target)}
@@ -2272,7 +2283,7 @@ def api_get_import_destinations():
                     "is_root": False,
                 })
     except Exception as e:
-        pass
+        logger.warning(f"送り先フォルダ一覧走査で警告 ({IMPORT_DIR}): {e}")
 
     return {
         "destinations": destinations,
@@ -2857,80 +2868,9 @@ def api_mobile_standalone():
     raise HTTPException(status_code=500, detail="単体モバイルHTMLの生成に失敗しました")
 
 
-def _detect_local_ip_addresses() -> List[str]:
-    """PC自身のLAN内IPv4アドレス一覧を検出する（外部パブリックIPへの通信を発生させずプライベートアドレスのルーティング表を参照）"""
-    import socket
-
-    ips: List[str] = []
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-            s.settimeout(0.2)
-            s.connect(("10.255.255.255", 80))
-            primary_ip = s.getsockname()[0]
-            if primary_ip and not primary_ip.startswith("127."):
-                ips.append(primary_ip)
-    except Exception:
-        pass
-
-    try:
-        hostname = socket.gethostname()
-        for info in socket.getaddrinfo(hostname, None, socket.AF_INET):
-            ip = info[4][0]
-            if ip and not ip.startswith("127.") and not ip.startswith("169.254.") and ip not in ips:
-                ips.append(ip)
-    except Exception:
-        pass
-
-    return ips
-
-
-# オンデマンドで起動したLAN待受用スレッドの管理セット
-_active_lan_listeners: set = set()
-_lan_listener_lock = threading.Lock()
-
-
-def _ensure_lan_listeners(port: int = 8088) -> List[str]:
-    """
-    ユーザーが「📱 スマホ」連携モーダルを開いた際、オンデマンドでPCのLAN IPアドレス (192.168.x.x等) に
-    セカンダリUvicornリスナーを起動する。
-    普段のPC利用時は 127.0.0.1 のみで動作するため、初回起動時のWindowsファイアウォール警告や
-    パブリックWi-Fiでの意図しないポート露出を回避しつつ、スマホ連携時は追加操作ゼロで接続できる。
-    """
-    import socket
-    import uvicorn
-
-    ips = _detect_local_ip_addresses()
-    with _lan_listener_lock:
-        for ip in ips:
-            key = f"{ip}:{port}"
-            if key in _active_lan_listeners:
-                continue
-            # 既に 0.0.0.0 等でバインド済みか確認
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.settimeout(0.2)
-                if s.connect_ex((ip, port)) == 0:
-                    _active_lan_listeners.add(key)
-                    continue
-
-            def _run_lan_server(bind_ip: str, bind_port: int):
-                try:
-                    cfg = uvicorn.Config(app, host=bind_ip, port=bind_port, log_level="warning")
-                    srv = uvicorn.Server(cfg)
-                    logger.info(f"[Mobile LAN] スマホ連携用オンデマンドLAN待受を開始しました: http://{bind_ip}:{bind_port}/m")
-                    srv.run()
-                except Exception as e:
-                    logger.warning(f"[Mobile LAN] LAN待受の起動をスキップ ({bind_ip}:{bind_port}): {e}")
-
-            t = threading.Thread(
-                target=_run_lan_server,
-                args=(ip, port),
-                daemon=True,
-                name=f"MobileLanListener-{ip}",
-            )
-            t.start()
-            _active_lan_listeners.add(key)
-
-    return ips
+def _lan_mobile_url(ip: str, port: int) -> str:
+    """LAN接続トークン付きのスマホ版URLを生成する（QRコード読み取り時に自動でCookie化される）"""
+    return f"http://{ip}:{port}/m?{LAN_TOKEN_QUERY}={LAN_TOKEN}"
 
 
 @app.get("/api/mobile/qr.svg", include_in_schema=False)
@@ -2942,8 +2882,7 @@ def api_mobile_qr_svg(request: Request, url: Optional[str] = None):
     if not target_url:
         port = request.url.port or 8088
         ips = _detect_local_ip_addresses()
-        host_ip = ips[0] if ips else "127.0.0.1"
-        target_url = f"http://{host_ip}:{port}/m"
+        target_url = _lan_mobile_url(ips[0], port) if ips else f"http://127.0.0.1:{port}/m"
 
     svg_str = generate_qr_svg(target_url)
     return Response(
@@ -2960,10 +2899,10 @@ def api_mobile_info(request: Request, enable_lan: int = Query(default=0)):
 
     port = request.url.port or 8088
     if enable_lan:
-        ips = _ensure_lan_listeners(port=port)
+        ips = ensure_lan_listeners(app, port=port)
     else:
         ips = _detect_local_ip_addresses()
-    urls = [f"http://{ip}:{port}/m" for ip in ips]
+    urls = [_lan_mobile_url(ip, port) for ip in ips]
     if not urls:
         urls = [f"http://127.0.0.1:{port}/m"]
     primary_url = urls[0]

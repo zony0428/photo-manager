@@ -178,7 +178,8 @@ if exist "%SRC%Build.bat" (
 if not exist "%DIST%\launcher\Launcher.cs" goto :ERR_FILES
 
 :: --- User Documentation, License & Version ---
-for %%F in (README.md README_EN.md MANUAL.md README_USB.md RELEASE_NOTES.md LICENSE NOTICE.txt VERSION) do (
+:: (NOTICE.txt は LICENSES\NOTICE.txt として LICENSES/ ごと同梱済み)
+for %%F in (README.md README_EN.md MANUAL.md README_USB.md RELEASE_NOTES.md LICENSE VERSION) do (
     if exist "%SRC%%%F" (
         copy /y "%SRC%%%F" "%DIST%\%%F" >nul 2>&1
         copy /y "%SRC%%%F" "%DIST_UPD%\%%F" >nul 2>&1

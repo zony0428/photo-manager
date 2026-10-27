@@ -124,13 +124,13 @@
    */
   function getConquestRankTitle(conqueredCount) {
     const c = Number(conqueredCount || 0);
-    if (c >= 47) return { title: '👑 全国47都道府県 完全制覇グランドマスター', badge: 'Rank SSS' };
-    if (c >= 35) return { title: '🏯 日本列島制覇マイスター', badge: 'Rank S' };
-    if (c >= 24) return { title: '🚅 全国縦断フォトトラベラー', badge: 'Rank A' };
-    if (c >= 12) return { title: '🗺️ 旅するフォトグラファー', badge: 'Rank B' };
-    if (c >= 5) return { title: '📷 地域開拓エクスプローラー', badge: 'Rank C' };
-    if (c >= 1) return { title: '🌱 撮影旅の始まり', badge: 'Rank D' };
-    return { title: '🧭 未踏の地図（GPS写真をスキャンしよう）', badge: '-' };
+    if (c >= 47) return { title: '全国47都道府県 完全制覇グランドマスター', badge: 'Rank SSS' };
+    if (c >= 35) return { title: '日本列島制覇マイスター', badge: 'Rank S' };
+    if (c >= 24) return { title: '全国縦断フォトトラベラー', badge: 'Rank A' };
+    if (c >= 12) return { title: '旅するフォトグラファー', badge: 'Rank B' };
+    if (c >= 5) return { title: '地域開拓エクスプローラー', badge: 'Rank C' };
+    if (c >= 1) return { title: '撮影旅の始まり', badge: 'Rank D' };
+    return { title: '未踏の地図（GPS写真をスキャンしよう）', badge: '-' };
   }
 
   /**
@@ -263,7 +263,7 @@
           <div class="modal-header" style="display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border-bottom: 1px solid var(--border-soft, #2f3642);">
             <div class="modal-header-title">
               <h2 style="margin: 0; font-size: 1.12rem; display: flex; align-items: center; gap: 8px;">
-                <span>🗾</span> <span>ジオタグ全国制覇マップ ＆ 撮影密度ヒートマップ ＆ 撮影さんぽ軌跡</span>
+                <span>ジオタグ全国制覇マップ ＆ 撮影密度ヒートマップ ＆ 撮影さんぽ軌跡</span>
               </h2>
               <span class="modal-subtitle" style="font-size: 0.78rem; color: var(--text-muted, #94a3b8);">
                 47都道府県の撮影制覇状況・よく撮るホットスポット・1日のフォトラリー移動軌跡を可視化します
@@ -278,13 +278,13 @@
           <!-- アンダーラインタブバー（四角い枠線を持たない .map-tab-btn） -->
           <div class="map-tabs-nav" id="locationMapTabsNav" style="display: flex; gap: 22px; padding: 0 20px; border-bottom: 1px solid var(--border-soft, #2f3642); background: var(--bg-secondary, #1b2028);">
             <button type="button" class="map-tab-btn active" data-map-tab="whitemap" style="padding: 11px 4px; background: transparent; border: none; border-bottom: 2px solid var(--accent-primary, #e14d2a); color: var(--text-primary, #f1f5f9); font-weight: 600; font-size: 0.88rem; cursor: pointer;">
-              🗾 47都道府県 撮影制覇白地図
+              47都道府県 撮影制覇白地図
             </button>
             <button type="button" class="map-tab-btn" data-map-tab="heatmap" style="padding: 11px 4px; background: transparent; border: none; border-bottom: 2px solid transparent; color: var(--text-muted, #94a3b8); font-weight: 600; font-size: 0.88rem; cursor: pointer;">
-              🔥 撮影密度ヒートマップ
+              撮影密度ヒートマップ
             </button>
             <button type="button" class="map-tab-btn" data-map-tab="trajectory" style="padding: 11px 4px; background: transparent; border: none; border-bottom: 2px solid transparent; color: var(--text-muted, #94a3b8); font-weight: 600; font-size: 0.88rem; cursor: pointer;">
-              👣 撮影さんぽ軌跡ライン
+              撮影さんぽ軌跡ライン
             </button>
           </div>
 
@@ -297,10 +297,10 @@
                   <span style="font-size: 0.8rem; color: var(--text-muted, #94a3b8); font-weight: 600;">塗り分け基準:</span>
                   <div class="whitemap-mode-group" id="whitemapModeGroup">
                     <button type="button" class="btn btn-primary btn-xs whitemap-mode-btn active" id="whitemapModeCountBtn" data-whitemap-mode="count">
-                      📷 撮影枚数モード
+                      撮影枚数モード
                     </button>
                     <button type="button" class="btn btn-secondary btn-xs whitemap-mode-btn" id="whitemapModeExcellentBtn" data-whitemap-mode="excellent">
-                      🏅 優枚数モード
+                      優枚数モード
                     </button>
                   </div>
                 </div>
@@ -326,7 +326,7 @@
             <div id="mapTabPaneHeatmap" class="map-tab-pane" style="display: none;">
               <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 10px;">
                 <span style="font-size: 0.8rem; color: var(--text-secondary, #cbd5e1);">
-                  🔥 撮影密度が高い場所ほど <strong>青緑 ➔ 黄 ➔ 橙 ➔ 朱赤（#e14d2a）</strong> に輝きます。サークルをクリックすると地域で絞り込めます。
+                  撮影密度が高い場所ほど <strong>青緑 → 黄 → 橙 → 朱赤（#e14d2a）</strong> に輝きます。サークルをクリックすると地域で絞り込めます。
                 </span>
                 <span class="badge-sub" id="heatmapPointsCountBadge">0 メッシュ</span>
               </div>
@@ -337,7 +337,7 @@
             <div id="mapTabPaneTrajectory" class="map-tab-pane" style="display: none;">
               <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 10px;">
                 <div style="display: flex; align-items: center; gap: 8px;">
-                  <label for="trajectoryDateSelect" style="font-size: 0.82rem; font-weight: 600; color: var(--text-secondary, #cbd5e1);">📅 撮影日を選択:</label>
+                  <label for="trajectoryDateSelect" style="font-size: 0.82rem; font-weight: 600; color: var(--text-secondary, #cbd5e1);">撮影日を選択:</label>
                   <select id="trajectoryDateSelect" style="padding: 5px 10px; border-radius: 6px; background: var(--bg-secondary, #1b2028); color: var(--text-primary, #f1f5f9); border: 1px solid var(--border-soft, #2f3642); font-size: 0.82rem; min-width: 240px;"></select>
                 </div>
                 <div id="trajectoryStatsBar" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
@@ -365,7 +365,7 @@
     btn.id = 'openLocationMapModalBtn';
     btn.className = 'btn-mini-text';
     btn.title = '47都道府県 撮影制覇白地図・ヒートマップ・撮影さんぽ軌跡を開く';
-    btn.innerHTML = '🗾 制覇マップ';
+    btn.innerHTML = '制覇マップ';
     firstGroup.insertBefore(btn, firstGroup.firstChild);
   }
 
@@ -397,20 +397,20 @@
 
     bar.innerHTML = `
       <div class="lab-stat-box" style="padding: 8px 12px; border-radius: 6px; background: var(--bg-secondary, #1b2028); border: 1px solid var(--border-soft, #2f3642);">
-        <div style="font-size: 0.72rem; color: var(--text-muted, #94a3b8);">🗾 全国47都道府県 制覇率</div>
+        <div style="font-size: 0.72rem; color: var(--text-muted, #94a3b8);">全国47都道府県 制覇率</div>
         <div style="font-size: 1.08rem; font-weight: 700; color: var(--accent-primary, #e14d2a); margin-top: 2px;">
           ${conquered} / ${totalPrefs} 都道府県 <span class="badge-sub" style="margin-left: 4px;">${pct}%</span>
         </div>
       </div>
       <div class="lab-stat-box" style="padding: 8px 12px; border-radius: 6px; background: var(--bg-secondary, #1b2028); border: 1px solid var(--border-soft, #2f3642);">
-        <div style="font-size: 0.72rem; color: var(--text-muted, #94a3b8);">📍 総ジオタグ写真枚数</div>
+        <div style="font-size: 0.72rem; color: var(--text-muted, #94a3b8);">総ジオタグ写真枚数</div>
         <div style="font-size: 1.08rem; font-weight: 700; color: var(--text-primary, #f1f5f9); margin-top: 2px;">
           ${totalGeo.toLocaleString()} <span style="font-size: 0.76rem; font-weight: 400; color: var(--text-muted, #94a3b8);">枚</span>
           <span class="badge-sub" style="margin-left: 6px;">${countries.length}の国と地域</span>
         </div>
       </div>
       <div class="lab-stat-box" style="padding: 8px 12px; border-radius: 6px; background: var(--bg-secondary, #1b2028); border: 1px solid var(--border-soft, #2f3642); grid-column: span 2;">
-        <div style="font-size: 0.72rem; color: var(--text-muted, #94a3b8);">🏅 制覇ランク称号</div>
+        <div style="font-size: 0.72rem; color: var(--text-muted, #94a3b8);">制覇ランク称号</div>
         <div style="font-size: 0.96rem; font-weight: 700; color: var(--text-primary, #f1f5f9); margin-top: 3px; display: flex; align-items: center; gap: 8px;">
           <span>${escHtml(rankInfo.title)}</span>
           <span class="badge-sub">${escHtml(rankInfo.badge)}</span>
@@ -451,7 +451,7 @@
 
     closeLocationMapModal();
     if (typeof showToast === 'function') {
-      showToast(`🗾 「${prefFullName}」で撮影された写真を表示します`, 'info', 2500);
+      showToast(`「${prefFullName}」で撮影された写真を表示します`, 'info', 2500);
     }
   }
 
@@ -476,21 +476,21 @@
           <h3 style="margin: 0; font-size: 1.08rem; color: var(--text-primary, #f1f5f9);">${escHtml(cartoItem.full)}</h3>
         </div>
         <span class="badge-sub" style="color: ${count > 0 ? 'var(--accent-primary, #e14d2a)' : 'var(--text-muted, #94a3b8)'};">
-          ${count > 0 ? '🚩 制覇済' : '未訪問'}
+          ${count > 0 ? '制覇済' : '未訪問'}
         </span>
       </div>
 
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
         <div class="lab-stat-box" style="padding: 8px; border-radius: 6px; background: var(--bg-tertiary, #252b34); border: 1px solid var(--border-soft, #2f3642);">
-          <div style="font-size: 0.7rem; color: var(--text-muted, #94a3b8);">📷 総撮影枚数</div>
+          <div style="font-size: 0.7rem; color: var(--text-muted, #94a3b8);">総撮影枚数</div>
           <div style="font-size: 1rem; font-weight: 700; color: var(--text-primary, #f1f5f9); margin-top: 2px;">${count.toLocaleString()}枚</div>
         </div>
         <div class="lab-stat-box" style="padding: 8px; border-radius: 6px; background: var(--bg-tertiary, #252b34); border: 1px solid var(--border-soft, #2f3642);">
-          <div style="font-size: 0.7rem; color: var(--text-muted, #94a3b8);">🏅 優 / 打率</div>
+          <div style="font-size: 0.7rem; color: var(--text-muted, #94a3b8);">優 / 打率</div>
           <div style="font-size: 1rem; font-weight: 700; color: var(--accent-primary, #e14d2a); margin-top: 2px;">${exc.toLocaleString()}枚 (${excRate}%)</div>
         </div>
         <div class="lab-stat-box" style="padding: 8px; border-radius: 6px; background: var(--bg-tertiary, #252b34); border: 1px solid var(--border-soft, #2f3642); grid-column: span 2;">
-          <div style="font-size: 0.7rem; color: var(--text-muted, #94a3b8);">👍 良 (Good) 枚数</div>
+          <div style="font-size: 0.7rem; color: var(--text-muted, #94a3b8);">良 (Good) 枚数</div>
           <div style="font-size: 0.92rem; font-weight: 600; color: #f59e0b; margin-top: 2px;">${good.toLocaleString()}枚</div>
         </div>
       </div>
@@ -498,7 +498,7 @@
       ${
         count > 0
           ? `<button type="button" class="btn btn-primary btn-sm" id="whitemapFilterSelectedPrefBtn" style="width: 100%; justify-content: center; gap: 6px;">
-               🔍 ${escHtml(cartoItem.full)}の写真を表示 (${count.toLocaleString()}枚)
+               ${escHtml(cartoItem.full)}の写真を表示 (${count.toLocaleString()}枚)
              </button>`
           : `<div style="font-size: 0.76rem; color: var(--text-muted, #94a3b8); text-align: center; padding: 6px 0;">
                この都道府県のジオタグ付き写真はまだ登録されていません
@@ -598,7 +598,7 @@
           </text>
           <text x="${cx}" y="${cy + 10}" text-anchor="middle" dominant-baseline="central"
                 fill="${style.subColor}" font-size="9.5" font-weight="600" style="pointer-events: none; user-select: none;">
-            ${val > 0 ? (whitemapMode === 'excellent' ? `🏅${val}` : `${val}`) : '-'}
+            ${val > 0 ? (whitemapMode === 'excellent' ? `優${val}` : `${val}`) : '-'}
           </text>
         </g>
       `;
@@ -652,18 +652,18 @@
           const cName = c.country || '不明';
           const cnt = Number(c.count || 0);
           const exc = Number(c.excellent_count || 0);
-          const icon = cName === '日本' ? '🇯🇵' : '🌍';
+          const icon = '';
           return `
             <button type="button" class="btn btn-secondary btn-xs js-whitemap-country-chip" data-country="${escHtml(cName)}" style="gap: 5px;">
               <span>${icon} ${escHtml(cName)}</span>
-              <span class="badge-sub">${cnt.toLocaleString()}枚${exc > 0 ? ` / 🏅${exc}` : ''}</span>
+              <span class="badge-sub">${cnt.toLocaleString()}枚${exc > 0 ? ` / 優${exc}` : ''}</span>
             </button>
           `;
         }).join('');
 
         countriesBar.innerHTML = `
           <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px 12px; border-radius: 8px; background: var(--bg-secondary, #1b2028); border: 1px solid var(--border-soft, #2f3642);">
-            <span style="font-size: 0.78rem; color: var(--text-muted, #94a3b8); font-weight: 600;">🌏 国・地域別クイック絞り込み:</span>
+            <span style="font-size: 0.78rem; color: var(--text-muted, #94a3b8); font-weight: 600;">国・地域別クイック絞り込み:</span>
             ${chipsHtml}
           </div>
         `;
@@ -682,7 +682,7 @@
             }
             closeLocationMapModal();
             if (typeof showToast === 'function') {
-              showToast(`🌏 「${cName}」の写真で絞り込みました`, 'info', 2500);
+              showToast(`「${cName}」の写真で絞り込みました`, 'info', 2500);
             }
           });
         });
@@ -842,14 +842,14 @@
       const popupDiv = document.createElement('div');
       popupDiv.style.minWidth = '170px';
       popupDiv.innerHTML = `
-        <div style="font-weight: 700; font-size: 0.88rem; margin-bottom: 4px; color: #1e293b;">📍 ${escHtml(areaLabel)}</div>
+        <div style="font-weight: 700; font-size: 0.88rem; margin-bottom: 4px; color: #1e293b;">${escHtml(areaLabel)}</div>
         <div style="font-size: 0.78rem; color: #475569; margin-bottom: 8px;">
-          撮影枚数: <strong>${cnt.toLocaleString()}枚</strong> / 🏅優: <strong>${exc}枚</strong>
+          撮影枚数: <strong>${cnt.toLocaleString()}枚</strong> / 優: <strong>${exc}枚</strong>
         </div>
         ${
           pt.state
             ? `<button type="button" class="btn btn-primary btn-xs js-heatmap-filter-btn" style="width: 100%; justify-content: center;">
-                 🔍 ${escHtml(areaLabel)}で絞り込む
+                 ${escHtml(areaLabel)}で絞り込む
                </button>`
             : ''
         }
@@ -952,7 +952,7 @@
 
       const allOpt = document.createElement('option');
       allOpt.value = '';
-      allOpt.textContent = '🌐 主要な撮影軌跡すべて (最新1,500枚)';
+      allOpt.textContent = '主要な撮影軌跡すべて (最新1,500枚)';
       selectEl.appendChild(allOpt);
 
       dates.forEach(d => {
@@ -1007,16 +1007,16 @@
     if (statsBar) {
       statsBar.innerHTML = `
         <div class="lab-stat-box" style="padding: 5px 10px; border-radius: 6px; background: var(--bg-secondary, #1b2028); border: 1px solid var(--border-soft, #2f3642); font-size: 0.78rem;">
-          👣 総移動距離: <strong style="color: var(--accent-primary, #e14d2a);">${totalDistanceKm.toFixed(1)} km</strong>
+          総移動距離: <strong style="color: var(--accent-primary, #e14d2a);">${totalDistanceKm.toFixed(1)} km</strong>
         </div>
         <div class="lab-stat-box" style="padding: 5px 10px; border-radius: 6px; background: var(--bg-secondary, #1b2028); border: 1px solid var(--border-soft, #2f3642); font-size: 0.78rem;">
-          ⏱️ 所要時間: <strong>${escHtml(durationText)}</strong>
+          所要時間: <strong>${escHtml(durationText)}</strong>
         </div>
         <div class="lab-stat-box" style="padding: 5px 10px; border-radius: 6px; background: var(--bg-secondary, #1b2028); border: 1px solid var(--border-soft, #2f3642); font-size: 0.78rem;">
-          👟 歩数換算目安: <strong>約 ${estimatedSteps.toLocaleString()} 歩</strong>
+          歩数換算目安: <strong>約 ${estimatedSteps.toLocaleString()} 歩</strong>
         </div>
         <div class="lab-stat-box" style="padding: 5px 10px; border-radius: 6px; background: var(--bg-secondary, #1b2028); border: 1px solid var(--border-soft, #2f3642); font-size: 0.78rem;">
-          🔥 滞在ホットスポット: <strong>${hotspots.length} 箇所</strong>
+          滞在ホットスポット: <strong>${hotspots.length} 箇所</strong>
         </div>
       `;
     }
@@ -1081,7 +1081,7 @@
         fillColor: '#e14d2a',
         fillOpacity: 0.18,
       });
-      hsCircle.bindTooltip(`🔥 滞在ホットスポット (${hs.count}枚撮影)`, { direction: 'top' });
+      hsCircle.bindTooltip(`滞在ホットスポット (${hs.count}枚撮影)`, { direction: 'top' });
       trajectoryLayerGroup.addLayer(hsCircle);
     });
 
@@ -1100,11 +1100,11 @@
 
       let badgeHtml = '';
       if (isStart) {
-        badgeHtml = `<div style="background: #10b981; color: #fff; font-weight: 700; font-size: 10px; padding: 2px 6px; border-radius: 10px; border: 2px solid #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.4); white-space: nowrap;">🚩 START</div>`;
+        badgeHtml = `<div style="background: #10b981; color: #fff; font-weight: 700; font-size: 10px; padding: 2px 6px; border-radius: 10px; border: 2px solid #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.4); white-space: nowrap;">START</div>`;
       } else if (isGoal) {
-        badgeHtml = `<div style="background: #0f172a; color: #fff; font-weight: 700; font-size: 10px; padding: 2px 6px; border-radius: 10px; border: 2px solid #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.4); white-space: nowrap;">🏁 GOAL (#${idx + 1})</div>`;
+        badgeHtml = `<div style="background: #0f172a; color: #fff; font-weight: 700; font-size: 10px; padding: 2px 6px; border-radius: 10px; border: 2px solid #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.4); white-space: nowrap;">GOAL (#${idx + 1})</div>`;
       } else if (isExcellent) {
-        badgeHtml = `<div style="background: #e14d2a; color: #fff; font-weight: 700; font-size: 10px; width: 24px; height: 24px; border-radius: 50%; border: 2px solid #facc15; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(0,0,0,0.45);" title="🏅優 #${idx + 1}">★</div>`;
+        badgeHtml = `<div style="background: #e14d2a; color: #fff; font-weight: 700; font-size: 10px; width: 24px; height: 24px; border-radius: 50%; border: 2px solid #facc15; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(0,0,0,0.45);" title="優 #${idx + 1}">★</div>`;
       } else {
         badgeHtml = `<div style="background: #334155; color: #f8fafc; font-weight: 600; font-size: 10px; min-width: 20px; height: 20px; padding: 0 4px; border-radius: 10px; border: 1.5px solid #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 4px rgba(0,0,0,0.35);">${idx + 1}</div>`;
       }
@@ -1122,7 +1122,7 @@
       popupEl.style.minWidth = '185px';
       const timeLabel = pt.date_taken || '';
       const ratingBadge =
-        Number(pt.rating) === 2 ? '🏅優' : Number(pt.rating) === 1 ? '👍良' : '⚪可';
+        Number(pt.rating) === 2 ? '優' : Number(pt.rating) === 1 ? '良' : '可';
 
       popupEl.innerHTML = `
         <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 6px;">
@@ -1136,7 +1136,7 @@
           </div>
         </div>
         <button type="button" class="btn btn-primary btn-xs js-trajectory-open-photo-btn" style="width: 100%; justify-content: center;">
-          🔍 この写真を表示
+          この写真を表示
         </button>
       `;
 
@@ -1279,7 +1279,7 @@
 
     const svgContainer = document.getElementById('whitemapSvgContainer');
     if (svgContainer && !latestMapData) {
-      svgContainer.innerHTML = `<div class="empty-hint" style="padding: 36px; text-align: center;">🗾 全国制覇マップ＆軌跡データを集計中...</div>`;
+      svgContainer.innerHTML = `<div class="empty-hint" style="padding: 36px; text-align: center;">全国制覇マップ＆軌跡データを集計中...</div>`;
     }
 
     try {

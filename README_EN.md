@@ -97,7 +97,7 @@ Run directly from a USB flash drive or external SSD on any Windows PC without in
 > [!IMPORTANT]
 > **About Microsoft Defender SmartScreen Prompts on First Launch**
 >
-> This application operates 100% offline with no external network requests or registry modifications. However, because it is an independent hobby project without a commercial EV Code Signing Certificate, Windows Defender SmartScreen may display a confirmation screen when launching a downloaded `.exe` for the first time. You can proceed in either of two ways:
+> This application operates locally with no photo uploads or registry modifications (only map tiles connect to OpenStreetMap). However, because it is an independent hobby project without a commercial EV Code Signing Certificate, Windows Defender SmartScreen may display a confirmation screen when launching a downloaded `.exe` for the first time. You can proceed in either of two ways:
 >
 > 1. **Run Directly**: On the SmartScreen prompt, click **"More info" → "Run anyway"** (this prompt will not appear on subsequent launches).
 > 2. **Clean Local Build via `Build.bat`**: Double-clicking **`Build.bat`** uses Windows' built-in official C# compiler (`csc.exe`) to compile the plain-text launcher source ([`launcher/Launcher.cs`](launcher/Launcher.cs)) directly into `PhotoManager.exe` on your own machine in one second and starts the app without download-origin blocks (Mark of the Web).

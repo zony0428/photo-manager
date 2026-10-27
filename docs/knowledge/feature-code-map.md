@@ -19,6 +19,7 @@
 11. [アプリ内ストレージ (`storage/`) 完結管理・XMP連携・スマートテイクアウト & 非破壊画像調整](#11-アプリ内ストレージ-storage-完結管理xmp連携スマートテイクアウト--非破壊画像調整)
 12. [設定 ＆ データベース管理・ライフサイクル・配布ビルド (Settings, Database & Build)](#12-設定--データベース管理ライフサイクル配布ビルド-settings-database--build)
 13. [Android / スマホ専用UI & ハイブリッドDB連携 (Mobile Viewer & Offline DB Sync)](#13-android--スマホ専用ui--ハイブリッドdb連携-mobile-viewer--offline-db-sync)
+14. [セキュリティ ＆ 自動テスト (Security & Automated Tests)](#14-セキュリティ--自動テスト-security--automated-tests)
 
 ---
 
@@ -28,7 +29,8 @@
 | モジュール | 役割・担当機能 |
 |---|---|
 | `frontend/js/common.js` | 定数、`state`、`elements`、汎用ヘルパー（`showToast`, `escapeHtml`, ローカルタイム日付ヘルパー等）、テーマ制御、ハートビート、ペインリサイズ、共通モーダル（ヘルプ・終了・スマホ連携・タグ削除確認） |
-| `frontend/js/selection.js` | 複数選択、Shift範囲選択、選択差分DOM更新、右クリックメニュー、`storage/` へのインポート・移動・単一/一括連番リネーム (`F2`)、サムネイル取得/更新 |
+| `frontend/js/selection.js` | 複数選択、Shift範囲選択、選択差分DOM更新、右クリックメニュー（#contextMenu）表示・制御、キーボードショートカット連携 |
+| `frontend/js/storage.js` | アプリ内ストレージ（`storage/`）管理: 外部写真からのインポート、サブフォルダ作成/リネーム/削除/エクスポート、写真のサブフォルダ間D&D/移動、単一/一括連番リネーム (`F2`) |
 | `frontend/js/inspector.js` | 右ペイン、単一写真EXIF詳細、露出タグ、地図・MiniMap、GPS候補モーダル、クイックタグツリー（`+追加`/`+子`）、XMPサイドカー検出バー（`[👁️ XMPプレビュー]` ホールド比較・`📥 評価・タグ取込`）、一括タグ編集 |
 | `frontend/js/lightbox.js` | 全画面プレビュー、ズーム・パン、スタック切替バー、フィルムストリップ、ライトボックス内タグ/評価 |
 | `frontend/js/folder_tree.js` | 左ペイン階層フォルダツリー（遅延展開、`storage` 専用右クリックメニュー＆D&D移動受け入れ、ショートカット、接続/未接続分離、除外/通常切替、パス直接入力、スキャン進捗）、2ペイン `⚙️ 設定 ＆ 🌳 タグツリーエディタ` モーダル (`#dbMaintenanceModal`) |
@@ -51,7 +53,7 @@
 |---|---|
 | `frontend/css/style.css` | テーマ変数（和紙 `paper` / 夜墨 `sumi`）、リセット、上部ヘッダーツールバー、左サイドバー（アコーディオン、タイムライン、フォルダツリー、タグツリー、`📊 枚数順` トグル、カラーパレット） |
 | `frontend/css/grid-lightbox.css` | メインコンテンツエリア、写真グリッド（標準・びっしり・マウント・クリーン表示）、スキャンモーダル、ライトボックス全画面ビュー |
-| `frontend/css/selection-menu.css` | マルチ選択チェックボックス、右クリックコンテキストメニュー、下部フローティング選択バー |
+| `frontend/css/selection-menu.css` | マルチ選択チェックボックス、右クリックコンテキストメニュー（#contextMenu）、フォルダ右クリックメニュー（#folderContextMenu） |
 | `frontend/css/inspector.css` | 右インスペクタ・ペイン、露出ブラケット・連写スタックバー、RAWバッジ、GPSミニマップ、評価フィルタトグル |
 | `frontend/css/modals-features.css` | 保存済みプリセット、フルスクリーンスライドショー、AI自動タグ、ヘルプモーダル (`#helpModal`)、終了確認、グローバルスキャン進捗フッター、重複ドッグイヤー、場所ツリー、非破壊画像調整モーダル、スマート・テイクアウトモーダル、`storage` リネームモーダル、XMPプレビューバー、2ペイン `⚙️ 設定 ＆ 🌳 タグツリーエディタ` モーダル |
 | `frontend/css/lab-map.css` | カメラ・レンズ2階層ツリー、ラボセクション、勝ちレンズカルテ (`#labKarteModal`)、47都道府県制覇マップ・ヒートマップ・さんぽ軌跡 (`#locationMapModal`)、ベタ焼きトリガー |
@@ -83,8 +85,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| **UI要素 (HTML)** | `#selectionFloatingBar`, `#floatingSelectedCount`, `#contextMenu`, `#floatingMoreGroup` (`#floatingMoreBtn`, `#floatingMorePopover`: サムネイル更新・撮影日時一括補正・ジオタグ準用・ジオタグ削除), `#dateShiftModal` (撮影日時一括シフト補正モーダル), `#floatingDeleteBtn`, `#floatingClearSelectionBtn` |
-| **フロントエンド (JS)** | `frontend/js/selection.js`<br>・`togglePhotoSelection(photoId, isCtrl)`: 単一・Ctrl追加選択<br>・`rangeSelectPhotos(targetPhotoId)`: Shiftクリックによる範囲選択<br>・`selectAllPhotos()` / `clearSelection()`: 全選択 / 選択解除<br>・`updateCardSelectionClasses()`: 前回選択差分（`lastSelectedPhotoIds`）のみDOM更新<br>・`openContextMenu(e, photoId)` / `closeContextMenu()`: 右クリックメニュー表示・位置計算<br>・`openDateShiftModal()` / `submitDateShift()` / `_formatShiftedDateLocal()`: 撮影日時一括シフト補正（±日時・プリセット・5件プレビュー・元のEXIF日時への復元）<br>・`deleteSelectedPhotos()`: 選択中写真の物理削除（確認ダイアログ後実行） |
+| **UI要素 (HTML)** | `#contextMenu` (右クリックコンテキストメニュー), `#inspectorBatchView` (右インスペクタの一括編集パネル), `#batchThumbnailsStrip`, `#batchRateButtons`, `#batchColorPaletteBlock`, `#dateShiftModal` (撮影日時一括シフト補正モーダル), `#deleteConfirmModal` |
+| **フロントエンド (JS)** | `frontend/js/selection.js` ＆ `frontend/js/inspector.js`<br>・`togglePhotoSelection(photoId, isCtrl)`: 単一・Ctrl追加選択<br>・`rangeSelectPhotos(targetPhotoId)`: Shiftクリックによる範囲選択<br>・`selectAllPhotos()` / `clearSelection()`: 全選択 / 選択解除 (Escキー)<br>・`updateCardSelectionClasses()`: 前回選択差分（`lastSelectedPhotoIds`）のみDOM更新<br>・`openContextMenu(e, photoId)` / `closeContextMenu()`: 右クリックメニュー表示・アクションディスパッチ（評価、タグ付与、スマートテイクアウト、撮影日時シフト、storage操作、サムネイル再生成、画像コピー等）<br>・`showBatchInspector(photos)`: 右インスペクタでの選択枚数表示・一括評価設定（優・良・可・棄）・一括タグ/カラーラベル付与<br>・`openDateShiftModal()` / `submitDateShift()` / `_formatShiftedDateLocal()`: 撮影日時一括シフト補正（±日時・プリセット・5件プレビュー・元のEXIF日時への復元）<br>・`deleteSelectedPhotos()`: 選択中写真の物理削除（確認ダイアログ後実行） |
 | **APIエンドポイント** | `DELETE /api/photo/{photo_id}` (単一写真の削除)<br>`POST /api/photos/batch-tags` (一括タグ追加/削除)<br>`POST /api/photos/batch-rate` (一括評価付与)<br>`POST /api/photos/batch-shift-date` (非破壊の撮影日時一括シフト補正＆元日時リセット) |
 | **バックエンド (Python)** | `server/app.py`: `api_delete_photo()`, `api_batch_tags()`, `api_batch_rate()`, `api_batch_shift_photo_dates()`<br>`server/database/photos.py`: `delete_photo_by_id()`, `batch_shift_photo_dates()` (`original_date_taken` 退避・再スキャン保護)<br>`server/database/tags.py`: `batch_add_tag()`, `batch_remove_tag()` |
 
@@ -139,7 +141,7 @@ Picasaスタイルの4段階評価（棄/可/良/優）、カラーラベル（1
 | **UI要素 (HTML)** | `#inspectorPane`, `#inspectorSingleView`, `#inspectorBatchView`, `#inspectorQuickActionsBar` (`#inspectorQuickAdjustBtn`, `#inspectorQuickHistBtn`, `#inspectorQuickRotateLeftBtn`, `#inspectorQuickRotateRightBtn`), `#inspectorXmpBar`, `#inspectorXmpHoldPreviewBtn`, `#inspectorXmpImportBtn`, `#inspectorTabPaneExif`, `#inspectorTabPaneMap`, `#inspectorTabPaneTags`, `#gpsCandidateModal` |
 | **フロントエンド (JS)** | `frontend/js/inspector.js`<br>・`toggleInspector(forceState)`: インスペクター開閉とレイアウト調整<br>・`updateInspectorView()`: 選択数に応じて単一/一括ビューを切り替え<br>・`showSingleInspector(photo)`: EXIF値・XMPサイドカー検出バーの描画、`_bindXmpSidecarControls()` による長押しホールド比較と評価・タグ取込<br>・`showBatchInspector(photos)`: 複数選択時の一括タグ編集・一括評価<br>・`showGpsCandidateModal(photo)`: 近傍写真（時間・場所）からGPS座標をコピーするモーダル<br>・`openPhotoFolder(photoId)`: 写真をエクスプローラーで選択状態で表示 |
 | **APIエンドポイント** | `GET /api/photo/{photo_id}`<br>`GET /api/photo/{photo_id}/xmp-preview`<br>`POST /api/photo/{photo_id}/xmp-import` / `POST /api/photos/batch-xmp-import`<br>`POST /api/photo/{photo_id}/open-raw`<br>`POST /api/photo/{photo_id}/open-folder`<br>`GET /api/photo/{photo_id}/gps-candidates`<br>`POST /api/photo/{photo_id}/copy-gps` / `POST /api/photos/batch-copy-gps` |
-| **バックエンド (Python)** | `server/app.py`: `api_photo_xmp_preview()`, `api_photo_xmp_import()`, `api_open_raw()`, `api_open_folder()`, `api_gps_candidates()`, `api_copy_gps()`<br>`server/xmp_sidecar.py`: `parse_xmp_sidecar()`, `find_xmp_sidecar()`<br>`server/database/photos.py`: `update_photo_gps()`, `find_nearby_gps_photos()` |
+| **バックエンド (Python)** | `server/app.py`: `api_photo_xmp_preview()`, `api_photo_xmp_import()`, `api_open_raw()`, `api_open_folder()`, `api_gps_candidates()`, `api_copy_gps()`<br>`server/sidecar.py`: `parse_xmp_for_photo()`, `find_sidecars_for_file()`<br>`server/database/photos.py`: `update_photo_gps()`, `find_nearby_gps_photos()` |
 
 ---
 
@@ -202,10 +204,10 @@ ONNX Runtime と CLIP モデルによるローカル画像分類・被写体自�
 
 | 項目 | 内容 |
 |---|---|
-| **UI要素 (HTML)** | **テイクアウト**: `#smartTakeoutModal`, `#takeoutApplyAdjustments`, `#takeoutExifSyncDb`, `#takeoutExifRemoveAll`, `#takeoutExifRemoveGps`, `#takeoutExportXmp`<br>**storage管理**: `#storageRenameModal`, `#storageFolderCreateModal`, `#storageFolderRenameModal`, `#storageFolderExportModal`<br>**画像調整**: `#imageAdjustModal`, `#adjustCopyToneBtn`, `#adjustPasteToneBtn`, `#adjustCompareOrigBtn`, `#adjustBeforeBadge`, `#adjustFineAngleRange`, `#adjustBrightnessRange`, `#adjustContrastRange`, `#adjustSaturationRange`<br>**コンテキスト・下部バー連携**: `#contextMenuCopyTone`, `#contextMenuPasteTone`, `#contextMenuCopyImageItem`, `#floatingPasteToneBtn` |
-| **フロントエンド (JS)** | `frontend/js/takeout.js`: スマートテイクアウト設定モーダル制御、`executeSmartTakeout()`<br>`frontend/js/selection.js`: `storage/` へのインポート・移動・単一/一括連番リネーム (`openStorageRenameModal`)、右クリック/下部バーからのトーンコピー＆ペースト・画像コピー連携<br>`frontend/js/adjust.js`: Twitter(X)風クロップ枠・8点ハンドル制御、水平出し（自動内接ズーム連動）・明るさ・コントラスト・彩度の0ms CSSリアルタイムプレビュー、`setCompareOriginalMode()`（`\` / `Space` 長押しBefore比較）、`copyPhotoToneAdjustments()` / `batchPastePhotoToneAdjustments()`（トーン3項目のみのコピー＆一括ペースト）、`copyPhotoImageToClipboard()`（`Ctrl+C` で非破壊調整反映済み画像をOSクリップボードへコピー）、`saveAdjustModal()` |
+| **UI要素 (HTML)** | **テイクアウト**: `#smartTakeoutModal`, `#takeoutApplyAdjustments`, `#takeoutExifSyncDb`, `#takeoutExifRemoveAll`, `#takeoutExifRemoveGps`, `#takeoutExportXmp`<br>**storage管理**: `#storageRenameModal`, `#storageFolderCreateModal`, `#storageFolderRenameModal`, `#storageFolderExportModal`<br>**画像調整**: `#imageAdjustModal`, `#adjustCopyToneBtn`, `#adjustPasteToneBtn`, `#adjustCompareOrigBtn`, `#adjustBeforeBadge`, `#adjustFineAngleRange`, `#adjustBrightnessRange`, `#adjustContrastRange`, `#adjustSaturationRange`<br>**コンテキストメニュー連携**: `#contextMenuCopyTone`, `#contextMenuPasteTone`, `#contextMenuCopyImageItem` |
+| **フロントエンド (JS)** | `frontend/js/takeout.js`: スマートテイクアウト設定モーダル制御、`executeSmartTakeout()`<br>`frontend/js/storage.js`: `storage/` へのインポート・移動・単一/一括連番リネーム (`openStorageRenameModal`)、ドラッグ＆ドロップ階層移動<br>`frontend/js/adjust.js`: Twitter(X)風クロップ枠・8点ハンドル制御、水平出し（自動内接ズーム連動）・明るさ・コントラスト・彩度の0ms CSSリアルタイムプレビュー、`setCompareOriginalMode()`（`\` / `Space` 長押しBefore比較）、`copyPhotoToneAdjustments()` / `batchPastePhotoToneAdjustments()`（トーン3項目のみのコピー＆一括ペースト）、`copyPhotoImageToClipboard()`（`Ctrl+C` で非破壊調整反映済み画像をOSクリップボードへコピー）、`saveAdjustModal()` |
 | **APIエンドポイント** | `POST /api/export/smart` (スマートテイクアウト一括出力・オプション `.xmp` サイドカー出力)<br>`POST /api/photo/{photo_id}/adjust` / `POST /api/photos/batch-adjust-tone` (トーン3項目一括適用) / `POST /api/photo/{photo_id}/reset-adjust` / `POST /api/photos/batch-reset-adjust`<br>`GET /api/photo/{photo_id}/view` (`?raw=1` で調整モーダル用無加工原画を返却)<br>`GET /api/storage-folders` / `POST /api/storage-folders` / `PUT /api/storage-folders/rename` / `DELETE /api/storage-folders` / `POST /api/storage-folders/export`<br>`POST /api/photos/import-to-storage` / `POST /api/storage/move-photos` / `POST /api/storage/rename-photo` / `POST /api/storage/batch-rename-photos` |
-| **バックエンド (Python)** | `server/exporter.py`: `export_single_photo()`, `filter_exif_data()`<br>`server/xmp_sidecar.py`: `parse_xmp_sidecar()`, `generate_xmp_sidecar_xml()`, `find_xmp_sidecar()`<br>`server/scanner.py`: `apply_photo_adjustments_pil()`, `refresh_photo_thumbnail_transform()`<br>`server/database/photos.py`: `update_photo_adjustments()`, `batch_update_photo_tone()`, `reset_photo_adjustments()`, `update_photo_file_location()`, `update_directory_prefix()` |
+| **バックエンド (Python)** | `server/storage_manager.py`: `get_storage_folders()`, `create_storage_subfolder()`, `rename_storage_subfolder()`, `delete_storage_subfolder()`, `export_storage_folder()`, `import_photos_to_storage()`, `move_photos_in_storage()`, `rename_photo_in_storage()`, `batch_rename_photos_in_storage()`<br>`server/sidecar.py`: `parse_xmp_for_photo()`, `write_xmp_sidecar_for_photo()`, `find_sidecars_for_file()`, `move_sidecars_for_file()`, `rename_sidecars_for_file()`, `copy_sidecars_for_file()`<br>`server/exporter.py`: `export_single_photo()`, `filter_exif_data()`<br>`server/scanner.py`: `apply_photo_adjustments_pil()`, `refresh_photo_thumbnail_transform()`<br>`server/database/photos.py`: `update_photo_adjustments()`, `batch_update_photo_tone()`, `reset_photo_adjustments()`, `update_photo_file_location()`, `update_directory_prefix()` |
 | **関連ナレッジ** | `storage-and-xmp-sidecar-architecture.md` |
 
 ---
@@ -235,8 +237,23 @@ ONNX Runtime と CLIP モデルによるローカル画像分類・被写体自�
 | **フロントエンド (JS)** | `frontend/js/mobile.js`<br>・`tryConnectServer()` / `ensureSqlJsLoaded()` / `loadLocalSqliteFile(file)`: `server` モードと `localdb` (`sql.js` WebAssembly・Base64 `wasmBinary` 直接展開対応) モードの自動切替とメモリ展開、`_safeGetStorage` による `content://` 保護<br>・`getMobileThumbnailUrl(photo)`: サーバーサムネイルURLまたは `thumbnails.data` BLOB からの `ObjectURL` 生成＆キャッシュ<br>・`rateCurrentViewerPhoto()` / `setupViewerTouchGestures()`: 親指ワンタップ4段階評価（自動次送り連動）、左右スワイプ送り、ダブルタップズーム<br>・`exportSyncJsonFile()` / `shareSyncJsonFile()` / `copySyncJsonToClipboard()` / `pushPendingChangesToServer()`: `mobile_sync.json` 出力（Data URI対応）・OS共有・コピー・Wi-Fi直接反映<br>`frontend/js/common.js`<br>・`openMobileModal()` / `loadMobileConnectionInfo()` / `applyDetectedMobileSync()` / `importMobileSyncJsonFile()` / `importMobileSyncFromClipboard()`: PC側からの接続URL表示・差分インポート制御 |
 | **単体HTML / WASM資産** | `PhotoManager_Mobile.html` (自動生成単体ファイル), `server/mobile_bundle.py`, `frontend/vendor/sqljs/sql-wasm.js`, `frontend/vendor/sqljs/sql-wasm.wasm` |
 | **APIエンドポイント** | `GET /m` (`mobile.html` エントリ)<br>`GET /api/mobile/standalone` (`PhotoManager_Mobile.html` ダウンロード配信)<br>`GET /api/mobile/info` (LAN/Tailscale接続URL一覧、DBサイズ、未反映 `mobile_sync.json` 自動検知)<br>`POST /api/mobile/sync-import` (評価・タグ差分のサニタイズ＆3段階フォールバック照合マージ) |
-| **バックエンド (Python)** | `server/mobile_bundle.py`: `build_standalone_mobile_html()`, `ensure_standalone_mobile_html()`<br>`server/app.py`: `mobile_app_entry()`, `api_mobile_standalone()`, `api_mobile_info()`, `api_mobile_sync_import()`, `_sanitize_mobile_tag()`<br>`run.py`: オンデマンドLAN接続制御 (`enable_lan_access()`) |
+| **バックエンド (Python)** | `server/mobile_bundle.py`: `build_standalone_mobile_html()`, `ensure_standalone_mobile_html()`<br>`server/app.py`: `mobile_app_entry()`, `api_mobile_standalone()`, `api_mobile_info()`, `api_mobile_sync_import()`, `_sanitize_mobile_tag()`<br>`server/lan_access.py`: `is_host_header_allowed()` (DNS Rebinding防止), `is_lan_path_allowed()` (LANホワイトリスト), トークン認証・Cookie管理, `enable_lan_listeners()`, 30分アイドル自動待受停止<br>`run.py`: サーバー起動・アプリウィンドウ立ち上げ |
 | **関連ナレッジ** | `mobile-hybrid-architecture.md` |
+
+---
+
+---
+
+## 14. セキュリティ ＆ 自動テスト (Security & Automated Tests)
+
+ローカルWebサーバー固有の脆弱性対策（DNS Rebinding、CSRF、LAN不正アクセス、XSS）と自動回帰テストスイート。
+
+| 項目 | 内容 |
+|---|---|
+| **セキュリティ防御層** | **Layer 1: Hostヘッダ検証** (`server/lan_access.py`: `is_host_header_allowed()`)<br>**Layer 2: Originヘッダ検証** (`server/app.py`: 外部オリジン・nullオリジン遮断)<br>**Layer 3: LAN接続トークン認証** (`server/lan_access.py`: `LAN_TOKEN`, QRコード埋め込み → `pm_lan_token` HttpOnly Cookie)<br>**Layer 4: LAN APIホワイトリスト** (`server/lan_access.py`: `is_lan_path_allowed()`, モバイル最小限APIのみ許可、管理API遮断)<br>**ライフサイクル保護**: 30分無通信自動停止 (`LAN_IDLE_TIMEOUT_SEC`), アプリ再起動時トークン失効<br>**サニタイズ ＆ 上限設定**: `frontend/js/common.js` `escapeHtml()` 徹底、XMP最大5MB、Upload最大32MB |
+| **テストスイート (`tests/`)** | `tests/test_security.py`:<br>・`test_local_access_ok`: ローカルアクセス正常性<br>・`test_dns_rebinding_host_rejected`: 悪意あるHostヘッダ遮断 (400)<br>・`test_foreign_origin_rejected`: 外部Origin遮断 (403)<br>・`test_lan_requires_token`: LANトークン必須化・Cookie認証<br>・`test_lan_whitelist_blocks_admin_apis`: LAN管理API遮断<br>・`test_lan_whitelist_allows_mobile_apis`: LANモバイルAPI許可<br>・`test_xmp_size_limit`: 5MB超XMP安全スキップ<br>・`test_open_folder_rejects_files`: 不正実行ファイル起動防止<br>`tests/test_core_regression.py`:<br>・DB初期化・マイグレーション、サムネイルBLOB、タグ祖先、4段階評価、コンタクトシートフォールバック |
+| **実行コマンド** | `.\python\python.exe tests\test_security.py`<br>`.\python\python.exe tests\test_core_regression.py` |
+| **関連ナレッジ** | `security-architecture.md`, `storage-and-xmp-sidecar-architecture.md` |
 
 ---
 

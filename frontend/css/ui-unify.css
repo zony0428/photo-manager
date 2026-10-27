@@ -24,7 +24,6 @@
    0. 器・構造枠・フッターメニュー・モーダル外枠 ➜ すべて「真四角 (2px)」に統一
       （従来カプセル型30px/999pxだった下部フローティングバーやスライドショーバー等も含む）
    ========================================================================== */
-.selection-floating-bar,
 .batch-action-bar,
 .slideshow-controls,
 .lightbox-bracket-bar,
@@ -747,10 +746,6 @@
   }
 }
 
-/* インスペクタプレビュー上の重複「波形」オーバーレイボタンを非表示化 */
-.inspector-hist-toggle-btn {
-  display: none !important;
-}
 
 /* 第1段階: 左端 垂直タブレール (Activity Bar) */
 .sidebar-rail {
@@ -1220,8 +1215,3 @@
   font-size: 0.75rem !important;
 }
 
-/* 写真グリッド下部のフッターメニューバー（#selectionFloatingBar）を常時非表示化（右クリック＆右ペインに集約） */
-#selectionFloatingBar,
-.selection-floating-bar {
-  display: none !important;
-}

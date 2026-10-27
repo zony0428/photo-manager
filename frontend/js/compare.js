@@ -64,7 +64,7 @@
       <div class="compare-header">
         <div class="compare-header-left">
           <div class="compare-title">
-            <span>⚖️</span>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="2" y="4" width="9" height="16" rx="1.5"/><rect x="13" y="4" width="9" height="16" rx="1.5"/></svg>
             <span>2枚比較 (Side-by-Side)</span>
           </div>
           <span class="compare-source-badge" id="compareSourceBadge">比較モード</span>
@@ -74,11 +74,11 @@
           <div class="compare-sync-group" title="点灯している項目が左右で連動します（Altキー押下中は一時的に片側のみ操作）">
             <span class="compare-sync-group-label">同期:</span>
             <button type="button" class="compare-tool-btn active" id="compareSyncViewBtn" title="ビュー位置（ドラッグ移動）を左右で同期します。OFFにすると片方だけドラッグして構図のズレを合わせられます">
-              <span>🖐️</span>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M18 11V6a2 2 0 0 0-4 0v5M14 10V4a2 2 0 0 0-4 0v7M10 10.5V6a2 2 0 0 0-4 0v8M6 14a6 6 0 0 0 12 0v-3"/></svg>
               <span>ビュー</span>
             </button>
             <button type="button" class="compare-tool-btn active" id="compareSyncZoomBtn" title="ズーム倍率（ホイール拡大）を左右で同期します。OFFにすると片方だけ倍率を変えて被写体の大きさを揃えられます">
-              <span>🔍</span>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
               <span>ズーム</span>
             </button>
           </div>
@@ -88,11 +88,11 @@
             <span>左右入替 (S)</span>
           </button>
           <button type="button" class="compare-tool-btn is-promote" id="comparePromoteBBtn" title="右(B)の写真を左(A:基準)の座に据え、右(B)には次の候補を呼び出します (Wキー)">
-            <span>👑</span>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M2 4l3 12h14l3-12-6 7-4-7-4 7-6-7z"/></svg>
             <span>右(B)を基準にして次へ (W)</span>
           </button>
           <button type="button" class="compare-tool-btn is-hist" id="compareHistToggleBtn" title="左右両方のRGBヒストグラムを同時表示して露出・階調を比較します (Hキー)">
-            <span>📊</span>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
             <span>波形比較 (H)</span>
           </button>
         </div>
@@ -109,7 +109,7 @@
         <div class="compare-pane" id="comparePaneA" data-side="A">
           <div class="compare-pane-topbar">
             <div class="compare-pane-meta">
-              <span class="compare-slot-badge slot-a">📌 A : 基準</span>
+              <span class="compare-slot-badge slot-a">A : 基準</span>
               <span class="compare-filename" id="compareFileNameA">-</span>
               <div class="compare-exif-pills" id="compareExifPillsA"></div>
             </div>
@@ -127,7 +127,7 @@
             <div class="compare-hist-overlay" id="compareHistHudA" style="display: none;">
               ${histHtmlA}
             </div>
-            <div class="compare-active-indicator">⌨️ 数字キー (1:優 / 2:良 / 3:棄) の評価対象</div>
+            <div class="compare-active-indicator">数字キー (1:優 / 2:良 / 3:棄) の評価対象</div>
           </div>
         </div>
 
@@ -135,7 +135,7 @@
         <div class="compare-pane is-active-target" id="comparePaneB" data-side="B">
           <div class="compare-pane-topbar">
             <div class="compare-pane-meta">
-              <span class="compare-slot-badge slot-b">🔍 B : 比較候補</span>
+              <span class="compare-slot-badge slot-b">B : 比較候補</span>
               <span class="compare-filename" id="compareFileNameB">-</span>
               <div class="compare-exif-pills" id="compareExifPillsB"></div>
             </div>
@@ -153,7 +153,7 @@
             <div class="compare-hist-overlay" id="compareHistHudB" style="display: none;">
               ${histHtmlB}
             </div>
-            <div class="compare-active-indicator">⌨️ 数字キー (1:優 / 2:良 / 3:棄) の評価対象</div>
+            <div class="compare-active-indicator">数字キー (1:優 / 2:良 / 3:棄) の評価対象</div>
           </div>
         </div>
       </div>
@@ -161,7 +161,7 @@
       <!-- 下部候補サムネイルストリップ -->
       <div class="compare-footer">
         <div class="compare-footer-guide">
-          <span>💡 サムネイルを<strong>クリックで 🔍右(B)</strong> に表示 ／ <strong>Shift+クリックで 📌左(A)</strong> に固定 ／ <strong>Alt+ドラッグ・ホイール</strong>で一時的に片方だけ操作</span>
+          <span>サムネイルを<strong>クリックで 右(B)</strong> に表示 ／ <strong>Shift+クリックで 左(A)</strong> に固定 ／ <strong>Alt+ドラッグ・ホイール</strong>で一時的に片方だけ操作</span>
           <span id="compareCounterText">1 &amp; 2 / 2 枚</span>
         </div>
         <div class="compare-strip" id="compareStrip"></div>
@@ -600,7 +600,7 @@
 
     const counterEl = document.getElementById('compareCounterText');
     if (counterEl) {
-      counterEl.textContent = `📌 A: #${cmpState.idxA + 1}  vs  🔍 B: #${cmpState.idxB + 1} （全 ${cmpState.pool.length} 枚）`;
+      counterEl.textContent = `A: #${cmpState.idxA + 1}  vs  B: #${cmpState.idxB + 1} （全 ${cmpState.pool.length} 枚）`;
     }
 
     renderCompareStrip();
@@ -635,7 +635,7 @@
           <span class="compare-strip-sub-label">${escapeHtml(subText)}</span>
         `;
 
-        item.title = `${p.file_name}\nクリック: 🔍右(B)に表示\nShift+クリック: 📌左(A)に固定`;
+        item.title = `${p.file_name}\nクリック: 右(B)に表示\nShift+クリック: 左(A)に固定`;
         item.addEventListener('click', (e) => {
           if (e.shiftKey) {
             if (idx === cmpState.idxB) {
@@ -672,11 +672,11 @@
         if (isA) {
           slotTag.style.display = 'inline-block';
           slotTag.className = 'compare-strip-slot-tag tag-a';
-          slotTag.textContent = '📌 A';
+          slotTag.textContent = 'A';
         } else if (isB) {
           slotTag.style.display = 'inline-block';
           slotTag.className = 'compare-strip-slot-tag tag-b';
-          slotTag.textContent = '🔍 B';
+          slotTag.textContent = 'B';
         } else {
           slotTag.style.display = 'none';
         }
@@ -778,7 +778,7 @@
     updateComparePanesUI();
     if (typeof showToast === 'function') {
       const p = cmpState.pool[cmpState.idxA];
-      showToast(`👑 「${p ? p.file_name : ''}」を左(A:基準)にセットしました`, 'info', 1800);
+      showToast(`「${p ? p.file_name : ''}」を左(A:基準)にセットしました`, 'info', 1800);
     }
   }
 
@@ -889,14 +889,14 @@
         idxA = Math.max(0, state.currentLightboxStackIndex);
         idxB = (idxA + 1 < pool.length) ? idxA + 1 : Math.max(0, idxA - 1);
         const stType = state.currentLightboxStackType;
-        if (stType === 'bracket') sourceLabel = `⚡ 露出ブラケット比較 (${pool.length}枚)`;
-        else if (stType === 'duplicate') sourceLabel = `📋 重複グループ比較 (${pool.length}枚)`;
-        else sourceLabel = `⚡ 連写グループ比較 (${pool.length}コマ)`;
+        if (stType === 'bracket') sourceLabel = `露出ブラケット比較 (${pool.length}枚)`;
+        else if (stType === 'duplicate') sourceLabel = `重複グループ比較 (${pool.length}枚)`;
+        else sourceLabel = `連写グループ比較 (${pool.length}コマ)`;
       } else {
         pool = state.photos;
         idxA = state.currentPhotoIndex;
         idxB = (idxA + 1 < pool.length) ? idxA + 1 : Math.max(0, idxA - 1);
-        sourceLabel = `🖼️ 前後写真の比較 (${pool.length}枚)`;
+        sourceLabel = `前後写真の比較 (${pool.length}枚)`;
       }
     }
     // 2. 一覧画面で2枚以上選択されている場合
@@ -904,7 +904,7 @@
       pool = state.photos.filter(p => state.selectedPhotoIds.has(p.id));
       idxA = 0;
       idxB = 1;
-      sourceLabel = `✓ 選択中の写真を比較 (${pool.length}枚)`;
+      sourceLabel = `選択中の写真を比較 (${pool.length}枚)`;
     }
     // 3. 一覧画面で1枚選択（または未選択）の場合
     else {
@@ -927,12 +927,12 @@
         pool = [...targetPhoto.stack_photos];
         idxA = Math.max(0, pool.findIndex(sp => sp.id === targetPhoto.id));
         idxB = (idxA + 1 < pool.length) ? idxA + 1 : Math.max(0, idxA - 1);
-        sourceLabel = `⚡ スタック内比較 (${pool.length}枚)`;
+        sourceLabel = `スタック内比較 (${pool.length}枚)`;
       } else {
         pool = state.photos;
         idxA = targetGridIdx;
         idxB = (idxA + 1 < pool.length) ? idxA + 1 : Math.max(0, idxA - 1);
-        sourceLabel = `🖼️ 写真一覧の比較 (${pool.length}枚)`;
+        sourceLabel = `写真一覧の比較 (${pool.length}枚)`;
       }
     }
 
@@ -1022,21 +1022,6 @@
       lbAdjustBtn.insertAdjacentElement('beforebegin', btn);
     }
 
-    // 2. 下部フローティング選択バーに「⚖️ 2枚比較 (V)」ボタンを追加
-    const floatingAnchorEl = document.getElementById('floatingMoreGroup') || document.getElementById('floatingClearSelectionBtn');
-    if (floatingAnchorEl && !document.getElementById('floatingCompareBtn')) {
-      const fBtn = document.createElement('button');
-      fBtn.type = 'button';
-      fBtn.className = 'btn btn-secondary btn-sm';
-      fBtn.id = 'floatingCompareBtn';
-      fBtn.title = '選択中の写真を左右2枚並べて同時ズーム比較します (Vキー)';
-      fBtn.innerHTML = `
-        <span class="btn-icon">⚖️</span>
-        <span class="btn-label">2枚比較 (V)</span>
-      `;
-      fBtn.addEventListener('click', () => openCompareModal());
-      floatingAnchorEl.insertAdjacentElement('beforebegin', fBtn);
-    }
 
     // 3. 右クリックメニューの「🔍 プレビューを開く」の下に「⚖️ 2枚並べて比較 (V)」を追加
     const ctxPreviewItem = document.getElementById('contextMenuPreviewItem');
@@ -1046,7 +1031,7 @@
       cItem.id = 'contextMenuCompareItem';
       cItem.innerHTML = `
         <div class="menu-item-content">
-          <span>⚖️ 2枚並べて比較 (V)</span>
+          <span>2枚並べて比較 (V)</span>
         </div>
       `;
       cItem.addEventListener('click', () => {

@@ -56,7 +56,7 @@
     return `
       <div class="hist-widget-header" id="${prefix}Header">
         <div class="hist-widget-title">
-          <span>📊 ヒストグラム</span>
+          <span>ヒストグラム</span>
           ${scopeBtnHtml}
         </div>
         <div class="hist-widget-controls">
@@ -712,14 +712,10 @@
     histState.inspectorOpen = (forceState !== undefined) ? Boolean(forceState) : !histState.inspectorOpen;
 
     const drawer = document.getElementById('inspectorHistogramDrawer');
-    const previewToggleBtn = document.getElementById('inspectorHistToggleBtn');
     const quickHistBtn = document.getElementById('inspectorQuickHistBtn');
 
     if (drawer) {
       drawer.style.display = histState.inspectorOpen ? 'block' : 'none';
-    }
-    if (previewToggleBtn) {
-      previewToggleBtn.classList.toggle('active', histState.inspectorOpen);
     }
     if (quickHistBtn) {
       quickHistBtn.classList.toggle('active', histState.inspectorOpen);
@@ -823,27 +819,9 @@
   // =========================================================================
 
   function initHistogramModule() {
-    // --- A. 右インスペクタへのヒストグラム注入 ---
-    const previewWrapper = document.getElementById('inspectorPreviewWrapper');
+    // --- A. 右インスペクタへのヒストグラムドロワー注入 ---
     const fixedPreview = document.getElementById('inspectorFixedPreview');
-    if (previewWrapper && fixedPreview && !document.getElementById('inspectorHistToggleBtn')) {
-      const toggleBtn = document.createElement('button');
-      toggleBtn.type = 'button';
-      toggleBtn.id = 'inspectorHistToggleBtn';
-      toggleBtn.className = 'inspector-hist-toggle-btn';
-      toggleBtn.title = 'RGBヒストグラムを表示/非表示 (Hキー)';
-      toggleBtn.innerHTML = `
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-          <path d="M3 20h18M6 16v-5M10 16V7M14 16v-8M18 16v-3"/>
-        </svg>
-        <span>波形</span>
-      `;
-      toggleBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        toggleInspectorHistogram();
-      });
-      previewWrapper.appendChild(toggleBtn);
-
+    if (fixedPreview && !document.getElementById('inspectorHistogramDrawer')) {
       const drawer = document.createElement('div');
       drawer.id = 'inspectorHistogramDrawer';
       drawer.className = 'inspector-histogram-drawer';
@@ -934,7 +912,7 @@
       adjBtn.id = 'adjustHistogramToggleBtn';
       adjBtn.className = 'adjust-hist-toggle-btn';
       adjBtn.title = 'トーン調整・切り抜き枠にリアルタイム連動するRGBヒストグラムを表示/非表示 (H)';
-      adjBtn.innerHTML = `<span>📊</span><span>ヒストグラム (H)</span>`;
+      adjBtn.innerHTML = `<span>ヒストグラム (H)</span>`;
       adjBtn.addEventListener('click', () => toggleAdjustHistogram());
 
       headerParent.insertBefore(actionsWrap, adjustCloseBtn);

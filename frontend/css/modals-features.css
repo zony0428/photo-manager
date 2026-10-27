@@ -1406,10 +1406,6 @@ kbd {
   animation: indeterminateBar 1.2s infinite ease-in-out;
 }
 
-/* スキャンフッター表示時の下部フローティング選択バー位置オフセット */
-body.has-scan-banner .selection-floating-bar {
-  bottom: 44px;
-}
 
 /* ==========================================================================
    重複写真の詳細メタデータ（複数パス・複数ボリューム）＆重複バッジ表示
@@ -2089,30 +2085,6 @@ body.theme-dark .card-thumb-wrapper .thumb-corner-cut {
   white-space: nowrap;
 }
 
-/* フローティング回転ポップオーバー */
-.floating-rotate-popover {
-  width: 210px;
-}
-
-.floating-rotate-popover .popover-rotate-list .btn {
-  width: 100%;
-  text-align: left;
-  transition: all var(--transition-fast, 0.12s ease);
-}
-
-.floating-rotate-popover .popover-rotate-list .btn:hover {
-  background: rgba(225, 77, 42, 0.12);
-  color: #e14d2a;
-  border-color: #e14d2a;
-  font-weight: 600;
-}
-
-[data-theme="sumi"] .floating-rotate-popover .popover-rotate-list .btn:hover {
-  background: rgba(225, 77, 42, 0.22);
-  color: #ff6b4a;
-  border-color: #ff6b4a;
-  font-weight: 600;
-}
 
 /* ============================================================
    スマート・テイクアウト（高機能エクスポート）モーダル
@@ -2990,37 +2962,6 @@ body.theme-dark .card-thumb-wrapper .thumb-corner-cut {
   border-color: var(--accent-primary, #e14d2a);
 }
 
-/* ==========================================================================
-   テイクアウトメニュー内 簡易フォルダコピー折りたたみ (.legacy-takeout-details)
-   ========================================================================== */
-.legacy-takeout-details {
-  margin-top: 6px;
-  padding-top: 6px;
-  border-top: 1px dashed var(--border-soft, rgba(148, 163, 184, 0.25));
-}
-
-.legacy-takeout-summary {
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: var(--text-dim, #7a766e);
-  cursor: pointer;
-  padding: 4px 6px;
-  border-radius: 4px;
-  user-select: none;
-  transition: color 0.15s ease, background-color 0.15s ease;
-}
-
-.legacy-takeout-summary:hover {
-  color: var(--accent-primary, #e14d2a);
-  background: rgba(225, 77, 42, 0.08);
-}
-
-.legacy-takeout-body {
-  margin-top: 6px;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
 
 /* ==========================================================================
    撮影日時 一括シフト補正モーダル (#dateShiftModal)

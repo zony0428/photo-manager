@@ -125,8 +125,8 @@ def vacuum_database() -> Dict[str, Any]:
     if hasattr(_local_db, "connection") and _local_db.connection:
         try:
             _local_db.connection.close()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"VACUUM前のスレッドローカル接続クローズで警告: {e}")
         _local_db.connection = None
 
     # VACUUM はアクティブなトランザクション外で実行する必要があるため、独立接続＆自動コミットで実行

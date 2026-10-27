@@ -5,10 +5,13 @@ Windows ウィンドウ制御・起動サイズ設定ユーティリティ
 
 import ctypes
 import json
+import logging
 import sys
 import time
 from ctypes import wintypes
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # プロジェクトルート配下の cache/window_settings.json にポータブル保存
 _BASE_DIR = Path(__file__).resolve().parent.parent
@@ -76,8 +79,8 @@ def get_primary_work_area() -> tuple:
             w = max(640, user32.GetSystemMetrics(0))
             h = max(480, user32.GetSystemMetrics(1) - 48)
             return (0, 0, w, h)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"作業領域取得エラー: {e}")
     return (0, 0, 1920, 1032)
 
 
@@ -149,8 +152,8 @@ def _find_photo_manager_hwnds(port: int = 8088) -> list:
                 user32.GetClassNameW(hwnd, cls_buf, 256)
                 if cls_buf.value == "Chrome_WidgetWin_1":
                     matched_hwnds.append(hwnd)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"ウィンドウ列挙スキップ (hwnd={hwnd}): {e}")
         return True
 
     cb_func = WNDENUMPROC(_enum_cb)
@@ -232,8 +235,8 @@ def _send_f11_key(hwnd: int) -> None:
     VK_F11 = 0x7A
     try:
         user32.SetForegroundWindow(hwnd)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"フォアグラウンド設定スキップ (hwnd={hwnd}): {e}")
     user32.PostMessageW(hwnd, WM_KEYDOWN, VK_F11, 0)
     time.sleep(0.04)
     user32.PostMessageW(hwnd, WM_KEYUP, VK_F11, 0)
@@ -283,8 +286,8 @@ def apply_window_mode(mode: str = None, port: int = 8088) -> int:
                     # 前回のサイズ・位置を記憶（システム標準）の場合は現在のサイズをそのまま維持
                     try:
                         user32.SetForegroundWindow(hwnd)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"フォアグラウンド設定スキップ (hwnd={hwnd}): {e}")
                     continue
 
                 if target_mode == "maximized":
@@ -294,8 +297,8 @@ def apply_window_mode(mode: str = None, port: int = 8088) -> int:
                         user32.ShowWindow(hwnd, SW_MAXIMIZE)
                     try:
                         user32.SetForegroundWindow(hwnd)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"フォアグラウンド設定スキップ (hwnd={hwnd}): {e}")
                     continue
 
                 # --- 通常ウィンドウ系（center / left_half / right_half） ---
@@ -344,14 +347,14 @@ def apply_window_mode(mode: str = None, port: int = 8088) -> int:
                 )
                 try:
                     user32.SetForegroundWindow(hwnd)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"フォアグラウンド設定スキップ (hwnd={hwnd}): {e}")
             except Exception as inner_e:
-                print(f"[WARN] ウィンドウ個別制御スキップ: {inner_e}")
+                logger.warning(f"ウィンドウ個別制御スキップ: {inner_e}")
 
         return len(matched_hwnds)
     except Exception as e:
-        print(f"[WARN] ウィンドウモード適用スキップ: {e}")
+        logger.warning(f"ウィンドウモード適用スキップ: {e}")
         return 0
 
 

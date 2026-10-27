@@ -523,6 +523,10 @@ def _find_best_xmp_for_photo(
     return candidates[0]["path"]
 
 
+# 解析対象とするXMPサイドカーの最大サイズ（通常は数KB〜数百KB）
+MAX_XMP_FILE_BYTES = 5 * 1024 * 1024
+
+
 def parse_xmp_for_photo(
     file_path: Union[str, Path],
     paired_raw_path: Optional[str] = None,
@@ -534,6 +538,16 @@ def parse_xmp_for_photo(
     result = _empty_xmp_info()
     xmp_path = _find_best_xmp_for_photo(file_path, paired_raw_path)
     if not xmp_path or not xmp_path.exists():
+        return result
+
+    # 異常に大きいXMP（破損・悪意あるファイル）によるメモリ枯渇・CPU占有を防ぐ
+    try:
+        xmp_size = xmp_path.stat().st_size
+    except OSError as e:
+        logger.debug(f"XMPサイズ取得失敗 ({xmp_path}): {e}")
+        return result
+    if xmp_size > MAX_XMP_FILE_BYTES:
+        logger.warning(f"XMPが上限サイズ({MAX_XMP_FILE_BYTES} bytes)を超えるため解析をスキップしました: {xmp_path.name} ({xmp_size} bytes)")
         return result
 
     raw_xml: Optional[str] = None

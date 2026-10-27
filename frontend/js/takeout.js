@@ -361,7 +361,7 @@
     if (progressFill) progressFill.style.width = '0%';
     if (startBtn) {
       startBtn.disabled = false;
-      startBtn.innerHTML = '<span>📤</span> テイクアウト開始';
+      startBtn.textContent = 'テイクアウト開始';
     }
     isExporting = false;
 
@@ -431,7 +431,7 @@
     isExporting = true;
     if (startBtn) {
       startBtn.disabled = true;
-      startBtn.innerHTML = '<span class="takeout-progress-spinner">⏳</span> 処理中...';
+      startBtn.textContent = '処理中...';
     }
     if (progressContainer) {
       progressContainer.style.display = 'flex';
@@ -487,7 +487,7 @@
       _showToast(`エラー: ${e.message}`, 'error', 6000);
       if (startBtn) {
         startBtn.disabled = false;
-        startBtn.innerHTML = '<span>📤</span> テイクアウト開始';
+        startBtn.textContent = 'テイクアウト開始';
       }
     } finally {
       isExporting = false;
@@ -555,32 +555,13 @@
       startBtn.addEventListener('click', startExport);
     }
 
-    // 静的トリガーボタン（フローティングポップオーバー内 & 右クリックサブメニュー内）
-    const floatingTrigger = document.getElementById('floatingTriggerSmartTakeoutBtn');
-    if (floatingTrigger) {
-      floatingTrigger.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (typeof closeAllFloatingPopovers === 'function') closeAllFloatingPopovers();
-        openSmartTakeoutModal();
-      });
-    }
-
+    // 静的トリガーボタン（右クリックサブメニュー内）
     const contextTrigger = document.getElementById('contextTriggerSmartTakeoutBtn');
     if (contextTrigger) {
       contextTrigger.addEventListener('click', (e) => {
         e.stopPropagation();
         if (typeof closeContextMenu === 'function') closeContextMenu();
         openSmartTakeoutModal();
-      });
-    }
-
-    // ベタ焼きHTML（コンタクトシート）出力トリガーボタン
-    const floatingContactSheetBtn = document.getElementById('floatingTriggerContactSheetBtn');
-    if (floatingContactSheetBtn) {
-      floatingContactSheetBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (typeof closeAllFloatingPopovers === 'function') closeAllFloatingPopovers();
-        exportContactSheetHtml();
       });
     }
 
@@ -626,11 +607,10 @@
       return;
     }
 
-    if (typeof closeAllFloatingPopovers === 'function') closeAllFloatingPopovers();
     if (typeof closeContextMenu === 'function') closeContextMenu();
 
     if (typeof showToast === 'function') {
-      showToast('🎞️ ベタ焼きHTML（コンタクトシート）を生成中...', 'info', 2000);
+      showToast('ベタ焼きHTML（コンタクトシート）を生成中...', 'info', 2000);
     }
 
     try {
@@ -652,12 +632,12 @@
       }
 
       if (typeof showToast === 'function') {
-        showToast(`🎞️ ベタ焼きHTML（${res.exported_count}枚）を take_out に出力しました`, 'success', 4000);
+        showToast(`ベタ焼きHTML（${res.exported_count}枚）を take_out に出力しました`, 'success', 4000);
       }
     } catch (err) {
       console.error('コンタクトシートHTML出力エラー:', err);
       if (typeof showToast === 'function') {
-        showToast(`❌ コンタクトシート出力に失敗しました: ${err.message}`, 'error', 4000);
+        showToast(`コンタクトシート出力に失敗しました: ${err.message}`, 'error', 4000);
       }
     }
   }

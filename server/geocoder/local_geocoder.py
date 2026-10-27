@@ -4,11 +4,14 @@
 と NumPy による高速近傍探索で、座標から「国・都道府県/州・市区町村」を特定する。
 """
 
+import logging
 import os
 import json
 import math
 from typing import Dict, Optional, Tuple, Any
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 # データファイル格納パス
 _CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -111,8 +114,8 @@ class LocalGeocoder:
                         "state": row[1] if isinstance(row, tuple) else row["state"],
                         "city": row[2] if isinstance(row, tuple) else row["city"],
                     }
-            except Exception:
-                pass  # キャッシュテーブルが存在しない等の場合はスルーして計算
+            except Exception as e:
+                logger.debug(f"ジオキャッシュ読み取りスキップ ({lat_round}, {lon_round}): {e}")
 
         # 2. メモリロード
         self._ensure_loaded()
@@ -188,8 +191,8 @@ class LocalGeocoder:
                     (lat_round, lon_round, country, state, city)
                 )
                 db_conn.commit()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"ジオキャッシュ書き込み失敗 ({lat_round}, {lon_round}): {e}")
 
         return result
 

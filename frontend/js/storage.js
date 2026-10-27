@@ -204,7 +204,7 @@ async function renderStorageFolderListInContainers(containers, actionMode) {
       const item = document.createElement('div');
       item.className = 'submenu-folder-item';
       item.innerHTML = `
-        <span class="submenu-folder-name" title="storage (ルート)">📦 storage (ルート)</span>
+        <span class="submenu-folder-name" title="storage (ルート)">storage (ルート)</span>
         <span class="submenu-folder-count">${actionMode === 'move' ? '移動' : '保存'}</span>
       `;
       item.addEventListener('click', (e) => {
@@ -226,7 +226,7 @@ async function renderStorageFolderListInContainers(containers, actionMode) {
       item.style.paddingLeft = `${8 + depth * 14}px`;
 
       const isRoot = !!folder.is_root || depth === 0 && (!folder.rel_path || folder.rel_path === '.');
-      const icon = isRoot ? '📦' : '📁';
+      const icon = '';
       const displayName = isRoot ? 'storage (ルート)' : (folder.name || folder.rel_path || 'storage');
       const targetDest = folder.path || folder.rel_path || '';
       const countText = folder.count !== undefined ? `${Number(folder.count)}枚` : '';
@@ -256,43 +256,12 @@ async function renderStorageFolderListInContainers(containers, actionMode) {
  * 選択中の写真構成に応じて、下部フローティングバーの storage 関連ボタン表示を更新する
  */
 function updateStorageSelectionUI() {
-  const { storagePhotoIds, externalPhotoIds } = getSelectedPhotosStorageBreakdown();
-  const isEn = typeof currentLang !== 'undefined' && currentLang === 'en';
-
-  const moveGroup = document.getElementById('floatingStorageMoveGroup');
-  const renameBtn = document.getElementById('floatingStorageRenameBtn');
-  const renameLabel = document.getElementById('floatingStorageRenameLabel');
-  const importGroup = document.getElementById('floatingStorageImportGroup');
-
-  if (moveGroup) {
-    moveGroup.style.display = storagePhotoIds.length > 0 ? '' : 'none';
-  }
-
-  if (renameBtn) {
-    if (storagePhotoIds.length > 0) {
-      renameBtn.style.display = '';
-      if (storagePhotoIds.length === 1) {
-        if (renameLabel) renameLabel.textContent = isEn ? 'Rename' : 'ファイル名変更';
-        renameBtn.title = isEn ? 'Rename file in storage (F2)' : 'storage内のファイル名を変更 (F2)';
-      } else {
-        if (renameLabel) renameLabel.textContent = isEn ? 'Batch Rename' : '一括リネーム';
-        renameBtn.title = isEn ? `Batch sequential rename ${storagePhotoIds.length} photos (F2)` : `${storagePhotoIds.length}枚の写真を一括連番リネーム... (F2)`;
-      }
-    } else {
-      renameBtn.style.display = 'none';
-    }
-  }
-
-  if (importGroup) {
-    importGroup.style.display = externalPhotoIds.length > 0 ? '' : 'none';
-  }
+  // 廃止済み下部フローティングバー用関数の互換スタブ
 }
 window.updateStorageSelectionUI = updateStorageSelectionUI;
 
 /**
- * 右クリックメニューオープン時に storage 関連メニュー項目の表示・文言・サブメニュー一覧を更新する
- */
-function updateStorageContextMenu() {
+ * function updateStorageContextMenu() {
   const { storagePhotoIds, externalPhotoIds } = getSelectedPhotosStorageBreakdown();
   const isEn = typeof currentLang !== 'undefined' && currentLang === 'en';
 
@@ -318,9 +287,9 @@ function updateStorageContextMenu() {
       renameItem.style.display = '';
       if (renameLabel) {
         if (storagePhotoIds.length === 1) {
-          renameLabel.textContent = isEn ? '✏️ Rename File (F2)' : '✏️ ファイル名を変更 (F2)';
+          renameLabel.textContent = isEn ? 'Rename File (F2)' : 'ファイル名を変更 (F2)';
         } else {
-          renameLabel.textContent = isEn ? '✏️ Batch Sequential Rename... (F2)' : '✏️ 一括連番リネーム... (F2)';
+          renameLabel.textContent = isEn ? 'Batch Sequential Rename... (F2)' : '一括連番リネーム... (F2)';
         }
       }
     } else {
@@ -360,7 +329,7 @@ async function importPhotosToStorage(photoIds, destination, displayName = '') {
   if (typeof closeAllFloatingPopovers === 'function') closeAllFloatingPopovers();
 
   if (typeof showToast === 'function') {
-    showToast(`📥 ${ids.length}枚の写真を storage へインポート中...`, 'info', 2000);
+    showToast(`${ids.length}枚の写真を storage へインポート中...`, 'info', 2000);
   }
 
   try {
@@ -383,7 +352,7 @@ async function importPhotosToStorage(photoIds, destination, displayName = '') {
     const skipMsg = skippedCount > 0 ? `（スキップ: ${skippedCount}枚）` : '';
 
     if (typeof showToast === 'function') {
-      showToast(`📥 ${importedCount}枚の写真を「${destLabel}」へインポートしました${skipMsg}`, 'success', 4000);
+      showToast(`${importedCount}枚の写真を「${destLabel}」へインポートしました${skipMsg}`, 'success', 4000);
     }
 
     if (typeof clearSelection === 'function' && state.selectedPhotoIds && state.selectedPhotoIds.size > 0) {
@@ -407,7 +376,7 @@ async function importPhotosToStorage(photoIds, destination, displayName = '') {
   } catch (err) {
     console.error('storage インポートエラー:', err);
     if (typeof showToast === 'function') {
-      showToast(`❌ ${err.message || 'storage へのインポートに失敗しました'}`, 'error', 4000);
+      showToast(`${err.message || 'storage へのインポートに失敗しました'}`, 'error', 4000);
     }
   }
 }
@@ -455,7 +424,7 @@ async function movePhotosInStorage(photoIds, destination, displayName = '') {
     const skipMsg = skippedCount > 0 ? `（スキップ: ${skippedCount}枚）` : '';
 
     if (typeof showToast === 'function') {
-      showToast(`📦 ${movedCount}枚の写真を「${destLabel}」へ移動しました${skipMsg}`, 'success', 3500);
+      showToast(`${movedCount}枚の写真を「${destLabel}」へ移動しました${skipMsg}`, 'success', 3500);
     }
 
     if (typeof clearSelection === 'function' && state.selectedPhotoIds && state.selectedPhotoIds.size > 0) {
@@ -476,7 +445,7 @@ async function movePhotosInStorage(photoIds, destination, displayName = '') {
   } catch (err) {
     console.error('storage 移動エラー:', err);
     if (typeof showToast === 'function') {
-      showToast(`❌ ${err.message || 'storage 内の移動に失敗しました'}`, 'error', 4000);
+      showToast(`${err.message || 'storage 内の移動に失敗しました'}`, 'error', 4000);
     }
   }
 }
@@ -555,12 +524,12 @@ async function openStorageFolderInExplorer(targetPath = '') {
       throw new Error(err.detail || 'フォルダを開けませんでした');
     }
     if (typeof showToast === 'function') {
-      showToast('📂 エクスプローラーで storage フォルダを開きました', 'info', 2000);
+      showToast('エクスプローラーで storage フォルダを開きました', 'info', 2000);
     }
   } catch (err) {
     console.error('storage フォルダオープンエラー:', err);
     if (typeof showToast === 'function') {
-      showToast(`❌ ${err.message || 'フォルダを開けませんでした'}`, 'error');
+      showToast(`${err.message || 'フォルダを開けませんでした'}`, 'error');
     }
   }
 }
@@ -604,14 +573,14 @@ function openStorageFolderModal(mode, targetPath, currentName = '') {
   }
 
   if (mode === 'create') {
-    if (titleEl) titleEl.textContent = '📁 新規サブフォルダを作成';
+    if (titleEl) titleEl.textContent = '新規サブフォルダを作成';
     if (subtitleEl) subtitleEl.textContent = `親フォルダ: ${currentName || 'storage (ルート)'}`;
     if (labelEl) labelEl.textContent = '新しいサブフォルダ名';
     inputEl.value = '';
     inputEl.placeholder = '例: 2026_北海道旅行, セレクト済み...';
     if (submitBtn) submitBtn.textContent = '作成する';
   } else {
-    if (titleEl) titleEl.textContent = '✏️ フォルダ名を変更';
+    if (titleEl) titleEl.textContent = 'フォルダ名を変更';
     if (subtitleEl) subtitleEl.textContent = `現在のフォルダ名: ${currentName}`;
     if (labelEl) labelEl.textContent = '新しいフォルダ名';
     inputEl.value = currentName || '';
@@ -659,7 +628,7 @@ async function submitCreateStorageSubfolder(parentPath, folderName) {
 
     closeStorageFolderModal();
     if (typeof showToast === 'function') {
-      showToast(`📁 サブフォルダ「${data.folder?.name || trimmed}」を作成しました`, 'success', 3000);
+      showToast(`サブフォルダ「${data.folder?.name || trimmed}」を作成しました`, 'success', 3000);
     }
 
     await fetchStorageFolders();
@@ -686,7 +655,7 @@ async function submitCreateStorageSubfolder(parentPath, folderName) {
   } catch (err) {
     console.error('サブフォルダ作成エラー:', err);
     if (typeof showToast === 'function') {
-      showToast(`❌ ${err.message || 'サブフォルダの作成に失敗しました'}`, 'error', 4000);
+      showToast(`${err.message || 'サブフォルダの作成に失敗しました'}`, 'error', 4000);
     }
     return null;
   }
@@ -719,7 +688,7 @@ async function submitRenameStorageFolder(folderPath, newName) {
 
     closeStorageFolderModal();
     if (typeof showToast === 'function') {
-      showToast(`✏️ フォルダ名を「${data.new_name || trimmed}」に変更しました`, 'success', 3500);
+      showToast(`フォルダ名を「${data.new_name || trimmed}」に変更しました`, 'success', 3500);
     }
 
     // 現在表示中のフォルダがリネーム対象だった場合はフィルタパスを更新
@@ -728,7 +697,7 @@ async function submitRenameStorageFolder(folderPath, newName) {
       const oldNorm = String(data.old_path).replace(/\//g, '\\').replace(/\\+$/, '');
       if (curNorm.toLowerCase() === oldNorm.toLowerCase()) {
         state.currentFilter.value = data.new_path;
-        state.currentFilter.label = `📦 ${data.new_name || trimmed}`;
+        state.currentFilter.label = `${data.new_name || trimmed}`;
       }
     }
 
@@ -764,7 +733,7 @@ async function submitRenameStorageFolder(folderPath, newName) {
   } catch (err) {
     console.error('フォルダリネームエラー:', err);
     if (typeof showToast === 'function') {
-      showToast(`❌ ${err.message || 'フォルダ名の変更に失敗しました'}`, 'error', 4000);
+      showToast(`${err.message || 'フォルダ名の変更に失敗しました'}`, 'error', 4000);
     }
   }
 }
@@ -777,7 +746,7 @@ async function exportStorageFolderToExternal(folderPath, folderName = '') {
   if (typeof closeFolderContextMenu === 'function') closeFolderContextMenu();
 
   if (typeof showToast === 'function') {
-    showToast(`📤 「${folderName || 'storage'}」の書き出し先フォルダを選択してください...`, 'info', 3000);
+    showToast(`「${folderName || 'storage'}」の書き出し先フォルダを選択してください...`, 'info', 3000);
   }
 
   try {
@@ -802,12 +771,12 @@ async function exportStorageFolderToExternal(folderPath, folderName = '') {
     }
 
     if (typeof showToast === 'function') {
-      showToast(`📤 ${data.exported_files || 0}個のファイルを「${data.exported_path || '外部フォルダ'}」へエクスポートしました`, 'success', 4500);
+      showToast(`${data.exported_files || 0}個のファイルを「${data.exported_path || '外部フォルダ'}」へエクスポートしました`, 'success', 4500);
     }
   } catch (err) {
     console.error('storage フォルダエクスポートエラー:', err);
     if (typeof showToast === 'function') {
-      showToast(`❌ ${err.message || 'フォルダのエクスポートに失敗しました'}`, 'error', 4000);
+      showToast(`${err.message || 'フォルダのエクスポートに失敗しました'}`, 'error', 4000);
     }
   }
 }
@@ -835,7 +804,7 @@ async function deleteEmptyStorageFolder(folderPath, folderName = '') {
     }
 
     if (typeof showToast === 'function') {
-      showToast(`🗑️ 空フォルダ「${folderName || ''}」を削除しました`, 'success', 3000);
+      showToast(`空フォルダ「${folderName || ''}」を削除しました`, 'success', 3000);
     }
 
     // 削除したフォルダを表示中だった場合は全写真表示へ戻す
@@ -860,7 +829,7 @@ async function deleteEmptyStorageFolder(folderPath, folderName = '') {
   } catch (err) {
     console.error('storage フォルダ削除エラー:', err);
     if (typeof showToast === 'function') {
-      showToast(`❌ ${err.message || 'フォルダの削除に失敗しました'}`, 'error', 4000);
+      showToast(`${err.message || 'フォルダの削除に失敗しました'}`, 'error', 4000);
     }
   }
 }
@@ -890,7 +859,7 @@ function openStorageRenameModal(explicitPhotoIds = null) {
 
   if (targetIds.length === 0) {
     if (typeof showToast === 'function') {
-      showToast('📦 storage（アプリ内ストレージ）内の写真のみファイル名を変更できます', 'info', 3000);
+      showToast('storage（アプリ内ストレージ）内の写真のみファイル名を変更できます', 'info', 3000);
     }
     return;
   }
@@ -920,7 +889,7 @@ function openStorageRenameModal(explicitPhotoIds = null) {
       return;
     }
 
-    if (titleEl) titleEl.textContent = '✏️ ファイル名を変更';
+    if (titleEl) titleEl.textContent = 'ファイル名を変更';
     if (subtitleEl) subtitleEl.textContent = 'storage 内の写真ファイル名を変更します（Enter で確定）';
     if (singleSection) singleSection.style.display = 'block';
     if (batchSection) batchSection.style.display = 'none';
@@ -956,7 +925,7 @@ function openStorageRenameModal(explicitPhotoIds = null) {
       return;
     }
 
-    if (titleEl) titleEl.textContent = `✏️ 一括連番リネーム（${targetIds.length}枚）`;
+    if (titleEl) titleEl.textContent = `一括連番リネーム（${targetIds.length}枚）`;
     if (subtitleEl) subtitleEl.textContent = '選択した storage 内の写真をルールに従って一括で連番リネームします';
     if (singleSection) singleSection.style.display = 'none';
     if (batchSection) batchSection.style.display = 'block';
@@ -1097,7 +1066,7 @@ async function submitSinglePhotoRename(photoId, newFullName) {
     }
 
     if (typeof showToast === 'function') {
-      showToast(`✏️ ファイル名を「${data.new_name || trimmed}」に変更しました`, 'success', 3500);
+      showToast(`ファイル名を「${data.new_name || trimmed}」に変更しました`, 'success', 3500);
     }
 
     if (state.currentPhotoIndex < 0 && state.selectedPhotoIds && state.selectedPhotoIds.size > 0 && typeof clearSelection === 'function') {
@@ -1107,7 +1076,7 @@ async function submitSinglePhotoRename(photoId, newFullName) {
   } catch (err) {
     console.error('単一写真リネームエラー:', err);
     if (typeof showToast === 'function') {
-      showToast(`❌ ${err.message || 'ファイル名の変更に失敗しました'}`, 'error', 4000);
+      showToast(`${err.message || 'ファイル名の変更に失敗しました'}`, 'error', 4000);
     }
   }
 }
@@ -1142,7 +1111,7 @@ async function submitBatchPhotoRename(photoIds, namingRule, customPrefix, startN
     const skipMsg = skippedCount > 0 ? `（スキップ: ${skippedCount}枚）` : '';
 
     if (typeof showToast === 'function') {
-      showToast(`✏️ ${renamedCount}枚の写真を一括リネームしました${skipMsg}`, 'success', 4000);
+      showToast(`${renamedCount}枚の写真を一括リネームしました${skipMsg}`, 'success', 4000);
     }
 
     if (typeof clearSelection === 'function' && state.selectedPhotoIds && state.selectedPhotoIds.size > 0) {
@@ -1158,7 +1127,7 @@ async function submitBatchPhotoRename(photoIds, namingRule, customPrefix, startN
   } catch (err) {
     console.error('一括リネームエラー:', err);
     if (typeof showToast === 'function') {
-      showToast(`❌ ${err.message || '一括連番リネームに失敗しました'}`, 'error', 4000);
+      showToast(`${err.message || '一括連番リネームに失敗しました'}`, 'error', 4000);
     }
   }
 }
@@ -1307,118 +1276,6 @@ function initStorageFeatureEvents() {
   const ctxStorageRenameItem = document.getElementById('contextMenuStorageRenameItem');
   if (ctxStorageRenameItem) {
     ctxStorageRenameItem.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const { storagePhotoIds } = getSelectedPhotosStorageBreakdown();
-      openStorageRenameModal(storagePhotoIds);
-    });
-  }
-
-  // --- 3. 下部フローティングバーの storage インポート / 移動 / リネーム ---
-  const floatingStorageImportBtn = document.getElementById('floatingStorageImportBtn');
-  const floatingStorageImportPopover = document.getElementById('floatingStorageImportPopover');
-  const closeFloatingStorageImportBtn = document.getElementById('closeFloatingStorageImportPopoverBtn');
-  if (floatingStorageImportBtn && floatingStorageImportPopover) {
-    floatingStorageImportBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const isVisible = floatingStorageImportPopover.style.display === 'block';
-      if (typeof closeAllFloatingPopovers === 'function') closeAllFloatingPopovers();
-      if (!isVisible) {
-        floatingStorageImportPopover.style.display = 'block';
-        floatingStorageImportBtn.classList.add('active');
-        const listEl = document.getElementById('floatingStorageImportFolderList');
-        if (listEl) renderStorageFolderListInContainers([listEl], 'import');
-      }
-    });
-    floatingStorageImportPopover.addEventListener('click', (e) => e.stopPropagation());
-  }
-  if (closeFloatingStorageImportBtn) {
-    closeFloatingStorageImportBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (typeof closeAllFloatingPopovers === 'function') closeAllFloatingPopovers();
-    });
-  }
-
-  const floatingStorageImportInput = document.getElementById('floatingStorageImportFolderInput');
-  const floatingConfirmStorageImportBtn = document.getElementById('floatingConfirmStorageImportFolderBtn');
-  if (floatingConfirmStorageImportBtn && floatingStorageImportInput) {
-    const handleFloatingCreateAndImport = async () => {
-      const folderName = floatingStorageImportInput.value.trim();
-      if (!folderName) {
-        if (typeof showToast === 'function') showToast('新規フォルダ名を入力してください', 'info');
-        return;
-      }
-      floatingStorageImportInput.value = '';
-      await executeStorageImportFromSelection(folderName, folderName);
-    };
-    floatingConfirmStorageImportBtn.addEventListener('click', handleFloatingCreateAndImport);
-    floatingStorageImportInput.addEventListener('keydown', (e) => {
-      e.stopPropagation();
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        handleFloatingCreateAndImport();
-      }
-    });
-  }
-
-  const floatingOpenStorageImportBtn = document.getElementById('floatingOpenStorageImportFolderBtn');
-  if (floatingOpenStorageImportBtn) {
-    floatingOpenStorageImportBtn.addEventListener('click', () => openStorageFolderInExplorer());
-  }
-
-  const floatingStorageMoveBtn = document.getElementById('floatingStorageMoveBtn');
-  const floatingStorageMovePopover = document.getElementById('floatingStorageMovePopover');
-  const closeFloatingStorageMoveBtn = document.getElementById('closeFloatingStorageMovePopoverBtn');
-  if (floatingStorageMoveBtn && floatingStorageMovePopover) {
-    floatingStorageMoveBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const isVisible = floatingStorageMovePopover.style.display === 'block';
-      if (typeof closeAllFloatingPopovers === 'function') closeAllFloatingPopovers();
-      if (!isVisible) {
-        floatingStorageMovePopover.style.display = 'block';
-        floatingStorageMoveBtn.classList.add('active');
-        const listEl = document.getElementById('floatingStorageMoveFolderList');
-        if (listEl) renderStorageFolderListInContainers([listEl], 'move');
-      }
-    });
-    floatingStorageMovePopover.addEventListener('click', (e) => e.stopPropagation());
-  }
-  if (closeFloatingStorageMoveBtn) {
-    closeFloatingStorageMoveBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (typeof closeAllFloatingPopovers === 'function') closeAllFloatingPopovers();
-    });
-  }
-
-  const floatingStorageMoveInput = document.getElementById('floatingStorageMoveFolderInput');
-  const floatingConfirmStorageMoveBtn = document.getElementById('floatingConfirmStorageMoveFolderBtn');
-  if (floatingConfirmStorageMoveBtn && floatingStorageMoveInput) {
-    const handleFloatingCreateAndMove = async () => {
-      const folderName = floatingStorageMoveInput.value.trim();
-      if (!folderName) {
-        if (typeof showToast === 'function') showToast('移動先の新規フォルダ名を入力してください', 'info');
-        return;
-      }
-      floatingStorageMoveInput.value = '';
-      await executeStorageMoveFromSelection(folderName, folderName);
-    };
-    floatingConfirmStorageMoveBtn.addEventListener('click', handleFloatingCreateAndMove);
-    floatingStorageMoveInput.addEventListener('keydown', (e) => {
-      e.stopPropagation();
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        handleFloatingCreateAndMove();
-      }
-    });
-  }
-
-  const floatingOpenStorageMoveBtn = document.getElementById('floatingOpenStorageMoveFolderBtn');
-  if (floatingOpenStorageMoveBtn) {
-    floatingOpenStorageMoveBtn.addEventListener('click', () => openStorageFolderInExplorer());
-  }
-
-  const floatingStorageRenameBtn = document.getElementById('floatingStorageRenameBtn');
-  if (floatingStorageRenameBtn) {
-    floatingStorageRenameBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       const { storagePhotoIds } = getSelectedPhotosStorageBreakdown();
       openStorageRenameModal(storagePhotoIds);

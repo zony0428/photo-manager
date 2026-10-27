@@ -10,5 +10,6 @@
 
 ## exe化・配布時の注意
 
-- PyInstaller を使う場合は **`--onedir` のみ** 許可（`--onefile` は LibRaw の LGPL 要件に抵触する可能性あり）。
-- 配布物には必ず `LICENSES/` フォルダを含めること。
+- 本プロジェクトは同梱の Embeddable Python および C# 製専用ランチャー（`PhotoManager.exe`）によって自走しており、通常 PyInstaller は使用しない。
+- 将来的に PyInstaller 等で Python パッケージを exe 化・単体実行可能にする場合でも、**`--onedir` のみ** 許可する（`--onefile` は LibRaw 等の LGPL 要件である「動的リンクライブラリ差し替え可能性」に抵触するため禁止）。
+- 配布物（`dist/`）には必ず `LICENSES/` フォルダを含めること。

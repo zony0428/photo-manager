@@ -10,20 +10,18 @@
   <link rel="apple-touch-icon" href="/icons/icon-192.png?v=2">
   <link rel="manifest" href="/manifest.json?v=2">
   <meta name="theme-color" content="#191816">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=3.00">
-  <link rel="stylesheet" href="/css/grid-lightbox.css?v=3.00">
-  <link rel="stylesheet" href="/css/selection-menu.css?v=3.00">
-  <link rel="stylesheet" href="/css/inspector.css?v=3.00">
-  <link rel="stylesheet" href="/css/modals-features.css?v=3.00">
-  <link rel="stylesheet" href="/css/lab-map.css?v=3.00">
-  <link rel="stylesheet" href="/css/histogram.css?v=3.00">
-  <link rel="stylesheet" href="/css/compare.css?v=3.00">
-  <link rel="stylesheet" href="/css/ui-unify.css?v=3.00">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <link rel="stylesheet" href="/vendor/fonts/fonts.css">
+  <link rel="stylesheet" href="/css/style.css?v=3.0.1">
+  <link rel="stylesheet" href="/css/grid-lightbox.css?v=3.0.1">
+  <link rel="stylesheet" href="/css/selection-menu.css?v=3.0.1">
+  <link rel="stylesheet" href="/css/inspector.css?v=3.0.1">
+  <link rel="stylesheet" href="/css/modals-features.css?v=3.0.1">
+  <link rel="stylesheet" href="/css/lab-map.css?v=3.0.1">
+  <link rel="stylesheet" href="/css/histogram.css?v=3.0.1">
+  <link rel="stylesheet" href="/css/compare.css?v=3.0.1">
+  <link rel="stylesheet" href="/css/ui-unify.css?v=3.0.1">
+  <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
+  <script src="/vendor/leaflet/leaflet.js"></script>
   <script>
     // タスクバー・ブラウザのファビコンキャッシュを強制リフレッシュ ＆ 初回起動時のウィンドウサイズ初期調整
     (function() {
@@ -66,7 +64,7 @@
         <div class="logo">
           <span class="hinomaru-disc" title="Hinomaru Ink"></span>
           <span class="logo-text">PHOTO<span>MANAGER</span></span>
-          <span class="app-version" id="appVersion" title="v2.44">v3.00</span>
+          <span class="app-version" id="appVersion" title="v3.0.1 (最終更新: 2026-10-27 15:40)">v3.0.1</span>
         </div>
 
         <!-- テーマ切替（和紙 ⇄ 夜墨） -->
@@ -279,7 +277,7 @@
 
         <!-- アコーディオン本体コンテナ -->
         <div class="sidebar-accordion" id="sidebarAccordion">
-          <!-- セクション 1: ⚡ クイックアクセス -->
+          <!-- セクション 1: クイックアクセス -->
           <div class="accordion-item is-open" data-section="quick" id="accordionItem-quick">
             <div class="accordion-header" data-section="quick" title="クリックで切替 / Shift+クリックで複数同時展開">
               <span class="accordion-arrow">▶</span>
@@ -348,7 +346,7 @@
             </div>
           </div>
 
-          <!-- セクション 2: 📁 フォルダ -->
+          <!-- セクション 2: フォルダ -->
           <div class="accordion-item" data-section="folder" id="accordionItem-folder">
             <div class="accordion-header" data-section="folder" title="クリックで切替 / Shift+クリックで複数同時展開">
               <span class="accordion-arrow">▶</span>
@@ -407,7 +405,7 @@
             </div>
           </div>
 
-          <!-- セクション 3: 🏷️ タグ (アルバム) -->
+          <!-- セクション 3: タグ (アルバム) -->
           <div class="accordion-item" data-section="tags" id="accordionItem-tags">
             <div class="accordion-header" data-section="tags" title="クリックで切替 / Shift+クリックで複数同時展開">
               <span class="accordion-arrow">▶</span>
@@ -450,7 +448,7 @@
               </div>
 
               <div class="tag-filter-hint">
-                <span>クリックで <strong>[+]含む</strong> ➜ <strong>[-]除外</strong> ➜ <strong>解除</strong></span>
+                <span>クリックで <strong>[+]含む</strong> → <strong>[-]除外</strong> → <strong>解除</strong></span>
                 <div class="tag-filter-hint-actions">
                   <button class="clear-tags-btn" id="clearTagFiltersBtn" style="display: none;">クリア</button>
                   <button type="button" class="tag-sort-count-toggle-btn" id="tagSortByCountToggleBtn" title="ON: 写真枚数が多い順 ／ OFF: 設定された名前順">枚数順</button>
@@ -462,7 +460,7 @@
             </div>
           </div>
 
-          <!-- セクション 4: 🗺️ ジオタグ -->
+          <!-- セクション 4: ジオタグ -->
           <div class="accordion-item" data-section="location" id="accordionItem-location">
             <div class="accordion-header" data-section="location" title="クリックで切替 / Shift+クリックで複数同時展開">
               <span class="accordion-arrow">▶</span>
@@ -473,7 +471,7 @@
               <div class="location-toolbar" id="locationToolbar">
                 <div class="location-toolbar-group">
                   <button class="btn-mini-text" id="reloadLocationTreeBtn" title="ジオタグツリーを再読み込み"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
-                  <button type="button" class="btn-mini-text" id="locationOpenMapBtn" onclick="if(window.openLocationMapModal) window.openLocationMapModal('whitemap');" title="47都道府県 撮影制覇白地図・撮影密度ヒートマップ・撮影さんぽ軌跡を開く">制覇マップ</button>
+                  <button type="button" class="btn-mini-text" id="locationOpenMapBtn" title="47都道府県 撮影制覇白地図・撮影密度ヒートマップ・撮影さんぽ軌跡を開く">制覇マップ</button>
                 </div>
                 <div class="location-toolbar-group">
                   <button class="btn-mini-text" id="expandAllLocationsBtn" title="すべての地域を展開">展開</button>
@@ -498,7 +496,7 @@
             </div>
           </div>
 
-          <!-- セクション 5: 📅 タイムライン -->
+          <!-- セクション 5: タイムライン -->
           <div class="accordion-item" data-section="timeline" id="accordionItem-timeline">
             <div class="accordion-header" data-section="timeline" title="クリックで切替 / Shift+クリックで複数同時展開">
               <span class="accordion-arrow">▶</span>
@@ -513,7 +511,7 @@
             </div>
           </div>
 
-          <!-- セクション 6: 📷 カメラ・レンズ -->
+          <!-- セクション 6: カメラ・レンズ -->
           <div class="accordion-item" data-section="camera" id="accordionItem-camera">
             <div class="accordion-header" data-section="camera" title="クリックで切替 / Shift+クリックで複数同時展開">
               <span class="accordion-arrow">▶</span>
@@ -532,7 +530,7 @@
                 </div>
               </div>
               <div class="tag-filter-mode-bar" id="cameraFilterModeBar">
-                <span class="tag-mode-hint">クリックで <strong>[+]含む</strong> ➜ <strong>[-]除外</strong> ➜ <strong>解除</strong></span>
+                <span class="tag-mode-hint">クリックで <strong>[+]含む</strong> → <strong>[-]除外</strong> → <strong>解除</strong></span>
               </div>
               <ul class="nav-list camera-tree-list" id="cameraList">
                 <li class="empty-hint">スキャン後に表示</li>
@@ -540,7 +538,7 @@
             </div>
           </div>
 
-          <!-- セクション 7: 🧪 ラボ（実験室：分析・発掘・特殊抽出） -->
+          <!-- セクション 7: ラボ（実験室：分析・発掘・特殊抽出） -->
           <div class="accordion-item" data-section="lab" id="accordionItem-lab">
             <div class="accordion-header" data-section="lab" title="クリックで切替 / Shift+クリックで複数同時展開">
               <span class="accordion-arrow">▶</span>
@@ -550,7 +548,7 @@
             </div>
             <div class="accordion-body">
               <div class="lab-sidebar-panel">
-                <!-- グループ1: 📊 撮影カルテ・選別発掘 -->
+                <!-- グループ1: 撮影カルテ・選別発掘 -->
                 <div class="lab-action-group" style="display: flex; flex-direction: column; gap: 6px;">
                   <div style="display: flex; align-items: center; justify-content: space-between;">
                     <span class="lab-section-label">撮影カルテ・選別発掘</span>
@@ -568,14 +566,14 @@
                   </div>
                 </div>
 
-                <!-- グループ2: 🔭 光線・露出・記念日スマート抽出 -->
+                <!-- グループ2: 光線・露出・記念日スマート抽出 -->
                 <div class="lab-smart-extract-group" style="display: flex; flex-direction: column; gap: 7px; padding-top: 8px; border-top: 1px dashed var(--border-soft);">
                   <div style="display: flex; align-items: center; justify-content: space-between;">
                     <span class="lab-section-label">光線・露出・記念日スマート抽出</span>
                     <button type="button" class="btn-mini-text" id="clearLabFilterBtn" style="display: none;" title="ラボの絞り込み条件をすべて解除">クリア</button>
                   </div>
 
-                  <!-- 🎂 歴代の今日 (On This Day) -->
+                  <!-- 歴代の今日 (On This Day) -->
                   <div class="lab-otd-box">
                     <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
                       <span class="lab-section-label">歴代の今日・記念日</span>
@@ -588,7 +586,7 @@
                     </div>
                   </div>
 
-                  <!-- 🌅 太陽高度・露出ラボ抽出 -->
+                  <!-- 太陽高度・露出ラボ抽出 -->
                   <div class="lab-filter-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
                     <button type="button" class="btn btn-secondary btn-xs lab-filter-btn" id="labBtnGoldenHour" data-lab-filter="golden_hour" title="太陽高度 -4°〜+6° のドラマチックな光（朝焼け・夕焼け）で撮影した写真を抽出">マジックアワー</button>
                     <button type="button" class="btn btn-secondary btn-xs lab-filter-btn" id="labBtnBlueHour" data-lab-filter="blue_hour" title="太陽高度 -8°〜-4° の静謐な蒼い薄明時間帯の写真を抽出">ブルーアワー</button>
@@ -600,7 +598,7 @@
             </div>
           </div>
 
-          <!-- セクション 8: 🔍 ファイル名検索（最下部配置） -->
+          <!-- セクション 8: ファイル名検索（最下部配置） -->
           <div class="accordion-item" data-section="search" id="accordionItem-search">
             <div class="accordion-header" data-section="search" title="クリックで切替 / Shift+クリックで複数同時展開">
               <span class="accordion-arrow">▶</span>
@@ -635,7 +633,7 @@
           <div class="current-filter-info">
             <div class="active-filter-chips" id="activeFilterChips"></div>
             <button id="clearFilterBtn" class="clear-filter-pill-btn" style="display: none;" title="絞り込みをすべて解除してすべての写真を表示">
-              ✕ すべて解除
+              すべて解除
             </button>
             <button id="purgeUnlinkedBtn" class="clear-filter-pill-btn" style="display: none; background: rgba(220, 53, 69, 0.12); color: var(--danger, #dc3545); border-color: rgba(220, 53, 69, 0.3);" title="リンク消失しているすべての写真レコード（サムネイル・タグ含む）をDBから完全に消去">
               リンク消失写真をすべて完全消去
@@ -646,7 +644,7 @@
         <!-- 未接続フォルダ警告バナー (HinomaruUI: 朱の淡いアクセント) -->
         <div class="folder-warning-banner" id="folderWarningBanner" style="display: none;">
           <div class="warning-banner-content">
-            <span class="warning-banner-icon">⚠️</span>
+            <span class="warning-banner-icon">!</span>
             <div class="warning-banner-text">
               <span class="warning-banner-title">実フォルダが存在しないか、ドライブが未接続です</span>
               <span class="warning-banner-desc" id="warningBannerDesc">USBメモリ等の外部ドライブが抜かれているか、フォルダが移動・削除された可能性があります。（保存済みサムネイルをキャッシュから表示中）</span>
@@ -665,7 +663,7 @@
 
           <!-- 空状態の表示 -->
           <div class="empty-state" id="emptyState" style="display: none;">
-            <div class="empty-icon">📷</div>
+            <div class="empty-icon"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div>
             <h2>写真が見つかりません</h2>
             <p>指定された条件の写真がないか、まだスキャンされていません。</p>
             <button class="btn btn-secondary" id="emptyStateActionBtn">フォルダ管理を開く</button>
@@ -704,13 +702,13 @@
           <div class="inspector-preview-wrapper inspector-preview-container" id="inspectorPreviewWrapper" title="クリックで大画面ビューワを開く (Space)">
             <img id="inspectorThumb" src="" alt="プレビュー">
             <div class="inspector-preview-overlay">
-              <span>🔍 拡大ビューワ (Space)</span>
+              <span>拡大ビューワ (Space)</span>
             </div>
           </div>
           <!-- クイックアクションバー（画像調整・ヒストグラム・回転） -->
           <div class="inspector-quick-actions-bar" id="inspectorQuickActionsBar">
             <button type="button" class="inspector-quick-action-btn" id="inspectorQuickAdjustBtn" title="切り抜き・傾き・明るさを調整 (Cキー)">
-              <span>✂</span> <span id="inspectorQuickAdjustLabel">調整</span>
+              <span id="inspectorQuickAdjustLabel">調整</span>
             </button>
             <button type="button" class="inspector-quick-action-btn" id="inspectorQuickHistBtn" title="RGB・輝度ヒストグラムを表示/非表示 (Hキー)">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> <span id="inspectorQuickHistLabel">波形</span>
@@ -724,9 +722,9 @@
           </div>
           <!-- XMPサイドカー検出・プレビュー・取込バー -->
           <div class="inspector-xmp-bar" id="inspectorXmpBar" style="display: none;">
-            <span class="xmp-sidecar-badge" id="inspectorXmpBadge" title="XMPサイドカーファイルが検出されました">📄 XMP</span>
-            <button type="button" class="btn-xmp-hold-preview" id="inspectorXmpPreviewBtn" style="display: none;" title="押している間だけPhotoManagerの調整をオフにし、XMPの調整データを反映して表示します">👁️ XMPプレビュー</button>
-            <button type="button" class="btn-xmp-import-meta" id="inspectorXmpImportMetaBtn" style="display: none;" title="XMPサイドカーの評価（4段階変換）やタグ（XMP/ルート配下）を取り込みます">📥 評価・タグ取込</button>
+            <span class="xmp-sidecar-badge" id="inspectorXmpBadge" title="XMPサイドカーファイルが検出されました">XMP</span>
+            <button type="button" class="btn-xmp-hold-preview" id="inspectorXmpPreviewBtn" style="display: none;" title="押している間だけPhotoManagerの調整をオフにし、XMPの調整データを反映して表示します">XMPプレビュー</button>
+            <button type="button" class="btn-xmp-import-meta" id="inspectorXmpImportMetaBtn" style="display: none;" title="XMPサイドカーの評価（4段階変換）やタグ（XMP/ルート配下）を取り込みます">評価・タグ取込</button>
           </div>
         </div>
 
@@ -756,7 +754,7 @@
             <!-- 露出ブラケット / 連写グループ -->
             <div class="inspector-section" id="inspectorBracketSection" style="display: none;">
               <div class="inspector-section-header">
-                <div class="inspector-label" id="inspectorBracketLabel">⚡ 露出ブラケット</div>
+                <div class="inspector-label" id="inspectorBracketLabel">露出ブラケット</div>
                 <span class="badge-sub" id="inspectorBracketTypeBadge">BKT</span>
               </div>
               <div class="inspector-bracket-list" id="inspectorBracketList">
@@ -801,7 +799,7 @@
                       <div class="color-palette-header" id="inspectorColorHeader" role="button" tabindex="0" title="色合いパレットを開閉">
                         <div class="color-palette-header-left">
                           <span class="color-palette-arrow" id="inspectorColorArrow">▶</span>
-                          <span class="color-palette-title">🎨 色合い (複数選択可)</span>
+                          <span class="color-palette-title">色合い (複数選択可)</span>
                         </div>
                         <span class="color-palette-sub" id="inspectorColorActiveCount"></span>
                       </div>
@@ -816,7 +814,7 @@
                     <div class="inspector-quick-tags" style="margin-top: 10px;">
                       <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; padding: 4px 8px 0 8px;">
                         <div class="inspector-label" style="margin: 0;">タグ一覧から付与・作成</div>
-                        <button type="button" class="btn btn-secondary btn-xs inspector-open-tag-editor-btn" title="設定画面の「🌳 タグツリーエディタ」を開く（ドラッグ＆ドロップ階層移動・リネーム・整理）">⚙️ ツリー編集</button>
+                        <button type="button" class="btn btn-secondary btn-xs inspector-open-tag-editor-btn" title="設定画面の「タグツリーエディタ」を開く（ドラッグ＆ドロップ階層移動・リネーム・整理）">ツリー編集</button>
                       </div>
                       <div class="inspector-quick-tree" id="inspectorQuickTree">
                         <!-- 階層ツリーを描画、+追加ボタンで付与＆新規追加 -->
@@ -828,7 +826,7 @@
                       <div class="color-palette-header" id="inspectorAiTagHeader" role="button" tabindex="0" title="AI自動タグ付けを開閉">
                         <div class="color-palette-header-left">
                           <span class="color-palette-arrow" id="inspectorAiTagArrow">▶</span>
-                          <span class="color-palette-title">🤖 AI自動タグ付け</span>
+                          <span class="color-palette-title">AI自動タグ付け</span>
                         </div>
                       </div>
                       <div class="color-palette-body" id="inspectorAiTagBody" style="display: none; padding: 10px 8px;">
@@ -836,7 +834,7 @@
                           ローカルAI (CLIP Vision) が写真の被写体・シーンを自動認識してタグ付けします。
                         </div>
                         <button type="button" class="btn btn-primary btn-sm btn-block" id="inspectorAiTagBtn" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px;">
-                          🤖 この写真をAIで自動タグ付け
+                          この写真をAIで自動タグ付け
                         </button>
                       </div>
                     </div>
@@ -849,7 +847,7 @@
                     <div class="inspector-meta-table">
                       <div class="meta-row">
                         <span class="meta-name">ファイル名</span>
-                        <span class="meta-val meta-val-with-action"><span id="inspectorFileName">-</span><button type="button" class="btn-inline-rename" id="inspectorRenameExifBtn" title="ファイル名を変更 (F2)" style="display: none;">✏️</button></span>
+                        <span class="meta-val meta-val-with-action"><span id="inspectorFileName">-</span><button type="button" class="btn-inline-rename" id="inspectorRenameExifBtn" title="ファイル名を変更 (F2)" style="display: none;">編集</button></span>
                       </div>
                       <div class="meta-row" id="inspectorFormatRow">
                         <span class="meta-name">フォーマット</span>
@@ -857,7 +855,7 @@
                       </div>
                       <div class="inspector-raw-section" id="inspectorRawPairRow" style="display: none;">
                         <div class="inspector-section-header">
-                          <div class="inspector-label">📷 RAW ファイル</div>
+                          <div class="inspector-label">RAW ファイル</div>
                           <span class="badge-sub raw-badge-indicator">RAW</span>
                         </div>
                         <div class="inspector-raw-info">
@@ -912,24 +910,24 @@
                   <div class="inspector-section">
                     <div class="inspector-meta-table">
                       <div class="meta-row" id="inspectorGpsRow" style="display: none;">
-                        <span class="meta-name">📍 緯度・経度</span>
+                        <span class="meta-name">緯度・経度</span>
                         <span class="meta-val" id="inspectorGpsVal">-</span>
                       </div>
                       <div class="meta-row" id="inspectorLocationRow" style="display: none;">
-                        <span class="meta-name">🗺️ 撮影地域</span>
+                        <span class="meta-name">撮影地域</span>
                         <span class="meta-val" id="inspectorLocationVal">-</span>
                       </div>
                     </div>
                     <div id="inspectorMiniMap" class="inspector-minimap" style="display: none;"></div>
                     <div id="inspectorGpsBtnBar" class="inspector-gps-btn-bar" style="display: none; margin-top: 8px; justify-content: flex-end;">
                       <button class="btn-sm-action btn-action-danger" id="inspectorClearGpsBtn" title="SQLiteデータベースからこの写真のジオタグ（緯度・経度・地名）を削除します（元画像ファイルは変更されません）">
-                        🗑️ ジオタグ削除
+                        ジオタグ削除
                       </button>
                     </div>
                     <div id="inspectorGpsActions" class="inspector-gps-actions" style="display: none;">
                       <div class="inspector-gps-empty-msg">この写真にはGPS情報が記録されていません</div>
                       <button class="btn-sm-action btn-action-rescan" id="inspectorCopyGpsBtn">
-                        📍 近隣写真からGPSをコピー
+                        近隣写真からGPSをコピー
                       </button>
                     </div>
                   </div>
@@ -970,7 +968,7 @@
                 <div class="color-palette-header" id="batchColorHeader" role="button" tabindex="0" title="色合い一括パレットを開閉">
                   <div class="color-palette-header-left">
                     <span class="color-palette-arrow" id="batchColorArrow">▶</span>
-                    <span class="color-palette-title">🎨 色合いを一括設定 (複数選択可)</span>
+                    <span class="color-palette-title">色合いを一括設定 (複数選択可)</span>
                   </div>
                   <span class="color-palette-sub" id="batchColorActiveCount"></span>
                 </div>
@@ -985,7 +983,7 @@
               <div class="inspector-quick-tags" style="margin-top: 10px;">
                 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; padding: 4px 8px 0 8px;">
                   <div class="inspector-label" style="margin: 0;">タグ一覧から一括付与・作成</div>
-                  <button type="button" class="btn btn-secondary btn-xs inspector-open-tag-editor-btn" title="設定画面の「🌳 タグツリーエディタ」を開く（ドラッグ＆ドロップ階層移動・リネーム・整理）">⚙️ ツリー編集</button>
+                  <button type="button" class="btn btn-secondary btn-xs inspector-open-tag-editor-btn" title="設定画面の「タグツリーエディタ」を開く（ドラッグ＆ドロップ階層移動・リネーム・整理）">ツリー編集</button>
                 </div>
                 <div class="batch-quick-tree" id="batchQuickTree">
                   <!-- 階層ツリーを一覧表示、+追加ボタンで一括追加＆新規追加 -->
@@ -1006,17 +1004,17 @@
               <div class="inspector-label">ジオタグの一括操作</div>
               <div style="display: flex; gap: 8px;">
                 <button class="btn btn-secondary btn-sm" id="batchInferGpsBtn" style="flex: 1;" title="撮影時刻が近いスマホ写真のジオタグ（±1時間）を一括準用">
-                  📍 ジオタグ準用
+                  ジオタグ準用
                 </button>
                 <button class="btn btn-secondary btn-sm" id="batchClearGpsBtn" style="flex: 1; color: #ef4444;" title="SQLite上のジオタグ情報（緯度・経度・地名）を一括削除">
-                  🗑️ ジオタグ削除
+                  ジオタグ削除
                 </button>
               </div>
             </div>
 
             <!-- 選択解除ボタン -->
             <button class="btn btn-secondary btn-block" id="batchClearSelectionBtn" style="margin-top: 18px; width: 100%;">
-              ✕ 選択をすべて解除
+              選択をすべて解除
             </button>
           </div>
         </div>
@@ -1027,7 +1025,7 @@
     <footer class="global-scan-banner global-scan-footer" id="globalScanBanner" style="display: none;">
       <div class="global-scan-content">
         <div class="global-scan-info">
-          <span class="global-scan-icon">📂</span>
+          
           <span class="global-scan-title" id="globalScanTitle">スキャン中...</span>
           <span class="global-scan-count" id="globalScanCount">0 / 0</span>
           <span class="global-scan-filename" id="globalScanFilename"></span>
@@ -1045,7 +1043,7 @@
     <div class="modal-card modal-card-lg help-modal-card">
       <div class="modal-header">
         <div class="modal-header-title">
-          <h2>📖 Photo Manager 操作マニュアル &amp; ヘルプ</h2>
+          <h2>Photo Manager 操作マニュアル &amp; ヘルプ</h2>
           <span class="modal-subtitle">初めての方から応用・スマホ連携まで、目的に合わせて読めるレベル別ガイド</span>
         </div>
         <button class="modal-close-btn" id="closeHelpModalBtn">&times;</button>
@@ -1053,11 +1051,11 @@
 
       <!-- モーダル内ナビゲーションタブ -->
       <div class="help-nav-tabs" id="helpNavTabs">
-        <button class="help-tab-btn active" data-tab="overview">💡 はじめに</button>
-        <button class="help-tab-btn" data-tab="basic">🟢 Basic編 (基本)</button>
-        <button class="help-tab-btn" data-tab="advance">🔵 Advance編 (応用)</button>
-        <button class="help-tab-btn" data-tab="portable">🟣 Mobile &amp; USB編</button>
-        <button class="help-tab-btn" data-tab="shortcuts">⌨️ ショートカット &amp; FAQ</button>
+        <button class="help-tab-btn active" data-tab="overview">はじめに</button>
+        <button class="help-tab-btn" data-tab="basic">Basic編 (基本操作)</button>
+        <button class="help-tab-btn" data-tab="advance">Advance編 (応用・便利機能)</button>
+        <button class="help-tab-btn" data-tab="portable">Mobile &amp; USB編</button>
+        <button class="help-tab-btn" data-tab="shortcuts">ショートカット &amp; FAQ</button>
       </div>
 
       <div class="modal-body help-modal-body">
@@ -1065,18 +1063,17 @@
         <div class="help-tab-content active" id="helpTab-overview">
           <div class="help-hero-banner">
             <div class="help-hero-title">
-              <span>💡 Photo Manager へようこそ — 安心・軽快なローカル写真管理</span>
+              <span>Photo Manager へようこそ — 安心・軽快なローカル写真管理</span>
             </div>
             <p class="help-hero-desc">
               大量の写真（JPEG / PNG / WebP / HEIC および各社一眼カメラの RAW データ）を、待ち時間ゼロで閲覧・選別・整理できる写真ビューアです。<br>
-              目的に合わせて上部の <strong>「🟢 Basic編」「🔵 Advance編」「🟣 Mobile &amp; USB編」</strong> タブを切り替えてご覧ください。
+              目的に合わせて上部の <strong>「Basic編」「Advance編」「Mobile &amp; USB編」</strong> タブを切り替えてご覧ください。
             </p>
           </div>
 
           <div class="help-feature-grid">
             <div class="help-feature-item">
               <div class="help-feature-header">
-                <span class="help-feature-icon">🛡️</span>
                 <h4 class="help-feature-title">元写真は絶対に傷つけない（完全非破壊）</h4>
               </div>
               <p class="help-feature-text">
@@ -1086,17 +1083,15 @@
 
             <div class="help-feature-item">
               <div class="help-feature-header">
-                <span class="help-feature-icon">🔒</span>
-                <h4 class="help-feature-title">ネット接続不要（完全オフライン動作）</h4>
+                <h4 class="help-feature-title">プライバシー保護・安心のローカル動作</h4>
               </div>
               <p class="help-feature-text">
-                写真を外部のクラウドへ送信することは一切ありません。AIによる自動タグ付けや撮影場所（県・市区町村）の判定も、すべてお使いのパソコン内部だけで安全に完結します。
+                写真を外部のクラウドへ送信することは一切ありません。AIによる自動タグ付けや撮影場所（県・市区町村）の判定も、すべてお使いのパソコン内部だけで安全に完結します（※地図機能の背景タイル表示時のみインターネット接続を使用します）。
               </p>
             </div>
 
             <div class="help-feature-item">
               <div class="help-feature-header">
-                <span class="help-feature-icon">⚡</span>
                 <h4 class="help-feature-title">片手でサクサク！4段階の高速選別</h4>
               </div>
               <p class="help-feature-text">
@@ -1106,7 +1101,6 @@
 
             <div class="help-feature-item">
               <div class="help-feature-header">
-                <span class="help-feature-icon">🗂️</span>
                 <h4 class="help-feature-title">連写・ブラケット・重複写真を自動で束ねる</h4>
               </div>
               <p class="help-feature-text">
@@ -1116,17 +1110,15 @@
 
             <div class="help-feature-item">
               <div class="help-feature-header">
-                <span class="help-feature-icon">✂</span>
                 <h4 class="help-feature-title">傾き・切り抜き・明るさ微調整 ＆ 一括書き出し</h4>
               </div>
               <p class="help-feature-text">
-                斜めの水平線補正（<kbd>C</kbd> キー）や露出補正を元ファイル無傷で行い、「📤 スマート・テイクアウト」でリサイズや撮影順の連番リネーム、プライバシー保護（Exif消去）を掛けて別フォルダへ一括出力できます。
+                斜めの水平線補正（<kbd>C</kbd> キー）や露出補正を元ファイル無傷で行い、「スマート・テイクアウト」でリサイズや撮影順の連番リネーム、プライバシー保護（Exif消去）を掛けて別フォルダへ一括出力できます。
               </p>
             </div>
 
             <div class="help-feature-item">
               <div class="help-feature-header">
-                <span class="help-feature-icon">📱</span>
                 <h4 class="help-feature-title">USBメモリ持ち歩き ＆ スマホでの片手選別</h4>
               </div>
               <p class="help-feature-text">
@@ -1136,16 +1128,15 @@
 
             <div class="help-feature-item help-feature-item-full">
               <div class="help-feature-header">
-                <span class="help-feature-icon">🖼️</span>
                 <h4 class="help-feature-title">気分や用途で選べる3つの表示レイアウト</h4>
               </div>
               <p class="help-feature-text">
-                画面上部のツールバーから、ワンクリックで3つの表示モードを切り替えられます。左上の「📜 和紙 ／ 🌙 夜墨（Washi / Urusi）」ボタンで明るい画面・暗い画面の切り替え、さらに隣の「🇯🇵 JP ／ 🇺🇸 EN」ボタンで日本語・英語UIのリアルタイム切り替えも可能です。
+                画面上部の1段ヘッダーから、ワンクリックで3つの表示モードを切り替えられます。左上の「和紙 ／ 夜墨（Washi / Urusi）」ボタンで明るい画面・暗い画面の切り替え、さらに隣の「JP ／ EN」ボタンで日本語・英語UIのリアルタイム切り替えも可能です。
               </p>
               <div class="help-mode-grid">
                 <div class="help-mode-card">
                   <div class="help-mode-card-header">
-                    <span>田</span> グリッド (標準)
+                    グリッド (標準)
                   </div>
                   <p class="help-mode-card-desc">
                     正方形の枠に整然と並ぶ標準モード。ファイル名や日付も見やすく、大量の写真を素早く探すのに最適です。
@@ -1153,7 +1144,7 @@
                 </div>
                 <div class="help-mode-card">
                   <div class="help-mode-card-header">
-                    <span>▤</span> びっしり (Justified)
+                    びっしり (Justified)
                   </div>
                   <p class="help-mode-card-desc">
                     写真本来の縦横比をそのまま活かし、隙間なく画面いっぱいに敷き詰めるモード。構図や迫力を楽しめます。
@@ -1161,7 +1152,7 @@
                 </div>
                 <div class="help-mode-card">
                   <div class="help-mode-card-header">
-                    <span>🎞️</span> マウント (Slide Mount)
+                    マウント (Slide Mount)
                   </div>
                   <p class="help-mode-card-desc">
                     フィルムのスライドマウント枠を再現した鑑賞モード。「情報」ボタンをOFFにすれば無地枠で作品を堪能できます。
@@ -1173,59 +1164,59 @@
 
           <div class="help-flow-container">
             <div class="help-flow-title">
-              <span>🚀 はじめての4ステップ</span>
+              <span>はじめての4ステップ</span>
             </div>
             <div class="help-flow-steps">
               <div class="help-flow-step">
                 <div class="help-flow-step-num">Step 1</div>
-                <div class="help-flow-step-name">📂 フォルダ登録</div>
-                <p class="help-flow-step-desc">左サイドバー「📁 フォルダ」から写真が入ったフォルダをクリックします。</p>
+                <div class="help-flow-step-name">フォルダ登録</div>
+                <p class="help-flow-step-desc">左サイドバー「フォルダ」から写真が入ったフォルダをクリックします。</p>
               </div>
               <div class="help-flow-step">
                 <div class="help-flow-step-num">Step 2</div>
-                <div class="help-flow-step-name">🎯 数字キーで選別</div>
+                <div class="help-flow-step-name">数字キーで選別</div>
                 <p class="help-flow-step-desc"><kbd>1</kbd>（優）・<kbd>2</kbd>（良）・<kbd>3</kbd>（棄）キーで片手でサクサク仕分けます。</p>
               </div>
               <div class="help-flow-step">
                 <div class="help-flow-step-num">Step 3</div>
-                <div class="help-flow-step-name">🔍 拡大・ピント確認</div>
+                <div class="help-flow-step-name">拡大・ピント確認</div>
                 <p class="help-flow-step-desc"><kbd>Space</kbd> キーで拡大。ホイール操作でピントや表情をチェックします。</p>
               </div>
               <div class="help-flow-step">
                 <div class="help-flow-step-num">Step 4</div>
-                <div class="help-flow-step-name">📤 書き出し・活用</div>
-                <p class="help-flow-step-desc">選んだ写真を「📤 テイクアウト」でまとめたり、「📁」で現像ソフトへ渡します。</p>
+                <div class="help-flow-step-name">書き出し・活用</div>
+                <p class="help-flow-step-desc">選んだ写真を「テイクアウト」でまとめたり、エクスプローラーから現像ソフトへ渡します。</p>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- タブ1: 🟢 Basic編 (基本操作) -->
+        <!-- タブ1: Basic編 (基本操作) -->
         <div class="help-tab-content" id="helpTab-basic">
           <div class="help-card">
             <h4>1. 起動と終了のしかた（2つの閉じかた）</h4>
-            <p><strong>🚀 起動:</strong> フォルダ内の <code>PhotoManager.exe</code> をダブルクリックすると専用ウィンドウ（最大化状態）が開きます。<br>
+            <p><strong>起動:</strong> フォルダ内の <code>PhotoManager.exe</code> をダブルクリックすると専用ウィンドウ（最大化状態）が開きます。<br>
             <span class="help-tip">※初回起動時に SmartScreen の確認画面が出た場合や <code>PhotoManager.exe</code> が見当たらない場合は、フォルダ内の <strong><code>Build.bat</code></strong> をダブルクリックするとお使いのPC上で <code>PhotoManager.exe</code> がクリーンに生成されてそのまま起動します。</span></p>
-            <p><strong>⏻ 完全終了（USBを抜く前など）:</strong> 画面右上の <strong>「⏻ 終了」ボタン</strong> →「サーバーを停止して終了」を選びます。</p>
+            <p><strong>完全終了（USBを抜く前など）:</strong> 画面右上の <strong>「終了」ボタン</strong> →「サーバーを停止して終了」を選びます。</p>
             <p><strong>× 画面だけ閉じる（高速起動待機）:</strong> ウィンドウ右上の「&times;」で閉じると裏で待機状態になり、次回 <code>PhotoManager.exe</code> を開いたときに <strong>0.1秒</strong> で画面が復元します（Windows右下のタスクトレイのアイコンから完全終了もできます）。</p>
           </div>
 
           <div class="help-card" style="margin-top: 14px;">
             <h4>2. 写真フォルダを登録する・更新する</h4>
-            <p><strong>📂 新しく登録する:</strong> 左サイドバーの <strong>「📁 フォルダ」</strong> を開き、パソコンや外付けドライブのツリーから写真フォルダをクリックします。「子フォルダを含む（おすすめ）」か「直下のみ」を選ぶと、すぐ下に進行バーが出て取り込みが始まります。</p>
-            <p><strong>🔄 写真を追加・削除したあと:</strong> 登録済みのフォルダを左サイドバーでクリックするだけで、アプリが自動で変化を検知し「ライブラリをリフレッシュ（最新化）しますか？」と案内してくれます。</p>
+            <p><strong>新しく登録する:</strong> 左サイドバーの <strong>「フォルダ」</strong> を開き、パソコンや外付けドライブのツリーから写真フォルダをクリックします。「子フォルダを含む（おすすめ）」か「直下のみ」を選ぶと、すぐ下に進行バーが出て取り込みが始まります。</p>
+            <p><strong>写真を追加・削除したあと:</strong> 登録済みのフォルダを左サイドバーでクリックするだけで、アプリが自動で変化を検知し「ライブラリをリフレッシュ（最新化）しますか？」と案内してくれます。</p>
           </div>
 
           <div class="help-card" style="margin-top: 14px;">
             <h4>3. 片手でサクサク！写真の選別（4段階評価）＆ 矢印キー移動</h4>
             <p>一覧画面でも拡大画面でも、<strong><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> キー</strong>で前後の写真や上下の行へスムーズに移動でき（<kbd>Shift</kbd>＋矢印キーで連続範囲選択）、そのまま数字キーを押すだけで視線を動かさずに仕分けられます。</p>
             <ul>
-              <li><kbd>1</kbd> キー：<strong>🏅 優</strong>（ベストショット！現像やSNS投稿したい最優秀カット）</li>
-              <li><kbd>2</kbd> キー：<strong>⭐ 良</strong>（お気に入り・合格カット）</li>
-              <li><kbd>3</kbd> または <kbd>X</kbd> キー：<strong>🗑️ 棄</strong>（ピンボケ・目つぶり等のボツ写真。<strong>一覧から自動で隠れ、自動で次の写真へフォーカスが移ります</strong>）</li>
-              <li><kbd>0</kbd> または <kbd>4</kbd> キー：<strong>⚪ 可</strong>（評価を取り消して初期状態に戻す）</li>
+              <li><kbd>1</kbd> キー：<strong>優 (Ex)</strong>（ベストショット！現像やSNS投稿したい最優秀カット）</li>
+              <li><kbd>2</kbd> キー：<strong>良 (Gd)</strong>（お気に入り・合格カット）</li>
+              <li><kbd>3</kbd> または <kbd>X</kbd> キー：<strong>棄 (Rj)</strong>（ピンボケ・目つぶり等のボツ写真。<strong>一覧から自動で隠れ、自動で次の写真へフォーカスが移ります</strong>）</li>
+              <li><kbd>0</kbd> または <kbd>4</kbd> キー：<strong>可 (Nm)</strong>（評価を取り消して初期状態に戻す）</li>
             </ul>
-            <p class="help-tip">💡 <strong>「棄」にした写真を見返すには？</strong> ファイル自体は削除されていません。上部ヘッダーの <strong>「🗑️ 棄」</strong> ボタンをクリックして点灯させればいつでも再表示でき、<kbd>0</kbd> キーで復活できます。また隣にある <strong>「すべて ／ RAW ／ ✂ 調整済」</strong> ピルおよび <strong>「詳細属性...（🖼️ JPEG/一般のみ ／ 🔗 RAW+JPGペア ／ 📄 XMPあり）」</strong> で目的の形式や編集状態の写真だけをワンクリックで抽出できます。</p>
+            <p class="help-tip"><strong>「棄」にした写真を見返すには？</strong> ファイル自体は削除されていません。上部ヘッダーの <strong>「棄」</strong> ボタンをクリックして点灯させればいつでも再表示でき、<kbd>0</kbd> キーで復活できます。また隣にある <strong>「すべて ／ RAW ／ 調整済」</strong> ピルおよび <strong>「詳細属性...（JPEG/一般のみ ／ RAW+JPGペア ／ XMPあり）」</strong> で目的の形式や編集状態の写真だけをワンクリックで抽出できます。</p>
           </div>
 
           <div class="help-card" style="margin-top: 14px;">
@@ -1242,92 +1233,92 @@
 
           <div class="help-card" style="margin-top: 14px;">
             <h4>5. 複数の写真をまとめて操作する ＆ 絞り込み検索</h4>
-            <p><strong>👥 複数選択:</strong> <kbd>Ctrl</kbd>+クリックで追加選択、<kbd>Shift</kbd>+クリックで範囲選択、<kbd>Ctrl</kbd>+<kbd>A</kbd> で全選択できます。選ぶと<strong>画面下部に黒い操作バー</strong>が現れ、まとめて評価付け・タグ付け・回転・書き出し・<strong>「⚖️ 2枚比較」</strong>が行えます。</p>
-            <p><strong>🔍 写真を探す:</strong> 左サイドバーの「📅 タイムライン」「📷 カメラ・レンズ（機種＞レンズ階層ツリー＆<code>[+]</code>含む/<code>[-]</code>除外検索）」「🧪 ラボ」や、「🔍 ファイル名検索」で自在に絞り込めます。元に戻すときは左サイドバー一番上の <strong>「🖼️ すべての写真」</strong> または <strong>「🔄 フィルタ全解除」</strong> を押してください。</p>
+            <p><strong>複数選択:</strong> <kbd>Ctrl</kbd>+クリックで追加選択、<kbd>Shift</kbd>+クリックで範囲選択、<kbd>Ctrl</kbd>+<kbd>A</kbd> で全選択できます。選ぶと<strong>右インスペクタの一括編集パネルや右クリックメニュー</strong>から、まとめて評価付け・タグ付け・回転・書き出し・<strong>「2枚比較」</strong>が行えます。</p>
+            <p><strong>写真を探す:</strong> 左サイドバーの「年月」「機材（機種＞レンズ階層ツリー＆<code>[+]</code>含む/<code>[-]</code>除外検索）」「ラボ」や、「検索」で自在に絞り込めます。元に戻すときは左サイドバー一番上の <strong>「すべての写真」</strong> または <strong>「フィルタ全解除」</strong> を押してください。</p>
           </div>
         </div>
 
-        <!-- タブ2: 🔵 Advance編 (応用・便利機能) -->
+        <!-- タブ2: Advance編 (応用・便利機能) -->
         <div class="help-tab-content" id="helpTab-advance">
           <div class="help-card">
-            <h4>1. 連写・露出ブラケット・重複写真をまとめる（スタック機能）＆ ⚖️ 2枚並べて比較</h4>
+            <h4>1. 連写・露出ブラケット・重複写真をまとめる（スタック機能）＆ 2枚並べて比較</h4>
             <p>上部ツールバーの <strong>「スタック」</strong> ボタンがONのとき、「連写」「露出ブラケット（AEB）」「別フォルダにある同一写真の重複コピー」を自動で1つの束にまとめ、代表の1枚だけを表示します。</p>
             <ul>
               <li><strong>束の中身を見比べる:</strong> ライトボックス（<kbd>Space</kbd>）を開き、<kbd>↑</kbd> / <kbd>↓</kbd> キーや下部のミニサムネイルバーで比較できます。</li>
-              <li><strong>⚖️ 2枚並べて比較（同期ズーム＆パン）:</strong> 写真を2枚選んで下部バー（または右クリック）の <strong>「⚖️ 2枚比較」</strong>、あるいはライトボックス上部の <strong>「⚖️ 隣と比較」</strong> を押すと、左右に並べて<strong>連動ズーム＆ドラッグ移動</strong>でピントや描写を厳密に見比べられます。Exifの差分もハイライト表示され、左写真は <kbd>1</kbd>〜<kbd>4</kbd>、右写真は <kbd>Shift</kbd>+<kbd>1</kbd>〜<kbd>4</kbd> で即座に評価付けできます。</li>
-              <li><strong>代表（表紙）を変える:</strong> 気に入ったコマを表示して、右インスペクタやライトボックスの <strong>「👑 代表に設定」</strong> を押します。</li>
-              <li><strong>📋 重複写真の確認:</strong> 別フォルダに同じ写真がある場合はサムネイル右上角に「折り目マーク」が付きます。左サイドバー「クイックアクセス」の <strong>「📋 重複のある写真」</strong> から一覧でき、右インスペクタで保存先フォルダを確認・整理できます。</li>
+              <li><strong>2枚並べて比較（同期ズーム＆パン）:</strong> 写真を2枚選んで右クリックメニュー（または右インスペクタ）の <strong>「2枚比較」</strong>、あるいはライトボックス上部の <strong>「隣と比較」</strong> を押すと、左右に並べて<strong>連動ズーム＆ドラッグ移動</strong>でピントや描写を厳密に見比べられます。Exifの差分もハイライト表示され、左写真は <kbd>1</kbd>〜<kbd>4</kbd>、右写真は <kbd>Shift</kbd>+<kbd>1</kbd>〜<kbd>4</kbd> で即座に評価付けできます。</li>
+              <li><strong>代表（表紙）を変える:</strong> 気に入ったコマを表示して、右インスペクタやライトボックスの <strong>「代表に設定」</strong> を押します。</li>
+              <li><strong>重複写真の確認:</strong> 別フォルダに同じ写真がある場合はサムネイル右上角に「折り目マーク」が付きます。左サイドバー「クイックアクセス」の <strong>「重複のある写真」</strong> から一覧でき、右インスペクタで保存先フォルダを確認・整理できます。</li>
             </ul>
           </div>
 
           <div class="help-card" style="margin-top: 14px;">
-            <h4>2. 階層タグ・色ラベル・ローカルAI自動分類 ＆ 📷 カメラ・レンズ排他検索</h4>
-            <p><strong>🏷️ 階層タグ ＆ タグツリーエディタ:</strong> タグ入力時に <code>旅行/2026北海道/小樽</code> のように <code>/</code> で区切ると親子ツリーとして整理されます。左サイドバーの <strong><code>📊 枚数順</code></strong> ボタンで枚数順と名前順をワンクリックで切り替えられるほか、<strong><code>⚙️ 設定</code></strong>（または右インスペクタの <strong><code>⚙️ ツリー編集</code></strong>）の <strong>「🌳 タグツリーエディタ」</strong> でドラッグ＆ドロップによる親子階層の組み替え・名前変更（<code>✏</code>）・削除（<code>🗑️</code>）が行えます。</p>
-            <p><strong>🎨 色合い（12色パレット）:</strong> 右インスペクタの「🎨 色合い」で写真にイメージ色を登録し、左サイドバーの「🎨 カラー」から色別に絞り込めます。</p>
-            <p><strong>🤖 ローカルAI自動タグ付け:</strong> 左サイドバーのフォルダを右クリック → <strong>「🤖 AIタグ付け」</strong> を選ぶと、ネット通信なしでパソコン内のAIが「青空」「海」「猫」「料理」「夜景」などのタグを自動付与します。</p>
-            <p><strong>📷 カメラ・レンズ階層ツリー ＆ <code>[+]</code> / <code>[-]</code> 排他検索:</strong> タグだけでなく「📷 カメラ・レンズ」でも、カメラ本体の下に装着レンズが階層表示され、クリックするたびに <strong><code>[+]</code> 含む ➜ <code>[-]</code> 除外 ➜ 解除</strong> を切り替えられます（「特定のカメラ・レンズで撮った写真だけを除外する」といった高度な絞り込みが可能）。</p>
+            <h4>2. 階層タグ・色ラベル・ローカルAI自動分類 ＆ カメラ・レンズ排他検索</h4>
+            <p><strong>階層タグ ＆ タグツリーエディタ:</strong> タグ入力時に <code>旅行/2026北海道/小樽</code> のように <code>/</code> で区切ると親子ツリーとして整理されます。左サイドバーの <strong><code>枚数順</code></strong> ボタンで枚数順と名前順をワンクリックで切り替えられるほか、<strong><code>設定</code></strong>（または右インスペクタの <strong><code>ツリー編集</code></strong>）の <strong>「タグツリーエディタ」</strong> でドラッグ＆ドロップによる親子階層の組み替え・名前変更・削除が行えます。</p>
+            <p><strong>色合い（12色パレット）:</strong> 右インスペクタの「色合い」で写真にイメージ色を登録し、左サイドバーの「カラー」から色別に絞り込めます。</p>
+            <p><strong>ローカルAI自動タグ付け:</strong> 左サイドバーのフォルダを右クリック → <strong>「AIタグ付け」</strong> を選ぶと、ネット通信なしでパソコン内のAIが「青空」「海」「猫」「料理」「夜景」などのタグを自動付与します。</p>
+            <p><strong>カメラ・レンズ階層ツリー ＆ <code>[+]</code> / <code>[-]</code> 排他検索:</strong> タグだけでなく「機材」でも、カメラ本体の下に装着レンズが階層表示され、クリックするたびに <strong><code>[+]</code> 含む → <code>[-]</code> 除外 → 解除</strong> を切り替えられます（「特定のカメラ・レンズで撮った写真だけを除外する」といった高度な絞り込みが可能）。</p>
           </div>
 
           <div class="help-card" style="margin-top: 14px;">
-            <h4>3. 傾き補正・切り抜き・明るさ微調整 ＆ 📊 リアルタイムヒストグラム（完全非破壊）</h4>
-            <p>写真を選んで <strong><kbd>C</kbd> キー</strong>（または右インスペクタの <strong>「✂ 調整」ボタン</strong>、ライトボックス上部の <strong>「✂」ボタン</strong>）を押すと、元ファイルを一切傷つけずに画面上で以下の調整ができます：</p>
+            <h4>3. 傾き補正・切り抜き・明るさ微調整 ＆ リアルタイムヒストグラム（完全非破壊）</h4>
+            <p>写真を選んで <strong><kbd>C</kbd> キー</strong>（または右インスペクタの <strong>「調整」ボタン</strong>、ライトボックス上部の <strong>「調整」ボタン</strong>）を押すと、元ファイルを一切傷つけずに画面上で以下の調整ができます：</p>
             <ul>
               <li><strong>切り抜き（アスペクト比）:</strong> 元の比率、1:1、16:9、4:3、3:2、自由サイズから選んで構図を調整（三分割ガイド線付き）。</li>
-              <li><strong>📐 傾き補正（水平出し）:</strong> <code>-15°</code>〜<code>+15°</code> の範囲で斜めの水平線をまっすぐに補正（周囲に黒い余白が出ないよう自動で内側を切り抜きます）。</li>
-              <li><strong>☀️ 明るさ・コントラスト・彩度 ＆ 📊 リアルタイムトーン波形:</strong> カメラの露出補正感覚（<code>-2.0EV</code>〜<code>+2.0EV</code>、1/3段ステップ）で明るさや色味を微調整すると、上部の <strong>📊 リアルタイムヒストグラム（RGB・輝度波形）</strong> が連動して変化し、白飛びや黒つぶれを防ぎながら追い込めます（右インスペクタ上部の <strong>「📊 波形」ボタン</strong> でも常時ヒストグラムを開閉できます）。</li>
-              <li><strong>👁️ 元画像と比較（Before / After）＆ 🎨 トーン調整のコピー・一括ペースト:</strong> 調整画面右上の <strong>「👁️ 元画像と比較 (<kbd>\</kbd>)」ボタン（または <kbd>\</kbd> / <kbd>Space</kbd> キー）を押している間だけ</strong> 無加工の元画像（Before）を表示して変化を確認できます。また、追い込んだトーン3項目（明るさ・コントラスト・彩度 ※傾きや切り抜き枠は除外）を <strong>「📋 トーンをコピー」</strong>（一覧・拡大時は <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd>）し、同じ環境で撮った複数の写真へ <strong>「🎨 トーン調整をペースト」</strong>（<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd> または右クリック／下部バー）で一括適用できます。</li>
-              <li><strong>📄 XMPサイドカー連携 ＆ 👁️ XMPプレビュー（ホールド比較）:</strong> 同名の <code>.xmp</code> サイドカーファイル（Lightroom / Adobe Camera Raw 等）が存在する写真では、右インスペクタ上部に <strong>「📄 XMP」バー</strong> が表示されます。<strong>「👁️ XMPプレビュー」ボタンを長押し（ホールド）している間だけ</strong> Photo Manager 側の調整を一時オフにして XMP 側の調整（露出・コントラスト・彩度・クロップ・角度）を反映表示し、指を離すと元の表示に戻ります。また <strong>「📥 評価・タグ取込」</strong> ボタンから、XMP 内の評価（4段階へ自動変換）や階層タグ（<code>XMP/...</code> ルート配下に隔離して安全にインポート）を取り込めます。</li>
+              <li><strong>傾き補正（水平出し）:</strong> <code>-15°</code>〜<code>+15°</code> の範囲で斜めの水平線をまっすぐに補正（周囲に黒い余白が出ないよう自動で内側を切り抜きます）。</li>
+              <li><strong>明るさ・コントラスト・彩度 ＆ リアルタイムトーン波形:</strong> カメラの露出補正感覚（<code>-2.0EV</code>〜<code>+2.0EV</code>、1/3段ステップ）で明るさや色味を微調整すると、上部の <strong>リアルタイムヒストグラム（RGB・輝度波形）</strong> が連動して変化し、白飛びや黒つぶれを防ぎながら追い込めます（右インスペクタ上部の <strong>「波形」ボタン</strong> でも常時ヒストグラムを開閉できます）。</li>
+              <li><strong>元画像と比較（Before / After）＆ トーン調整のコピー・一括ペースト:</strong> 調整画面右上の <strong>「元画像と比較 (<kbd>\</kbd>)」ボタン（または <kbd>\</kbd> / <kbd>Space</kbd> キー）を押している間だけ</strong> 無加工の元画像（Before）を表示して変化を確認できます。また、追い込んだトーン3項目（明るさ・コントラスト・彩度 ※傾きや切り抜き枠は除外）を <strong>「トーンをコピー」</strong>（一覧・拡大時は <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd>）し、同じ環境で撮った複数の写真へ <strong>「トーン調整をペースト」</strong>（<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd> または右クリック）で一括適用できます。</li>
+              <li><strong>XMPサイドカー連携 ＆ XMPプレビュー（ホールド比較）:</strong> 同名の <code>.xmp</code> サイドカーファイル（Lightroom / Adobe Camera Raw 等）が存在する写真では、右インスペクタ上部に <strong>「XMP」バー</strong> が表示されます。<strong>「XMPプレビュー」ボタンを長押し（ホールド）している間だけ</strong> Photo Manager 側の調整を一時オフにして XMP 側の調整（露出・コントラスト・彩度・クロップ・角度）を反映表示し、指を離すと元の表示に戻ります。また <strong>「評価・タグ取込」</strong> ボタンから、XMP 内の評価（4段階へ自動変換）や階層タグ（<code>XMP/...</code> ルート配下に隔離して安全にインポート）を取り込めます。</li>
             </ul>
-            <p class="help-tip">💡 いつでも「↺ リセット」ボタンから撮影時の初期状態に100%戻せます。</p>
+            <p class="help-tip">いつでも「リセット」ボタンから撮影時の初期状態に100%戻せます。</p>
           </div>
 
           <div class="help-card" style="margin-top: 14px;">
-            <h4>4. 撮影場所（ジオタグ）ツリー・🗾 47都道府県制覇マップ・📍 スマホGPS準用 ＆ 🕒 撮影日時シフト補正</h4>
-            <p><strong>🗺️ 場所ツリー:</strong> GPS情報付き写真は、左サイドバー「🗺️ ジオタグ」から「国 ＞ 都道府県 ＞ 市区町村」の階層で絞り込めます。</p>
-            <p><strong>🗾 47都道府県 撮影制覇白地図・ヒートマップ・👣 撮影さんぽ軌跡:</strong> 左サイドバー「🧪 ラボ」内の <strong>「🗾 47都道府県 制覇白地図」</strong> ボタンを押すと、以下の3つの地図分析モードを楽しめます：</p>
+            <h4>4. 撮影場所（ジオタグ）ツリー・47都道府県制覇マップ・スマホGPS準用 ＆ 撮影日時シフト補正</h4>
+            <p><strong>場所ツリー:</strong> GPS情報付き写真は、左サイドバー「ジオタグ」から「国 ＞ 都道府県 ＞ 市区町村」の階層で絞り込めます。</p>
+            <p><strong>47都道府県 撮影制覇白地図・ヒートマップ・撮影さんぽ軌跡:</strong> 左サイドバー「ラボ」内の <strong>「47都道府県 制覇白地図」</strong> ボタンを押すと、以下の3つの地図分析モードを楽しめます：</p>
             <ul>
-              <li><strong>🗾 47都道府県 制覇白地図:</strong> 撮影したことがある都道府県が撮影枚数に応じて色分けされ、制覇率（○/47都道府県）を表示。県をクリックするとその県の写真だけを即座に一覧抽出できます。</li>
-              <li><strong>🔥 撮影密度ヒートマップ ＆ 👣 撮影さんぽ軌跡ライン:</strong> よく撮影に訪れるスポットがヒートマップで浮かび上がり、さらに日付を選ぶとその日に歩いた撮影ルートを時系列の赤い破線（さんぽ軌跡）で地図上に再現します。</li>
+              <li><strong>47都道府県 制覇白地図:</strong> 撮影したことがある都道府県が撮影枚数に応じて色分けされ、制覇率（○/47都道府県）を表示。県をクリックするとその県の写真だけを即座に一覧抽出できます。</li>
+              <li><strong>撮影密度ヒートマップ ＆ 撮影さんぽ軌跡ライン:</strong> よく撮影に訪れるスポットがヒートマップで浮かび上がり、さらに日付を選ぶとその日に歩いた撮影ルートを時系列の赤い破線（さんぽ軌跡）で地図上に再現します。</li>
             </ul>
-            <p><strong>📍 スマホから位置情報をコピー（スマホGPS準用）:</strong> GPSのない一眼カメラの写真でも、前後1時間以内に撮ったスマホ写真がライブラリにあれば、右インスペクタの「📍 スマホGPS準用」や下部バーの「⋯ その他」＞「📍 ジオタグ準用」から位置情報を引き継げます。</p>
-            <p><strong>🕒 撮影日時の一括シフト補正（カメラ時計ズレ・海外時差補正）:</strong> カメラの内蔵時計がズレていたり海外旅行で時差があった場合も、下部バーの「⋯ その他」＞ <strong>「🕒 撮影日時を一括補正...」</strong>（または右クリックメニュー）から、元ファイルを傷つけずに <code>±日・時間・分・秒</code> の一括オフセット補正（および <strong>「↩️ 元のEXIF日時に戻す」</strong> 復元）が行えます。</p>
+            <p><strong>スマホから位置情報をコピー（スマホGPS準用）:</strong> GPSのない一眼カメラの写真でも、前後1時間以内に撮ったスマホ写真がライブラリにあれば、右インスペクタ（または右クリックメニュー）の「スマホGPS準用」から位置情報を引き継げます。</p>
+            <p><strong>撮影日時の一括シフト補正（カメラ時計ズレ・海外時差補正）:</strong> カメラの内蔵時計がズレていたり海外旅行で時差があった場合も、右クリックメニュー（または右インスペクタ）の <strong>「撮影日時を一括補正...」</strong> から、元ファイルを傷つけずに <code>±日・時間・分・秒</code> の一括オフセット補正（および <strong>「元のEXIF日時に戻す」</strong> 復元）が行えます。</p>
           </div>
 
           <div class="help-card" style="margin-top: 14px;">
-            <h4>5. 📤 スマート・テイクアウト ＆ 🎞️ ベタ焼き（コンタクトシート）HTML出力</h4>
-            <p>画面下部バー（または右クリック）の <strong>「📤 テイクアウト」</strong> から、用途に合わせて2種類の出力が選べます（元ファイルは無傷のまま維持）：</p>
+            <h4>5. スマート・テイクアウト ＆ ベタ焼き（コンタクトシート）HTML出力</h4>
+            <p>右クリックメニュー（または右インスペクタ）の <strong>「テイクアウト」</strong> から、用途に合わせて2種類の出力が選べます（元ファイルは無傷のまま維持）：</p>
             <ul>
-              <li><strong>⚡ スマート・テイクアウト:</strong> 非破壊で行った回転・傾き・切り抜き・明るさ調整の焼き込み、GPS/向きのExif同期、<strong>📄 XMPサイドカー (<code>.xmp</code>) の同時出力（評価・タグ・調整情報の保持）</strong>、長辺リサイズ（4K / SNS最適 / フルHD等）、撮影秒数順の連番リネーム、SNS公開用のExifプライバシー消去を一括適用して別フォルダへ書き出します。</li>
-              <li><strong>🎞️ ベタ焼きHTML出力（暗室コンタクトシート）:</strong> 選んだ写真を昔ながらの暗室ネガフィルムシート風（または和紙風）の単一HTMLファイルとして出力します。ブラウザで開いて写真をクリックすると<strong>赤鉛筆の「⭕（マル）」チェック</strong>を付けられ、そのままA4サイズ等での美しい一覧印刷にも対応しています。</li>
+              <li><strong>スマート・テイクアウト:</strong> 非破壊で行った回転・傾き・切り抜き・明るさ調整の焼き込み、GPS/向きのExif同期、<strong>XMPサイドカー (<code>.xmp</code>) の同時出力（評価・タグ・調整情報の保持）</strong>、長辺リサイズ（4K / SNS最適 / フルHD等）、撮影秒数順の連番リネーム、SNS公開用のExifプライバシー消去を一括適用して別フォルダへ書き出します。</li>
+              <li><strong>ベタ焼きHTML出力（暗室コンタクトシート）:</strong> 選んだ写真を昔ながらの暗室ネガフィルムシート風（または和紙風）の単一HTMLファイルとして出力します。ブラウザで開いて写真をクリックすると<strong>赤鉛筆の「丸（チェック）」マーク</strong>を付けられ、そのままA4サイズ等での美しい一覧印刷にも対応しています。</li>
             </ul>
           </div>
 
           <div class="help-card" style="margin-top: 14px;">
-            <h4>6. 🧪 ラボ（実験室）：🏆 勝ちレンズカルテ・🌅 太陽高度抽出・🎂 歴代の今日・🎲 未整理ガチャ</h4>
-            <p>左サイドバーの <strong>「🧪 ラボ」</strong> セクションでは、写真ライブラリを多角的に分析・発掘する実験室ツールを使えます：</p>
+            <h4>6. ラボ（実験室）：勝ちレンズカルテ・太陽高度抽出・歴代の今日・未整理ガチャ</h4>
+            <p>左サイドバーの <strong>「ラボ」</strong> セクションでは、写真ライブラリを多角的に分析・発掘する実験室ツールを使えます：</p>
             <ul>
-              <li><strong>🏆 勝ちレンズ・得意設定カルテ:</strong> これまでの評価（優・良）データから、歩留まり（高評価率）が高い「相性抜群の勝ちレンズランキング」や、自分が得意とする「黄金の焦点距離・F値・撮影時間帯」を自動診断します。</li>
-              <li><strong>🔭 太陽高度・露出ラボ抽出:</strong> 撮影日時と緯度・経度から太陽の角度を自動計算し、ドラマチックな朝夕の <strong>「🌅 マジックアワー（太陽高度 -4°〜+6°）」</strong>、静謐な薄明の <strong>「🌌 ブルーアワー（-8°〜-4°）」</strong>、<strong>「🌃 夜景・星景（-8°未満）」</strong>、さらにシャッター速度が <code>1/焦点距離 秒</code> より遅い <strong>「⚠️ 手ブレ注意」</strong> の写真をワンクリックで抽出します。</li>
-              <li><strong>🎂 歴代の今日・記念日 ＆ 🎲 未整理ガチャ:</strong> 「過去の同じ月日（今日や記念日）に撮った写真」を一発で振り返る機能や、まだ選別していない（評価：可）写真が残っているフォルダをランダムに1つ引き当てる「🎲 未整理ガチャ」で楽しく整理を進められます。</li>
+              <li><strong>勝ちレンズ・得意設定カルテ:</strong> これまでの評価（優・良）データから、歩留まり（高評価率）が高い「相性抜群の勝ちレンズランキング」や、自分が得意とする「黄金の焦点距離・F値・撮影時間帯」を自動診断します。</li>
+              <li><strong>太陽高度・露出ラボ抽出:</strong> 撮影日時と緯度・経度から太陽の角度を自動計算し、ドラマチックな朝夕の <strong>「マジックアワー（太陽高度 -4°〜+6°）」</strong>、静謐な薄明の <strong>「ブルーアワー（-8°〜-4°）」</strong>、<strong>「夜景・星景（-8°未満）」</strong>、さらにシャッター速度が <code>1/焦点距離 秒</code> より遅い <strong>「手ブレ注意」</strong> の写真をワンクリックで抽出します。</li>
+              <li><strong>歴代の今日・記念日 ＆ 未整理ガチャ:</strong> 「過去の同じ月日（今日や記念日）に撮った写真」を一発で振り返る機能や、まだ選別していない（評価：可）写真が残っているフォルダをランダムに1つ引き当てる「未整理ガチャ」で楽しく整理を進められます。</li>
             </ul>
           </div>
 
           <div class="help-card" style="margin-top: 14px;">
             <h4>7. 検索プリセット保存・外部ソフト連携・DBメンテナンス</h4>
-            <p><strong>💾 プリセット保存:</strong> よく使う絞り込み条件は、左サイドバー「⚡ クイックアクセス」内の保存フォームで名前を付けて登録し、ワンクリックで呼び出せます。</p>
-            <p><strong>📁 外部ソフト連携 ＆ 🔄 サムネイル更新:</strong> 右インスペクタ上部の <code>📁</code> でエクスプローラーを開き、<code>🖼️</code> で既定ソフトで開けます。外部ソフトで編集した後は、写真を右クリック →「🔄 サムネイルを更新」で表示を最新化できます。</p>
-            <p><strong>⚙️ 設定・DBメンテナンス:</strong> 左サイドバー「📁 フォルダ」や「🏷️ タグ」上部の <code>⚙️ 設定</code> ボタンから、<strong>「🪟 起動時のウィンドウサイズ（最大化／前回記憶／中央80%／左・右半分スナップ／フルスクリーン）」</strong> や「🏷️ タグの名前順ルール」の変更、および世代バックアップ・データベース容量の最適化（VACUUM）が行えます。</p>
-            <p style="margin-top: 8px;"><strong>📦 storage（アプリ内ストレージ）での完結管理 ＆ サイドカー自動追従:</strong> 左サイドバー「📁 フォルダ」先頭の <strong>「📦 storage (アプリ内ストレージ)」</strong> には、外部フォルダの写真を選択して <strong>「📥 storageへインポート」</strong>（または左ツリーの <code>storage</code> フォルダへドラッグ＆ドロップ）でコピー取り込みできます。<code>storage</code> 内ではサブフォルダの作成・名前変更、写真のフォルダ間移動（<strong>「📦 storage内で移動」</strong>）、ファイル名変更（<strong><kbd>F2</kbd> キー</strong>で単一リネーム／複数選択時は一括連番リネーム）、フォルダ右クリックからの外部エクスポートが自在に行えます。さらに、写真と同名の<strong>サイドカーファイル（<code>.xmp</code> 等）が存在する場合は、インポート・移動・リネーム・エクスポート時に自動で追従</strong>します。</p>
+            <p><strong>プリセット保存:</strong> よく使う絞り込み条件は、左サイドバー「クイックアクセス」内の保存フォームで名前を付けて登録し、ワンクリックで呼び出せます。</p>
+            <p><strong>外部ソフト連携 ＆ サムネイル更新:</strong> 右インスペクタ上部の <code>開く</code> でエクスプローラーを開き、<code>規定</code> で既定ソフトで開けます。外部ソフトで編集した後は、写真を右クリック →「サムネイルを更新」で表示を最新化できます。</p>
+            <p><strong>設定・DBメンテナンス:</strong> 左サイドバー「フォルダ」や「タグ」上部の <code>設定</code> ボタンから、<strong>「起動時のウィンドウサイズ（最大化／前回記憶／中央80%／左・右半分スナップ／フルスクリーン）」</strong> や「タグの名前順ルール」の変更、および世代バックアップ・データベース容量の最適化（VACUUM）が行えます。</p>
+            <p style="margin-top: 8px;"><strong>storage（アプリ内ストレージ）での完結管理 ＆ サイドカー自動追従:</strong> 左サイドバー「フォルダ」先頭の <strong>「storage (アプリ内ストレージ)」</strong> には、外部フォルダの写真を選択して <strong>「storageへインポート」</strong>（または左ツリーの <code>storage</code> フォルダへドラッグ＆ドロップ）でコピー取り込みできます。<code>storage</code> 内ではサブフォルダの作成・名前変更、写真のフォルダ間移動（<strong>「storage内で移動」</strong>）、ファイル名変更（<strong><kbd>F2</kbd> キー</strong>で単一リネーム／複数選択時は一括連番リネーム）、フォルダ右クリックからの外部エクスポートが自在に行えます。さらに、写真と同名の<strong>サイドカーファイル（<code>.xmp</code> 等）が存在する場合は、インポート・移動・リネーム・エクスポート時に自動で追従</strong>します。</p>
           </div>
         </div>
 
-        <!-- タブ3: 🟣 Mobile & USB編 -->
+        <!-- タブ3: Mobile & USB編 -->
         <div class="help-tab-content" id="helpTab-portable">
           <div class="help-card">
             <h4>1. USBメモリ・外付けSSDでの3つの持ち歩きスタイル</h4>
             <ul>
               <li><strong>① 写真もアプリも丸ごとUSBに入れる:</strong> USBメモリ1本を別のPCに挿して <code>PhotoManager.exe</code> を開くだけで、どこでも同じ環境で使えます。</li>
-              <li><strong>② 元写真は自宅に置き「カタログ（USB）」だけ持ち歩く:</strong> 数百GB〜数TBの元写真は自宅HDDに置いたまま、Photo Manager が入ったUSBメモリだけを持ち歩けます。元写真が未接続（「🔌 未接続」表示）でも、全写真のサムネイル閲覧・評価・タグ付けが快適に行えます。</li>
+              <li><strong>(2) 元写真は自宅に置き「カタログ（USB）」だけ持ち歩く:</strong> 数百GB〜数TBの元写真は自宅HDDに置いたまま、Photo Manager が入ったUSBメモリだけを持ち歩けます。元写真が未接続（「未接続」表示）でも、全写真のサムネイル閲覧・評価・タグ付けが快適に行えます。</li>
               <li><strong>③ ドライブ文字（D: → E: 等）が変わっても自動追従:</strong> 別のPCに挿してドライブ文字が変わっても、ドライブ固有情報を自動認識してリンク切れを防ぎます。</li>
             </ul>
           </div>
@@ -1335,39 +1326,40 @@
           <div class="help-card" style="margin-top: 14px;">
             <h4>2. スマホで写真をサクサク選別する（2つの方法）</h4>
             <p>ソファや移動中の電車の中で、スマホの親指操作だけで大量の写真を4段階評価（優・良・可・棄）＆タグ付けできます。</p>
-            <p><strong>🏠 方法A：自宅のWi-Fiでつなぐ（リアルタイム反映）</strong></p>
+            <p><strong>方法A：自宅のWi-Fiでつなぐ（リアルタイム反映）</strong></p>
             <ol>
-              <li>パソコン画面右上の <strong>「📱 スマホ連携」</strong> ボタンをクリックします。</li>
-              <li>表示された <strong>QRコード</strong> をスマホのカメラで読み取って開きます（同じWi-Fiに接続）。</li>
+              <li>パソコン画面右上の <strong>「スマホ連携」</strong> ボタンをクリックします。</li>
+              <li>表示された <strong>QRコード</strong> をスマホのカメラで読み取って開きます（同じWi-Fiに接続）。QRコードのURLには接続用トークンが含まれており、読み取った端末のみ接続可能です。スマホ側からは閲覧・評価・タグ付け・同期のみが行えます。</li>
               <li>スマホで付けた評価やタグが、その瞬間にパソコン画面へリアルタイム反映されます！</li>
+              <li class="help-tip" style="list-style: none; margin-top: 6px;">※ パソコン側アプリの再起動時や、30分間無通信が続くと待受が自動停止します。その場合は再度「スマホ連携」を開いてQRコードを読み取ってください。</li>
             </ol>
-            <p style="margin-top: 8px;"><strong>🚃 方法B：外出先・ネット圏外でUSBメモリを直接スマホに挿す（完全オフライン）</strong></p>
+            <p style="margin-top: 8px;"><strong>方法B：外出先・ネット圏外でUSBメモリを直接スマホに挿す（完全オフライン）</strong></p>
             <ol>
               <li>パソコン電源OFF・ネット圏外でも使えます。Photo Manager が入ったUSBメモリをAndroidスマホ等に挿します。</li>
               <li>スマホの「ファイル」アプリでUSB内の <strong><code>PhotoManager_Mobile.html</code></strong> をタップしてブラウザで開きます（※開けない機種では、このHTMLファイル1つだけをスマホ本体のダウンロードフォルダ等にコピーして開いてください）。</li>
-              <li>画面の <strong>「📂 DB読込」</strong> をタップし、USBメモリ内の <strong><code>cache</code> フォルダ ＞ <code>library.db</code></strong> を選ぶと、約1秒で全写真が読み込まれます。</li>
+              <li>画面の <strong>「DB読込」</strong> をタップし、USBメモリ内の <strong><code>cache</code> フォルダ ＞ <code>library.db</code></strong> を選ぶと、約1秒で全写真が読み込まれます。</li>
             </ol>
           </div>
 
           <div class="help-card" style="margin-top: 14px;">
             <h4>3. スマホでの親指操作と、パソコンへの同期手順（USBオフライン時）</h4>
-            <p><strong>👍 親指ドックで連続選別:</strong> スマホで写真をタップして拡大し、画面下部の <strong>「🗑️棄」「⚪可」「⭐良」「🏅優」</strong> をタップします。「⚡自動送り」がONならタップと同時に次の写真へ進むため、片手で何百枚でも仕分けられます。</p>
-            <p><strong>🔄 パソコンへの反映手順:</strong></p>
+            <p><strong>親指ドックで連続選別:</strong> スマホで写真をタップして拡大し、画面下部の <strong>「棄」「可」「良」「優」</strong> をタップします。「自動送り」がONならタップと同時に次の写真へ進むため、片手で何百枚でも仕分けられます。</p>
+            <p><strong>パソコンへの反映手順:</strong></p>
             <ol>
-              <li>選別が終わったらスマホ画面の <strong>「💾 変更を保存」</strong> を押し、USBメモリの先頭（ルート）フォルダに <strong><code>mobile_sync.json</code></strong> を保存します。</li>
+              <li>選別が終わったらスマホ画面の <strong>「変更を保存」</strong> を押し、USBメモリの先頭（ルート）フォルダに <strong><code>mobile_sync.json</code></strong> を保存します。</li>
               <li>保存完了メッセージから3秒ほど待ち、スマホの通知欄から <strong>「USBドライブを取り外す（マウント解除）」</strong> を実行してからUSBを抜きます。</li>
               <li>USBメモリをパソコンに挿して <code>PhotoManager.exe</code> を起動すると、<strong>自動的に選別結果が検出・反映</strong>され、完了通知が表示されます！</li>
             </ol>
           </div>
 
           <div class="help-card" style="margin-top: 14px;">
-            <h4>4. ⚠️ USBメモリを安全に抜くための鉄則</h4>
-            <p><strong>💻 パソコンから抜く前:</strong> 必ず画面右上の <strong>「⏻ 終了」＞「サーバーを停止して終了」</strong> で完全終了してから抜いてください。</p>
-            <p><strong>📱 スマホから抜く前:</strong> <code>mobile_sync.json</code> 保存後、必ずスマホ通知欄の <strong>「取り外す（マウント解除）」</strong> を実行してから抜いてください（そのまま引き抜くと保存ファイルが空になることがあります）。</p>
+            <h4>4. USBメモリを安全に抜くための鉄則</h4>
+            <p><strong>パソコンから抜く前:</strong> 必ず画面右上の <strong>「終了」＞「サーバーを停止して終了」</strong> で完全終了してから抜いてください。</p>
+            <p><strong>スマホから抜く前:</strong> <code>mobile_sync.json</code> 保存後、必ずスマホ通知欄の <strong>「取り外す（マウント解除）」</strong> を実行してから抜いてください（そのまま引き抜くと保存ファイルが空になることがあります）。</p>
           </div>
         </div>
 
-        <!-- タブ4: ⌨️ ショートカット & FAQ -->
+        <!-- タブ4: ショートカット & FAQ -->
         <div class="help-tab-content" id="helpTab-shortcuts">
           <div class="help-section">
             <h3 class="help-section-title">一覧画面でのショートカット</h3>
@@ -1378,17 +1370,17 @@
               <tbody>
                 <tr><td><kbd>←</kbd> / <kbd>→</kbd> / <kbd>↑</kbd> / <kbd>↓</kbd></td><td><strong>前後・上下の写真へ移動</strong>（右インスペクタもリアルタイム連動 ／ <kbd>Shift</kbd> + 矢印キーで範囲選択）</td></tr>
                 <tr><td><kbd>Space</kbd> / <kbd>Enter</kbd></td><td>選択中の写真を拡大表示（ライトボックス）で開く</td></tr>
-                <tr><td><kbd>1</kbd></td><td>選択中の写真に <strong>🏅 優 (ベストショット)</strong> を設定</td></tr>
-                <tr><td><kbd>2</kbd></td><td>選択中の写真に <strong>⭐ 良 (お気に入り)</strong> を設定</td></tr>
-                <tr><td><kbd>3</kbd> / <kbd>X</kbd></td><td>選択中の写真に <strong>🗑️ 棄 (ボツ)</strong> を設定（一覧から自動で隠れます）</td></tr>
-                <tr><td><kbd>0</kbd> / <kbd>4</kbd></td><td>選択中の写真の <strong>評価を取り消す（⚪ 可）</strong></td></tr>
+                <tr><td><kbd>1</kbd></td><td>選択中の写真に <strong>優 (Ex) (ベストショット)</strong> を設定</td></tr>
+                <tr><td><kbd>2</kbd></td><td>選択中の写真に <strong>良 (Gd) (お気に入り)</strong> を設定</td></tr>
+                <tr><td><kbd>3</kbd> / <kbd>X</kbd></td><td>選択中の写真に <strong>棄 (Rj) (ボツ)</strong> を設定（一覧から自動で隠れます）</td></tr>
+                <tr><td><kbd>0</kbd> / <kbd>4</kbd></td><td>選択中の写真の <strong>評価を取り消す（可 (Nm)）</strong></td></tr>
                 <tr><td><kbd>R</kbd> / <kbd>L</kbd></td><td>選択中の写真を <strong>右へ90度(<kbd>R</kbd>) / 左へ90度(<kbd>L</kbd>) 回転</strong>（非破壊）</td></tr>
                 <tr><td><kbd>C</kbd></td><td>選択中の写真の <strong>切り抜き・傾き・明るさ調整画面</strong> を開く（非破壊 ／ 調整中は <kbd>\</kbd> 長押しで元画像比較）</td></tr>
                 <tr><td><kbd>Ctrl</kbd> + <kbd>C</kbd></td><td>選択中の写真を <strong>クリップボードへ画像コピー</strong>（調整反映済み ／ SNSや資料へそのまま <kbd>Ctrl</kbd>+<kbd>V</kbd> 貼付可）</td></tr>
                 <tr><td><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>C</kbd> / <kbd>V</kbd></td><td>写真の <strong>トーン調整（明るさ・コントラスト・彩度）をコピー (<kbd>C</kbd>) ／ 選択写真へ一括ペースト (<kbd>V</kbd>)</strong></td></tr>
                 <tr><td><kbd>F2</kbd></td><td><code>storage</code>（アプリ内ストレージ）内の写真の <strong>ファイル名を変更（1枚：単一リネーム ／ 2枚以上：一括連番リネーム）</strong></td></tr>
-                <tr><td><kbd>V</kbd></td><td><strong>⚖️ 2枚並べて比較（Side-by-Side）</strong> を開く（同期ズーム・勝ち抜き選別）</td></tr>
-                <tr><td><kbd>H</kbd></td><td><strong>📊 RGB・輝度ヒストグラム</strong> の表示 / 非表示を切り替え</td></tr>
+                <tr><td><kbd>V</kbd></td><td><strong>2枚並べて比較（Side-by-Side）</strong> を開く（同期ズーム・勝ち抜き選別）</td></tr>
+                <tr><td><kbd>H</kbd></td><td><strong>RGB・輝度ヒストグラム</strong> の表示 / 非表示を切り替え</td></tr>
                 <tr><td><kbd>I</kbd></td><td>写真上の文字・バッジ表示を隠す / 表示する（クリーンモード切替）</td></tr>
                 <tr><td><kbd>[</kbd> / <kbd>B</kbd></td><td>左サイドバーの表示 / 非表示を切り替え</td></tr>
                 <tr><td><kbd>D</kbd></td><td>右インスペクタ（詳細パネル）の表示 / 非表示を切り替え</td></tr>
@@ -1409,10 +1401,10 @@
                 <tr><td><kbd>←</kbd> / <kbd>→</kbd></td><td><strong>前後の写真・スタックへ移動（2枚比較時は右ペインBの候補切替）</strong></td></tr>
                 <tr><td><kbd>↑</kbd> / <kbd>↓</kbd></td><td><strong>連写 / ブラケット / 重複写真のスタック内切替</strong><br>（露出ブラケット時: <kbd>↑</kbd> で明るいEV+ / <kbd>↓</kbd> で暗いEV-、連写・重複時: <kbd>↑</kbd> で時間戻り / <kbd>↓</kbd> で時間進み）</td></tr>
                 <tr><td><kbd>1</kbd> / <kbd>2</kbd> / <kbd>3</kbd> / <kbd>0</kbd></td><td>表示中の写真（2枚比較時は選択中ペイン）に <strong>優(<kbd>1</kbd>) / 良(<kbd>2</kbd>) / 棄(<kbd>3</kbd>) / 可(<kbd>0</kbd>・<kbd>4</kbd>)</strong> を設定</td></tr>
-                <tr><td><kbd>V</kbd></td><td>ライトボックスから <strong>⚖️ 2枚並べて比較（Side-by-Side）</strong> を開く / 閉じる</td></tr>
-                <tr><td><kbd>W</kbd> / <kbd>S</kbd></td><td>【⚖️ 2枚比較時】<kbd>W</kbd> で<strong>右(B)を左(A:基準)に昇格して次へ</strong> ／ <kbd>S</kbd> で<strong>左右入れ替え</strong></td></tr>
-                <tr><td><kbd>H</kbd></td><td><strong>📊 RGB・輝度ヒストグラム</strong> の表示 / 非表示を切り替え（2枚比較時は左右同時表示）</td></tr>
-                <tr><td><kbd>X</kbd></td><td><strong>🗑️ 棄（ボツ）</strong> 評価のON / OFFトグル</td></tr>
+                <tr><td><kbd>V</kbd></td><td>ライトボックスから <strong>2枚並べて比較（Side-by-Side）</strong> を開く / 閉じる</td></tr>
+                <tr><td><kbd>W</kbd> / <kbd>S</kbd></td><td>【2枚比較時】<kbd>W</kbd> で<strong>右(B)を左(A:基準)に昇格して次へ</strong> ／ <kbd>S</kbd> で<strong>左右入れ替え</strong></td></tr>
+                <tr><td><kbd>H</kbd></td><td><strong>RGB・輝度ヒストグラム</strong> の表示 / 非表示を切り替え（2枚比較時は左右同時表示）</td></tr>
+                <tr><td><kbd>X</kbd></td><td><strong>棄 (Rj)（ボツ）</strong> 評価のON / OFFトグル</td></tr>
                 <tr><td><kbd>R</kbd> / <kbd>L</kbd></td><td>表示中の写真を <strong>右へ90度(<kbd>R</kbd>) / 左へ90度(<kbd>L</kbd>) 回転</strong>（非破壊）</td></tr>
                 <tr><td><kbd>C</kbd></td><td>表示中の写真の <strong>切り抜き・傾き・明るさ調整画面</strong> を開く（非破壊）</td></tr>
                 <tr><td><kbd>マウスホイール</kbd></td><td>画像上: <strong>カーソル位置を中心に拡大縮小 (100%〜400% / 2枚比較時は左右同期ズーム)</strong><br>連写バー上: <strong>スタック内のコマ送り</strong> ／ 下部フィルム帯上: <strong>写真送り</strong></td></tr>
@@ -1424,11 +1416,11 @@
           </div>
 
           <div class="help-card" style="margin-top: 18px;">
-            <h4>❓ よくある質問（FAQ）</h4>
+            <h4>よくある質問（FAQ）</h4>
             <p><strong>Q. <kbd>3</kbd> キーで「棄」にしたら写真が消えました。ファイルが削除されたのですか？</strong><br>
-            A. いいえ、パソコン内のファイルは削除されていません。画面上部ツールバーの <strong>「🗑️ 棄」</strong> ボタンを押して点灯させればいつでも再表示でき、<kbd>0</kbd> キーで元に戻せます。</p>
+            A. いいえ、パソコン内のファイルは削除されていません。画面上部ツールバーの <strong>「棄 (Rj)」</strong> ボタンを押して点灯させればいつでも再表示でき、<kbd>0</kbd> キーで元に戻せます。</p>
             <p style="margin-top: 8px;"><strong>Q. 回転や明るさ調整をした写真を、実際のファイルとして保存したいときは？</strong><br>
-            A. アプリ内の調整は元ファイルを傷つけない非破壊方式です。調整結果を焼き込んだ画像ファイルを作るには、画面下部バーの <strong>「📤 テイクアウト」＞「⚡ スマート・テイクアウト...」</strong> から書き出してください。</p>
+            A. アプリ内の調整は元ファイルを傷つけない非破壊方式です。調整結果を焼き込んだ画像ファイルを作るには、右クリックメニューの <strong>「テイクアウト」＞「スマート・テイクアウト...」</strong> から書き出してください。</p>
             <p style="margin-top: 8px;"><strong>Q. 初回起動時に「Windows によって PC が保護されました」と表示されました。</strong><br>
             A. 個人開発で商用コード署名証明書を付与していないため表示される確認画面です。「詳細情報」→「実行」で起動するか、同梱の <code>Build.bat</code> を実行してPC上で <code>PhotoManager.exe</code> を再生成してください。</p>
           </div>
@@ -1447,7 +1439,7 @@
     <div class="modal-card shutdown-modal-card">
       <div class="modal-header">
         <div class="modal-header-title">
-          <h2>⏻ Photo Manager の終了</h2>
+          <h2>Photo Manager の終了</h2>
           <span class="modal-subtitle">サーバー停止の確認</span>
         </div>
         <button class="modal-close-btn" id="closeShutdownModalBtn">&times;</button>
@@ -1455,7 +1447,7 @@
 
       <div class="modal-body shutdown-modal-body">
         <div class="shutdown-dialog-content">
-          <div class="shutdown-dialog-icon">🛑</div>
+          <div class="shutdown-dialog-icon">!</div>
           <div class="shutdown-dialog-text">
             <div class="shutdown-dialog-title">サーバーを停止して終了しますか？</div>
             <div class="shutdown-dialog-desc">
@@ -1465,7 +1457,7 @@
         </div>
 
         <div class="shutdown-footer-tip">
-          <span>💡 終了後にUSBメモリをPCから安全に取り外せます。</span>
+          <span>終了後にUSBメモリをPCから安全に取り外せます。</span>
         </div>
       </div>
 
@@ -1481,7 +1473,7 @@
     <div class="modal-card" style="max-width: 600px;">
       <div class="modal-header">
         <div class="modal-header-title">
-          <h2>📱 スマホ（Android）選別連携 &amp; USB抜き差しガイド</h2>
+          <h2>スマホ（Android）選別連携 &amp; USB抜き差しガイド</h2>
           <span class="modal-subtitle">ネットワーク設定不要・USBメモリ1本で安全に持ち出し＆自動反映</span>
         </div>
         <button class="modal-close-btn" id="closeMobileModalBtn">&times;</button>
@@ -1492,7 +1484,7 @@
         <div id="mobileDetectedSyncBox" style="display: none; background: rgba(225, 77, 42, 0.14); border: 1px solid rgba(225, 77, 42, 0.5); border-radius: 6px; padding: 12px 14px;">
           <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;">
             <div>
-              <div style="font-weight: 700; color: var(--accent-primary, #e14d2a); font-size: 0.9rem;">⚡ 未反映のスマホ選別データ (mobile_sync.json) を検出しました</div>
+              <div style="font-weight: 700; color: var(--accent-primary, #e14d2a); font-size: 0.9rem;">未反映のスマホ選別データ (mobile_sync.json) を検出しました</div>
               <div id="mobileDetectedSyncDesc" style="font-size: 0.78rem; color: var(--text-muted, #94a3b8); margin-top: 3px;"></div>
             </div>
             <button class="btn btn-primary btn-sm" id="applyDetectedMobileSyncBtn" style="white-space: nowrap;">今すぐPCに反映</button>
@@ -1501,17 +1493,17 @@
 
         <!-- 前回取り込み完了ステータスの表示バナー -->
         <div id="mobileLastAppliedSyncBox" style="display: none; background: rgba(22, 163, 74, 0.12); border: 1px solid rgba(34, 197, 94, 0.4); border-radius: 6px; padding: 10px 14px;">
-          <div style="font-weight: 700; color: #22c55e; font-size: 0.84rem;">✅ 直近のスマホ選別データ取り込み実績</div>
+          <div style="font-weight: 700; color: #22c55e; font-size: 0.84rem;">直近のスマホ選別データ取り込み実績</div>
           <div id="mobileLastAppliedSyncDesc" style="font-size: 0.78rem; color: var(--text-muted, #94a3b8); margin-top: 2px;"></div>
         </div>
 
         <!-- ① 自宅Wi-Fiでスマホから直接スマホ版 (/m) に入る QRコード -->
         <div style="background: var(--bg-secondary, rgba(255,255,255,0.04)); border: 1px solid var(--border-soft, rgba(255,255,255,0.1)); border-radius: 6px; padding: 14px;">
           <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; flex-wrap: wrap;">
-            <div style="font-weight: 700; font-size: 0.92rem; color: var(--text-main, #eceae4);">🟢 ① 自宅Wi-Fi: QRコードでスマホ版 (<code>/m</code>) に入る</div>
+            <div style="font-weight: 700; font-size: 0.92rem; color: var(--text-main, #eceae4);">① 自宅Wi-Fi: QRコードでスマホ版 (<code>/m</code>) に入る</div>
             <div style="display: flex; gap: 6px;">
-              <button class="btn btn-secondary btn-xs" id="openMobilePreviewWindowBtn" title="PC上でスマホ画面 (/m) を別ウィンドウで開いて試す">💻 PCでスマホ画面を試す</button>
-              <a href="/api/mobile/standalone" download="PhotoManager_Mobile.html" class="btn btn-secondary btn-xs" style="text-decoration: none;" title="単体HTMLを別フォルダやスマホ転送用に保存">📥 単体HTMLを保存</a>
+              <button class="btn btn-secondary btn-xs" id="openMobilePreviewWindowBtn" title="PC上でスマホ画面 (/m) を別ウィンドウで開いて試す">PCでスマホ画面を試す</button>
+              <a href="/api/mobile/standalone" download="PhotoManager_Mobile.html" class="btn btn-secondary btn-xs" style="text-decoration: none;" title="単体HTMLを別フォルダやスマホ転送用に保存">単体HTMLを保存</a>
             </div>
           </div>
           <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
@@ -1532,37 +1524,37 @@
         <!-- ② 外出先・USBメモリ持ち出し: USBメモリの抜き差し 4ステップ -->
         <div style="background: var(--bg-secondary, rgba(255,255,255,0.04)); border: 1px solid var(--border-soft, rgba(255,255,255,0.1)); border-radius: 6px; padding: 14px;">
           <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; flex-wrap: wrap;">
-            <div style="font-weight: 700; font-size: 0.92rem; color: var(--text-main, #eceae4);">🔌 ② USB持ち出し選別: USB抜き差し＆JSON反映の4ステップ</div>
+            <div style="font-weight: 700; font-size: 0.92rem; color: var(--text-main, #eceae4);">② USB持ち出し選別: USB抜き差し＆JSON反映の4ステップ</div>
           </div>
 
           <div style="display: flex; flex-direction: column; gap: 8px; font-size: 0.81rem; line-height: 1.55; color: var(--text-main, #eceae4);">
             <div style="background: rgba(0,0,0,0.18); border-left: 3px solid var(--accent-primary, #e14d2a); border-radius: 4px; padding: 8px 10px;">
               <strong>【Step 1】PCからUSBを抜くとき</strong><br>
-              <span style="color: var(--text-muted, #94a3b8);">PC画面右上の <strong>「⏻ 終了」ボタン</strong> から「サーバーを停止して終了」を実行し（ウィンドウの「&times;」だけではバックグラウンド常駐が維持されます）、Windowsタスクバー右下の「ハードウェアの安全な取り外し」を行ってからUSBメモリを抜きます。</span>
+              <span style="color: var(--text-muted, #94a3b8);">PC画面右上の <strong>「終了」ボタン</strong> から「サーバーを停止して終了」を実行し（ウィンドウの「&times;」だけではバックグラウンド常駐が維持されます）、Windowsタスクバー右下の「ハードウェアの安全な取り外し」を行ってからUSBメモリを抜きます。</span>
             </div>
 
             <div style="background: rgba(0,0,0,0.18); border-left: 3px solid #3b82f6; border-radius: 4px; padding: 8px 10px;">
               <strong>【Step 2】スマホにUSBを挿して写真を読み込む</strong><br>
-              <span style="color: var(--text-muted, #94a3b8);">スマホにUSBを挿し、「ファイル」アプリでUSB内の <code>PhotoManager_Mobile.html</code> を開きます。続けて <strong>「📂 library.db を読み込む」</strong> から <code>cache/library.db</code>（現在 <strong id="mobileDbSizeLabel">- MB</strong>）を選ぶと全写真が表示され、親指で高速選別できます（選別中はUSBを挿したままでOKです）。</span>
+              <span style="color: var(--text-muted, #94a3b8);">スマホにUSBを挿し、「ファイル」アプリでUSB内の <code>PhotoManager_Mobile.html</code> を開きます。続けて <strong>「library.db を読み込む」</strong> から <code>cache/library.db</code>（現在 <strong id="mobileDbSizeLabel">- MB</strong>）を選ぶと全写真が表示され、親指で高速選別できます（選別中はUSBを挿したままでOKです）。</span>
             </div>
 
             <div style="background: rgba(245, 158, 11, 0.1); border-left: 3px solid #f59e0b; border-radius: 4px; padding: 8px 10px;">
-              <strong>【Step 3】選別結果をUSBに保存してスマホから抜く（⚠️最重要）</strong><br>
-              <span style="color: var(--text-muted, #94a3b8);">選別が終わったらスマホ画面右上の「📂 DB/同期」から <strong>「💾 mobile_sync.json を保存する」</strong> でUSB直下に保存します。<br>
-              <strong>「✅ 書き込み・クローズ完了」</strong>と表示されたら、スマホ画面上の通知バーから<strong>「USBドライブを取り外す（マウント解除）」</strong>を必ずタップしてからUSBを抜いてください。</span>
+              <strong>【Step 3】選別結果をUSBに保存してスマホから抜く（最重要）</strong><br>
+              <span style="color: var(--text-muted, #94a3b8);">選別が終わったらスマホ画面右上の「DB/同期」から <strong>「mobile_sync.json を保存する」</strong> でUSB直下に保存します。<br>
+              <strong>「書き込み・クローズ完了」</strong>と表示されたら、スマホ画面上の通知バーから<strong>「USBドライブを取り外す（マウント解除）」</strong>を必ずタップしてからUSBを抜いてください。</span>
             </div>
 
             <div style="background: rgba(22, 163, 74, 0.1); border-left: 3px solid #22c55e; border-radius: 4px; padding: 8px 10px;">
               <strong>【Step 4】PCにUSBを挿して起動すると自動反映＆通知！</strong><br>
-              <span style="color: var(--text-muted, #94a3b8);">USBをPCに挿して <code>PhotoManager.exe</code> を起動すると、自動的に <code>mobile_sync.json</code> が取り込まれ、画面中央に<strong>「📱 スマホ選別データの取り込み完了」通知ウィンドウ</strong>が表示されます。</span>
+              <span style="color: var(--text-muted, #94a3b8);">USBをPCに挿して <code>PhotoManager.exe</code> を起動すると、自動的に <code>mobile_sync.json</code> が取り込まれ、画面中央に<strong>「スマホ選別データの取り込み完了」通知ウィンドウ</strong>が表示されます。</span>
             </div>
           </div>
 
           <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border-soft, rgba(255,255,255,0.08));">
-            <span style="font-size: 0.8rem; color: var(--text-main, #eceae4); font-weight: 600;">📥 手動で選別データを取り込む場合:</span>
+            <span style="font-size: 0.8rem; color: var(--text-main, #eceae4); font-weight: 600;">手動で選別データを取り込む場合:</span>
             <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-              <button class="btn btn-secondary btn-sm" id="pasteMobileSyncJsonBtn" title="クリップボードにコピーした選別JSONを直接反映">📋 クリップボードから反映</button>
-              <button class="btn btn-primary btn-sm" id="pickMobileSyncFileBtn">📂 mobile_sync.json を選択して取り込む</button>
+              <button class="btn btn-secondary btn-sm" id="pasteMobileSyncJsonBtn" title="クリップボードにコピーした選別JSONを直接反映">クリップボードから反映</button>
+              <button class="btn btn-primary btn-sm" id="pickMobileSyncFileBtn">mobile_sync.json を選択して取り込む</button>
               <input type="file" id="mobileSyncFileInput" accept=".json,application/json" style="display: none;">
             </div>
           </div>
@@ -1580,7 +1572,7 @@
     <div class="modal-card" style="max-width: 500px;">
       <div class="modal-header">
         <div class="modal-header-title">
-          <h2>📱 スマホ選別データの取り込み完了</h2>
+          <h2>スマホ選別データの取り込み完了</h2>
           <span class="modal-subtitle" id="mobileSyncResultSubtitle">USBメモリの選別差分データをPCライブラリへ反映しました</span>
         </div>
         <button class="modal-close-btn" id="closeMobileSyncResultBtn">&times;</button>
@@ -1588,7 +1580,7 @@
 
       <div class="modal-body" style="padding: 18px 20px; display: flex; flex-direction: column; gap: 12px;">
         <div id="mobileSyncResultBanner" style="display: flex; align-items: center; gap: 12px; background: rgba(22, 163, 74, 0.14); border: 1px solid rgba(34, 197, 94, 0.45); border-radius: 8px; padding: 12px 14px;">
-          <div id="mobileSyncResultIcon" style="font-size: 2rem; line-height: 1; flex-shrink: 0;">🎉</div>
+          <div id="mobileSyncResultIcon" style="font-size: 2rem; line-height: 1; flex-shrink: 0;">✓</div>
           <div style="flex: 1;">
             <div id="mobileSyncResultHeadline" style="font-weight: 700; font-size: 1rem; color: var(--text-main, #eceae4);">
               1 枚の写真の選別結果を反映しました！
@@ -1605,7 +1597,7 @@
       </div>
 
       <div class="modal-footer" style="display: flex; justify-content: flex-end; padding: 12px 20px;">
-        <button class="btn btn-primary" id="closeMobileSyncResultOkBtn">✅ 確認 (OK)</button>
+        <button class="btn btn-primary" id="closeMobileSyncResultOkBtn">確認 (OK)</button>
       </div>
     </div>
   </div>
@@ -1615,7 +1607,7 @@
     <div class="modal-card" style="max-width: 440px;">
       <div class="modal-header">
         <div class="modal-header-title">
-          <h2>🏷️ タグを全体から削除（確認）</h2>
+          <h2>タグを全体から削除（確認）</h2>
           <span class="modal-subtitle">ライブラリ全体からのタグ除去</span>
         </div>
         <button class="modal-close-btn" id="closeDeleteTagModalBtn">&times;</button>
@@ -1623,7 +1615,7 @@
 
       <div class="modal-body" style="padding: 18px 20px;">
         <div style="display: flex; gap: 14px; align-items: flex-start;">
-          <div style="font-size: 2rem; line-height: 1; flex-shrink: 0;">🗑️</div>
+          <div style="font-size: 2rem; line-height: 1; flex-shrink: 0;"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></div>
           <div style="flex: 1;">
             <div style="font-weight: 600; font-size: 0.95rem; color: var(--text-main, #eceae4); margin-bottom: 8px;">
               タグ「<span id="deleteTagModalTagName" style="color: #ef4444; word-break: break-all;"></span>」を全体から削除しますか？
@@ -1648,7 +1640,7 @@
     <div class="modal-card" style="max-width: 480px;">
       <div class="modal-header">
         <div class="modal-header-title">
-          <h2>📂 フォルダの管理登録</h2>
+          <h2>フォルダの管理登録</h2>
           <span class="modal-subtitle">ライブラリへのフォルダ追加</span>
         </div>
         <button class="modal-close-btn" id="closeRegisterFolderModalBtn">&times;</button>
@@ -1656,7 +1648,7 @@
 
       <div class="modal-body" style="padding: 18px 20px;">
         <div style="display: flex; gap: 14px; align-items: flex-start;">
-          <div style="font-size: 2rem; line-height: 1; flex-shrink: 0;">📁</div>
+          <div style="font-size: 2rem; line-height: 1; flex-shrink: 0;"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div>
           <div style="flex: 1;">
             <div style="font-weight: 600; font-size: 0.95rem; color: var(--text-main, #eceae4); margin-bottom: 6px;">
               「<span id="registerFolderModalName" style="color: var(--accent-primary, #e14d2a); word-break: break-all;"></span>」を登録しますか？
@@ -1685,7 +1677,7 @@
     <div class="modal-card settings-two-pane-card" style="max-width: 960px; width: 94vw;">
       <div class="modal-header">
         <div class="modal-header-title">
-          <h2>⚙️ 設定 ＆ タグツリーエディタ</h2>
+          <h2>設定 ＆ タグツリーエディタ</h2>
           <span class="modal-subtitle">左: 表示設定・データベース管理 ／ 右: タグツリー構造エディタ（ドラッグ＆ドロップ階層移動・リネーム）</span>
         </div>
         <button class="modal-close-btn" id="closeDbMaintenanceModalBtn">&times;</button>
@@ -1697,36 +1689,36 @@
           <!-- 起動時のウィンドウサイズ設定 -->
           <div style="background: var(--bg-secondary, rgba(255,255,255,0.04)); border: 1px solid var(--border-soft, rgba(255,255,255,0.1)); border-radius: var(--radius-sm, 4px); padding: 12px; display: flex; flex-direction: column; gap: 8px;">
             <div>
-              <div style="font-weight: 600; color: var(--text-main, #eceae4);">🪟 起動時のウィンドウサイズ</div>
+              <div style="font-weight: 600; color: var(--text-main, #eceae4);">起動時のウィンドウサイズ</div>
               <div style="font-size: 0.76rem; color: var(--text-dim, #64748b); margin-top: 2px;">アプリ起動時のウィンドウ状態を設定します（選択すると即座に現在の画面にも反映されます）</div>
             </div>
             <select id="settingStartupWindowModeSelect" class="styled-select" style="width: 100%;">
-              <option value="maximized">🖥️ 最大化（標準・タスクバーあり）</option>
-              <option value="remember">🔄 前回のサイズ・位置を記憶（システム標準）</option>
-              <option value="center">🪟 画面中央（約80%サイズ）</option>
+              <option value="maximized">最大化（標準・タスクバーあり）</option>
+              <option value="remember">前回のサイズ・位置を記憶（システム標準）</option>
+              <option value="center">画面中央（約80%サイズ）</option>
               <option value="left_half">◧ 画面の左半分にスナップ（50%）</option>
               <option value="right_half">◨ 画面の右半分にスナップ（50%）</option>
-              <option value="fullscreen">📺 フルスクリーン（枠なし全画面 / F11）</option>
+              <option value="fullscreen">フルスクリーン（枠なし全画面 / F11）</option>
             </select>
           </div>
 
           <!-- タグツリーの並び順設定（左ペイン＆右インスペクタ共通） -->
           <div style="background: var(--bg-secondary, rgba(255,255,255,0.04)); border: 1px solid var(--border-soft, rgba(255,255,255,0.1)); border-radius: var(--radius-sm, 4px); padding: 12px; display: flex; flex-direction: column; gap: 8px;">
             <div>
-              <div style="font-weight: 600; color: var(--text-main, #eceae4);">🏷️ タグの名前順ルール</div>
-              <div style="font-size: 0.76rem; color: var(--text-dim, #64748b); margin-top: 2px;">左ペインの「📊 枚数順」がオフのときに使われる名前ソート順を保存します</div>
+              <div style="font-weight: 600; color: var(--text-main, #eceae4);">タグの名前順ルール</div>
+              <div style="font-size: 0.76rem; color: var(--text-dim, #64748b); margin-top: 2px;">左ペインの「枚数順」がオフのときに使われる名前ソート順を保存します</div>
             </div>
             <select id="settingTagSortModeSelect" class="styled-select" style="width: 100%;">
-              <option value="lexical">🔤 文字順・昇順（例: 24-イベント → 2410-旅行 → 25-正月）</option>
-              <option value="lexical_desc">🔤 文字順・降順（例: 25-正月 → 2410-旅行 → 24-イベント）</option>
-              <option value="natural">🔢 数値の自然順・昇順（例: 1 → 2 → 10 / 24 → 25 → 2410）</option>
-              <option value="natural_desc">🔢 数値の自然順・降順（例: 2410 → 25 → 24 / 10 → 2 → 1）</option>
+              <option value="lexical">文字順・昇順（例: 24-イベント → 2410-旅行 → 25-正月）</option>
+              <option value="lexical_desc">文字順・降順（例: 25-正月 → 2410-旅行 → 24-イベント）</option>
+              <option value="natural">数値の自然順・昇順（例: 1 → 2 → 10 / 24 → 25 → 2410）</option>
+              <option value="natural_desc">数値の自然順・降順（例: 2410 → 25 → 24 / 10 → 2 → 1）</option>
             </select>
           </div>
 
           <!-- DB状態サマリー -->
           <div style="background: var(--bg-secondary, rgba(255,255,255,0.04)); border: 1px solid var(--border-soft, rgba(255,255,255,0.1)); border-radius: var(--radius-sm, 4px); padding: 12px;">
-            <div style="font-weight: 600; margin-bottom: 6px; color: var(--text-main, #eceae4);">📊 データベースの状態</div>
+            <div style="font-weight: 600; margin-bottom: 6px; color: var(--text-main, #eceae4);">データベースの状態</div>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 0.82rem; color: var(--text-muted, #94a3b8);">
               <div>登録写真数: <strong id="dbMaintPhotoCount" style="color: var(--text-main, #eceae4);">-</strong></div>
               <div>DBサイズ: <strong id="dbMaintDbSize" style="color: var(--text-main, #eceae4);">-</strong></div>
@@ -1738,7 +1730,7 @@
           <!-- 最適化 (VACUUM) -->
           <div style="background: var(--bg-secondary, rgba(255,255,255,0.04)); border: 1px solid var(--border-soft, rgba(255,255,255,0.1)); border-radius: var(--radius-sm, 4px); padding: 12px; display: flex; justify-content: space-between; align-items: center; gap: 12px;">
             <div>
-              <div style="font-weight: 600; color: var(--text-main, #eceae4);">🧹 データベース最適化 (VACUUM)</div>
+              <div style="font-weight: 600; color: var(--text-main, #eceae4);">データベース最適化 (VACUUM)</div>
               <div style="font-size: 0.76rem; color: var(--text-dim, #64748b); margin-top: 2px;">不要領域を解放してファイルサイズを縮小し、読み書きを高速化します</div>
             </div>
             <button class="btn btn-secondary btn-sm" id="dbMaintVacuumBtn" style="white-space: nowrap;">最適化を実行</button>
@@ -1748,13 +1740,13 @@
           <div style="background: var(--bg-secondary, rgba(255,255,255,0.04)); border: 1px solid var(--border-soft, rgba(255,255,255,0.1)); border-radius: var(--radius-sm, 4px); padding: 12px; display: flex; flex-direction: column; gap: 8px;">
             <div style="display: flex; justify-content: space-between; align-items: center;">
               <div>
-                <div style="font-weight: 600; color: var(--text-main, #eceae4);">💾 データベースのバックアップ</div>
+                <div style="font-weight: 600; color: var(--text-main, #eceae4);">データベースのバックアップ</div>
                 <div id="dbMaintBackupInfoText" style="font-size: 0.76rem; color: var(--text-dim, #64748b); margin-top: 2px;">確認中...</div>
               </div>
               <button class="btn btn-primary btn-sm" id="dbMaintBackupBtn" style="white-space: nowrap;">今すぐ作成</button>
             </div>
             <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
-              <button class="btn btn-secondary btn-sm" id="dbMaintOpenBackupDirBtn" style="font-size: 0.76rem; padding: 2px 8px;">📂 保存先フォルダを開く</button>
+              <button class="btn btn-secondary btn-sm" id="dbMaintOpenBackupDirBtn" style="font-size: 0.76rem; padding: 2px 8px;">保存先フォルダを開く</button>
             </div>
           </div>
         </div>
@@ -1763,8 +1755,8 @@
         <div class="settings-right-pane">
           <div class="settings-tag-editor-header">
             <div>
-              <div style="font-weight: 700; font-size: 0.92rem; color: var(--text-main, #eceae4);">🌳 タグツリーエディタ（構造・名前の編集専用）</div>
-              <div style="font-size: 0.75rem; color: var(--text-dim, #64748b); margin-top: 2px;">タグをドラッグ＆ドロップして他のタグの配下へ移動、またはリネーム（✏）・子タグ追加（+子）・全体削除（🗑️）が行えます</div>
+              <div style="font-weight: 700; font-size: 0.92rem; color: var(--text-main, #eceae4);">タグツリーエディタ（構造・名前の編集専用）</div>
+              <div style="font-size: 0.75rem; color: var(--text-dim, #64748b); margin-top: 2px;">タグをドラッグ＆ドロップして他のタグの配下へ移動、またはリネーム・子タグ追加（+子）・全体削除が行えます</div>
             </div>
             <div style="display: flex; gap: 4px; flex-shrink: 0;">
               <button type="button" class="btn btn-secondary btn-xs" id="settingsTagExpandAllBtn" title="すべての階層を展開">すべて展開</button>
@@ -1774,7 +1766,7 @@
 
           <!-- ルート（最上位階層）への移動ドロップゾーン -->
           <div class="settings-tag-root-dropzone" id="settingsTagRootDropZone">
-            <span>⬆️ 子タグをここにドラッグ＆ドロップで「ルート（最上位階層）」へ独立移動</span>
+            <span>子タグをここにドラッグ＆ドロップで「ルート（最上位階層）」へ独立移動</span>
           </div>
 
           <!-- タグツリー本体 -->
@@ -1801,18 +1793,18 @@
     <div class="image-adjust-dialog">
       <div class="image-adjust-header">
         <div class="image-adjust-title">
-          <span class="adjust-icon">✂</span>
+          <span class="adjust-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg></span>
           <span>画像の調整</span>
         </div>
         <div class="image-adjust-header-actions">
           <button type="button" class="btn btn-secondary btn-xs adjust-header-btn" id="adjustCopyToneBtn" title="現在のトーン調整（明るさ・コントラスト・彩度）をコピー (Ctrl+Shift+C)">
-            <span>📋</span> <span id="adjustCopyToneLabel">トーンをコピー</span>
+            <span id="adjustCopyToneLabel">トーンをコピー</span>
           </button>
           <button type="button" class="btn btn-secondary btn-xs adjust-header-btn" id="adjustPasteToneBtn" title="コピー済みのトーン調整（明るさ・コントラスト・彩度）をペースト (Ctrl+Shift+V)">
-            <span>🎨</span> <span id="adjustPasteToneLabel">トーンをペースト</span>
+            <span id="adjustPasteToneLabel">トーンをペースト</span>
           </button>
           <button type="button" class="btn btn-secondary btn-xs adjust-header-btn adjust-compare-orig-btn" id="adjustCompareOrigBtn" title="押している間だけ無加工の元画像（Before）を表示します (\ キー または Space キー長押し)">
-            <span>👁️</span> <span id="adjustCompareOrigLabel">元画像と比較 (\)</span>
+            <span id="adjustCompareOrigLabel">元画像と比較 (\)</span>
           </button>
           <button class="btn-icon image-adjust-close-btn" id="closeImageAdjustBtn" title="閉じる (Esc)">&times;</button>
         </div>
@@ -1822,7 +1814,7 @@
       <div class="image-adjust-stage" id="imageAdjustStage">
         <div class="image-adjust-container" id="imageAdjustContainer">
           <img id="imageAdjustImg" src="" alt="調整プレビュー">
-          <div class="adjust-before-badge" id="adjustBeforeBadge" style="display: none;">👁️ 元画像 (Before)</div>
+          <div class="adjust-before-badge" id="adjustBeforeBadge" style="display: none;">元画像 (Before)</div>
           <!-- クロップオーバーレイ -->
           <div class="crop-overlay" id="cropOverlay">
             <div class="crop-box" id="cropBox">
@@ -1848,14 +1840,14 @@
       <!-- 微調整スライダーバー（水平出し・明るさ・コントラスト・彩度） -->
       <div class="image-adjust-fine-bar" id="imageAdjustFineBar">
         <div class="adjust-fine-item" data-fine-key="fineAngle">
-          <span class="adjust-fine-label" id="adjustFineAngleLabel" title="水平傾き (ダブルクリックで 0.0° にリセット)">📐傾</span>
+          <span class="adjust-fine-label" id="adjustFineAngleLabel" title="水平傾き (ダブルクリックで 0.0° にリセット)">傾き</span>
           <button type="button" class="adjust-step-btn" data-target="adjustFineAngleRange" data-delta="-0.1" title="傾き -0.1° (Shift+クリックで -1.0°)">−</button>
           <input type="range" id="adjustFineAngleRange" class="adjust-fine-range" min="-15" max="15" step="0.1" value="0" title="ダブルクリックで 0.0° にリセット">
           <button type="button" class="adjust-step-btn" data-target="adjustFineAngleRange" data-delta="0.1" title="傾き +0.1° (Shift+クリックで +1.0°)">＋</button>
           <span class="adjust-fine-val" id="adjustFineAngleVal" title="ダブルクリックで 0.0° にリセット">0.0°</span>
         </div>
         <div class="adjust-fine-item" data-fine-key="brightness">
-          <span class="adjust-fine-label" id="adjustBrightnessLabel" title="明るさ / 露出補正 (1/3段EVステップ、ダブルクリックで 0.0EV にリセット)">☀️明</span>
+          <span class="adjust-fine-label" id="adjustBrightnessLabel" title="明るさ / 露出補正 (1/3段EVステップ、ダブルクリックで 0.0EV にリセット)">露出</span>
           <button type="button" class="adjust-step-btn" data-target="adjustBrightnessRange" data-delta="-1" title="明るさ -1/3段 (-0.3EV / Shift+クリックで -1.0EV)">−</button>
           <input type="range" id="adjustBrightnessRange" class="adjust-fine-range" min="-6" max="6" step="1" value="0" title="1/3段EVステップ (-2.0EV〜+2.0EV / ダブルクリックで 0.0EV にリセット)">
           <button type="button" class="adjust-step-btn" data-target="adjustBrightnessRange" data-delta="1" title="明るさ +1/3段 (+0.3EV / Shift+クリックで +1.0EV)">＋</button>
@@ -1869,7 +1861,7 @@
           <span class="adjust-fine-val" id="adjustContrastVal" title="ダブルクリックで 0 にリセット">0</span>
         </div>
         <div class="adjust-fine-item" data-fine-key="saturation">
-          <span class="adjust-fine-label" id="adjustSaturationLabel" title="彩度 (ダブルクリックで 0 にリセット)">🎨彩</span>
+          <span class="adjust-fine-label" id="adjustSaturationLabel" title="彩度 (ダブルクリックで 0 にリセット)">彩度</span>
           <button type="button" class="adjust-step-btn" data-target="adjustSaturationRange" data-delta="-1" title="彩度 -1 (Shift+クリックで -5)">−</button>
           <input type="range" id="adjustSaturationRange" class="adjust-fine-range" min="-100" max="100" step="1" value="0" title="ダブルクリックで 0 にリセット">
           <button type="button" class="adjust-step-btn" data-target="adjustSaturationRange" data-delta="1" title="彩度 +1 (Shift+クリックで +5)">＋</button>
@@ -1912,7 +1904,7 @@
           </button>
           <button class="btn btn-secondary btn-sm" id="adjustCancelBtn">キャンセル</button>
           <button class="btn btn-primary btn-sm" id="adjustApplyBtn">
-            <span>💾</span> 適用して保存
+            適用して保存
           </button>
         </div>
       </div>
@@ -1924,7 +1916,7 @@
     <div class="modal-card smart-takeout-modal-card">
       <div class="modal-header">
         <div class="modal-header-title">
-          <h2>📤 スマート・テイクアウト</h2>
+          <h2>スマート・テイクアウト</h2>
           <span class="modal-subtitle">元ファイルを非破壊のまま、回転・水平出し・クロップ・トーン・解像度・Exifを整えて出力</span>
         </div>
         <button class="modal-close-btn" id="closeSmartTakeoutBtn" title="閉じる (Esc)">&times;</button>
@@ -1933,7 +1925,7 @@
       <div class="modal-body smart-takeout-modal-body">
         <!-- 選択枚数・サマリーバナー -->
         <div class="takeout-summary-banner">
-          <span class="takeout-summary-icon">📦</span>
+          
           <div class="takeout-summary-text">
             <span class="takeout-summary-title">対象写真: <strong id="smartTakeoutPhotoCount">0</strong> 枚</span>
             <span class="takeout-summary-desc">元の写真ファイルは一切変更されず、指定のフォルダへ新しく書き出されます</span>
@@ -1945,7 +1937,7 @@
           <div class="takeout-col">
             <!-- 1. 非破壊編集の反映 & DB Exif同期 -->
             <div class="takeout-section">
-              <label class="takeout-section-title">✂️ 非破壊調整・DB情報の反映</label>
+              <label class="takeout-section-title">非破壊調整・DB情報の反映</label>
               <div class="takeout-checkbox-group">
                 <label class="takeout-checkbox-label">
                   <input type="checkbox" id="takeoutApplyAdjustments" checked>
@@ -1953,18 +1945,18 @@
                 </label>
                 <label class="takeout-checkbox-label" id="labelExifSyncDb" title="マップ等で追加・変更したGPS位置情報や回転向きを書き出し画像のExifに反映します">
                   <input type="checkbox" id="takeoutExifSyncDb" checked>
-                  <span>🔄 DBの位置情報（GPS）・向きをExifへ同期して書き込む</span>
+                  <span>DBの位置情報（GPS）・向きをExifへ同期して書き込む</span>
                 </label>
                 <label class="takeout-checkbox-label" id="labelExportXmpSidecar" title="書き出し画像と一緒に評価・タグ・GPS・調整情報を記録した .xmp サイドカーファイルも出力します">
                   <input type="checkbox" id="exportXmpSidecarCheck">
-                  <span>📄 XMPサイドカー (.xmp) も一緒に出力する（評価・タグ・調整情報の保持）</span>
+                  <span>XMPサイドカー (.xmp) も一緒に出力する（評価・タグ・調整情報の保持）</span>
                 </label>
               </div>
             </div>
 
             <!-- 2. 解像度（長辺リサイズ） -->
             <div class="takeout-section">
-              <label class="takeout-section-title">📐 解像度・サイズ</label>
+              <label class="takeout-section-title">解像度・サイズ</label>
               <div class="takeout-radio-group">
                 <label class="takeout-radio-label">
                   <input type="radio" name="takeoutResize" value="original" checked>
@@ -1995,7 +1987,7 @@
 
             <!-- 3. 出力フォーマット & 画質 -->
             <div class="takeout-section">
-              <label class="takeout-section-title">🖼️ 保存フォーマット &amp; 画質</label>
+              <label class="takeout-section-title">保存フォーマット &amp; 画質</label>
               <div style="display: flex; gap: 14px; align-items: center; margin-bottom: 8px;">
                 <label class="takeout-radio-label">
                   <input type="radio" name="takeoutFormat" value="jpeg" checked>
@@ -2018,7 +2010,7 @@
           <div class="takeout-col">
             <!-- 4. ファイル名ルール（マーシャリング） -->
             <div class="takeout-section">
-              <label class="takeout-section-title">📝 ファイル名ルール</label>
+              <label class="takeout-section-title">ファイル名ルール</label>
               <div class="takeout-radio-group">
                 <label class="takeout-radio-label">
                   <input type="radio" name="takeoutNaming" value="original" checked>
@@ -2046,32 +2038,32 @@
             <!-- 5. Exif メタデータ消去制御（5つの項目・「すべて」は排他） -->
             <div class="takeout-section takeout-exif-section">
               <div class="takeout-section-header">
-                <label class="takeout-section-title">🔒 Exif メタデータの消去</label>
+                <label class="takeout-section-title">Exif メタデータの消去</label>
                 <span class="takeout-hint-text">※全オフならExifを完全維持</span>
               </div>
               <div class="takeout-checkbox-group">
                 <!-- 1. すべて (排他) -->
                 <label class="takeout-checkbox-label takeout-checkbox-danger" style="font-weight: 700;">
                   <input type="checkbox" id="takeoutExifAll">
-                  <span>🗑️ すべて（Exifメタデータを完全消去）</span>
+                  <span>すべて（Exifメタデータを完全消去）</span>
                 </label>
                 <div class="takeout-divider-sub"></div>
                 <!-- 2〜5. 個別選択項目 (「すべて」ON時は無効化) -->
                 <label class="takeout-checkbox-label" id="labelExifGps">
                   <input type="checkbox" id="takeoutExifGps">
-                  <span>📍 位置情報（GPS座標・ジオタグ）</span>
+                  <span>位置情報（GPS座標・ジオタグ）</span>
                 </label>
                 <label class="takeout-checkbox-label" id="labelExifExposure">
                   <input type="checkbox" id="takeoutExifExposure">
-                  <span>⏱️ 撮影条件（SS・F値・ISO感度・露出・焦点距離）</span>
+                  <span>撮影条件（SS・F値・ISO感度・露出・焦点距離）</span>
                 </label>
                 <label class="takeout-checkbox-label" id="labelExifCamera">
                   <input type="checkbox" id="takeoutExifCamera">
-                  <span>📷 カメラ・機材情報（メーカー・機種・レンズ・シリアル）</span>
+                  <span>カメラ・機材情報（メーカー・機種・レンズ・シリアル）</span>
                 </label>
                 <label class="takeout-checkbox-label" id="labelExifOther">
                   <input type="checkbox" id="takeoutExifOther">
-                  <span>🏷️ その他（コメント・説明文・著作権・サムネイル等）</span>
+                  <span>その他（コメント・説明文・著作権・サムネイル等）</span>
                 </label>
               </div>
             </div>
@@ -2080,10 +2072,10 @@
 
         <!-- 6. 保存先フォルダ指定 -->
         <div class="takeout-destination-section">
-          <label class="takeout-section-title">📂 保存先フォルダ</label>
+          <label class="takeout-section-title">保存先フォルダ</label>
           <div class="takeout-dest-input-group">
             <input type="text" id="smartTakeoutDestInput" class="takeout-dest-input" placeholder="出力先フォルダパス..." readonly>
-            <button class="btn btn-secondary btn-sm" id="smartTakeoutPickDirBtn">📁 フォルダ選択...</button>
+            <button class="btn btn-secondary btn-sm" id="smartTakeoutPickDirBtn">フォルダ選択...</button>
           </div>
           <div class="takeout-dest-options">
             <label class="takeout-checkbox-label">
@@ -2096,7 +2088,7 @@
         <!-- 進捗ステータスバー（実行中のみ表示） -->
         <div class="takeout-progress-container" id="takeoutProgressContainer" style="display: none;">
           <div class="takeout-progress-info">
-            <span class="takeout-progress-spinner">⏳</span>
+            
             <span id="takeoutProgressStatus">エクスポートを準備中...</span>
             <span id="takeoutProgressCount">0 / 0</span>
           </div>
@@ -2109,7 +2101,7 @@
       <div class="modal-footer smart-takeout-modal-footer">
         <button class="btn btn-secondary" id="cancelSmartTakeoutBtn">キャンセル</button>
         <button class="btn btn-primary" id="startSmartTakeoutBtn">
-          <span>📤</span> テイクアウト開始
+          テイクアウト開始
         </button>
       </div>
     </div>
@@ -2216,7 +2208,7 @@
           <span style="font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center;">0°</span>
         </button>
         <button class="icon-action-btn" id="lightboxAdjustBtn" title="画像の調整 (Crop & Rotate)">
-          <span style="font-size: 15px; display: flex; align-items: center; justify-content: center;">✂</span>
+          <span style="font-size: 13px; display: flex; align-items: center; justify-content: center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg></span>
         </button>
         <button class="icon-action-btn" id="toggleExifBtn" title="EXIF詳細トグル">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
@@ -2234,7 +2226,7 @@
         <img id="lightboxImage" src="" alt="プレビュー画像">
         <!-- 露出ブラケット / 連写バースト比較スイッチャー -->
         <div class="lightbox-bracket-bar" id="lightboxBracketBar" style="display: none;">
-          <span class="bracket-bar-label" id="lightboxBracketBarLabel">⚡ 露出ブラケット:</span>
+          <span class="bracket-bar-label" id="lightboxBracketBarLabel">露出ブラケット:</span>
           <div class="bracket-pills" id="lightboxBracketPills">
             <!-- JSで動的生成 -->
           </div>
@@ -2265,7 +2257,7 @@
         <div class="lightbox-tags-section">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
             <h4>タグ (アルバム)</h4>
-            <button type="button" class="btn-xs-action btn-ai-tag-trigger" id="lightboxAiTagBtn" title="AIでこの写真の被写体・シーンを認識してタグ付け">🤖 AIタグ</button>
+            <button type="button" class="btn-xs-action btn-ai-tag-trigger" id="lightboxAiTagBtn" title="AIでこの写真の被写体・シーンを認識してタグ付け">AIタグ</button>
           </div>
           <div class="photo-tags-container" id="photoTagsContainer">
             <!-- JSで動的生成 -->
@@ -2289,7 +2281,7 @@
   <!-- ドラッグ＆ドロップ アップロード用オーバーレイ -->
   <div class="drag-drop-overlay" id="dragDropOverlay" style="display: none;">
     <div class="drag-drop-box">
-      <div class="drag-icon">📥</div>
+      <div class="drag-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></div>
       <h2>写真をドロップして追加</h2>
       <p>JPEG, PNG, WebP などの画像ファイルをここにドロップしてください</p>
     </div>
@@ -2300,7 +2292,7 @@
     <div class="modal-card storage-rename-modal-card" style="max-width: 520px;">
       <div class="modal-header">
         <div class="modal-header-title">
-          <h2 id="storageRenameModalTitle">✏️ ファイル名を変更</h2>
+          <h2 id="storageRenameModalTitle">ファイル名を変更</h2>
           <span class="modal-subtitle" id="storageRenameModalSubtitle">storage 内の写真ファイル名を変更します</span>
         </div>
         <button class="modal-close-btn" id="closeStorageRenameModalBtn">&times;</button>
@@ -2371,7 +2363,7 @@
     <div class="modal-card storage-folder-modal-card" style="max-width: 440px;">
       <div class="modal-header">
         <div class="modal-header-title">
-          <h2 id="storageFolderModalTitle">📁 新規サブフォルダを作成</h2>
+          <h2 id="storageFolderModalTitle">新規サブフォルダを作成</h2>
           <span class="modal-subtitle" id="storageFolderModalSubtitle">storage 内に新しいサブフォルダを作成します</span>
         </div>
         <button class="modal-close-btn" id="closeStorageFolderModalBtn">&times;</button>
@@ -2394,7 +2386,7 @@
     <div class="modal-card date-shift-modal-card" style="max-width: 540px;">
       <div class="modal-header">
         <div class="modal-header-title">
-          <h2>🕒 撮影日時を一括シフト補正</h2>
+          <h2>撮影日時を一括シフト補正</h2>
           <span class="modal-subtitle">カメラの内蔵時計ズレや海外時差をDB上で安全に一括補正します（元ファイルは変更しません）</span>
         </div>
         <button class="modal-close-btn" id="closeDateShiftModalBtn" title="閉じる">&times;</button>
@@ -2408,7 +2400,7 @@
 
         <!-- クイックプリセットボタン群 -->
         <div class="date-shift-section">
-          <div class="date-shift-label">⚡ クイックプリセット（時差・時計ズレ）</div>
+          <div class="date-shift-label">クイックプリセット（時差・時計ズレ）</div>
           <div class="date-shift-preset-group" id="dateShiftPresetGroup">
             <button type="button" class="date-shift-preset-btn" data-offset-sec="-32400">-9時間</button>
             <button type="button" class="date-shift-preset-btn" data-offset-sec="-3600">-1時間</button>
@@ -2421,7 +2413,7 @@
 
         <!-- 詳細シフト量指定 -->
         <div class="date-shift-section">
-          <div class="date-shift-label">🎛️ シフト方向と時間量</div>
+          <div class="date-shift-label">シフト方向と時間量</div>
           <div class="date-shift-direction-row">
             <select id="dateShiftDirection" class="styled-select" style="width: 100%;">
               <option value="1">＋ 進める（未来へ）</option>
@@ -2460,7 +2452,7 @@
       <div class="modal-footer date-shift-modal-footer">
         <button type="button" class="btn btn-secondary btn-sm" id="dateShiftResetOrigBtn" title="Exifの元撮影日時（スキャン時の値）へ戻します" style="margin-right: auto;">↺ 元のExif日時にリセット</button>
         <button type="button" class="btn btn-secondary" id="cancelDateShiftModalBtn">キャンセル (Esc)</button>
-        <button type="button" class="btn btn-primary" id="dateShiftSubmitBtn">🕒 一括補正を適用</button>
+        <button type="button" class="btn btn-primary" id="dateShiftSubmitBtn">一括補正を適用</button>
       </div>
     </div>
   </div>
@@ -2472,7 +2464,7 @@
     </div>
     <div class="context-menu-item has-submenu" id="contextMenuTagItem">
       <div class="menu-item-content">
-        <span>🏷️ タグを付ける</span>
+        <span>タグを付ける</span>
         <span class="submenu-arrow">▶</span>
       </div>
       <!-- 階層タグサブメニュー -->
@@ -2488,35 +2480,35 @@
     </div>
     <div class="context-menu-item has-submenu" id="contextMenuImportItem">
       <div class="menu-item-content">
-        <span title="選択した写真を加工・リサイズ出力、またはベタ焼きHTMLとして書き出します">📤 テイクアウト</span>
+        <span title="選択した写真を加工・リサイズ出力、またはベタ焼きHTMLとして書き出します">テイクアウト</span>
         <span class="submenu-arrow">▶</span>
       </div>
       <!-- テイクアウト先サブメニュー（スマート・テイクアウト ＆ ベタ焼きHTML出力の2択） -->
       <div class="context-submenu" id="contextImportSubmenu">
         <div class="context-import-action smart-takeout-trigger-action" id="contextTriggerSmartTakeoutBtn" title="回転・クロップ・解像度・ファイル名・Exif制御を一括適用して出力" style="background: rgba(225, 77, 42, 0.12); border: 1px solid rgba(225, 77, 42, 0.35); border-radius: 4px; padding: 7px 10px; margin-bottom: 6px; cursor: pointer; display: flex; align-items: center; gap: 8px;">
-          <span style="font-size: 1.1rem;">⚡</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
           <div style="display: flex; flex-direction: column; flex: 1;">
             <span style="font-size: 0.84rem; font-weight: 700; color: var(--accent-primary);">スマート・テイクアウト...</span>
             <span style="font-size: 0.68rem; color: var(--text-muted);">回転・クロップ・Exif制御</span>
           </div>
-          <span style="font-size: 0.85rem; color: var(--accent-primary);">⚙</span>
+          
         </div>
         <div class="context-submenu-item context-import-action contact-sheet-trigger-action" id="contextTriggerContactSheetBtn" title="選択した写真を暗室ネガシート風のスタンドアロンHTML（ベタ焼き）として出力します">
-          <span style="font-size: 1.1rem;">🎞️</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></svg>
           <div style="display: flex; flex-direction: column; flex: 1;">
             <span style="font-size: 0.82rem; font-weight: 700;">ベタ焼きHTML出力...</span>
             <span style="font-size: 0.68rem; color: var(--text-muted, #4a4843);">暗室コンタクトシート・A4印刷対応</span>
           </div>
         </div>
         <details class="legacy-takeout-details">
-          <summary class="legacy-takeout-summary">📂 簡易フォルダコピー (take_out/)</summary>
+          <summary class="legacy-takeout-summary">簡易フォルダコピー (take_out/)</summary>
           <div class="legacy-takeout-body">
             <div class="submenu-create-input">
               <input type="text" id="contextNewImportFolderInput" placeholder="新規フォルダ名..." autocomplete="off">
               <button class="btn btn-primary btn-xs" id="contextConfirmNewImportFolderBtn" title="take_out内にフォルダを作成してコピー">作成&amp;送信</button>
             </div>
             <div class="context-import-action" id="contextOpenImportFolderBtn" title="エクスプローラーでtake_outフォルダを開きます">
-              <span class="context-import-action-icon">📂</span>
+              
               <span class="context-import-action-text">take_outフォルダを開く</span>
               <span class="context-import-action-arrow">↗</span>
             </div>
@@ -2531,7 +2523,7 @@
     <!-- storage へインポート（外部写真選択時） -->
     <div class="context-menu-item has-submenu" id="contextMenuStorageImportItem" style="display: none;">
       <div class="menu-item-content">
-        <span title="選択した写真をアプリ内の storage フォルダへコピー＆インポートします">📥 storageへインポート</span>
+        <span title="選択した写真をアプリ内の storage フォルダへコピー＆インポートします">storageへインポート</span>
         <span class="submenu-arrow">▶</span>
       </div>
       <div class="context-submenu" id="contextStorageImportSubmenu">
@@ -2540,7 +2532,7 @@
           <button class="btn btn-primary btn-xs" id="contextConfirmNewStorageImportFolderBtn" title="storage内にフォルダを作成してインポート">作成&amp;インポート</button>
         </div>
         <div class="context-import-action" id="contextOpenStorageImportFolderBtn" title="エクスプローラーでstorageフォルダを開きます">
-          <span class="context-import-action-icon">📂</span>
+          
           <span class="context-import-action-text">storageフォルダを開く</span>
           <span class="context-import-action-arrow">↗</span>
         </div>
@@ -2553,7 +2545,7 @@
     <!-- storage 内で移動（storage内写真選択時） -->
     <div class="context-menu-item has-submenu" id="contextMenuStorageMoveItem" style="display: none;">
       <div class="menu-item-content">
-        <span title="storage 内の写真を別サブフォルダへ移動します">📦 storage内で移動</span>
+        <span title="storage 内の写真を別サブフォルダへ移動します">storage内で移動</span>
         <span class="submenu-arrow">▶</span>
       </div>
       <div class="context-submenu" id="contextStorageMoveSubmenu">
@@ -2562,7 +2554,7 @@
           <button class="btn btn-primary btn-xs" id="contextConfirmNewStorageMoveFolderBtn" title="storage内にフォルダを作成して移動">作成&amp;移動</button>
         </div>
         <div class="context-import-action" id="contextOpenStorageMoveFolderBtn" title="エクスプローラーでstorageフォルダを開きます">
-          <span class="context-import-action-icon">📂</span>
+          
           <span class="context-import-action-text">storageフォルダを開く</span>
           <span class="context-import-action-arrow">↗</span>
         </div>
@@ -2575,12 +2567,12 @@
     <!-- storage ファイル名変更 / 一括連番リネーム（storage内写真選択時） -->
     <div class="context-menu-item" id="contextMenuStorageRenameItem" style="display: none;">
       <div class="menu-item-content">
-        <span id="contextMenuStorageRenameLabel">✏️ ファイル名を変更 (F2)</span>
+        <span id="contextMenuStorageRenameLabel">ファイル名を変更 (F2)</span>
       </div>
     </div>
     <div class="context-menu-item has-submenu" id="contextMenuRateItem">
       <div class="menu-item-content">
-        <span>🏅 評価を設定</span>
+        <span>評価を設定</span>
         <span class="submenu-arrow">▶</span>
       </div>
       <div class="context-submenu rate-submenu">
@@ -2592,49 +2584,49 @@
     </div>
     <div class="context-menu-item has-submenu" id="contextMenuAdjustRotateItem">
       <div class="menu-item-content">
-        <span>✂ 調整と回転</span>
+        <span>調整と回転</span>
         <span class="submenu-arrow">▶</span>
       </div>
       <div class="context-submenu rotate-submenu">
         <div class="submenu-item" id="contextMenuRotateRight">↻ 右へ回転 (R)</div>
         <div class="submenu-item" id="contextMenuRotateLeft">↺ 左へ回転 (L)</div>
-        <div class="submenu-item" id="contextMenuCrop">✂ 切り抜き・微調整 (C)</div>
+        <div class="submenu-item" id="contextMenuCrop">切り抜き・微調整 (C)</div>
         <div class="context-menu-divider" style="margin: 4px 0;"></div>
-        <div class="submenu-item" id="contextMenuCopyTone" title="明るさ・コントラスト・彩度の設定値をコピーします (Ctrl+Shift+C)">📋 トーン調整をコピー</div>
-        <div class="submenu-item" id="contextMenuPasteTone" title="コピーしたトーン調整（明るさ・コントラスト・彩度）を選択写真に一括ペーストします (Ctrl+Shift+V)">🎨 トーン調整をペースト</div>
+        <div class="submenu-item" id="contextMenuCopyTone" title="明るさ・コントラスト・彩度の設定値をコピーします (Ctrl+Shift+C)">トーン調整をコピー</div>
+        <div class="submenu-item" id="contextMenuPasteTone" title="コピーしたトーン調整（明るさ・コントラスト・彩度）を選択写真に一括ペーストします (Ctrl+Shift+V)">トーン調整をペースト</div>
         <div class="context-menu-divider" style="margin: 4px 0;"></div>
         <div class="submenu-item" id="contextMenuResetAdjust">↺ 回転・調整をリセット</div>
       </div>
     </div>
     <div class="context-menu-item" id="contextMenuCopyImageItem" title="選択中の写真（非破壊調整反映済み）をクリップボードへ画像コピーします (Ctrl+C)">
       <div class="menu-item-content">
-        <span id="contextMenuCopyImageLabel">📋 画像をクリップボードにコピー (Ctrl+C)</span>
+        <span id="contextMenuCopyImageLabel">画像をクリップボードにコピー (Ctrl+C)</span>
       </div>
     </div>
     <div class="context-menu-item" id="contextMenuShiftDateItem" title="選択中の写真の撮影日時（DB）を一括でプラス・マイナス補正します">
       <div class="menu-item-content">
-        <span>🕒 撮影日時を一括補正...</span>
+        <span>撮影日時を一括補正...</span>
       </div>
     </div>
     <div class="context-menu-divider"></div>
     <div class="context-menu-item" id="contextMenuRefreshThumbItem">
       <div class="menu-item-content">
-        <span id="contextMenuRefreshThumbLabel">🔄 サムネイルを更新</span>
+        <span id="contextMenuRefreshThumbLabel">サムネイルを更新</span>
       </div>
     </div>
     <div class="context-menu-item" id="contextMenuPreviewItem">
       <div class="menu-item-content">
-        <span>🔍 プレビューを開く</span>
+        <span>プレビューを開く</span>
       </div>
     </div>
     <div class="context-menu-item text-danger" id="contextMenuDeleteItem" style="color: var(--danger, #ef4444);">
       <div class="menu-item-content">
-        <span>🗑️ ライブラリから削除</span>
+        <span>ライブラリから削除</span>
       </div>
     </div>
     <div class="context-menu-item" id="contextMenuClearSelection">
       <div class="menu-item-content">
-        <span>✕ 選択を解除</span>
+        <span>選択を解除</span>
       </div>
     </div>
   </div>
@@ -2649,22 +2641,22 @@
     <div class="folder-menu-group" id="folderMenuStorageGroup" style="display: none;">
       <div class="context-menu-item" id="folderMenuStorageCreateSub">
         <div class="menu-item-content">
-          <span>📁 新規サブフォルダを作成...</span>
+          <span>新規サブフォルダを作成...</span>
         </div>
       </div>
       <div class="context-menu-item" id="folderMenuStorageRename">
         <div class="menu-item-content">
-          <span>✏️ フォルダ名を変更...</span>
+          <span>フォルダ名を変更...</span>
         </div>
       </div>
       <div class="context-menu-item" id="folderMenuStorageExport">
         <div class="menu-item-content">
-          <span>📤 このフォルダを外部へエクスポート...</span>
+          <span>このフォルダを外部へエクスポート...</span>
         </div>
       </div>
       <div class="context-menu-item text-danger" id="folderMenuStorageDelete" style="color: var(--danger, #ef4444);">
         <div class="menu-item-content">
-          <span>🗑️ 空フォルダを削除</span>
+          <span>空フォルダを削除</span>
         </div>
       </div>
       <div class="context-menu-divider"></div>
@@ -2674,32 +2666,32 @@
     <div class="folder-menu-group" id="folderMenuManagedGroup">
       <div class="context-menu-item" id="folderMenuRescanDirect">
         <div class="menu-item-content">
-          <span>🔄 このフォルダを再スキャン（直下のみ）</span>
+          <span>このフォルダを再スキャン（直下のみ）</span>
         </div>
       </div>
       <div class="context-menu-item" id="folderMenuRescanRecursive">
         <div class="menu-item-content">
-          <span>🔄 配下も含めて再スキャン</span>
+          <span>配下も含めて再スキャン</span>
         </div>
       </div>
       <div class="context-menu-item" id="folderMenuRefresh" title="配下の写真を再スキャンし、移動・削除された写真をライブラリから削除します">
         <div class="menu-item-content">
-          <span>♻️ リフレッシュ（再スキャン＋消失写真のDB削除）</span>
+          <span>リフレッシュ（再スキャン＋消失写真のDB削除）</span>
         </div>
       </div>
       <div class="context-menu-item" id="folderMenuAiTag" title="このフォルダ配下の写真にAIタグを自動付与します">
         <div class="menu-item-content">
-          <span>🤖 AIタグ付け</span>
+          <span>AIタグ付け</span>
         </div>
       </div>
       <div class="context-menu-item" id="folderMenuUnmanage">
         <div class="menu-item-content">
-          <span>➖ 管理から外す（DB登録解除）</span>
+          <span>管理から外す（DB登録解除）</span>
         </div>
       </div>
       <div class="context-menu-item text-danger" id="folderMenuIgnoreFromManaged">
         <div class="menu-item-content">
-          <span>🚫 管理対象外（除外）に設定</span>
+          <span>管理対象外（除外）に設定</span>
         </div>
       </div>
     </div>
@@ -2708,12 +2700,12 @@
     <div class="folder-menu-group" id="folderMenuUnmanagedGroup" style="display: none;">
       <div class="context-menu-item" id="folderMenuAddAndScan">
         <div class="menu-item-content">
-          <span>➕ 管理に追加してスキャン</span>
+          <span>管理に追加してスキャン</span>
         </div>
       </div>
       <div class="context-menu-item text-danger" id="folderMenuIgnoreFromUnmanaged">
         <div class="menu-item-content">
-          <span>🚫 管理対象外（除外）に設定</span>
+          <span>管理対象外（除外）に設定</span>
         </div>
       </div>
     </div>
@@ -2722,12 +2714,12 @@
     <div class="folder-menu-group" id="folderMenuIgnoredGroup" style="display: none;">
       <div class="context-menu-item" id="folderMenuUnignore">
         <div class="menu-item-content">
-          <span>↩️ 除外を解除（未管理に戻す）</span>
+          <span>除外を解除（未管理に戻す）</span>
         </div>
       </div>
       <div class="context-menu-item" id="folderMenuAddFromIgnored">
         <div class="menu-item-content">
-          <span>➕ 管理に追加してスキャン</span>
+          <span>管理に追加してスキャン</span>
         </div>
       </div>
     </div>
@@ -2735,292 +2727,28 @@
     <div class="context-menu-divider"></div>
     <div class="context-menu-item" id="folderMenuOpenExplorer">
       <div class="menu-item-content">
-        <span>📁 エクスプローラーで開く</span>
+        <span>エクスプローラーで開く</span>
       </div>
     </div>
   </div>
 
-  <!-- 下部フローティング選択バー -->
-
-  <div class="selection-floating-bar" id="selectionFloatingBar" style="display: none;">
-    <div class="selection-bar-info">
-      <span class="selection-badge" id="floatingSelectedCount">0</span>
-      <span class="selection-bar-info-text">枚の写真を選択中</span>
-    </div>
-    <div class="selection-bar-actions">
-      <!-- 1. タグ付けボタングループ & ポップオーバー (上展開) -->
-      <div class="floating-action-group floating-dup-when-inspector-open" id="floatingTagGroup">
-        <button class="btn btn-secondary btn-sm" id="floatingAddTagBtn" title="選択中の写真にタグを付ける">
-          <span class="btn-icon">🏷️</span>
-          <span class="btn-label">タグを付ける</span>
-        </button>
-        <div class="floating-popover" id="floatingTagPopover" style="display: none;">
-          <div class="floating-popover-header">
-            <span class="floating-popover-title">🏷️ タグを付ける</span>
-            <button class="floating-popover-close" id="closeFloatingTagPopoverBtn" title="閉じる">&times;</button>
-          </div>
-          <div class="floating-popover-body">
-            <div class="popover-input-group">
-              <input type="text" id="floatingTagInput" placeholder="新しいタグ名..." autocomplete="off">
-              <button class="btn btn-primary btn-xs" id="floatingConfirmTagBtn">付与</button>
-            </div>
-            <div class="popover-section-label">既存タグから選択</div>
-            <div class="popover-tag-tree" id="floatingTagTreeContainer">
-              <!-- JSで動的生成 -->
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 2. 評価設定ボタングループ & ポップオーバー (上展開) -->
-      <div class="floating-action-group floating-dup-when-inspector-open" id="floatingRateGroup">
-        <button class="btn btn-secondary btn-sm" id="floatingRateBtn" title="選択中の写真の評価を一括設定">
-          <span class="btn-icon">⭐</span>
-          <span class="btn-label">評価設定</span>
-        </button>
-        <div class="floating-popover floating-rate-popover" id="floatingRatePopover" style="display: none;">
-          <div class="floating-popover-header">
-            <span class="floating-popover-title">⭐ 評価を一括設定</span>
-            <button class="floating-popover-close" id="closeFloatingRatePopoverBtn" title="閉じる">&times;</button>
-          </div>
-          <div class="floating-popover-body">
-            <div class="popover-rate-list">
-              <button class="popover-rate-btn rate-opt-excellent" data-rating="2" title="優 (Excellent)">
-                <span class="rate-icon">🏅</span>
-                <span class="rate-name">優 (Excellent)</span>
-              </button>
-              <button class="popover-rate-btn rate-opt-good" data-rating="1" title="良 (Good)">
-                <span class="rate-icon">⭐</span>
-                <span class="rate-name">良 (Good)</span>
-              </button>
-              <button class="popover-rate-btn rate-opt-fair" data-rating="0" title="可 (解除・普通)">
-                <span class="rate-icon">⚪</span>
-                <span class="rate-name">可 (解除・普通)</span>
-              </button>
-              <button class="popover-rate-btn rate-opt-discard" data-rating="-1" title="棄 (非表示候補)">
-                <span class="rate-icon">🗑️</span>
-                <span class="rate-name">棄 (非表示候補)</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 3. テイクアウトボタングループ & ポップオーバー (上展開・2択スリム構成) -->
-      <div class="floating-action-group">
-        <button class="btn btn-secondary btn-sm" id="floatingImportBtn" title="選択した写真を加工・リサイズ出力、またはベタ焼きHTMLとして書き出します">
-          <span class="btn-icon">📤</span>
-          <span class="btn-label">テイクアウト</span>
-        </button>
-        <div class="floating-popover" id="floatingImportPopover" style="display: none;">
-          <div class="floating-popover-header">
-            <span class="floating-popover-title">📤 テイクアウト</span>
-            <button class="floating-popover-close" id="closeFloatingImportPopoverBtn" title="閉じる">&times;</button>
-          </div>
-          <div class="floating-popover-body">
-            <div class="context-import-action smart-takeout-trigger-action" id="floatingTriggerSmartTakeoutBtn" title="回転・クロップ・解像度・ファイル名・Exif制御を一括適用して出力" style="background: rgba(225, 77, 42, 0.12); border: 1px solid rgba(225, 77, 42, 0.35); border-radius: 4px; padding: 7px 10px; margin-bottom: 6px; cursor: pointer; display: flex; align-items: center; gap: 8px;">
-              <span style="font-size: 1.15rem;">⚡</span>
-              <div style="display: flex; flex-direction: column; flex: 1;">
-                <span style="font-size: 0.84rem; font-weight: 700; color: var(--accent-primary);">スマート・テイクアウト...</span>
-                <span style="font-size: 0.7rem; color: var(--text-muted);">回転・クロップ・解像度・Exif制御</span>
-              </div>
-              <span style="font-size: 0.85rem; color: var(--accent-primary);">⚙</span>
-            </div>
-            <div class="floating-popover-action-item context-import-action contact-sheet-trigger-action" id="floatingTriggerContactSheetBtn" title="選択した写真を暗室ネガシート風のスタンドアロンHTML（ベタ焼き）として出力します">
-              <span style="font-size: 1.1rem;">🎞️</span>
-              <div style="display: flex; flex-direction: column; flex: 1;">
-                <span style="font-size: 0.82rem; font-weight: 700;">ベタ焼きHTML出力...</span>
-                <span style="font-size: 0.68rem; color: var(--text-muted, #4a4843);">暗室コンタクトシート・A4印刷対応</span>
-              </div>
-            </div>
-            <details class="legacy-takeout-details">
-              <summary class="legacy-takeout-summary">📂 簡易フォルダコピー (take_out/)</summary>
-              <div class="legacy-takeout-body">
-                <div class="popover-input-group popover-create-input">
-                  <input type="text" id="floatingImportFolderInput" placeholder="新規フォルダ名..." autocomplete="off">
-                  <button class="btn btn-primary btn-xs" id="floatingConfirmImportFolderBtn" title="take_out内にフォルダを作成してコピー">作成&amp;送信</button>
-                </div>
-                <div class="context-import-action" id="floatingOpenImportFolderBtn" title="エクスプローラーでtake_outフォルダを開きます">
-                  <span class="context-import-action-icon">📂</span>
-                  <span class="context-import-action-text">take_outフォルダを開く</span>
-                  <span class="context-import-action-arrow">↗</span>
-                </div>
-                <div class="popover-section-label">送信先フォルダ (take_out/)</div>
-                <div class="submenu-folder-list" id="floatingImportFolderList">
-                  <div class="submenu-folder-loading">読み込み中...</div>
-                </div>
-              </div>
-            </details>
-          </div>
-        </div>
-      </div>
-
-      <!-- 3-A. storageへインポート（外部写真選択時） -->
-      <div class="floating-action-group" id="floatingStorageImportGroup" style="display: none;">
-        <button class="btn btn-secondary btn-sm" id="floatingStorageImportBtn" title="選択した写真をアプリ内の storage フォルダへコピー＆インポートします">
-          <span class="btn-icon">📥</span>
-          <span class="btn-label">storageへインポート</span>
-        </button>
-        <div class="floating-popover" id="floatingStorageImportPopover" style="display: none;">
-          <div class="floating-popover-header">
-            <span class="floating-popover-title">📥 storageへインポート</span>
-            <button class="floating-popover-close" id="closeFloatingStorageImportPopoverBtn" title="閉じる">&times;</button>
-          </div>
-          <div class="floating-popover-body">
-            <div class="popover-input-group">
-              <input type="text" id="floatingStorageImportFolderInput" placeholder="新規フォルダ名..." autocomplete="off">
-              <button class="btn btn-primary btn-xs" id="floatingConfirmStorageImportFolderBtn" title="storage内にフォルダを作成してインポート">作成&amp;インポート</button>
-            </div>
-            <div class="context-import-action" id="floatingOpenStorageImportFolderBtn" title="エクスプローラーでstorageフォルダを開きます">
-              <span class="context-import-action-icon">📂</span>
-              <span class="context-import-action-text">storageフォルダを開く</span>
-              <span class="context-import-action-arrow">↗</span>
-            </div>
-            <div class="popover-section-label">インポート先フォルダ</div>
-            <div class="submenu-folder-list" id="floatingStorageImportFolderList">
-              <div class="submenu-folder-loading">読み込み中...</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 3-B. storage内で移動（storage内写真選択時） -->
-      <div class="floating-action-group" id="floatingStorageMoveGroup" style="display: none;">
-        <button class="btn btn-secondary btn-sm" id="floatingStorageMoveBtn" title="storage 内の写真を別サブフォルダへ移動します">
-          <span class="btn-icon">📦</span>
-          <span class="btn-label">storage内で移動</span>
-        </button>
-        <div class="floating-popover" id="floatingStorageMovePopover" style="display: none;">
-          <div class="floating-popover-header">
-            <span class="floating-popover-title">📦 storage内で移動</span>
-            <button class="floating-popover-close" id="closeFloatingStorageMovePopoverBtn" title="閉じる">&times;</button>
-          </div>
-          <div class="floating-popover-body">
-            <div class="popover-input-group">
-              <input type="text" id="floatingStorageMoveFolderInput" placeholder="新規フォルダ名..." autocomplete="off">
-              <button class="btn btn-primary btn-xs" id="floatingConfirmStorageMoveFolderBtn" title="storage内にフォルダを作成して移動">作成&amp;移動</button>
-            </div>
-            <div class="context-import-action" id="floatingOpenStorageMoveFolderBtn" title="エクスプローラーでstorageフォルダを開きます">
-              <span class="context-import-action-icon">📂</span>
-              <span class="context-import-action-text">storageフォルダを開く</span>
-              <span class="context-import-action-arrow">↗</span>
-            </div>
-            <div class="popover-section-label">移動先フォルダ</div>
-            <div class="submenu-folder-list" id="floatingStorageMoveFolderList">
-              <div class="submenu-folder-loading">読み込み中...</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 3-C. storage ファイル名変更 / 一括リネームボタン（storage内写真選択時） -->
-      <button class="btn btn-secondary btn-sm" id="floatingStorageRenameBtn" title="storage内のファイル名を変更 (F2)" style="display: none;">
-        <span class="btn-icon">✏️</span>
-        <span class="btn-label" id="floatingStorageRenameLabel">ファイル名変更</span>
-      </button>
-
-      <!-- 回転ボタングループ & ポップオーバー (上展開) -->
-      <div class="floating-action-group" id="floatingRotateGroup">
-        <button class="btn btn-secondary btn-sm" id="floatingRotateBtn" title="選択中の写真を一括回転">
-          <span class="btn-icon">↻</span>
-          <span class="btn-label">回転</span>
-        </button>
-        <div class="floating-popover floating-rotate-popover" id="floatingRotatePopover" style="display: none;">
-          <div class="floating-popover-header">
-            <span class="floating-popover-title">↻ 写真を一括回転</span>
-            <button class="floating-popover-close" id="closeFloatingRotatePopoverBtn" title="閉じる">&times;</button>
-          </div>
-          <div class="floating-popover-body">
-            <div class="popover-rotate-list" style="display: flex; flex-direction: column; gap: 4px;">
-              <button class="btn btn-secondary btn-sm" id="floatingRotateRightBtn" style="justify-content: flex-start; gap: 8px;" title="時計回りに90°回転 (R)">
-                <span>↻</span> <span>右へ90° (R)</span>
-              </button>
-              <button class="btn btn-secondary btn-sm" id="floatingRotateLeftBtn" style="justify-content: flex-start; gap: 8px;" title="反時計回りに90°回転 (L)">
-                <span>↺</span> <span>左へ90° (L)</span>
-              </button>
-              <div class="context-menu-divider" style="margin: 4px 0;"></div>
-              <button class="btn btn-secondary btn-sm" id="floatingPasteToneBtn" style="justify-content: flex-start; gap: 8px;" title="コピー済みのトーン調整（明るさ・コントラスト・彩度）を選択写真へ一括ペースト (Ctrl+Shift+V)">
-                <span>🎨</span> <span id="floatingPasteToneLabel">トーン調整を一括ペースト</span>
-              </button>
-              <div class="context-menu-divider" style="margin: 4px 0;"></div>
-              <button class="btn btn-secondary btn-sm" id="floatingResetAdjustBtn" style="justify-content: flex-start; gap: 8px;" title="回転・切り抜き・微調整を一括リセット">
-                <span>↺</span> <span>回転・調整をリセット</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 4. その他（メンテナンス・ジオタグ操作）ボタングループ & ポップオーバー -->
-      <div class="floating-action-group" id="floatingMoreGroup">
-        <button class="btn btn-secondary btn-sm" id="floatingMoreBtn" title="その他の操作（サムネイル更新・ジオタグ準用/削除）">
-          <span class="btn-icon">⋯</span>
-          <span class="btn-label" id="floatingMoreLabel">その他</span>
-        </button>
-        <div class="floating-popover floating-more-popover" id="floatingMorePopover" style="display: none;">
-          <div class="floating-popover-header">
-            <span class="floating-popover-title" id="floatingMorePopoverTitle">⋯ その他の操作</span>
-            <button class="floating-popover-close" id="closeFloatingMorePopoverBtn" title="閉じる">&times;</button>
-          </div>
-          <div class="floating-popover-body">
-            <div class="popover-more-list" style="display: flex; flex-direction: column; gap: 5px;">
-              <!-- サムネイル更新ボタン -->
-              <button class="btn btn-secondary btn-sm" id="floatingRefreshThumbBtn" style="width: 100%; justify-content: flex-start; gap: 8px;" title="選択中の写真のサムネイルを取得・更新します">
-                <span class="btn-icon" id="floatingRefreshThumbIcon">🔄</span>
-                <span class="btn-label" id="floatingRefreshThumbLabel">サムネイル更新</span>
-              </button>
-              <!-- 撮影日時を一括補正ボタン -->
-              <button class="btn btn-secondary btn-sm" id="floatingShiftDateBtn" style="width: 100%; justify-content: flex-start; gap: 8px;" title="選択中の写真の撮影日時（DB）を一括でプラス・マイナス補正します（カメラ時計のズレや時差の補正）">
-                <span class="btn-icon">🕒</span>
-                <span class="btn-label">撮影日時を一括補正...</span>
-              </button>
-              <div class="context-menu-divider" style="margin: 3px 0;"></div>
-              <!-- ジオタグ準用ボタン -->
-              <button class="btn btn-secondary btn-sm" id="floatingInferGpsBtn" style="width: 100%; justify-content: flex-start; gap: 8px;" title="選択中の写真（ジオタグなし）に対して、撮影時刻が近いスマホ写真のジオタグ（±1時間）を一括準用します">
-                <span class="btn-icon">📍</span>
-                <span class="btn-label">ジオタグ準用 (スマホGPS)</span>
-              </button>
-              <!-- ジオタグ削除ボタン -->
-              <button class="btn btn-secondary btn-sm" id="floatingClearGpsBtn" style="width: 100%; justify-content: flex-start; gap: 8px; color: var(--danger, #ef4444);" title="選択中の写真のジオタグ情報（緯度・経度・地名）をSQLiteデータベースから削除します（元ファイルは変更されません）">
-                <span class="btn-icon">🗑️</span>
-                <span class="btn-label">ジオタグ情報を削除</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 5. 選択解除ボタン -->
-      <button class="btn btn-secondary btn-sm" id="floatingClearSelectionBtn" title="選択をすべて解除">
-        <span class="btn-icon">✕</span>
-        <span class="btn-label">選択解除</span>
-      </button>
-
-      <!-- 6. 削除ボタン -->
-      <button class="btn btn-outline-danger btn-sm" id="floatingDeleteBtn" style="color: #ef4444; border-color: #ef4444;" title="選択中の写真をライブラリから登録解除">
-        <span class="btn-icon">🗑️</span>
-        <span class="btn-label">削除</span>
-      </button>
-    </div>
-  </div>
-
-  <script src="/js/common.js?v=3.00"></script>
-  <script src="/js/selection.js?v=3.00"></script>
-  <script src="/js/inspector.js?v=3.00"></script>
-  <script src="/js/lightbox.js?v=3.00"></script>
-  <script src="/js/adjust.js?v=3.00"></script>
-  <script src="/js/histogram.js?v=3.00"></script>
-  <script src="/js/compare.js?v=3.00"></script>
-  <script src="/js/takeout.js?v=3.00"></script>
-  <script src="/js/presets.js?v=3.00"></script>
-  <script src="/js/slideshow.js?v=3.00"></script>
-  <script src="/js/location_tree.js?v=3.00"></script>
-  <script src="/js/folder_tree.js?v=3.00"></script>
-  <script src="/js/location_map.js?v=3.00"></script>
-  <script src="/js/lab.js?v=3.00"></script>
-  <script src="/js/sidebar_filters.js?v=3.00"></script>
-  <script src="/js/storage.js?v=3.00"></script>
-  <script src="/js/app.js?v=3.00"></script>
-  <script src="/js/i18n.js?v=3.00"></script>
+  <script src="/js/common.js?v=3.0.1"></script>
+  <script src="/js/selection.js?v=3.0.1"></script>
+  <script src="/js/inspector.js?v=3.0.1"></script>
+  <script src="/js/lightbox.js?v=3.0.1"></script>
+  <script src="/js/adjust.js?v=3.0.1"></script>
+  <script src="/js/histogram.js?v=3.0.1"></script>
+  <script src="/js/compare.js?v=3.0.1"></script>
+  <script src="/js/takeout.js?v=3.0.1"></script>
+  <script src="/js/presets.js?v=3.0.1"></script>
+  <script src="/js/slideshow.js?v=3.0.1"></script>
+  <script src="/js/location_tree.js?v=3.0.1"></script>
+  <script src="/js/folder_tree.js?v=3.0.1"></script>
+  <script src="/js/location_map.js?v=3.0.1"></script>
+  <script src="/js/lab.js?v=3.0.1"></script>
+  <script src="/js/sidebar_filters.js?v=3.0.1"></script>
+  <script src="/js/storage.js?v=3.0.1"></script>
+  <script src="/js/app.js?v=3.0.1"></script>
+  <script src="/js/i18n.js?v=3.0.1"></script>
 </body>
 </html>

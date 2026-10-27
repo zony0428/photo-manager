@@ -4,6 +4,32 @@
  * 汎用ヘルパー関数、テーマ制御、ハートビート、ペインリサイズを管理する。
  */
 
+// localStorage が利用できない環境（ブラウザ設定・ストレージ制限等）でも起動不能にならないよう、
+// アクセス時に例外が出る場合はメモリ上の代替ストレージへ差し替える（全モジュールの直接呼び出しを一括で保護）
+(function ensureSafeLocalStorage() {
+  try {
+    const probeKey = '__pm_storage_probe__';
+    window.localStorage.setItem(probeKey, '1');
+    window.localStorage.removeItem(probeKey);
+  } catch (err) {
+    console.warn('[WARN] localStorage が利用できないため、メモリ上の代替ストレージで動作します:', err);
+    const memoryStore = new Map();
+    const fallbackStorage = {
+      getItem: (key) => (memoryStore.has(String(key)) ? memoryStore.get(String(key)) : null),
+      setItem: (key, value) => { memoryStore.set(String(key), String(value)); },
+      removeItem: (key) => { memoryStore.delete(String(key)); },
+      clear: () => { memoryStore.clear(); },
+      key: (index) => Array.from(memoryStore.keys())[index] ?? null,
+      get length() { return memoryStore.size; },
+    };
+    try {
+      Object.defineProperty(window, 'localStorage', { value: fallbackStorage, configurable: true });
+    } catch (defineErr) {
+      console.warn('[WARN] 代替ストレージの適用に失敗しました:', defineErr);
+    }
+  }
+})();
+
 // アプリケーション全体の定数 (0 = 表示上限なし)
 const MAX_DISPLAY_PHOTOS = 0;
 
@@ -178,32 +204,6 @@ const elements = {
   warningBannerDesc: document.getElementById('warningBannerDesc'),
   warningBannerReloadBtn: document.getElementById('warningBannerReloadBtn'),
   appVersion: document.getElementById('appVersion'),
-  selectionFloatingBar: document.getElementById('selectionFloatingBar'),
-
-  floatingSelectedCount: document.getElementById('floatingSelectedCount'),
-  floatingAddTagBtn: document.getElementById('floatingAddTagBtn'),
-  floatingRateBtn: document.getElementById('floatingRateBtn'),
-  floatingImportBtn: document.getElementById('floatingImportBtn'),
-  floatingInferGpsBtn: document.getElementById('floatingInferGpsBtn'),
-  floatingRefreshThumbBtn: document.getElementById('floatingRefreshThumbBtn'),
-  floatingRefreshThumbLabel: document.getElementById('floatingRefreshThumbLabel'),
-  floatingRateSelect: document.getElementById('floatingRateSelect'),
-  floatingDeleteBtn: document.getElementById('floatingDeleteBtn'),
-  floatingClearSelectionBtn: document.getElementById('floatingClearSelectionBtn'),
-  // フローティングバー ポップオーバー (v1.85, v1.86)
-  floatingTagPopover: document.getElementById('floatingTagPopover'),
-  closeFloatingTagPopoverBtn: document.getElementById('closeFloatingTagPopoverBtn'),
-  floatingTagInput: document.getElementById('floatingTagInput'),
-  floatingConfirmTagBtn: document.getElementById('floatingConfirmTagBtn'),
-  floatingTagTreeContainer: document.getElementById('floatingTagTreeContainer'),
-  floatingRatePopover: document.getElementById('floatingRatePopover'),
-  closeFloatingRatePopoverBtn: document.getElementById('closeFloatingRatePopoverBtn'),
-  floatingImportPopover: document.getElementById('floatingImportPopover'),
-  closeFloatingImportPopoverBtn: document.getElementById('closeFloatingImportPopoverBtn'),
-  floatingImportFolderInput: document.getElementById('floatingImportFolderInput'),
-  floatingConfirmImportFolderBtn: document.getElementById('floatingConfirmImportFolderBtn'),
-  floatingOpenImportFolderBtn: document.getElementById('floatingOpenImportFolderBtn'),
-  floatingImportFolderList: document.getElementById('floatingImportFolderList'),
   // サイドバー
   sidebar: document.getElementById('sidebar'),
   toggleSidebarBtn: document.getElementById('toggleSidebarBtn'),
@@ -406,7 +406,6 @@ const elements = {
   batchGpsSection: document.getElementById('batchGpsSection'),
   batchInferGpsBtn: document.getElementById('batchInferGpsBtn'),
   batchClearGpsBtn: document.getElementById('batchClearGpsBtn'),
-  floatingClearGpsBtn: document.getElementById('floatingClearGpsBtn'),
   batchNewTagInput: document.getElementById('batchNewTagInput'),
   batchAddTagBtn: document.getElementById('batchAddTagBtn'),
   batchColorPaletteBlock: document.getElementById('batchColorPaletteBlock'),
@@ -438,7 +437,6 @@ const elements = {
   themeToggleIcon: document.getElementById('themeToggleIcon'),
   themeToggleLabel: document.getElementById('themeToggleLabel'),
   // 撮影日時一括シフト補正モーダル & 詳細属性フィルタ
-  floatingShiftDateBtn: document.getElementById('floatingShiftDateBtn'),
   contextMenuShiftDateItem: document.getElementById('contextMenuShiftDateItem'),
   dateShiftModal: document.getElementById('dateShiftModal'),
   closeDateShiftModalBtn: document.getElementById('closeDateShiftModalBtn'),
@@ -620,11 +618,11 @@ function applyTheme(theme) {
 
   if (elements.themeToggleIcon && elements.themeToggleLabel) {
     if (theme === 'paper') {
-      elements.themeToggleIcon.textContent = '📜';
+      elements.themeToggleIcon.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
       elements.themeToggleLabel.textContent = '和紙';
       elements.themeToggleBtn.title = '夜墨（ダーク）モードに切り替え';
     } else {
-      elements.themeToggleIcon.textContent = '🌙';
+      elements.themeToggleIcon.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
       elements.themeToggleLabel.textContent = '夜墨';
       elements.themeToggleBtn.title = '和紙（ライト）モードに切り替え';
     }
@@ -751,7 +749,7 @@ function initHeartbeat() {
         } else if (data.mobile_sync_seq > _lastSeenMobileSyncSeq) {
           _lastSeenMobileSyncSeq = data.mobile_sync_seq;
           const cnt = data.mobile_sync_applied || 0;
-          showToast(`📱 スマホから ${cnt} 件の選別・タグ変更が自動反映されました！`, 'success', 5000);
+          showToast(`スマホから ${cnt} 件の選別・タグ変更が自動反映されました`, 'success', 5000);
           if (typeof refreshAll === 'function') {
             refreshAll();
           }
@@ -807,7 +805,7 @@ function showToast(message, type = 'info', durationMs = 3500) {
 
   const toast = document.createElement('div');
   toast.className = `toast-message toast-${type}`;
-  const icon = type === 'success' ? '✅' : type === 'warning' ? '⚠️' : type === 'error' ? '❌' : 'ℹ️';
+  const icon = type === 'success' ? '✓' : type === 'warning' ? '!' : type === 'error' ? '×' : 'i';
   toast.innerHTML = `<span>${icon}</span><span>${escapeHtml(message)}</span>`;
   container.appendChild(toast);
 
@@ -831,7 +829,7 @@ function showToast(message, type = 'info', durationMs = 3500) {
  * ユーティリティ: HTMLエスケープ
  */
 function escapeHtml(str) {
-  if (!str) return '';
+  if (str === null || str === undefined) return '';
   return String(str)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -1079,7 +1077,7 @@ async function confirmShutdown() {
     btn.disabled = true;
     btn.textContent = '停止処理中...';
   }
-  showToast('🛑 サーバーを停止しています...', 'info');
+  showToast('サーバーを停止しています...', 'info');
 
   try {
     await fetch('/api/shutdown', { method: 'POST' });
@@ -1087,7 +1085,7 @@ async function confirmShutdown() {
     // サーバー即座停止による切断エラーは正常
   }
 
-  showToast('✅ サーバーを停止しました。ウィンドウを閉じます。', 'success');
+  showToast('サーバーを停止しました。ウィンドウを閉じます。', 'success');
 
   setTimeout(() => {
     window.close();
@@ -1096,7 +1094,7 @@ async function confirmShutdown() {
     if (body) {
       body.innerHTML = `
         <div style="text-align: center; padding: 24px 0;">
-          <div style="font-size: 2.8rem; margin-bottom: 14px;">🛑</div>
+          <div style="font-size: 2.8rem; margin-bottom: 14px; font-weight: 700; color: var(--danger, #ef4444);">!</div>
           <h3 style="font-size: 1.15rem; font-weight: 700; color: var(--text-main); margin-bottom: 8px;">サーバーは正常に停止しました</h3>
           <p style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.5;">このブラウザタブまたはウィンドウを閉じてください。<br>次回は <strong>PhotoManager.exe</strong> から一瞬で起動できます。</p>
         </div>
@@ -1243,7 +1241,7 @@ function showMobileSyncResultModal(resultData, sourceLabel = 'mobile_sync.json',
       bannerEl.style.background = 'rgba(22, 163, 74, 0.14)';
       bannerEl.style.borderColor = 'rgba(34, 197, 94, 0.45)';
     }
-    if (iconEl) iconEl.textContent = '🎉';
+    if (iconEl) iconEl.textContent = '✓';
     if (headlineEl) {
       headlineEl.textContent = `${appliedCount} 枚の写真にスマホでの選別結果を反映しました！`;
     }
@@ -1252,7 +1250,7 @@ function showMobileSyncResultModal(resultData, sourceLabel = 'mobile_sync.json',
       bannerEl.style.background = 'rgba(245, 158, 11, 0.14)';
       bannerEl.style.borderColor = 'rgba(245, 158, 11, 0.45)';
     }
-    if (iconEl) iconEl.textContent = '⚠️';
+    if (iconEl) iconEl.textContent = '!';
     if (headlineEl) {
       headlineEl.textContent = '反映対象の写真が見つかりませんでした（0件更新）';
     }
@@ -1270,10 +1268,10 @@ function showMobileSyncResultModal(resultData, sourceLabel = 'mobile_sync.json',
     if (items.length > 0) {
       listWrapEl.style.display = 'flex';
       const rateLabelMap = {
-        2: '<span style="background:rgba(225,77,42,0.22); color:#fb923c; border:1px solid rgba(225,77,42,0.45); border-radius:4px; padding:1px 6px; font-weight:700; font-size:0.76rem;">🏅 優</span>',
-        1: '<span style="background:rgba(59,130,246,0.22); color:#60a5fa; border:1px solid rgba(59,130,246,0.45); border-radius:4px; padding:1px 6px; font-weight:700; font-size:0.76rem;">⭐ 良</span>',
-        0: '<span style="background:rgba(148,163,184,0.18); color:#cbd5e1; border:1px solid rgba(148,163,184,0.35); border-radius:4px; padding:1px 6px; font-weight:600; font-size:0.76rem;">⚪ 可</span>',
-        '-1': '<span style="background:rgba(239,68,68,0.22); color:#f87171; border:1px solid rgba(239,68,68,0.45); border-radius:4px; padding:1px 6px; font-weight:700; font-size:0.76rem;">🗑️ 棄</span>',
+        2: '<span style="background:rgba(225,77,42,0.22); color:#fb923c; border:1px solid rgba(225,77,42,0.45); border-radius:4px; padding:1px 6px; font-weight:700; font-size:0.76rem;">優 (Ex)</span>',
+        1: '<span style="background:rgba(59,130,246,0.22); color:#60a5fa; border:1px solid rgba(59,130,246,0.45); border-radius:4px; padding:1px 6px; font-weight:700; font-size:0.76rem;">良 (Gd)</span>',
+        0: '<span style="background:rgba(148,163,184,0.18); color:#cbd5e1; border:1px solid rgba(148,163,184,0.35); border-radius:4px; padding:1px 6px; font-weight:600; font-size:0.76rem;">可 (Fj)</span>',
+        '-1': '<span style="background:rgba(239,68,68,0.22); color:#f87171; border:1px solid rgba(239,68,68,0.45); border-radius:4px; padding:1px 6px; font-weight:700; font-size:0.76rem;">棄 (Dc)</span>',
       };
 
       listEl.innerHTML = items
@@ -1298,7 +1296,7 @@ function showMobileSyncResultModal(resultData, sourceLabel = 'mobile_sync.json',
           }
           return `
             <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; padding:4px 6px; border-bottom:1px solid rgba(255,255,255,0.05); flex-wrap:wrap;">
-              <span style="font-family:monospace; font-weight:600; color:var(--text-main, #eceae4);">📷 ${escapeHtml(it.file_name || '')}</span>
+              <span style="font-family:monospace; font-weight:600; color:var(--text-main, #eceae4);">${escapeHtml(it.file_name || '')}</span>
               <div style="display:flex; gap:4px; flex-wrap:wrap;">${badges.join('')}</div>
             </div>
           `;
@@ -1339,7 +1337,7 @@ async function loadMobileConnectionInfo(silentCheck = false) {
           (u) => `
           <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; background:rgba(0,0,0,0.25); padding:6px 10px; border-radius:4px; border:1px solid rgba(255,255,255,0.08);">
             <code style="font-size:0.86rem; color:var(--accent-primary, #e14d2a); font-weight:700; word-break:break-all;">${escapeHtml(u)}</code>
-            <button class="btn btn-secondary btn-xs copy-mobile-url-btn" data-url="${escapeHtml(u)}" style="white-space:nowrap;">📋 コピー</button>
+            <button class="btn btn-secondary btn-xs copy-mobile-url-btn" data-url="${escapeHtml(u)}" style="white-space:nowrap;">コピー</button>
           </div>
         `
         )
@@ -1352,7 +1350,7 @@ async function loadMobileConnectionInfo(silentCheck = false) {
           }
           try {
             await navigator.clipboard.writeText(targetUrl);
-            showToast(`📋 URLをコピーしました: ${targetUrl}`, 'success', 2500);
+            showToast(`URLをコピーしました: ${targetUrl}`, 'success', 2500);
           } catch (_e) {
             showToast(targetUrl, 'info', 4000);
           }
@@ -1429,7 +1427,7 @@ async function applyDetectedMobileSync(isAutoStartup = false) {
       _lastSeenMobileSyncSeq += 1;
     }
     const srcName = data.source_file || 'mobile_sync.json';
-    showToast(`✅ スマホ選別データ (${srcName}) から ${data.applied_count || 0} 件を反映しました！`, 'success', 5000);
+    showToast(`スマホ選別データ (${srcName}) から ${data.applied_count || 0} 件を反映しました`, 'success', 5000);
     showMobileSyncResultModal(data, srcName, Boolean(isAutoStartup));
 
     await loadMobileConnectionInfo(false);
@@ -1437,7 +1435,7 @@ async function applyDetectedMobileSync(isAutoStartup = false) {
       await refreshAll();
     }
   } catch (err) {
-    showToast(`❌ 同期エラー: ${err.message}`, 'error', 5000);
+    showToast(`同期エラー: ${err.message}`, 'error', 5000);
   } finally {
     if (elements.applyDetectedMobileSyncBtn) {
       elements.applyDetectedMobileSyncBtn.disabled = false;
@@ -1450,7 +1448,7 @@ async function importMobileSyncJsonText(text, sourceLabel = 'mobile_sync.json') 
   const parsed = JSON.parse(text);
   const changes = Array.isArray(parsed) ? parsed : (parsed.changes || []);
   if (!Array.isArray(changes) || changes.length === 0) {
-    showToast('⚠️ 反映すべき変更データが含まれていません', 'warning', 4500);
+    showToast('反映すべき変更データが含まれていません', 'warning', 4500);
     return;
   }
 
@@ -1465,7 +1463,7 @@ async function importMobileSyncJsonText(text, sourceLabel = 'mobile_sync.json') 
   if (_lastSeenMobileSyncSeq !== null && (data.applied_count || 0) > 0) {
     _lastSeenMobileSyncSeq += 1;
   }
-  showToast(`✅ ${sourceLabel} から ${data.applied_count || 0} 件の選別・タグ変更を反映しました！`, 'success', 5000);
+  showToast(`${sourceLabel} から ${data.applied_count || 0} 件の選別・タグ変更を反映しました`, 'success', 5000);
   showMobileSyncResultModal(data, sourceLabel, false);
   await loadMobileConnectionInfo(false);
   if (typeof refreshAll === 'function') {
@@ -1479,7 +1477,7 @@ async function importMobileSyncJsonFile(file) {
     const text = await file.text();
     await importMobileSyncJsonText(text, file.name);
   } catch (err) {
-    showToast(`❌ ファイル取り込みエラー: ${err.message}`, 'error', 5000);
+    showToast(`ファイル取り込みエラー: ${err.message}`, 'error', 5000);
   }
 }
 
@@ -1490,12 +1488,12 @@ async function importMobileSyncFromClipboard() {
     }
     const text = (await navigator.clipboard.readText()).trim();
     if (!text) {
-      showToast('⚠️ クリップボードが空です', 'warning');
+      showToast('クリップボードが空です', 'warning');
       return;
     }
     await importMobileSyncJsonText(text, 'クリップボード');
   } catch (err) {
-    showToast(`❌ クリップボード取り込みエラー: ${err.message}`, 'error', 5000);
+    showToast(`クリップボード取り込みエラー: ${err.message}`, 'error', 5000);
   }
 }
 

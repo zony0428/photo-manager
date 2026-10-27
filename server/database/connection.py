@@ -3,6 +3,7 @@
 SQLiteの接続プール（スレッドローカル再利用）とパフォーマンスPRAGMA設定を提供する。
 """
 
+import logging
 import math
 import shutil
 import sqlite3
@@ -10,6 +11,8 @@ import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _LEGACY_CACHE_DIR = _PROJECT_ROOT / ".cache"
@@ -68,8 +71,8 @@ def calc_solar_altitude(
                 if -90.0 <= f_lat <= 90.0 and -180.0 <= f_lon <= 180.0:
                     lat_val = f_lat
                     lon_val = f_lon
-        except Exception:
-            pass
+        except (ValueError, TypeError) as e:
+            logger.debug(f"太陽高度角: 緯度経度変換スキップ (lat={lat}, lon={lon}): {e}")
 
     # 標準時子午線の推定（日本周辺は東経135度、その他は経度から15度単位で算出）
     if 20.0 <= lat_val <= 46.0 and 122.0 <= lon_val <= 154.0:

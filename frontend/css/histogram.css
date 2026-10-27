@@ -5,53 +5,8 @@
  */
 
 /* =========================================================================
-   1. 右インスペクタ：プレビュー右下ミニトグルボタン & ドロワーパネル
+   1. 右インスペクタ：ドロワーパネル
    ========================================================================= */
-
-.inspector-hist-toggle-btn {
-  display: none !important;
-  position: absolute;
-  right: 8px;
-  bottom: 8px;
-  z-index: 6;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  background: rgba(18, 18, 20, 0.72);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  color: rgba(255, 255, 255, 0.88);
-  font-size: 0.68rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  line-height: 1.2;
-  cursor: pointer;
-  transition: all 0.16s ease;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
-}
-
-.inspector-hist-toggle-btn svg {
-  width: 12px;
-  height: 12px;
-  flex-shrink: 0;
-}
-
-.inspector-hist-toggle-btn:hover {
-  background: rgba(28, 28, 32, 0.9);
-  border-color: rgba(255, 255, 255, 0.45);
-  color: #ffffff;
-  transform: translateY(-1px);
-}
-
-.inspector-hist-toggle-btn.active {
-  background: var(--accent-primary, #e14d2a);
-  border-color: rgba(255, 255, 255, 0.5);
-  color: #ffffff;
-  box-shadow: 0 2px 8px rgba(225, 77, 42, 0.45);
-}
 
 /* インスペクタ固定プレビュー直下のオンデマンド展開ドロワー */
 .inspector-histogram-drawer {

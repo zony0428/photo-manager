@@ -66,8 +66,9 @@ Photo Manager は、Picasa / Tiat ライクな高速選別、ローカルAI自�
 
 ### ステップ 4: 配布設定・バージョン・リリースノートの確認
 - `build_dist.bat` で `MANUAL.md` および `RELEASE_NOTES.md` が `dist/`・`dist_update/` にコピーされる設定が維持されているか確認。
-- 改修時は `VERSION` ファイル内の最終更新日時（`Updated: YYYY-MM-DD HH:MM`）を更新し、検証確認が完了してGitコミットを行うタイミングでバージョン番号を `0.01` カウントアップ（またはユーザー指定値へ変更）する。
-- リリース時は `docs/release_notes/RELEASE_NOTES_v<VERSION>.md`（GitHub Releases コピペ用・差分ZIP/フルZIP案内付き・日英併記）を生成し、ルートの `RELEASE_NOTES.md` にも最新バージョンを追記してから `build_dist.bat` を実行する。
+- 改修時は `VERSION` ファイル内の最終更新日時（`Updated: YYYY-MM-DD HH:MM`）を更新し、検証確認が完了してGitコミットを行うタイミングで SemVer（`MAJOR.MINOR.PATCH`：内部・バグ修正は `+0.0.1`、機能追加は `+0.1.0`、大型刷新は `+1.0.0`）に従ってバージョン番号を更新する。
+- リリース時は `docs/release_notes/RELEASE_NOTES_v<VERSION>.md`（GitHub Releases 用・差分ZIP/フルZIP案内付き・日英併記）を生成し、ルートの `RELEASE_NOTES.md` にも最新バージョンを追記してから `build_dist.bat` を実行する。
+- さらにユーザーからリリースの指示があった場合は、`.\python\python.exe scripts\publish_release.py` を実行し、公開用リポジトリ（`public`: `zony0428/photo-manager`）への同期、GitHub Release の作成、および `PhotoManager_v<VERSION>.zip` / `PhotoManager_v<VERSION>diff.zip` の Assets アップロードまでを自動完遂する。
 
 ---
 

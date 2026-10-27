@@ -113,20 +113,37 @@ function _escAttr(str) {
 ## 4. CSS 規約
 
 ### CSS 変数のフォールバック指定
-CSS変数を使用する際は、必ずフォールバック値を指定する。
+テーマ定義（`:root` や `[data-theme]` 等）に存在しない新規変数や外部拡張スタイルを記述する際は、未定義時の表示崩れを防ぐためフォールバック値（例: `var(--custom-prop, #1e293b)`）を必須とする。既存の共通テーマ変数（デザインシステムで全テーマに定義済みの `--surface-card`, `--text-primary`, `--accent-primary` 等）については、フォールバックの記述を省略してよい。
 
 ```css
-/* ❌ フォールバックなし（未定義時に透明・無効になる） */
+/* ✅ 既存テーマ変数はフォールバック省略可 */
 background: var(--surface-card);
+color: var(--text-primary);
 
-/* ✅ 正しい */
-background: var(--surface-card, #1e293b);
-color: var(--text-primary, #f8fafc);
+/* ✅ テーマ未定義の独自変数・動的変数はフォールバック必須 */
+padding: var(--custom-spacing, 8px);
+border-color: var(--plugin-border, rgba(255, 255, 255, 0.1));
 ```
 
 ---
 
-## 5. データベース (SQLite) 規約
+## 5. セキュリティ規約 (Security Standards)
+
+Photo Manager はローカルHTTPサーバー＋ブラウザUIで構成されるため、以下のセキュリティ原則を徹底する。
+
+1. **新規APIは既定でローカル専用 (Localhost Only)**:
+   - すべての新規APIエンドポイントは、既定で `127.0.0.1` / `localhost` からのリクエストのみ許可される。
+   - LAN（スマホ連携等）からのアクセスを許可する場合は、安全性を十分に確認した上で `server/lan_access.py` のホワイトリスト（`_LAN_ALLOWED_PATH_EXACT` または `_LAN_ALLOWED_PATH_PREFIXES`）に明示追加すること。PC操作・ファイル削除・DB変更等の重要APIを安易にLAN公開してはならない。
+2. **innerHTML への文字列挿入はエスケープ必須 (XSS防止)**:
+   - DOM（`innerHTML` 等）に挿入する外部由来データ（ファイル名、ボリュームラベル、EXIF、タグ名、ユーザー入力値等）は、必ず `common.js` の `escapeHtml()` を経由させる。
+3. **外部プロセス起動・システム操作の安全性**:
+   - `os.startfile` や `subprocess.Popen` / `subprocess.run` を呼び出す際は、検証済みのファイルパス・ホワイトリスト内拡張子のみを対象とし、シェル文字列連結によるコマンド構築は禁止する（必ずリスト形式の引数 `[exe, arg1, ...]` を用いる）。
+4. **セキュリティ変更時のテスト義務**:
+   - 認証、Host検証、LANホワイトリスト、エスケープ等のセキュリティ関連コードを変更した際は、必ず `tests/test_security.py` を更新し、テストを実行して全ケース合格を確認する。
+
+---
+
+## 6. データベース (SQLite) 規約
 
 ### 全件取得（SELECT *）の禁止
 - DBアクセス関数には必ず SQL レベルのフィルタ引数（`folder_id`, `rating`, `search_query` など）を用意する。

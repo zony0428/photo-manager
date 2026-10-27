@@ -25,7 +25,7 @@ Photo Manager の最大の特徴は、**「USBメモリや外付けSSDに丸ご�
 ## 2. SQLite 最適化 & サムネイル設計
 
 ### 接続設定 (PRAGMA)
-データベース（`.cache/library.db`）は低速なUSBフラッシュメモリ上でも快適に動作するよう、以下のPRAGMAパラメータでチューニングされている（`server/database/connection.py`）：
+データベース（`cache/library.db`）は低速なUSBフラッシュメモリ上でも快適に動作するよう、以下のPRAGMAパラメータでチューニングされている（`server/database/connection.py`）：
 
 ```python
 # WALモード（並行読み書きの高速化）

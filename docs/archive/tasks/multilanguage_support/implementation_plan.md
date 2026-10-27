@@ -5,7 +5,7 @@ Photo Manager の UI 全体を、ページ再読み込みなしで **🇯🇵 �
 
 - **DB非破壊・ゼロ副作用**: SQLite (`library.db`) の中身や既存の検索・フィルタ・イベント処理ロジックは一切変更せず、**UI 表示レイヤーのみ**を双方向変換します。
 - **外科的実装 (`frontend/js/i18n.js`)**:
-  - 既存の18個のJSファイルを大量書き換えしてバグを招くのを防ぐため、独立モジュール [`frontend/js/i18n.js`](file:///c:/Users/zony0/Documents/photo-manager/frontend/js/i18n.js) に **「静的/動的テキスト＆属性（`title`, `placeholder`）の双方向トランスレータ ＋ `MutationObserver`」** を構築します。
+  - 既存の18個のJSファイルを大量書き換えしてバグを招くのを防ぐため、独立モジュール [`frontend/js/i18n.js`](../../../../frontend/js/i18n.js) に **「静的/動的テキスト＆属性（`title`, `placeholder`）の双方向トランスレータ ＋ `MutationObserver`」** を構築します。
   - 各DOMテキストノード・属性の元の日本語値をメモリ属性（`__pmOrigText` 等）に保持することで、`EN ➔ JP` に戻した際も **100% 元の日本語表示へ完全復元** します。
   - 選択した言語設定は `localStorage` (`pm_lang`: `'ja'` | `'en'`) に永続化します。
 
@@ -40,15 +40,15 @@ Photo Manager の UI 全体を、ページ再読み込みなしで **🇯🇵 �
 
 ## 3. 変更対象ファイル
 
-1. **[`frontend/index.html`](file:///c:/Users/zony0/Documents/photo-manager/frontend/index.html)**
+1. **[`frontend/index.html`](../../../../frontend/index.html)**
    - ヘッダー左（`#themeToggleBtn` の右隣）に言語切替ボタン `#langToggleBtn`（`🇯🇵 JP` / `🇺🇸 EN`）を追加。
    - `<script src="/js/i18n.js?v=2.39"></script>` を読み込みに追加。
    - `#helpModal` に言語切替の案内を追記。
-2. **[`frontend/css/style.css`](file:///c:/Users/zony0/Documents/photo-manager/frontend/css/style.css)**
+2. **[`frontend/css/style.css`](../../../../frontend/css/style.css)**
    - `.btn-lang-toggle` のコンパクトなボタンスタイルを追加。
-3. **[`frontend/js/i18n.js`](file:///c:/Users/zony0/Documents/photo-manager/frontend/js/i18n.js)**（新規作成）
+3. **[`frontend/js/i18n.js`](../../../../frontend/js/i18n.js)**（新規作成）
    - 完全一致辞書＋動的パターン正規表現（`123 枚` ➔ `123 shots`、`3個` ➔ `3 tags`、`露出ブラケット (3枚)` ➔ `AEB Stack (3)` 等）＋ `MutationObserver` によるリアルタイム翻訳・復元エンジン。
-4. **[`MANUAL.md`](file:///c:/Users/zony0/Documents/photo-manager/MANUAL.md)**
+4. **[`MANUAL.md`](../../../../MANUAL.md)**
    - 上部ツールバーの解説に言語切替ボタン（`🇯🇵 JP` / `🇺🇸 EN`）の说明を追記。
 
 ---
