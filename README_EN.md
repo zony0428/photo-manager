@@ -1,9 +1,11 @@
 # Photo Manager
 
-**[日本語](README.md) | English**
+[日本語](README.md) | English
 
-A fast, local, non-destructive RAW and standard photo viewer and culling tool for Windows, inspired by Picasa and Tiat.  
-Browse, cull, and organize tens of thousands of photos (JPEG, PNG, WebP, HEIC, and RAW files from major camera brands) with zero lag, without modifying a single byte of your original files or folder structure. Built as a standalone, USB-portable application.
+A local, non-destructive photo viewer and culling tool for Windows, inspired by Picasa and Tiat.  
+Browse, compare, and organize large collections of photos (JPEG, PNG, WebP, HEIC, and RAW files from major camera brands) smoothly, without modifying a single byte of your original files or folder structure.
+
+To try it right away, download the latest ZIP from [GitHub Releases](../../releases), extract it to any folder, and run `PhotoManager.exe` (no installation required).
 
 | Masonry View (Aspect-ratio preserved & Burst Stack) | Slide Mount View (Film Slide Frame Mode) |
 | :---: | :---: |
@@ -12,37 +14,38 @@ Browse, cull, and organize tens of thousands of photos (JPEG, PNG, WebP, HEIC, a
 ---
 
 > [!NOTE]
-> **Read Me First (Development Stance & Honest Disclaimers)**
+> Read Me First (Development Stance & Data Safety)
 >
-> - **100% "Vibe Coding" — Built Entirely by Asking AI**  
->   Every single line of code in this application was generated via 100% Vibe Coding (asking AI to write it). I (the author) have zero knowledge of how the code inside actually works! lol. So please don't ask me technical questions like *"How does line X work?"* — I genuinely have no idea.
-> - **Personal Hobby Project (About Feature Requests & Issues)**  
->   This software is built for my own personal photography workflow. While I happily read feature requests and bug reports for reference, whether they actually get implemented or fixed depends entirely on the AI's mood. Please enjoy it with a *"lucky if it works for me as-is"* mindset.
-> - **Real-Time `JP` / `EN` UI Toggle Included (Though My Own English Skill is Zero)**  
->   I am a Japanese developer with zero English skills. If you talk to me in English, I will rely 100% on machine translation and will probably sound like a slightly weird person lol.  
->   However, clicking the `JP` / `EN` button in the top header switches the entire UI, tooltips, and the built-in Help Manual into English in real time (including photography terms like `Washi / Urusi` themes, `Ex / Gd / Nm / Rj` ratings, `Lens Shaker` camera-shake detector, `Betayaki` contact sheets, and `Gacha` random folder picker — all 100% AI-translated, of course! lol).
+> - 100% "Vibe Coding" — Built Entirely by Asking AI:  
+>   Every line of code in this application was written by AI. I (the author) have zero knowledge of how the code inside actually works lol. Please don't ask me technical questions like "How does line X work?" because I genuinely have no idea.
+> - Personal Hobby Project (About Feature Requests & Issues):  
+>   This software is built for my own personal photography workflow. While I happily read feature requests and bug reports for reference, whether they actually get implemented or fixed depends on the AI's mood. Please use it with a relaxed "lucky if it works for me as-is" mindset.
+> - Real-Time `JP` / `EN` UI Toggle Included (Though My English Skill is Zero):  
+>   I am a Japanese developer with zero English skills. If you talk to me in English, I will rely 100% on machine translation and might sound a bit odd. However, clicking the `JP` / `EN` button in the top header switches the entire UI, tooltips, and the built-in Help Manual into English in real time (also 100% AI-generated lol).
+> - Your Original Photo Files Are Never Modified (100% Non-Destructive & Read-Only):  
+>   Although the code is written by AI, one strict rule is enforced throughout: your original photo files (RAW, JPEG, XMP, etc.) in your folders are never modified, moved, or deleted by even a single byte. All ratings, rotations, crops, and edits are saved solely inside the app's own database (`cache/library.db`). If you decide the app isn't for you, simply delete the Photo Manager folder and your PC environment and photo folders remain completely untouched.
 
 ---
 
-## Core Concepts
+## Key Characteristics
 
-### 1. Stoic, Photography-First Workspace (v3.00 UI Architecture)
-Designed to keep visual noise out of your way so your photographs take center stage:
-- **Unified Single-Row Header (44px)**: Consolidates layout switching, thumbnail size, multi-axis sorting, theme toggle (`Washi` / `Urusi`), and language toggle (`JP` / `EN`) into a single 44px bar.
-- **2-Stage Left Sidebar**: Pairs a persistent 54px vertical icon rail (`Quick / Folders / Tags / Geotags / Date / Gear / Lab / Search`) with a full-height menu stage that gives 100% vertical space to the active tree. When the menu is collapsed (`Menu Off`), the 54px icon rail stays accessible and opens the menu as a floating overlay over the photo grid on click. Persistent global filters (Attribute pills & 4-tier Rating pills) sit right at the top of the menu stage.
-- **4:3 Inspector Preview & Always-Visible Quick EXIF**: The right Inspector features a non-cropped `4:3` preview and a permanent Quick EXIF summary (Date Taken, Dimensions, Camera/Lens, and Exposure pills) right below the rating buttons—no tab switching required.
+### 1. Quiet, Photography-First Workspace
+Visual noise such as colorful emojis and heavy borders is kept to a minimum so the colors and tonal gradations of your photographs stand out naturally.
+- Switch anytime between the bright Japanese paper theme (Washi) and the darkroom-inspired ink theme (Urusi).
+- The left sidebar (Folders, Tags, Geotags, Date, Gear, Lab, etc.) can be collapsed to maximize grid space or opened as an overlay when needed.
+- The right Inspector keeps an uncropped 4:3 preview (double-click to open Lightbox) and a quick EXIF summary (Date Taken, Dimensions, Camera, Lens, and Exposure settings) visible at all times without switching tabs.
 
 ### 2. Non-Destructive Workflow & XMP Sidecar Integration
-Rotating, cropping, leveling horizons, adjusting tone, shifting capture timestamps, or marking photos as "Rj (Reject)" never alters or deletes your original files on disk.  
-When companion `.xmp`, `.pp3`, or `.dop` sidecar files (from Lightroom, Adobe Camera Raw, etc.) are detected, you can hold down the `XMP Preview` button in the Inspector to temporarily preview XMP adjustments, or import XMP ratings (mapped to Photo Manager's 4-tier scale) and hierarchical keywords under an isolated `XMP/...` root without polluting your existing tag tree.
+Rotating, leveling horizons, cropping, adjusting tone, shifting capture timestamps, or marking photos as "Rj (Reject)" never alters or deletes your original files on disk.  
+When companion `.xmp`, `.pp3`, or `.dop` sidecar files (from Lightroom, Adobe Camera Raw, etc.) exist in the same folder, you can hold down the "XMP Preview" button in the Inspector to temporarily preview those adjustments. You can also import XMP ratings and hierarchical keywords into an isolated `XMP/...` tag branch without mixing them into your existing tag tree.
 
-### 3. Exclusive Search (`[-]` Exclude Filter) & Separated Tag Hierarchy Management
-When filtering by tags/albums or the **Camera Body > Mounted Lens** tree, you can not only include `[+]` an item, but also exclude `[-]` specific tags, cameras, or lenses — making it effortless to find photos you forgot to add to an album or shots taken with anything other than a specific lens.  
-Daily tag assignment stays clean in the right Inspector and right-click context menu, while structural operations (drag-and-drop hierarchy reorganization, promoting child tags to root, inline renaming, and library-wide deletion) are isolated inside the 2-pane **Settings & Tag Tree Editor**.
+### 3. Exclusive Search (`[-]` Exclude Filter) & Trail Indicators
+When filtering by tags or the "Camera Body > Lens" hierarchy, you can not only include `[+]` a condition, but also exclude `[-]` specific items. This makes it simple to find photos that haven't been added to an album yet or shots taken with anything other than a specific lens.  
+When a parent node is collapsed while a child item has an active filter, a dashed border and count badge (`+1` / `-1`) act as a trail marker, and clicking any active filter chip at the top jumps directly to that item in the sidebar tree. Daily tag assignment takes place in the right Inspector and context menu, while structural edits (reorganizing hierarchies, renaming, and deleting tags) are separated into a dedicated editor inside Settings to prevent accidental changes during culling.
 
-### 4. 100% Offline, USB Portability & Self-Contained Storage (`storage/`)
-Your photos are never uploaded to any external cloud. AI auto-tagging (ONNX Runtime / CLIP) and reverse geocoding (GPS to Country / Prefecture / City) run completely locally on your PC.  
-Run directly from a USB flash drive or external SSD on any Windows PC without installing Python. Selecting external photos via `Import` copies them into the app's internal `storage/` directory, allowing you to create/rename subfolders, move photos via drag-and-drop, batch-rename files (`F2`), and export folders while automatically tracking companion sidecars and paired RAW files.
+### 4. Local-First Operation & USB Portability
+Your photos are never sent to any external cloud or server. Web fonts and the map library (Leaflet) are bundled locally with no external CDN requests (only viewing map background tiles connects to OpenStreetMap). AI auto-tagging (CLIP) and reverse geocoding (GPS coordinates to Country, Prefecture/State, and City) run entirely locally on your PC.  
+You can run the app directly from an external SSD or USB flash drive even on a PC without Python installed. When you copy selected photos into the app's internal `storage/` folder, you can organize subfolders and batch-rename files (<kbd>F2</kbd>) while automatically keeping paired RAW files and `.xmp` sidecars together.
 
 ---
 
@@ -50,23 +53,22 @@ Run directly from a USB flash drive or external SSD on any Windows PC without in
 
 | Category | Feature | Description |
 | :--- | :--- | :--- |
-| **Culling & Comparison** | **4-Tier Rating (`Ex / Gd / Nm / Rj`)** | One-handed culling using number keys (`1`: Ex / `2`: Gd / `3`: Rj / `0`: Nm). Rejected photos hide immediately from the grid |
-| | **2-Up Side-by-Side Duel** | Compare two photos side-by-side with synchronized zoom & pan, Exif diff highlighting, and knockout selection (`W` key) |
-| | **Smart Stacks** | Automatically groups continuous bursts, exposure brackets (AEB), and duplicates. Flip through stacked shots with `↑` / `↓` in Lightbox |
-| **Search & Filtering** | **Persistent Type & Rating Bar** | Always-visible filter bar at the top of the left menu for format/attribute (`All / RAW / Edited / JPEG Only / RAW+JPG Pair / Has XMP`) and rating (`Ex / Gd / Nm / Rj`) |
-| | **Include `[+]` / Exclude `[-]` Filter** | Exclusive filtering across tags and the Camera > Lens hierarchy. Includes a `By Count` toggle and Lexical / Natural name sorting |
-| | **Multi-Axis Sorting** | Sort by Date Taken, Rating, Filename, File Size, Focal Length, Aperture, Shutter Speed (Fast ↔ Slow), or ISO |
-| **Non-Destructive Edits** | **Crop, Straighten & Tone** | Fine horizon leveling (±45°), aspect-ratio cropping, exposure/contrast/saturation adjustments, and batch tone copy/paste |
-| | **Live RGB Histogram** | Real-time RGB & Luminance waveform histogram (`H` key) linked dynamically to tone adjustments |
-| | **Batch Capture Time Shift** | Non-destructively offset capture timestamps (`±Days/Hours/Min/Sec`) to fix camera clock drift or timezones, with one-click reset to original Exif time |
-| **Export & Print** | **Smart Takeout** | Batch-export selected photos with baked-in edits, resizing, sequential renaming, Exif stripping, and optional `.xmp` sidecar output |
-| | **Betayaki Contact Sheet HTML** | Generate a darkroom-style negative contact sheet in a single standalone HTML file with interactive red grease-pencil marks and A4 print layout |
-| **Photography Lab** | **Winning Lens & Sweet-Spot Chart** | Analyzes your `Ex` / `Gd` keeper rates to rank your best-performing lenses and sweet-spot focal lengths, apertures, and hours |
-| | **Solar Elevation & Lens Shaker** | Computes solar angle from timestamp & GPS to extract Golden Hour, Blue Hour, and Night shots, plus slow-shutter shake risks (`< 1/focal_length sec`) |
-| | **Conquest Map & Walk Trajectory** | Visualize your footprint across Japan's 47 prefectures, shooting density heatmaps, and chronological photo-walk trajectories |
-| | **On This Day & Folder Gacha** | Rediscover photos taken on the same calendar date across years, or draw a random unrated folder to cull |
-| **UI & Mobile Sync** | **Washi / Urusi Themes & i18n** | Switch between bright Japanese paper (`Washi`) and darkroom ink (`Urusi`) themes, and toggle the UI between `JP` and `EN` |
-| | **Smartphone Offline Culling** | High-quality WebP thumbnails are embedded in `cache/library.db`. Load the `.db` via WebAssembly (`sql.js`) on your phone to cull offline and sync back to PC |
+| Culling & Comparison | 4-Tier Rating | One-handed culling with number keys (<kbd>1</kbd>: Ex / <kbd>2</kbd>: Gd / <kbd>3</kbd>: Rj / <kbd>0</kbd>: Nm). Rejected photos hide immediately from the grid |
+| | 2-Up Side-by-Side Duel | Compare two photos side-by-side with synchronized zoom & pan and knockout selection (<kbd>W</kbd> key) |
+| | Smart Stacks | Automatically groups continuous bursts, exposure brackets (AEB), and duplicates. Flip frames with <kbd>↑</kbd> <kbd>↓</kbd> in Lightbox and promote the cover frame via the top Primary button |
+| Search & Filtering | Type & Rating Bar | Persistent filter bar at the top of the left menu for format/attribute (RAW / JPEG Only / RAW+JPG Pair / Edited / Has XMP) and ratings (Ex / Gd / Nm / Rj) |
+| | Include `[+]` / Exclude `[-]` Filter | Exclusive filtering across tags and the Camera > Lens hierarchy, with collapsed-tree trail indicators and click-to-jump filter chips |
+| | Multi-Axis Sorting | Sort by Date Taken, Rating, Filename, File Size, Focal Length, Aperture, Shutter Speed, or ISO |
+| Non-Destructive Edits | Crop, Straighten & Tone | Fine horizon leveling (±45°), aspect-ratio cropping, exposure/contrast/saturation adjustments, and batch copy/paste |
+| | Live RGB Histogram | Real-time RGB & Luminance histogram (<kbd>H</kbd> key) linked dynamically to tone adjustments |
+| | Batch Capture Time Shift | Non-destructively offset capture timestamps (Days/Hours/Min/Sec) to fix camera clock drift or timezones, with one-click reset to original EXIF |
+| Export & Print | Smart Takeout | Batch-export selected photos with baked-in edits, resizing, sequential renaming, EXIF stripping, and optional `.xmp` sidecar output |
+| | Contact Sheet HTML (Betayaki) | Generate a darkroom-style negative contact sheet in a single standalone HTML file with red grease-pencil marks and A4 print layout |
+| Photography Lab | Winning Lens & Sweet-Spot Chart | Summarizes your keeper rates (Ex / Gd) to highlight your best-performing lenses and sweet-spot focal lengths, apertures, and hours |
+| | Solar Elevation & Shake Check | Computes solar angle from timestamp & GPS to extract Golden Hour, Blue Hour, and Night shots, plus slow-shutter shake candidates |
+| | Prefecture Map & Walk Trajectory | Visualize your shooting footprint across Japan's 47 prefectures, density heatmaps, and chronological photo-walk trajectories |
+| | On This Day & Folder Gacha | Rediscover photos taken on the same calendar date across years, or open a random unrated folder to cull |
+| Mobile Sync | Smartphone Wi-Fi & Offline Culling | Token-authenticated QR Wi-Fi culling (auto-stops after 30 min idle), plus offline culling by loading `cache/library.db` via WebAssembly on your phone and syncing back to PC |
 
 ---
 
@@ -74,62 +76,82 @@ Run directly from a USB flash drive or external SSD on any Windows PC without in
 
 | Key | Action |
 | :--- | :--- |
-| <kbd>1</kbd> / <kbd>2</kbd> / <kbd>3</kbd> (<kbd>X</kbd>) / <kbd>0</kbd> | Set rating (`1`: Ex / `2`: Gd / `3`: Rj / `0`: Nm / Clear) |
+| <kbd>1</kbd> / <kbd>2</kbd> / <kbd>3</kbd> (<kbd>X</kbd>) / <kbd>0</kbd> | Set rating (<kbd>1</kbd>: Ex / <kbd>2</kbd>: Gd / <kbd>3</kbd>: Rj / <kbd>0</kbd>: Nm / Clear) |
 | <kbd>Space</kbd> / <kbd>Enter</kbd> | Open / close Lightbox view |
 | <kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> | Navigate photos (in Lightbox, <kbd>↑</kbd> <kbd>↓</kbd> switches frames inside a burst or AEB stack) |
-| <kbd>V</kbd> / <kbd>W</kbd> | Open 2-Up Duel comparison / Crown right photo as winner during comparison |
-| <kbd>C</kbd> / <kbd>H</kbd> | Open Crop / Straighten / Tone modal / Toggle live RGB & Luminance histogram |
+| <kbd>V</kbd> / <kbd>W</kbd> | Open 2-Up Duel comparison / Keep right photo as winner during comparison |
+| <kbd>C</kbd> / <kbd>H</kbd> | Open Crop / Straighten / Tone modal / Toggle RGB & Luminance histogram |
 | <kbd>R</kbd> / <kbd>L</kbd> | Rotate 90° clockwise / Rotate 90° counter-clockwise |
 | <kbd>F2</kbd> | Rename file (single rename or batch sequential rename for photos in `storage/`) |
-| <kbd>[</kbd> (<kbd>B</kbd>) / <kbd>D</kbd> / <kbd>I</kbd> | Toggle left menu / Toggle right inspector / Toggle card metadata overlay |
+| <kbd>[</kbd> (<kbd>B</kbd>) / <kbd>D</kbd> / <kbd>I</kbd> | Toggle left menu / Toggle right inspector / Toggle thumbnail text overlay |
 
 ---
 
-## Setup & How to Run
+## Download & How to Run
 
 ### Option A: Using the Release ZIP Package (Portable Python Included)
 
-1. **First-Time Install (Full Package `PhotoManager_vX.XX.zip`)**  
-   Extract the full `.zip` archive to any folder or USB drive, and double-click `PhotoManager.exe` to launch in a dedicated borderless application window.
-2. **Updating an Existing Installation (Lightweight Diff `PhotoManager_vX.XXdiff.zip`)**  
-   If you already have a recent full version running, extract the lightweight diff `.zip` and overwrite your existing folder. Your `python/` runtime, `models/`, `cache/` database, and `storage/` remain intact.
+Because the portable Python runtime and all required libraries are bundled, no prior setup or installation is needed on your PC.
+
+1. First-Time Setup (Full Package `PhotoManager_vX.X.X.zip`):  
+   Download the full package ZIP from [GitHub Releases](../../releases), extract it to any folder or USB drive, and double-click `PhotoManager.exe` to launch in a dedicated application window.
+2. Updating an Existing Setup (Lightweight Diff `PhotoManager_vX.X.Xdiff.zip`):  
+   If you already have a full package running, you do not need to re-download `python/` or `models/`. Extract the lightweight diff ZIP and overwrite your existing folder to update while keeping your `cache/` database and `storage/` intact.
 
 > [!IMPORTANT]
-> **About Microsoft Defender SmartScreen Prompts on First Launch**
+> If Microsoft Defender SmartScreen Appears on First Launch
 >
-> This application operates locally with no photo uploads or registry modifications (only map tiles connect to OpenStreetMap). However, because it is an independent hobby project without a commercial EV Code Signing Certificate, Windows Defender SmartScreen may display a confirmation screen when launching a downloaded `.exe` for the first time. You can proceed in either of two ways:
+> This application operates locally with no photo uploads or registry changes (only map tiles connect to OpenStreetMap). Because it is an independent personal project without a commercial code-signing certificate, Windows Defender SmartScreen may show a confirmation dialog when launching a downloaded `.exe` for the first time. You can start the app in either of two ways:
 >
-> 1. **Run Directly**: On the SmartScreen prompt, click **"More info" → "Run anyway"** (this prompt will not appear on subsequent launches).
-> 2. **Clean Local Build via `Build.bat`**: Double-clicking **`Build.bat`** uses Windows' built-in official C# compiler (`csc.exe`) to compile the plain-text launcher source ([`launcher/Launcher.cs`](launcher/Launcher.cs)) directly into `PhotoManager.exe` on your own machine in one second and starts the app without download-origin blocks (Mark of the Web).
+> 1. Run directly: Click "More info" on the SmartScreen dialog and select "Run anyway" (this prompt will not appear on subsequent launches).
+> 2. Build locally with `Build.bat`: Double-click `Build.bat` in the folder. It uses the standard C# compiler (`csc.exe`) included with Windows to compile `PhotoManager.exe` directly on your PC from the plain-text source code ([`launcher/Launcher.cs`](launcher/Launcher.cs)) and launches the app without download-related blocks.
 
-### Option B: Cloning from GitHub
+### Option B: Cloning from the GitHub Repository
 
-The Git repository does not include the large portable Python runtime (`python/`). On your first run, execute these two steps (no system-wide Python installation required):
+The Git repository does not include the large portable Python directory (`python/`). Run the following two steps once on first setup (installing Python on your system is not required):
 
-1. **Run `setup_portable_python.bat`** (Requires internet connection, first time only)  
-   Automatically downloads official Python 3.11 Embeddable and required packages (FastAPI, Pillow, rawpy, ONNX Runtime, etc.) into the `python/` directory.
-2. **Run `Build.bat`**  
+1. Run `setup_portable_python.bat` (requires internet connection on first run):  
+   Automatically downloads and sets up Embeddable Python 3.11 and required packages into the `python/` folder.
+2. Run `Build.bat`:  
    Compiles `PhotoManager.exe` and starts the application.
+
+---
+
+## Future Outlook
+
+Because this software is developed as a personal hobby through Vibe Coding, there is no fixed schedule or guarantee of implementation. While keeping the core principles of 100% offline, non-destructive, and lightweight operation intact, the following ideas are being considered:
+
+- Visual Similarity Search (Local Image-to-Image Search):  
+  Using local AI image analysis on your PC, select a favorite shot to find other photos across your library with a similar composition, color tone, or lighting mood, even without tags.
+- Focus Peaking Highlight:  
+  Highlight sharp, in-focus edges with a colored overlay during Lightbox and 2-Up Duel comparison—much like a camera's focus peaking—to make it easier to spot the sharpest frame in a burst.
+- Location & Route Matching from GPS Logs (`.gpx`):  
+  Match `.gpx` logs from hiking or travel GPS loggers against capture timestamps so photos from cameras without built-in GPS can also be mapped and traced non-destructively in the database.
+- Direct Handoff to External RAW Editors:  
+  Pass selected photos (or paired RAW files) directly to your preferred external RAW developer with a single keyboard shortcut.
+- Mat Frame & Subtle EXIF Export:  
+  An export option in Smart Takeout that places a quiet mat border around your photo with minimal camera, lens, and exposure details printed along the margin.
 
 ---
 
 ## Documentation
 
-- **Built-in Interactive Manual**: Click the **Help (`F1`)** button at the top-right of the application (available in both `JP` and `EN`).
-- **[User Manual (`MANUAL.md` - Japanese)](MANUAL.md)**
-- **[USB Portable Guide (`README_USB.md` - Japanese)](README_USB.md)**
-- **[Architecture & Technical Knowledge (`docs/knowledge/`)](docs/knowledge/README.md)**
+- [User Manual (`MANUAL.md`)](MANUAL.md)  
+  Covers basic operation, one-handed culling, 2-Up Duel comparison, exclusive search, non-destructive edits, export, and mobile/USB workflows. The same guide can also be viewed in English from the in-app Help button (<kbd>F1</kbd>) after switching the UI to `EN`.
+- [USB Portable Guide (`README_USB.md`)](README_USB.md)  
+  Instructions for carrying your library on an external SSD or USB drive and syncing with a smartphone.
+- [Architecture & Technical Notes (`docs/knowledge/`)](docs/knowledge/README.md)  
+  Design records covering SQLite BLOB thumbnail storage, WebAssembly mobile sync, and the v3.00 UI design system.
 
 ---
 
 ## License
 
-- **Photo Manager Source Code**  
-  The original source code of this project is licensed under the **[MIT License](LICENSE)**, provided "AS IS" without warranty of any kind.
+The original source code of Photo Manager is released under the [MIT License](LICENSE). Feel free to use and modify it on an "AS IS" basis without warranty.
 
 > [!WARNING]
-> **Third-Party Library Licenses & Redistribution Requirements**
+> Compliance with Bundled Third-Party Licenses
 >
-> If you modify, redistribute, or package this software, you must comply with the licenses of the bundled third-party libraries and datasets.
-> - Full license texts and notices for all dependencies (Python, FastAPI, Pillow, **LibRaw / rawpy [LGPL 2.1]**, **pystray [LGPL 3.0]**, ONNX Runtime, sql.js, etc.) and offline geocoding datasets (Code for Fukui, GeoNames, etc. [CC BY 4.0 / ODbL]) are provided in [`LICENSES/NOTICE.txt`](LICENSES/NOTICE.txt) and the [`LICENSES/`](LICENSES) directory.
-> - In particular, to comply with **LibRaw (LGPL 2.1)** bundled inside `rawpy`, always keep dynamic linking (DLLs) intact and do **not** statically bundle the application into a single executable using `PyInstaller --onefile`.
+> When modifying, redistributing, or packaging this software, please comply with the license terms of all bundled third-party libraries and datasets.
+> - Full license texts and notices for all included libraries (Python, FastAPI, Pillow, LibRaw / rawpy [LGPL 2.1], pystray [LGPL 3.0], ONNX Runtime, sql.js, etc.) and offline geocoding datasets (Code for Fukui, GeoNames, etc. [CC BY 4.0 / ODbL]) are located in [`LICENSES/NOTICE.txt`](LICENSES/NOTICE.txt) and the [`LICENSES/`](LICENSES) directory.
+> - In particular, to comply with the LGPL 2.1 license of LibRaw (bundled within `rawpy`), keep it dynamically linked (as DLLs) and do not statically bundle it into a single executable using tools like `PyInstaller --onefile` when redistributing.

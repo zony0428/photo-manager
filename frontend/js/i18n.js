@@ -1084,399 +1084,299 @@
     'クリックでこのフィルタの場所を開く（×で解除）': 'Click to jump to this filter in sidebar (× to remove)',
 
     // ヘルプモーダル (#helpModal) 全タブ詳細テキスト・テーブル・FAQ
-    '大量の写真（JPEG / PNG / WebP / HEIC および各社一眼カメラの RAW データ）を、待ち時間ゼロで閲覧・選別・整理できる写真ビューアです。':
-      'A zero-latency photo viewer & culling tool for large libraries (JPEG / PNG / WebP / HEIC and camera RAW files).',
-    '目的に合わせて上部の': 'Switch between the',
-    '「 Basic編」「 Advance編」「 Mobile & USB編」': '" Basic", " Advance", and " Mobile & USB"',
-    'タブを切り替えてご覧ください。': 'tabs above to explore features by level.',
-    '数字キーの': 'Press number keys',
-    '（優）、': '(Ex),',
-    '（良）、': '(Gd),',
-    '（棄）、': '(Rj), or',
-    '（可）を押すだけで視線を外さず高速仕分け。「棄」にした写真は一覧から自動で隠れます（いつでも再表示・復活可能）。':
-      ' (Nm) for rapid culling without taking your eyes off the photo. "Rj (Reject)" photos are automatically hidden from the grid (and can be shown or restored anytime).',
-    '連写や露出ブラケット、別フォルダにコピーされた同じ写真も自動で「1つの束（スタック）」に集約。一覧画面が同じ写真で埋め尽くされず、拡大時に':
-      'Burst shots, exposure brackets, and duplicate copies across folders are automatically grouped into a single "Stack" so your grid stays clean. In Lightbox, press',
-    'キーで瞬時に見比べられます。': 'to flip through the stack.',
-    '斜めの水平線補正（': 'Straighten tilted horizons (',
-    'キー）や露出補正を元ファイル無傷で行い、「 スマート・テイクアウト」でリサイズや撮影順の連番リネーム、プライバシー保護（Exif消去）を掛けて別フォルダへ一括出力できます。':
-      'key) and fine-tune exposure non-destructively, then batch-export via " Smart Takeout" with resizing, chronological renaming, and Exif privacy scrubbing.',
-    '重たい元写真は自宅に置いたままカタログ（USB）だけを持ち歩けます。さらに自宅Wi-Fi（QRコード）や外出先のUSB直接接続で、スマホの親指操作だけで写真をサクサク選別・同期できます。':
-      'Carry just your USB catalog while leaving terabytes of RAWs at home. Cull with one thumb on your phone via home Wi-Fi (QR code) or offline USB OTG, then sync back.',
-    '画面上部のツールバーから、ワンクリックで3つの表示モードを切り替えられます。左上の「 和紙 ／  夜墨（Washi / Urusi）」ボタンで明るい画面・暗い画面の切り替え、さらに隣の「 JP ／  EN」ボタンで日本語・英語UIのリアルタイム切り替えも可能です。':
-      'Switch between 3 layout modes from the top toolbar. Toggle light/dark themes with " Washi /  Urusi" at the top-left, or switch languages anytime with " JP /  EN".',
-    '（優）・': '(Ex),',
-    '（良）・': '(Gd),',
-    '（棄）キーで片手でサクサク仕分けます。': '(Rj) keys to cull one-handed.',
-    'キーで拡大。ホイール操作でピントや表情をチェックします。': 'key to open Lightbox. Scroll the mouse wheel to check focus and expressions.',
-    '1. 起動と終了のしかた（2つの閉じかた）': '1. Launching & Closing (2 Ways to Exit)',
-    '起動:': 'Launch:',
-    'フォルダ内の': 'Double-click',
-    'をダブルクリックすると専用ウィンドウ（最大化状態）が開きます。': 'in the folder to open the dedicated app window (maximized).',
-    '※初回起動時に SmartScreen の確認画面が出た場合や': '* If Windows SmartScreen appears on first launch or',
-    'が見当たらない場合は、フォルダ内の': 'is missing, double-click',
-    'をダブルクリックするとお使いのPC上で': 'in the folder to cleanly build',
-    'と': 'and',
-    'がクリーンに生成されてそのまま起動します。': 'right on your PC and launch immediately.',
-    '完全終了（USBを抜く前など）:': 'Complete Exit (Before removing USB):',
-    '画面右上の': 'Click the top-right',
-    '→「サーバーを停止して終了」を選びます。': '→ "Stop Server & Exit".',
-    '× 画面だけ閉じる（高速起動待機）:': '× Close Window Only (Instant Standby):',
-    'ウィンドウ右上の「×」で閉じると裏で待機状態になり、次回': 'Closing with the top-right "×" keeps the server on standby so the next',
-    'を開いたときに': 'launch restores the window in',
-    '0.1秒': '0.1 sec',
-    'で画面が復元します（Windows右下のタスクトレイのアイコンから完全終了もできます）。': '(you can also fully exit from the Windows system tray icon).',
-    '2. 写真フォルダを登録する・更新する': '2. Adding & Refreshing Photo Folders',
-    '新しく登録する:': 'Register New Folder:',
-    '左サイドバーの': 'Open',
-    '「 フォルダ」': '" Folders"',
-    'を開き、パソコンや外付けドライブのツリーから写真フォルダをクリックします。「子フォルダを含む（おすすめ）」か「直下のみ」を選ぶと、すぐ下に進行バーが出て取り込みが始まります。':
-      'in the left sidebar and click any folder in your PC or external drive tree. Choose "+ Sub (Recommended)" or "Direct" to start importing with a live progress bar.',
-    '写真を追加・削除したあと:': 'After Adding/Deleting Photos:',
-    '登録済みのフォルダを左サイドバーでクリックするだけで、アプリが自動で変化を検知し「ライブラリをリフレッシュ（最新化）しますか？」と案内してくれます。':
-      'Simply click the registered folder in the left sidebar—the app automatically detects changes and prompts you to refresh the library.',
-    '3. 片手でサクサク！写真の選別（4段階評価）': '3. One-Handed 4-Tier Culling (Ex / Gd / Nm / Rj)',
-    '写真を選んでキーボードの数字キー（またはテンキー）を押すだけで、視線を動かさずに仕分けられます。':
-      'Select a photo and press the number keys (or Numpad) to rate shots without taking your eyes off the image.',
-    'キー：': 'key:',
-    '（ベストショット！現像やSNS投稿したい最優秀カット）': '(Best shot! Top picks for editing or sharing)',
-    '（お気に入り・合格カット）': '(Good / Keeper shot)',
-    'または': 'or',
-    '（ピンボケ・目つぶり等のボツ写真。': '(Out-of-focus / blink / reject.',
-    '一覧から自動で隠れます': 'Automatically hidden from grid',
-    '（評価を取り消して初期状態に戻す）': '(Clear rating / reset to Normal)',
-    '「棄」にした写真を見返すには？': 'How do I view "Rj (Reject)" photos again?',
-    'ファイル自体は削除されていません。上部ツールバーの': 'Your files are never deleted from disk. Click the',
-    '「 棄」': '" Rj"',
-    'ボタンをクリックして点灯させればいつでも再表示でき、': 'toggle button on the top toolbar to reveal rejected shots anytime, and press',
-    'キーで復活できます。': 'to restore them.',
-    '4. 拡大してピントを確認する（ライトボックス）': '4. Full-Screen Focus Check (Lightbox)',
-    '写真をダブルクリックするか、選んで': 'Double-click a photo or press',
-    'キーを押すと全画面で拡大表示します（RAWデータも待ち時間ゼロで高画質表示されます）。': 'to open full-screen Lightbox (camera RAW files also render with zero wait).',
-    '前後の写真へ移動:': 'Prev / Next Photo:',
-    'キーボードの': 'Press',
-    '（または画面下部のフィルム帯でホイール）': '(or scroll the mouse wheel over the bottom filmstrip)',
-    '連写・ブラケット・重複の切替:': 'Switch Frame in Stack (Burst / AEB / Dup):',
-    '（露出ブラケット時は': '(In AEB brackets:',
-    'で明るいEV+ /': 'for brighter EV+ /',
-    'で暗いEV-、連写・重複時は': 'for darker EV-; in bursts:',
-    'で時間戻り /': 'for earlier /',
-    'で時間進み）': 'for later frame)',
-    'ピント拡大ズーム:': 'Focus Check Zoom:',
-    '見たい場所にマウスを合わせて': 'Point the cursor where you want to inspect and',
-    'ホイールを回す': 'scroll the mouse wheel',
-    'と、そこを中心に': 'to zoom',
-    '拡大します（ドラッグで移動、ダブルクリックで100%⇔200%切替）。': 'centered on the cursor (drag to pan, double-click to toggle 100% ⇔ 200%).',
-    '90度回転:': '90° Rotation:',
-    '横向きの写真は': 'Rotate sideways shots on the spot with',
-    '（右回転）/': '(90° CW) /',
-    '（左回転）キーでその場で直せます。': '(90° CCW).',
-    '閉じる:': 'Close:',
-    'もう一度': 'Press',
-    'キーまたは': 'again or press',
-    'キーを押します。': '.',
-    '5. 複数の写真をまとめて操作する ＆ 絞り込み検索': '5. Batch Multi-Select & Search Filters',
-    '複数選択:': 'Multiple Selection:',
-    '+クリックで追加選択、': '+Click to add/toggle,',
-    '+クリックで範囲選択、': '+Click for range,',
-    'で全選択できます。選ぶと': 'to select all. Selecting opens the',
-    '画面下部に黒い操作バー': 'bottom Batch Action Bar',
-    'が現れ、まとめて評価付け・タグ付け・回転・書き出し・': 'for batch rating, tagging, rotation, export, and',
-    '「 2枚比較」': '" Duel (2-Up)"',
-    'が行えます。': '.',
-    '写真を探す:': 'Search Photos:',
-    '左サイドバーの「 タイムライン」「 カメラ・レンズ（機種＞レンズ階層ツリー＆': 'Filter freely using left sidebar " Timeline", " Gear (Body > Lens tree with',
-    '含む/': 'Include /',
-    '除外検索）」「 ラボ」や、「 ファイル名検索」で自在に絞り込めます。元に戻すときは左サイドバー一番上の': 'Exclude)", " Lab", or the top search box. To clear all filters, click',
-    '「 すべての写真」': '" All Photos"',
-    '「 フィルタ全解除」': '" Reset Filters"',
-    'を押してください。': 'at the top of the left sidebar.',
+    '基本操作から応用整理、スマホ・USB運用までをまとめた操作ガイド':
+      'Operation guide covering basic culling, advanced organization, and mobile / USB workflows',
+    'Basic編 (基本操作)': 'Basics',
+    'Advance編 (応用・整理)': 'Advanced & Lab',
+    'Photo Manager — 非破壊・ローカル完結の写真閲覧・選別ツール':
+      'Photo Manager — Non-Destructive, Local-First Photo Viewer & Culling Tool',
+    '大量の写真（JPEG / PNG / WebP / HEIC および各社カメラの RAW データ）を、元のファイルを変更することなく軽快に閲覧・選別・整理できるビューアです。':
+      'Browse, compare, and organize large collections of photos (JPEG, PNG, WebP, HEIC, and RAW files from major camera brands) smoothly without modifying your original files.',
+    '目的に合わせて上部の「Basic編」「Advance編」「Mobile & USB編」「ショートカット & FAQ」タブを切り替えてご覧ください。':
+      'Switch between the "Basics", "Advanced & Lab", "Mobile & USB", and "Shortcuts & FAQ" tabs above according to your needs.',
+    '元ファイルには一切手を触れない（完全非破壊）': '100% Non-Destructive (Original Files Untouched)',
+    'アプリ内で写真を回転したり、傾きや明るさを調整したり、「棄（ボツ）」の評価を付けても、PC内の元ファイルは1バイトも変更・削除されません。いつでも元の状態に戻せます。':
+      'Rotating photos, adjusting horizon or brightness, or marking shots as "Rj (Reject)" never modifies or deletes a single byte of your original files on disk. You can revert anytime.',
+    '写真の外部送信なし（ローカル完結動作）': 'No External Photo Uploads (Local-First Operation)',
+    '写真を外部のクラウドやサーバーへ送信することは一切ありません。AIによる自動タグ付けや撮影場所（都道府県・市区町村）の判定もすべてPC内部だけで完結します（地図の背景タイル表示時のみ OpenStreetMap に接続します）。':
+      'Your photos are never uploaded to any external cloud or server. Local AI auto-tagging and reverse geocoding (Country, Prefecture/State, City) run entirely on your PC (only map background tiles connect to OpenStreetMap).',
+    '数字キーによる4段階の片手選別': 'One-Handed 4-Tier Culling with Number Keys',
+    '数字キーの 1（優）、2（良）、3（棄）、0（可）を押すだけで視線を外さずに仕分けられます。「棄」にした写真は一覧から自動で隠れ、いつでも再表示や取り消しが可能です。':
+      'Press number keys 1 (Ex), 2 (Gd), 3 (Rj), or 0 (Nm) to rate photos without taking your eyes off the screen. Rejected photos hide automatically from the grid and can be revealed or restored anytime.',
+    '連写・ブラケット・重複写真のスタック表示': 'Smart Stacking for Bursts, Brackets & Duplicates',
+    '連写や露出ブラケット、別フォルダにある同一写真のコピーを自動で1つの束（スタック）に集約します。拡大表示中に上下の矢印キーでコマを切り替え、上部の「代表」ボタンで表紙を変更できます。':
+      'Automatically groups continuous bursts, exposure brackets, and duplicate copies across folders into a single stack. Use the Up/Down arrow keys in Lightbox to flip through frames and click the top "Primary" button to change the cover shot.',
+    '傾き・切り抜き・トーン調整と一括書き出し': 'Non-Destructive Crop, Straighten, Tone & Batch Export',
+    '水平線の傾き補正（Cキー）や露出調整を非破壊で行い、「スマート・テイクアウト」でリサイズや撮影順の連番リネーム、EXIF消去を適用して別フォルダへ一括出力できます。':
+      'Adjust horizon tilt (C key) and exposure non-destructively, then batch-export via "Smart Takeout" with resizing, chronological sequential renaming, and EXIF stripping into a separate folder.',
+    'USBポータブル運用とスマホでの選別': 'USB Portable Workflow & Smartphone Culling',
+    '大容量の元写真は自宅に置いたままカタログ（USB）だけを持ち歩けます。自宅Wi-Fi（QRコード）や外出先のUSB接続で、スマホの親指操作で選別してPCへ同期できます。':
+      'Leave large original files at home and carry only the USB catalog. Cull with your thumb on a smartphone via home Wi-Fi (QR code) or offline USB connection, then sync back to your PC.',
+    '用途に合わせて選べる3つの表示レイアウト': 'Three View Layouts for Any Workflow',
+    '画面上部のスリムヘッダーから、3つの表示モードを切り替えられます。右側の「和紙 / 夜墨」ボタンで明暗テーマの切り替え、「JP / EN」ボタンで日本語・英語表示の切り替えも行えます。':
+      'Switch between three layout modes from the top slim header. Use the "Washi / Urusi" button on the right to toggle light and dark themes, and "JP / EN" to switch between Japanese and English.',
+    '正方形の枠に整然と並ぶ標準モードです。ファイル名や日付も見やすく、大量の写真を素早く探すのに適しています。':
+      'Standard mode with uniform square frames. Easy to read filenames and dates when browsing large libraries.',
+    '写真本来の縦横比をそのまま活かし、隙間なく並べるモードです。構図や全体の雰囲気を見渡せます。':
+      'Preserves each photo\'s original aspect ratio in a clean, gapless layout so you can overview composition and mood.',
+    'フィルムのスライドマウント枠を再現した鑑賞モードです。情報表示（Iキー）をオフにすれば余白枠だけで写真を眺められます。':
+      'Viewing mode modeled after reversal film slide mounts. Turn off text overlays (I key) to view photos in clean mat frames.',
+    '基本の4ステップ': 'Basic 4-Step Workflow',
+    '左サイドバー「フォルダ」から写真が入ったフォルダをクリックします。':
+      'Click a folder containing photos under "Folders" in the left sidebar.',
+    '1（優）・2（良）・3（棄）・0（可）キーで片手で仕分けます。':
+      'Rate photos one-handed using the 1 (Ex), 2 (Gd), 3 (Rj), and 0 (Nm) keys.',
+    'Spaceキーで拡大し、マウスホイールでピントや表情を確認します。':
+      'Press Space to open Lightbox and scroll the mouse wheel to check focus and expressions.',
+    '選んだ写真を「テイクアウト」で書き出すか、外部の現像ソフトへ渡します。':
+      'Export selected photos via "Takeout" or open them in your external RAW editor.',
 
-    // タブ2:  Advance編
-    '1. 連写・露出ブラケット・重複写真をまとめる（スタック機能）＆  2枚並べて比較':
-      '1. Smart Stacking (Burst / AEB / Duplicates) &  2-Up Duel Comparison',
-    '上部ツールバーの': 'When',
-    '「スタック」': '"Stack"',
-    'ボタンがONのとき、「連写」「露出ブラケット（AEB）」「別フォルダにある同一写真の重複コピー」を自動で1つの束にまとめ、代表の1枚だけを表示します。':
-      'is ON in the top toolbar, bursts, exposure brackets (AEB), and duplicate copies across folders are grouped into a single stack showing only the primary shot.',
-    '束の中身を見比べる:': 'Inspect Stack Frames:',
-    'ライトボックス（': 'Open Lightbox (',
-    '）を開き、': ') and use',
-    'キーや下部のミニサムネイルバーで比較できます。': 'or the bottom mini-strip to flip through frames.',
-    '2枚並べて比較（同期ズーム＆パン）:': 'Side-by-Side Comparison (Sync Zoom & Pan):',
-    '写真を2枚選んで下部バー（または右クリック）の': 'Select 2 photos and click',
-    '、あるいはライトボックス上部の': 'in the bottom bar (or right-click menu), or click',
-    '「 隣と比較」': '" Duel (V)"',
-    'を押すと、左右に並べて': 'in Lightbox to inspect two shots side-by-side with',
-    '連動ズーム＆ドラッグ移動': 'synchronized zoom & pan',
-    'でピントや描写を厳密に見比べられます。Exifの差分もハイライト表示され、左写真は': '. Exif differences are highlighted, and you can rate Left (A) with',
-    '、右写真は': 'and Right (B) with',
-    'で即座に評価付けできます。': '.',
-    '代表（表紙）を変える:': 'Crown a New Primary Shot:',
-    '気に入ったコマを表示して、右インスペクタやライトボックスの': 'Display your preferred frame and click',
-    '「 代表に設定」': '" Crown"',
-    'を押します。': 'in the right inspector or Lightbox.',
-    '重複写真の確認:': 'Check Duplicate Photos:',
-    '別フォルダに同じ写真がある場合はサムネイル右上角に「折り目マーク」が付きます。左サイドバー「クイックアクセス」の':
-      'Photos with identical copies in other folders show a corner fold badge. Click',
-    '「 重複のある写真」': '" Duplicates"',
-    'から一覧でき、右インスペクタで保存先フォルダを確認・整理できます。': 'under Quick Access to list them and inspect all file paths in the right inspector.',
-    '2. 階層タグ・色ラベル・ローカルAI自動分類 ＆  カメラ・レンズ排他検索':
-      '2. Hierarchical Tags, 12-Color Palette, Offline AI Tagging &  Gear Include/Exclude',
-    '階層タグ:': 'Hierarchical Tags:',
-    'タグ入力時に': 'Use',
-    '旅行/2026北海道/小樽': 'Travel/2026-Hokkaido/Otaru',
-    'のように': 'with',
-    'で区切ると、左サイドバーで親子ツリーとして整理されます（タグ右端の': 'separators to organize tags into a parent-child tree in the sidebar (click the',
-    'ボタンから子タグの追加も可能）。': 'button on any tag to add a child tag).',
-    '色合い（12色パレット）:': '12-Color Palette:',
-    '右インスペクタの「 色合い」で写真にイメージ色を登録し、左サイドバーの「 カラー」から色別に絞り込めます。':
-      'Assign up to 12 color tones in the right inspector and filter by color in the left sidebar.',
-    'ローカルAI自動タグ付け:': 'Local AI Auto-Tagging:',
-    '左サイドバーのフォルダを右クリック →': 'Right-click any folder in the left sidebar →',
-    '「 AIタグ付け」': '" AI Auto-Tag"',
-    'を選ぶと、ネット通信なしでパソコン内のAIが「青空」「海」「猫」「料理」「夜景」などのタグを自動付与します。':
-      'to let the local on-device AI automatically tag subjects like Blue Sky, Sea, Cat, Food, and Night View completely offline.',
-    'カメラ・レンズ階層ツリー ＆': 'Camera > Lens Tree &',
-    '排他検索:': 'Include/Exclude Filter:',
-    'タグだけでなく「 カメラ・レンズ」でも、カメラ本体の下に装着レンズが階層表示され、クリックするたびに':
-      'In both Tags and " Gear", mounted lenses are nested under each camera body. Click to cycle',
-    '除外 解除': 'Exclude Off',
-    'を切り替えられます（「特定のカメラ・レンズで撮った写真だけを除外する」といった高度な絞り込みが可能）。':
-      '(allowing advanced queries like excluding shots from a specific camera or lens).',
-    '3. 傾き補正・切り抜き・明るさ微調整 ＆  リアルタイムヒストグラム（完全非破壊）':
-      '3. Horizon Leveling, Crop, Tone Adjust &  Live Histogram (100% Non-Destructive)',
-    '写真を選んで': 'Select a photo and press',
-    '（またはライトボックス上部の': '(or click the',
-    '「」ボタン': '"" button',
-    '）を押すと、元ファイルを一切傷つけずに画面上で以下の調整ができます：': 'in Lightbox) to make the following non-destructive adjustments without touching the original file:',
-    '切り抜き（アスペクト比）:': 'Crop (Aspect Ratio):',
-    '元の比率、1:1、16:9、4:3、3:2、自由サイズから選んで構図を調整（三分割ガイド線付き）。':
-      'Adjust composition with Original, 1:1, 16:9, 4:3, 3:2, or Free ratios (with rule-of-thirds grid).',
-    '傾き補正（水平出し）:': 'Horizon Straightening:',
-    'の範囲で斜めの水平線をまっすぐに補正（周囲に黒い余白が出ないよう自動で内側を切り抜きます）。':
-      'range to level tilted horizons (automatically crops inside so no black corners appear).',
-    '明るさ・コントラスト・彩度 ＆ リアルタイムトーン波形:': 'Exposure / Contrast / Saturation & Live Tone Waveform:',
-    'カメラの露出補正感覚（': 'Fine-tune brightness and color in 1/3-stop EV steps (',
-    '、1/3段ステップ）で明るさや色味を微調整すると、上部の': ') while watching the live',
-    'リアルタイムヒストグラム（RGB・輝度波形）': 'Realtime Histogram (RGB & Luminance Waveform)',
-    'が連動して変化し、白飛びや黒つぶれを防ぎながら追い込めます（右インスペクタの「ℹ 詳細情報」タブでも常時ヒストグラムを確認できます）。':
-      'update in real time to prevent blown highlights or crushed shadows (also always visible in the right "ℹ Info" tab).',
-    ' いつでも「↺ リセット」ボタンから撮影時の初期状態に100%戻せます。':
-      ' Click "↺ Reset" anytime to restore the original unedited state 100%.',
-    '4. 撮影場所（ジオタグ）ツリー・ 47都道府県制覇マップ ＆  スマホGPS準用':
-      '4. Location Tree,  47-Prefecture Conquest Map &  Phone GPS Sync',
-    '場所ツリー:': 'Location Tree:',
-    'GPS情報付き写真は、左サイドバー「 ジオタグ」から「国 ＞ 都道府県 ＞ 市区町村」の階層で絞り込めます。':
-      'Filter GPS-tagged photos by Country > Prefecture/State > City in the " Geotag" sidebar section.',
-    '47都道府県 撮影制覇白地図・ヒートマップ・ 撮影さんぽ軌跡:': '47-Prefecture Conquest Map, Heatmap & Photo Walk Trajectory:',
-    '左サイドバー「 ジオタグ」内の': 'Click',
-    '「 制覇マップ」': '" Conquest Map"',
-    'ボタンを押すと、以下の3つの地図分析モードを楽しめます：': 'inside " Geotag" to explore 3 interactive map modes:',
-    '47都道府県 制覇白地図:': '47-Prefecture Conquest Map:',
-    '撮影したことがある都道府県が撮影枚数に応じて色分けされ、制覇率（○/47都道府県）を表示。県をクリックするとその県の写真だけを即座に一覧抽出できます。':
-      'Colors each prefecture by shot count, displays your conquest rate (X/47 prefs), and lets you click any prefecture to filter its photos immediately.',
-    '撮影密度ヒートマップ ＆ 撮影さんぽ軌跡ライン:': 'Density Heatmap & Photo Walk Trajectory:',
-    'よく撮影に訪れるスポットがヒートマップで浮かび上がり、さらに日付を選ぶとその日に歩いた撮影ルートを時系列の赤い破線（さんぽ軌跡）で地図上に再現します。':
-      'Visualizes your favorite shooting hotspots as a heatmap, and when you pick a date, traces your chronological walking route as a dashed red line on the map.',
-    'スマホから位置情報をコピー（スマホGPS準用）:': 'Copy GPS from Smartphone:',
-    'GPSのない一眼カメラの写真でも、前後1時間以内に撮ったスマホ写真がライブラリにあれば、右インスペクタの「 スマホGPS準用」や下部バーの「 ジオタグ準用」から位置情報を引き継げます。':
-      'Even if your camera lacks GPS, if you have a smartphone photo taken within ±1 hour in your library, you can copy its coordinates via " Infer GPS from Phone".',
-    '5.  スマート・テイクアウト ＆  ベタ焼き（コンタクトシート）HTML出力':
-      '5.  Smart Takeout &  Betayaki (Darkroom Contact Sheet) HTML Export',
-    '画面下部バー（または右クリック）の': 'From',
-    '「 テイクアウト」': '" Takeout"',
-    'から、用途に合わせて2種類の出力が選べます（元ファイルは無傷のまま維持）：':
-      'in the bottom bar (or right-click menu), choose from two export modes (leaving original files untouched):',
-    'スマート・テイクアウト:': 'Smart Takeout:',
-    '非破壊で行った回転・傾き・切り抜き・明るさ調整の焼き込み、GPS/向きのExif同期、長辺リサイズ（4K / SNS最適 / フルHD等）、撮影秒数順の連番リネーム、SNS公開用のExifプライバシー消去を一括適用して別フォルダへ書き出します。':
-      'Bakes in non-destructive rotation/crop/tone edits, syncs GPS/Orientation Exif, resizes long edge (4K / Social / FHD), renames sequentially by timestamp, and scrubs private Exif into a separate folder.',
-    'ベタ焼きHTML出力（暗室コンタクトシート）:': 'Contact Sheet HTML Output:',
-    '選んだ写真を昔ながらの暗室ネガフィルムシート風（または和紙風）の単一HTMLファイルとして出力します。ブラウザで開いて写真をクリックすると':
-      'Exports selected photos into a single self-contained HTML contact sheet (Darkroom Negative or Washi theme). Open it in any browser and click frames to mark them with a ',
-    '赤鉛筆の「（マル）」チェック': 'red grease-pencil "" circle',
-    'を付けられ、そのままA4サイズ等での美しい一覧印刷にも対応しています。': ', or print directly onto A4 sheets.',
-    '6.  ラボ（実験室）： 勝ちレンズカルテ・ 太陽高度抽出・ 歴代の今日・ 未整理ガチャ':
-      '6.  Lab:  Winning Lens Chart,  Solar Elevation,  On This Day &  Unrated Gacha',
-    '「 ラボ」': '" Lab"',
-    'セクションでは、写真ライブラリを多角的に分析・発掘する実験室ツールを使えます：':
-      'in the left sidebar offers analytical & discovery tools for your library:',
-    '勝ちレンズ・得意設定カルテ:': 'Winning Lens & Sweet-Spot Chart:',
-    'これまでの評価（優・良）データから、歩留まり（高評価率）が高い「相性抜群の勝ちレンズランキング」や、自分が得意とする「黄金の焦点距離・F値・撮影時間帯」を自動診断します。':
-      'Analyzes your Ex/Gd ratings to rank your highest-keeper-rate "Winning Lenses" and diagnose your personal sweet-spot focal length, aperture, and shooting hours.',
-    '太陽高度・露出ラボ抽出:': 'Solar Elevation & Exposure Lab:',
-    '撮影日時と緯度・経度から太陽の角度を自動計算し、ドラマチックな朝夕の':
-      'Calculates the sun angle from timestamp & GPS to extract dramatic',
-    '「 マジックアワー（太陽高度 -4°〜+6°）」': '" Golden Hour (-4° to +6°)"',
-    '、静謐な薄明の': ', serene',
-    '「 ブルーアワー（-8°〜-4°）」': '" Blue Hour (-8° to -4°)"',
-    '「 夜景・星景（-8°未満）」': '" Night & Astro (<-8°)"',
-    '、さらにシャッター速度が': ', and',
-    '1/焦点距離 秒': '1 / focal_length sec',
-    'より遅い': 'slow-shutter',
-    '「 手ブレ注意」': '" Lens Shaker"',
-    'の写真をワンクリックで抽出します。': 'shots in one click.',
-    '歴代の今日・記念日 ＆ 未整理ガチャ:': 'On This Day & Unrated Folder Gacha:',
-    '「過去の同じ月日（今日や記念日）に撮った写真」を一発で振り返る機能や、まだ選別していない（評価：可）写真が残っているフォルダをランダムに1つ引き当てる「 未整理ガチャ」で楽しく整理を進められます。':
-      'Rediscover photos taken on the same month & day across past years, or spin the " Random Unrated Folder Gacha" to pick an unculled folder and enjoy organizing.',
-    '7. 検索プリセット保存・外部ソフト連携・DBメンテナンス': '7. Saved Filter Presets, External App Integration & DB Maintenance',
-    'プリセット保存:': 'Save Preset:',
-    'よく使う絞り込み条件は、左サイドバー「 クイックアクセス」内の保存フォームで名前を付けて登録し、ワンクリックで呼び出せます。':
-      'Save frequently used filter combinations with a custom name under " Quick Access" for one-click recall.',
-    '外部ソフト連携 ＆ サムネイル更新:': 'Open in External App & Refresh Thumbnail:',
-    '右インスペクタ上部の': 'Click',
-    'でエクスプローラーを開き、': 'in the right inspector to reveal in Explorer, or',
-    'で既定ソフトで開けます。外部ソフトで編集した後は、写真を右クリック →「 サムネイルを更新」で表示を最新化できます。':
-      'to open in your default editor. After editing externally, right-click the photo → " Refresh Thumbnail" to update its preview.',
-    '設定・DBメンテナンス:': 'Settings & DB Maintenance:',
-    '左サイドバー「 フォルダ」や「 タグ」上部の': 'From the',
-    'ボタンから、': 'button in " Folders" or " Tags", you can configure',
-    '「 起動時のウィンドウサイズ（最大化／前回記憶／中央80%／左・右半分スナップ／フルスクリーン）」': '" Startup Window Size (Maximized / Remember Last / Center 80% / Left·Right Half Snap / Fullscreen)"',
-    'や「 タグの名前順ルール」の変更、および世代バックアップ・データベース容量の最適化（VACUUM）が行えます。': 'and " Tag Name Sort Rule", as well as create rotating DB backups and run VACUUM optimization.',
-    'DBメンテナンス:': 'DB Maintenance:',
-    '左サイドバー「 フォルダ」上部の': 'Click the',
-    'ボタンで、世代バックアップを取りつつデータベース容量を最適化（VACUUM）できます。':
-      'button in the " Folders" header to create rotating backups and compact (VACUUM) the database.',
+    // タブ1: Basic編
+    '1. 起動と終了のしかた（2つの閉じかた）': '1. Launching & Closing (Two Ways to Exit)',
+    '起動：フォルダ内の PhotoManager.exe をダブルクリックすると専用ウィンドウが開きます。':
+      'Launch: Double-click PhotoManager.exe in the folder to open the dedicated application window.',
+    '※初回起動時に SmartScreen の確認画面が出た場合や PhotoManager.exe が見当たらない場合は、フォルダ内の Build.bat をダブルクリックすると、お使いのPC上でソースコードから PhotoManager.exe が生成されてそのまま起動します。':
+      '* If a Windows SmartScreen prompt appears on first launch or PhotoManager.exe is missing, double-click Build.bat in the folder to compile PhotoManager.exe locally from source code and launch immediately.',
+    '完全終了（USBを抜く前など）：画面右上の「終了」ボタン →「サーバーを停止して終了」を選びます。':
+      'Complete Exit (before unplugging USB, etc.): Click the top-right "Exit" button → "Stop Server & Exit".',
+    'ウィンドウだけ閉じる（待機状態）：ウィンドウ右上の「×」で閉じるとタスクトレイに待機し、次回起動時に素早く画面が復元します（タスクトレイのアイコンを右クリックして完全終了することもできます）。':
+      'Close Window Only (Standby): Clicking the top-right "×" keeps the server on standby in the system tray for instant reopening next time (you can also right-click the tray icon to stop the server completely).',
+    '2. 写真フォルダを登録する・更新する': '2. Registering & Refreshing Photo Folders',
+    '新しく登録する：左サイドバーの「フォルダ」を開き、PCや外付けドライブのツリーから写真フォルダをクリックします。「子フォルダを含む（推奨）」か「直下のみ」を選ぶと、進行バーが表示されて読み込みが始まります。':
+      'Register a Folder: Open "Folders" in the left sidebar and click a photo folder in your PC or external drive tree. Select "Include Subfolders (Recommended)" or "Direct Only" to start scanning with a progress bar.',
+    '写真を追加・削除したあと：登録済みのフォルダを左サイドバーでクリックすると、変化を検知して「フォルダの内容が更新された可能性があります。リフレッシュしますか？」と確認画面が出るので、OKを押して更新します。':
+      'After Adding or Deleting Photos: Click the registered folder in the left sidebar. The app detects changes and asks whether to refresh the folder contents; click OK to update.',
+    '3. 写真の選別（4段階評価）と矢印キー移動': '3. Culling Photos (4-Tier Rating) & Arrow Key Navigation',
+    '一覧画面でも拡大画面でも、矢印キー（← / → / ↑ / ↓）で前後・上下の写真へ移動でき（Shift + 矢印キーで範囲選択）、そのまま数字キーを押して評価を付けられます。':
+      'In both Grid and Lightbox views, use the arrow keys (← / → / ↑ / ↓) to move between photos (hold Shift + arrow keys for range selection) and press the number keys to assign ratings.',
+    '1 キー：優 (Ex) — 現像や出力に残したい最優秀カット':
+      '1 Key: Ex (Excellent) — Top picks to develop, print, or share',
+    '2 キー：良 (Gd) — 残しておきたいお気に入り・合格カット':
+      '2 Key: Gd (Good) — Keeper and favorite shots',
+    '3 または X キー：棄 (Rj) — ピンボケや目つぶりなどのボツ写真（一覧から自動で隠れ、次の写真へ移動します）':
+      '3 or X Key: Rj (Reject) — Out-of-focus or blinked shots (automatically hidden from the grid, advancing focus to the next photo)',
+    '0 または 4 キー：可 (Nm) — 評価なし（初期状態）に戻す':
+      '0 or 4 Key: Nm (Normal) — Clear rating and return to the initial unrated state',
+    '「棄」にした写真を見返すには：ファイル自体は削除されていません。左メニュー最上部の評価フィルタにある「棄」ボタンをクリックして点灯させると再表示され、0キーで元の状態に戻せます。また、そのすぐ上にある種別フィルタ（すべて / RAW / 調整済 / 詳細...）で、RAWのみ・JPEGのみ・RAW+JPGペア・XMPありの写真だけを絞り込めます。':
+      'Viewing Rejected Photos Again: Original files are never deleted. Click the "Rj" rating filter button at the top of the left menu to reveal rejected photos, and press 0 to restore them. Use the Type filter bar right above it (All / RAW / Edited / More...) to filter by RAW only, JPEG only, RAW+JPG pairs, or photos with XMP sidecars.',
+    '4. 拡大してピントを確認する（ライトボックス）': '4. Inspecting Focus in Full Screen (Lightbox)',
+    '一覧の写真（または右インスペクタの 4:3 プレビュー）をダブルクリックするか、写真を選んで Space / Enter キーを押すと全画面で拡大表示します（各社RAWファイルもそのままフルサイズ表示されます）。':
+      'Double-click a photo in the grid (or the 4:3 preview in the right Inspector), or select a photo and press Space / Enter to open Lightbox (camera RAW files also display at full size).',
+    '前後の写真へ移動：左右の矢印キー（← / →）または画面下部のフィルム帯でマウスホイールを回します。':
+      'Previous / Next Photo: Press the Left / Right arrow keys (← / →) or scroll the mouse wheel over the bottom filmstrip.',
+    '連写・ブラケット・重複の切替と代表設定：上下の矢印キー（↑ / ↓）で束内のコマを切り替えます（露出ブラケット時は ↑ で明るいEV+ / ↓ で暗いEV-、連写時は前後のコマへ移動）。上部ツールバーの評価ボタン左隣にある「代表」ボタンをクリックすると、今見ているコマをスタックの代表写真（表紙）に設定できます。':
+      'Switch Stack Frames & Set Primary: Press the Up / Down arrow keys (↑ / ↓) to switch frames inside a stack (in exposure brackets, ↑ shows brighter EV+ and ↓ shows darker EV-; in bursts, moves to earlier/later frames). Click the "Primary" button to the left of the rating buttons in the top toolbar to set the current frame as the stack cover.',
+    'ピント拡大チェック：確認したい場所にカーソルを合わせてマウスホイールを回すと、その位置を中心に 100%〜400% まで拡大します（ドラッグで移動、ダブルクリックで 100% ⇔ 200% 切替）。':
+      'Focus Zoom Check: Point the cursor where you want to inspect and scroll the mouse wheel to zoom from 100% to 400% centered on the cursor (drag to pan, double-click to toggle 100% ⇔ 200%).',
+    '90度回転：Rキー（時計回り）/ Lキー（反時計回り）で写真の向きを回転できます。':
+      '90° Rotation: Press R (clockwise) or L (counter-clockwise) to rotate the photo non-destructively.',
+    '閉じる：もう一度 Space キーまたは Esc キーを押します。':
+      'Close: Press Space again or press Esc.',
+    '5. 複数の写真をまとめて操作する・絞り込み検索': '5. Batch Operations & Search Filters',
+    '複数選択：Ctrl + クリックで追加選択、Shift + クリックで範囲選択、Ctrl + A で全選択できます。複数枚を選ぶと、右インスペクタの一括編集パネルや右クリックメニューから、まとめて評価付け・タグ付け・回転・テイクアウト・日時シフト補正が行えます。':
+      'Multi-Select: Use Ctrl + Click to add/toggle, Shift + Click for range selection, and Ctrl + A to select all. When multiple photos are selected, use the batch panel in the right Inspector or the right-click menu to batch-rate, tag, rotate, export, or shift timestamps.',
+    '写真を探す：左サイドバーの「年月」「機材（カメラ ＞ レンズ階層ツリーと [+] 含む / [-] 除外検索）」「ラボ」、および一番下の「検索」で絞り込めます。左端アイコンバーの通知ランプや、折りたたんだ親階層の道標バッジ（+1 / -1 破線枠）でフィルタの適用箇所がひと目で分かり、上部のフィルタチップをクリックすると該当するツリー項目へ直接ジャンプします。すべて解除するときは左メニュー最上部の「フィルタ全解除」を押してください。':
+      'Finding Photos: Filter by "Date", "Gear (Camera > Lens hierarchy with [+] Include / [-] Exclude)", "Lab", or "Search" at the bottom of the left sidebar. Notification dots on the left icon rail and dashed trail badges (+1 / -1) on collapsed parent nodes show where filters are active, and clicking any filter chip at the top jumps directly to that item in the tree. Click "Clear All Filters" at the top of the left menu to reset.',
 
-    // タブ3:  Mobile & USB編
-    '1. USBメモリ・外付けSSDでの3つの持ち歩きスタイル': '1. Three Portable Styles with USB Flash Drives / External SSDs',
-    '① 写真もアプリも丸ごとUSBに入れる:': '① All-in-One USB (App + Photos):',
-    'USBメモリ1本を別のPCに挿して': 'Plug a single USB drive into any PC and open',
-    'を開くだけで、どこでも同じ環境で使えます。': 'to enjoy the exact same environment anywhere.',
-    '② 元写真は自宅に置き「カタログ（USB）」だけ持ち歩く:': '② Carry Only the USB Catalog (Leave Heavy RAWs at Home):',
-    '数百GB〜数TBの元写真は自宅HDDに置いたまま、Photo Manager が入ったUSBメモリだけを持ち歩けます。元写真が未接続（「 未接続」表示）でも、全写真のサムネイル閲覧・評価・タグ付けが快適に行えます。':
-      'Leave terabytes of original files on your home HDD and carry only the USB drive containing Photo Manager. Even while offline (" Offline"), you can browse all cached WebP thumbnails, rate, and tag smoothly.',
-    '③ ドライブ文字（D: → E: 等）が変わっても自動追従:': '③ Automatic Drive-Letter Tracking (D: → E:):',
-    '別のPCに挿してドライブ文字が変わっても、ドライブ固有情報を自動認識してリンク切れを防ぎます。':
-      'Automatically recognizes drive Volume Serial Numbers (VSN) so links never break even when Windows assigns a different drive letter.',
-    '2. スマホで写真をサクサク選別する（2つの方法）': '2. Two Ways to Cull Photos on Your Smartphone',
-    'ソファや移動中の電車の中で、スマホの親指操作だけで大量の写真を4段階評価（優・良・可・棄）＆タグ付けできます。':
-      'Cull and tag thousands of photos with one thumb from your couch or commuter train.',
-    '方法A：自宅のWi-Fiでつなぐ（リアルタイム反映）': 'Method A: Home Wi-Fi Connection (Real-Time Sync)',
-    'パソコン画面右上の': 'Click the top-right',
-    '「 スマホ連携」': '" Mobile"',
-    'ボタンをクリックします。': 'button on your PC.',
-    '表示された': 'Scan the displayed',
-    'QRコード': 'QR Code',
-    'をスマホのカメラで読み取って開きます（同じWi-Fiに接続）。': 'with your phone camera (connected to the same Wi-Fi).',
-    'スマホで付けた評価やタグが、その瞬間にパソコン画面へリアルタイム反映されます！':
-      'Ratings and tags made on your phone are reflected on your PC screen in real time!',
-    ' 方法B：外出先・ネット圏外でUSBメモリを直接スマホに挿す（完全オフライン）':
-      ' Method B: Plug USB Directly into Phone on the Go (100% Offline)',
-    'パソコン電源OFF・ネット圏外でも使えます。Photo Manager が入ったUSBメモリをAndroidスマホ等に挿します。':
-      'Works with your PC off and no internet. Plug the Photo Manager USB drive directly into your Android phone.',
-    'スマホの「ファイル」アプリでUSB内の': "In your phone's Files app, tap",
-    'をタップしてブラウザで開きます（※開けない機種では、このHTMLファイル1つだけをスマホ本体のダウンロードフォルダ等にコピーして開いてください）。':
-      "on the USB drive to open it in the browser (*if your device blocks opening HTML from USB, copy just that single HTML file to your phone's Downloads folder and open it).",
-    '画面の': 'Tap',
-    '「 DB読込」': '" Load DB"',
-    'をタップし、USBメモリ内の': 'on screen and select',
-    'フォルダ ＞': 'folder >',
-    'を選ぶと、約1秒で全写真が読み込まれます。': 'on the USB drive to load all photos in ~1 second.',
-    '3. スマホでの親指操作と、パソコンへの同期手順（USBオフライン時）':
-      '3. One-Thumb Mobile Culling & Syncing Back to PC (Offline USB)',
-    '親指ドックで連続選別:': 'Rapid Thumb-Zone Culling:',
-    'スマホで写真をタップして拡大し、画面下部の': 'Tap a photo to zoom and tap',
-    '「棄」「可」「良」「優」': '"Rj", "Nm", "Gd", or "Ex"',
-    'をタップします。「自動送り」がONならタップと同時に次の写真へ進むため、片手で何百枚でも仕分けられます。':
-      'at the bottom. With " Auto-Advance" ON, rating immediately advances to the next shot so you can cull hundreds of photos one-handed.',
-    'パソコンへの反映手順:': 'Syncing Back to PC:',
-    '選別が終わったらスマホ画面の': 'When finished, tap',
-    '「 変更を保存」': '" Save Changes"',
-    'を押し、USBメモリの先頭（ルート）フォルダに': 'on your phone and save',
-    'を保存します。': 'to the root folder of your USB drive.',
-    '保存完了メッセージから3秒ほど待ち、スマホの通知欄から': 'Wait ~3 seconds after the save message, then tap',
-    'を実行してからUSBを抜きます。': "from your phone's notification shade before unplugging the USB drive.",
-    'USBメモリをパソコンに挿して': 'Plug the USB drive into your PC and launch',
-    'を起動すると、': '—your changes are',
-    '自動的に選別結果が検出・反映': 'automatically detected and merged',
-    'され、完了通知が表示されます！': 'with a completion toast!',
-    '4. USBメモリを安全に抜くための鉄則': '4. Golden Rules for Safely Unplugging USB Drives',
-    'パソコンから抜く前:': 'Before Unplugging from PC:',
-    '必ず画面右上の': 'Always shut down completely via top-right',
-    '「 終了」＞「サーバーを停止して終了」': '" Exit" > "Stop Server & Exit"',
-    'で完全終了してから抜いてください。': 'before removing the USB drive.',
-    'スマホから抜く前:': 'Before Unplugging from Smartphone:',
-    '保存後、必ずスマホ通知欄の': 'After saving, always run',
-    '「取り外す（マウント解除）」': '"Eject / Unmount"',
-    'を実行してから抜いてください（そのまま引き抜くと保存ファイルが空になることがあります）。':
-      "from your phone's notification bar before pulling out the drive (unplugging without unmounting may leave the saved file empty).",
+    // タブ2: Advance編
+    '1. 連写・露出ブラケット・重複写真のスタック表示と2枚比較（Duel）':
+      '1. Smart Stacking (Burst / AEB / Duplicates) & 2-Up Comparison (Duel)',
+    '上部ヘッダーの「スタック」ボタンがONのとき、連写・露出ブラケット（AEB）・別フォルダにある同一写真の重複コピーを自動で1つの束にまとめ、代表の1枚だけを表示します。':
+      'When the "Stack" button in the top header is ON, continuous bursts, exposure brackets (AEB), and duplicate copies across folders are grouped into a single stack showing only the primary photo.',
+    '束の中身を見比べる：ライトボックス（Spaceキー）を開き、上下の矢印キー（↑ / ↓）や下部のミニサムネイルバーで比較できます。':
+      'Compare Frames in a Stack: Open Lightbox (Space key) and use the Up / Down arrow keys (↑ / ↓) or the bottom mini-thumbnail bar to compare frames.',
+    '2枚並べて比較（Duel / Vキー）：キーボードの V キー、右クリックメニューの「2枚並べて比較 (V)」、左サイドバー「ラボ」の「2枚比較」、またはライトボックス上部の「隣と比較」ボタンを押すと、2枚の写真を左右に並べて同期ズーム＆ドラッグ移動でピントや描写を見比べられます。Wキーで右(B)の写真を左(A:基準)に残して次の候補へ進む勝ち抜き選別や、Sキーでの左右入れ替え、Hキーでの左右同時ヒストグラム表示に対応しています。':
+      '2-Up Side-by-Side Comparison (Duel / V Key): Press V, select "Compare 2 Photos (V)" from the right-click menu, click "2-Photo Duel" in Lab, or click "Compare Next" in Lightbox to inspect two photos side-by-side with synchronized zoom and pan. Press W for knockout selection (promoting Right B to Left A and advancing to the next candidate), S to swap left and right, or H to view dual histograms.',
+    '代表（表紙）を変える：ライトボックス上部（評価ボタンの左隣）の「代表」ボタン、または右インスペクタの「代表に設定」を押すと、現在表示しているコマを表紙に変更できます。':
+      'Change Primary (Cover) Photo: Click the "Primary" button in the top Lightbox toolbar (left of the rating buttons) or "Set as Primary" in the right Inspector to make the current frame the cover shot.',
+    '重複写真の確認：別フォルダに同じ写真がある場合はサムネイル右上角に折り目マークが付きます。左サイドバー「クイック」の「重複のある写真」から一覧表示し、右インスペクタで保存先フォルダを確認できます。':
+      'Check Duplicates: Photos with identical copies in other folders display a corner-fold mark at the top-right of the thumbnail. Click "Duplicate Photos" under "Quick" in the left sidebar to list them and check all file paths in the right Inspector.',
+    '2. 階層タグ・色ラベル・ローカルAI自動分類と排他検索':
+      '2. Hierarchical Tags, Color Labels, Local AI Tagging & Exclusive Search',
+    '階層タグとタグツリーエディタ：タグ入力時に「旅行/2026北海道/小樽」のようにスラッシュ（/）で区切ると親子ツリーとして整理されます。左サイドバー「タグ」の「枚数順」ボタンで枚数順と名前順を切り替えられるほか、「設定」（または右インスペクタの「ツリー編集」）の「タグツリーエディタ」でドラッグ＆ドロップによる階層組み替え・名前変更・削除が行えます。':
+      'Hierarchical Tags & Tag Tree Editor: Separate tag names with slashes (e.g. "Travel/2026-Hokkaido/Otaru") to organize them into a parent-child tree. Toggle between count order and name order with the "By Count" button in the Tags sidebar, and reorganize hierarchies via drag-and-drop, rename, or delete tags inside the dedicated "Tag Tree Editor" in Settings.',
+    '色合い（12色パレット）：右インスペクタの「色合い」で写真にカラーラベルを登録し、左サイドバー「タグ」上部の「カラー」から色別に絞り込めます（右クリックでその色を除外）。':
+      'Color Palette (12 Colors): Assign color labels under "Color" in the right Inspector and filter by color from the palette at the top of the "Tags" sidebar (right-click a color to exclude it).',
+    'ローカルAI自動タグ付け：左サイドバーのフォルダを右クリックして「AIタグ付け」を選ぶと、ネット通信なしでPC内のAI（CLIP）が「青空」「海」「猫」「料理」「夜景」などのタグを自動付与します。':
+      'Local AI Auto-Tagging: Right-click a folder in the left sidebar and select "AI Auto-Tag" to have the local on-device AI (CLIP) assign tags such as Blue Sky, Sea, Cat, Food, and Night View offline.',
+    'タグ・機材の [+] 含む / [-] 除外検索と道標表示：左サイドバーの「タグ」と「機材」では、クリックするたびに [+] 含む → [-] 除外 → 解除 が切り替わり、「特定のレンズ以外で撮った写真」などを抽出できます。親階層を閉じていても、配下の子項目でフィルタが有効な場合は破線枠と件数バッジ（+1 / -1）の道標が表示されます。':
+      'Tag & Gear [+] Include / [-] Exclude Search & Trail Indicators: In both "Tags" and "Gear", clicking an item cycles through [+] Include → [-] Exclude → Off, making it easy to find shots taken without a specific tag or lens. When a parent node is collapsed while a child filter is active, a dashed border and count badge (+1 / -1) indicate the active filter path.',
+    '3. 傾き補正・切り抜き・トーン調整とリアルタイムヒストグラム（非破壊）':
+      '3. Horizon Leveling, Crop, Tone Adjustments & Live Histogram (Non-Destructive)',
+    '写真を選んで C キー（または右インスペクタ・ライトボックスの「調整」ボタン）を押すと、元ファイルを一切書き換えずに以下の調整が行えます。':
+      'Select a photo and press the C key (or click the "Adjust" button in the right Inspector or Lightbox) to perform the following adjustments without modifying the original file.',
+    '切り抜き（アスペクト比）：元の比率、1:1、16:9、4:3、3:2、自由サイズから選んで構図を調整できます（三分割ガイド線付き）。':
+      'Crop (Aspect Ratio): Choose from Original, 1:1, 16:9, 4:3, 3:2, or Free ratio to adjust framing with a rule-of-thirds grid.',
+    '傾き補正（水平出し）：スライダーで水平線の傾きを補正します（四隅に黒い隙間が出ないよう自動で内側を切り抜きます）。':
+      'Straighten (Horizon Leveling): Fine-tune tilt angle with the slider (automatically constrains the crop box so black corners never appear).',
+    '明るさ・コントラスト・彩度とヒストグラム（Hキー）：露出補正感覚（-2.0EV〜+2.0EV、1/3段ステップ）で明るさや色味を微調整すると、RGB・輝度ヒストグラムがリアルタイムに連動します。Hキー（または右インスペクタの「波形」ボタン）でいつでもヒストグラムを開閉できます。':
+      'Exposure, Contrast, Saturation & Histogram (H Key): Adjust brightness (-2.0EV to +2.0EV in 1/3-stop steps), contrast, and saturation while watching the RGB & Luminance histogram update in real time. Press H (or the "Waveform" button in the Inspector) anytime to toggle the histogram.',
+    '元画像との比較（Before / After）と一括ペースト：調整画面右上の「元画像と比較 (\\)」ボタン（または \\ / Space キー）を押している間だけ無加工の元画像を表示して見比べられます。また、調整したトーン3項目（明るさ・コントラスト・彩度）を Ctrl + Shift + C でコピーし、他の写真へ Ctrl + Shift + V で一括ペーストできます。':
+      'Before / After Comparison & Batch Tone Paste: Hold the "Compare Original (\\)" button (or hold \\ / Space) to temporarily view the unedited original image. Copy the three tone settings (Exposure, Contrast, Saturation) with Ctrl + Shift + C and batch-paste them onto other photos with Ctrl + Shift + V.',
+    'XMPサイドカー連携：同名の .xmp / .pp3 / .dop サイドカーファイルがある写真では、右インスペクタ上部の「XMPプレビュー」ボタンを押している間だけ現像パラメータを反映して比較できます。「評価・タグ取込」ボタンから、XMP内の評価や階層タグ（既存のタグと混ざらない XMP/... 階層へ隔離）を取り込むことも可能です。':
+      'XMP Sidecar Integration: When a companion .xmp, .pp3, or .dop sidecar file exists, hold down "XMP Preview" in the right Inspector to temporarily preview its development parameters. Click "Import Rating & Tags" to import XMP ratings and hierarchical keywords into an isolated XMP/... tag branch.',
+    'スライダーのダブルクリックや下部の「リセット」ボタンから、いつでも初期状態に戻せます。':
+      'Double-click any slider or click "Reset" at the bottom to restore the original unedited state anytime.',
+    '4. ジオタグ・47都道府県マップ・スマホGPS準用・撮影日時シフト補正':
+      '4. Geotags, 47-Prefecture Map, Phone GPS Matching & Capture Time Shift',
+    '場所ツリー：GPS情報付き写真は、左サイドバー「ジオタグ」から「国 ＞ 都道府県 ＞ 市区町村」の階層で絞り込めます。':
+      'Location Tree: Filter GPS-tagged photos by "Country > Prefecture/State > City" under "Geotags" in the left sidebar.',
+    '47都道府県 撮影制覇白地図・ヒートマップ・さんぽ軌跡：左サイドバー「ジオタグ」上部の「制覇マップ」ボタンから、都道府県ごとの撮影枚数塗り分け白地図、よく訪れる場所の撮影密度ヒートマップ、日付ごとの移動ルートを結ぶ「撮影さんぽ軌跡」を表示できます。':
+      '47-Prefecture Conquest Map, Heatmap & Walk Trajectory: Click "Conquest Map" at the top of the "Geotags" sidebar to view the 47-prefecture choropleth map, shooting density heatmaps, and chronological photo-walk route lines by date.',
+    'スマホから位置情報を引き継ぐ（スマホGPS準用）：GPSのないカメラで撮った写真でも、前後1時間以内に撮影したスマホ写真がライブラリにあれば、右インスペクタまたは右クリックメニューの「スマホGPS準用」から位置情報を引き継げます。':
+      'Match Location from Smartphone Photos (Phone GPS Sync): For photos taken with a camera without GPS, if your library contains a smartphone photo taken within ±1 hour, use "Infer GPS from Phone" in the right Inspector or context menu to copy its location.',
+    '撮影日時の一括シフト補正：カメラの内蔵時計ズレや海外旅行の時差がある場合は、右クリックメニュー（または右インスペクタ）の「撮影日時を一括補正...」から、元ファイルを書き換えずに日・時間・分・秒のオフセット補正（および元のEXIF日時への復元）が行えます。':
+      'Batch Capture Time Shift: To fix camera clock drift or travel timezone differences, select "Batch Shift Capture Time..." from the context menu (or right Inspector) to non-destructively offset timestamps by Days/Hours/Min/Sec (with one-click restore to original EXIF time).',
+    '5. スマート・テイクアウトとベタ焼き（コンタクトシート）HTML出力':
+      '5. Smart Takeout & Contact Sheet (Betayaki) HTML Export',
+    '右クリックメニュー（または右インスペクタ）の「テイクアウト」から、2種類の出力機能を利用できます（元ファイルは変更されません）。':
+      'From "Takeout" in the right-click menu (or right Inspector), choose between two export options (original files remain untouched).',
+    'スマート・テイクアウト：非破壊で行った回転・傾き・切り抜き・トーン調整の反映、GPS・向きのEXIF同期、XMPサイドカー（.xmp）の同時出力、長辺リサイズ（4K / フルHD / 軽量等）、撮影秒数順の連番リネーム、SNS公開用のEXIF消去を一括適用して別フォルダへ書き出します。':
+      'Smart Takeout: Batch-exports copies into a separate folder with non-destructive rotation/tilt/crop/tone edits baked in, GPS & orientation EXIF synced, optional companion .xmp sidecars, long-edge resizing (4K / FHD / Web), chronological sequential renaming, and EXIF privacy scrubbing.',
+    'ベタ焼きHTML出力：選んだ写真を暗室コンタクトシート風（または和紙台紙風）の単一HTMLファイルとして出力します。ブラウザで開いて写真をクリックすると赤鉛筆の丸印を付けられ、A4サイズ等での一覧印刷にも対応しています。':
+      'Contact Sheet (Betayaki) HTML Export: Outputs selected photos into a single self-contained HTML file styled like a darkroom negative sheet (or Washi mount). Open it in any browser to toggle red grease-pencil circle marks and print clean A4 index sheets.',
+    '6. ラボ：勝ちレンズカルテ・太陽高度抽出・歴代の今日・未整理ガチャ':
+      '6. Photography Lab: Winning Lens Chart, Solar Elevation, On This Day & Folder Gacha',
+    '左サイドバーの「ラボ」では、蓄積された写真データから撮影傾向の分析や過去写真の発掘を行えます。':
+      'The "Lab" section in the left sidebar provides tools to analyze your shooting tendencies and rediscover past photos.',
+    '勝ちレンズ・得意設定カルテ：これまでの評価（優・良）データから、高評価率（歩留まり）が高いレンズ・カメラや、よく使う焦点距離・F値・撮影時間帯を集計します。':
+      'Winning Lens & Sweet-Spot Chart: Aggregates your Ex and Gd ratings to show lenses and cameras with high keeper rates, along with your favored focal lengths, apertures, and shooting hours.',
+    '太陽高度・露出ラボ抽出：撮影日時とGPS座標から太陽の角度を計算し、マジックアワー（-4°〜+6°）、ブルーアワー（-8°〜-4°）、夜景・星景（-8°未満）、およびシャッター速度が 1/焦点距離 秒より遅い「手ブレ注意」の写真を抽出します。':
+      'Solar Elevation & Exposure Lab: Calculates the sun\'s elevation angle from capture time and GPS coordinates to extract Golden Hour (-4° to +6°), Blue Hour (-8° to -4°), Night/Astro (<-8°), and slow-shutter shake candidates (shutter speed slower than 1/focal_length sec).',
+    '歴代の今日・記念日と未整理ガチャ：過去の同じ月日に撮った写真を振り返る機能や、まだ評価を付けていない写真が残っているフォルダをランダムに1つ開く「未整理ガチャ」を使えます。':
+      'On This Day & Unrated Folder Gacha: Look back at photos taken on the same calendar date across past years, or open a random folder that still has unrated photos.',
+    '7. プリセット保存・外部ソフト連携・storage管理・DBメンテナンス':
+      '7. Filter Presets, External Apps, In-App "storage" & DB Maintenance',
+    'プリセット保存：よく使う絞り込み条件は、左サイドバー「クイック」下部の保存フォームで名前を付けて保存し、ワンクリックで呼び出せます。':
+      'Filter Presets: Save frequently used filter combinations with a custom name at the bottom of the "Quick" sidebar panel for one-click recall.',
+    '外部ソフト連携とサムネイル更新：右インスペクタ上部のアイコンからエクスプローラーで保存先を開いたり、既定のソフトでファイルを開けます。外部ソフトで編集したあとは、右クリックメニューの「サムネイルを更新」で表示を最新化できます。':
+      'External App Integration & Refresh Thumbnail: Use the icons at the top of the right Inspector to reveal the file in Explorer or open it in your default application. After editing in an external tool, right-click the photo and select "Refresh Thumbnail".',
+    '設定とDBメンテナンス：画面右上の「設定」ボタンから、起動時のウィンドウサイズやタグの名前順ルールの変更、世代バックアップ付きデータベース最適化（VACUUM）が行えます。':
+      'Settings & DB Maintenance: Click "Settings" at the top-right to configure startup window size, tag sorting rules, and database optimization (VACUUM) with automatic rotating backups.',
+    'storage（アプリ内ストレージ）管理：左サイドバー「フォルダ」先頭の「storage」には、外部フォルダの写真を「storageへインポート」（またはドラッグ＆ドロップ）でコピー取り込みできます。storage内ではサブフォルダ作成・移動・ファイル名変更（F2キーで単一または一括連番リネーム）・外部エクスポートが行え、同名のサイドカーファイル（.xmp等）やペアRAWも自動で追従します。':
+      'In-App "storage" Management: Copy photos from external folders into "storage" at the top of the "Folders" sidebar via "Import to storage" (or drag-and-drop). Inside storage, you can create subfolders, move photos, rename files (F2 for single or batch sequential rename), and export folders while companion sidecars (.xmp, etc.) and paired RAW files follow automatically.',
 
-    // タブ4:  ショートカット & FAQ
-    '選択中の写真に': 'Set selected photo(s) to',
-    '優 (ベストショット)': 'Ex (Excellent / Best Shot)',
-    'を設定': '',
-    '良 (お気に入り)': 'Gd (Good / Keeper)',
-    '棄 (ボツ)': 'Rj (Reject)',
-    'を設定（一覧から自動で隠れます）': '(auto-hidden from grid)',
-    '選択中の写真の': 'Open',
-    '評価を取り消す（ 可）': 'Reset rating to Nm (Normal)',
-    '選択中の写真を': 'Rotate selected photo(s)',
-    '右へ90度(': '90° CW (',
-    ') / 左へ90度(': ') / 90° CCW (',
-    ') 回転': ')',
-    '（非破壊）': '(non-destructive)',
-    '切り抜き・傾き・明るさ調整画面': 'Crop / Level / Tone Adjustment',
-    'を開く（非破壊）': '(non-destructive)',
-    '2枚並べて比較（Side-by-Side）': '2-Up Duel Comparison (Side-by-Side)',
-    'を開く（同期ズーム・勝ち抜き選別）': '(synced zoom & knockout culling)',
-    'RGB・輝度ヒストグラム': 'RGB & Luminance Histogram',
-    'の表示 / 非表示を切り替え': 'toggle show / hide',
-    '前後の写真・スタックへ移動（2枚比較時は右ペインBの候補切替）':
-      'Prev / Next photo or stack (in 2-Up Duel: switch Right [B] candidate)',
-    '連写 / ブラケット / 重複写真のスタック内切替': 'Switch frame inside Burst / AEB / Duplicate stack',
-    '（露出ブラケット時:': '(AEB bracket:',
-    'で暗いEV-、連写・重複時:': 'darker EV-; Burst/Dup:',
-    '表示中の写真（2枚比較時は選択中ペイン）に': 'Rate current photo (or active pane in 2-Up Duel):',
-    '優(': 'Ex (',
-    ') / 良(': ') / Gd (',
-    ') / 棄(': ') / Rj (',
-    ') / 可(': ') / Nm (',
-    '・': '/',
-    'ライトボックスから': 'From Lightbox, toggle',
-    'を開く / 閉じる': 'open / close',
-    '【 2枚比較時】': '[In 2-Up Duel]',
-    'で': ':',
-    '右(B)を左(A:基準)に昇格して次へ': 'Crown Right (B) as Left (A) & advance',
-    '左右入れ替え': 'Swap Left (A) ⇄ Right (B)',
-    'の表示 / 非表示を切り替え（2枚比較時は左右同時表示）': 'toggle show / hide (shows dual side-by-side waveforms in 2-Up Duel)',
-    '棄（ボツ）': 'Rj (Reject)',
-    '評価のON / OFFトグル': 'rating toggle ON / OFF',
-    '表示中の写真を': 'Rotate current photo',
-    '表示中の写真の': 'Open',
+    // タブ3: Mobile & USB編
+    '1. USBメモリ・外付けSSDでの3つの持ち歩きスタイル':
+      '1. Three Portable Workflows with USB Flash Drives & External SSDs',
+    'スタイル1（写真もアプリもUSBに入れる）：Photo Manager フォルダと写真（または storage）をUSBドライブに入れておけば、別のPCに挿して PhotoManager.exe を開くだけで同じ環境で使えます。':
+      'Style 1 (App + Photos on USB): Keep both the Photo Manager folder and your photos (or storage/) on a USB drive so you can plug it into any PC and run PhotoManager.exe with the exact same environment.',
+    'スタイル2（元写真は自宅に置きカタログだけ持ち歩く）：大容量の元写真は自宅のHDDに置いたまま、Photo Manager が入ったUSBメモリだけを持ち歩けます。元写真が未接続でも、全写真のサムネイル閲覧・評価・タグ付けが行えます。':
+      'Style 2 (Leave Original Files at Home, Carry Only the USB Catalog): Leave large RAW libraries on your home HDD and carry only the USB drive containing Photo Manager. Even while original files are disconnected, you can browse all thumbnails, rate, and tag.',
+    'スタイル3（ドライブ文字が変わっても自動追従）：別のPCに繋いでドライブ文字（D: → E: 等）が変わっても、ドライブ固有の識別番号を認識してリンク切れを防ぎます。':
+      'Style 3 (Automatic Drive-Letter Tracking): Even if Windows assigns a different drive letter (e.g. D: → E:) on another PC, Photo Manager tracks the drive\'s Volume Serial Number automatically.',
+    '2. スマートフォンで写真を選別する（2つの方法）':
+      '2. Two Ways to Cull Photos on a Smartphone',
+    'スマートフォンの画面と親指のタップ操作で、写真の4段階評価（優・良・可・棄）とタグ付けが行えます。':
+      'Use your smartphone screen and thumb taps to rate photos (Ex / Gd / Nm / Rj) and assign tags.',
+    '方法A：自宅のWi-Fiでつなぐ（QRコードでリアルタイム連動）':
+      'Method A: Connect via Home Wi-Fi (Real-Time Sync with QR Code)',
+    'PC画面右上の「スマホ連携」ボタンをクリックします。':
+      'Click the "Mobile" button at the top-right of the PC window.',
+    '表示されたQRコードをスマートフォンのカメラで読み取ってブラウザで開きます（同じWi-Fiに接続）。QRコードには専用のアクセストークンが含まれており、閲覧・選別以外の操作は遮断されます。':
+      'Scan the displayed QR code with your smartphone camera on the same Wi-Fi network. The QR code embeds an access token, and only browsing and culling operations are permitted over LAN.',
+    'スマートフォンで付けた評価やタグが、そのままPC側の画面へリアルタイムに反映されます（30分間通信がない場合は、安全のためスマホ向けの待受が自動で停止します）。':
+      'Ratings and tags applied on your phone are reflected on the PC screen in real time (for security, the mobile listener stops automatically after 30 minutes of inactivity).',
+    '方法B：外出先・ネット圏外でUSBメモリを直接スマートフォンに挿す（完全オフライン）':
+      'Method B: Plug the USB Drive Directly into Your Smartphone (100% Offline)',
+    'PCの電源が切れているときやネット圏外でも使えます。Photo Manager が入ったUSBメモリをAndroidスマートフォン等に挿します。':
+      'Works even when your PC is off or without internet access. Connect the USB drive containing Photo Manager to an Android smartphone.',
+    'スマートフォンのファイルアプリでUSB内の PhotoManager_Mobile.html をタップしてブラウザで開きます（USBから直接開けない機種では、このHTMLファイル1つだけをスマートフォン本体のダウンロードフォルダ等にコピーして開いてください）。':
+      'Open PhotoManager_Mobile.html from the USB drive in your phone\'s browser via the Files app (if your device restricts opening HTML directly from USB, copy that single HTML file to your phone\'s Downloads folder and open it there).',
+    '画面の「DB読込」をタップし、USBメモリ内の cache フォルダにある library.db を選ぶと、全写真のカタログが読み込まれます。':
+      'Tap "Load DB" on screen and select cache/library.db on the USB drive to load the entire photo catalog into memory.',
+    '3. スマートフォンでの操作と、PCへの同期手順（USBオフライン時）':
+      '3. Smartphone Operation & Syncing Back to PC (USB Offline Mode)',
+    '親指ドックで選別：スマートフォンで写真をタップして拡大し、画面下部の「棄」「可」「良」「優」をタップします。「自動送り」がONならタップと同時に次の写真へ進みます。':
+      'Thumb-Dock Culling: Tap a photo to open the large view and tap "Rj", "Nm", "Gd", or "Ex" at the bottom. When "Auto-Advance" is ON, rating automatically advances to the next photo.',
+    'PCへの反映手順（方法Bで選別したあと）：':
+      'Syncing Back to PC (after culling with Method B):',
+    '選別が終わったらスマートフォン画面の「変更を保存」を押し、USBメモリの先頭（ルート）フォルダに mobile_sync.json を保存します。':
+      'When finished, tap "Save Changes" on your smartphone and save mobile_sync.json to the root folder of the USB drive.',
+    '保存完了メッセージから数秒待ち、スマートフォンの通知欄から「USBドライブを取り外す（マウント解除）」を実行してからUSBを抜きます。':
+      'Wait a few seconds after the completion message, then select "Eject / Unmount USB drive" from your phone\'s notification bar before unplugging the USB drive.',
+    'USBメモリをPCに挿して PhotoManager.exe を起動すると、自動的に選別結果が取り込まれて反映されます。':
+      'Plug the USB drive into your PC and launch PhotoManager.exe; the saved changes are automatically detected and imported.',
+    '4. USBメモリを安全に取り外すための手順':
+      '4. Safely Removing Your USB Drive',
+    'PCから抜く前：画面右上の「終了」＞「サーバーを停止して終了」でアプリを完全に停止させてから、Windowsの「ハードウェアの安全な取り外し」を行ってください。':
+      'Before Unplugging from PC: Always stop the app completely via top-right "Exit" > "Stop Server & Exit", then use Windows "Safely Remove Hardware".',
+    'スマートフォンから抜く前：mobile_sync.json を保存したあと、スマートフォンの通知欄から「取り外す（マウント解除）」を実行してから引き抜いてください（そのまま抜くと保存ファイルが空になることがあります）。':
+      'Before Unplugging from Smartphone: After saving mobile_sync.json, always unmount/eject the USB drive from the notification bar before pulling it out (unplugging without unmounting may leave the saved file empty).',
+
+    // タブ4: ショートカット & FAQ
+    '機能・動作': 'Action',
+    '前後・上下の写真へ移動（右インスペクタもリアルタイム追従 ／ Shift + 矢印キーで範囲選択）':
+      'Move between photos (Right Inspector updates in real time / Shift + Arrow keys for range selection)',
+    '選択中の写真に「優 (Ex)」を設定': 'Set rating of selected photo(s) to "Ex (Excellent)"',
+    '選択中の写真に「良 (Gd)」を設定': 'Set rating of selected photo(s) to "Gd (Good)"',
+    '選択中の写真に「棄 (Rj)」を設定（一覧から自動で隠れます）':
+      'Set rating of selected photo(s) to "Rj (Reject)" (automatically hidden from the grid)',
+    '選択中の写真の評価を取り消す（「可 (Nm)」に戻す）':
+      'Clear rating of selected photo(s) (reset to "Nm (Normal)")',
+    '選択中の写真を時計回りに90度（R）/ 反時計回りに90度（L）回転（非破壊）':
+      'Rotate selected photo(s) 90° clockwise (R) / 90° counter-clockwise (L) (non-destructive)',
+    '選択中の写真の切り抜き・傾き・トーン調整画面を開く（調整中は \\ 長押しで元画像比較）':
+      'Open Crop, Straighten & Tone adjustment modal (hold \\ while editing to compare with original)',
+    '選択中の写真をクリップボードへ画像コピー（調整反映済み ／ そのまま Ctrl+V で他アプリへ貼付可）':
+      'Copy selected photo to clipboard with non-destructive edits applied (paste directly into other apps with Ctrl+V)',
+    '写真のトーン調整（明るさ・コントラスト・彩度）をコピー（C）／ 選択写真へ一括ペースト（V）':
+      'Copy tone adjustments (Exposure, Contrast, Saturation) (C) / Batch-paste onto selected photos (V)',
+    'storage（アプリ内ストレージ）内の写真のファイル名を変更（1枚：単一 ／ 2枚以上：一括連番リネーム）':
+      'Rename photo(s) inside in-app "storage" (1 photo: single rename / 2+ photos: batch sequential rename)',
+    '2枚並べて比較（Duel）モードを開く（同期ズーム・勝ち抜き選別）':
+      'Open 2-Up side-by-side comparison (Duel) mode (synchronized zoom & knockout culling)',
+    'RGB・輝度ヒストグラムの表示 / 非表示を切り替え':
+      'Toggle RGB & Luminance histogram display',
+    '写真カード上の文字・バッジ表示を隠す / 表示する（クリーンモード切替）':
+      'Show / hide text and badge overlays on photo cards (Clean View toggle)',
+    '左メニューの表示 / 非表示を切り替え': 'Toggle left menu panel',
+    '選択をすべて解除 ／ 開いているモーダル画面を閉じる':
+      'Deselect all photos / Close active modal window',
+    '操作マニュアル（本ヘルプ画面）を表示': 'Open User Manual (this Help window)',
+    'ライトボックス（拡大表示）＆ 2枚比較画面でのショートカット':
+      'Lightbox & 2-Up Comparison (Duel) Shortcuts',
+    '前後の写真へ移動（2枚比較時は右ペインBの候補写真を切り替え）':
+      'Move to previous / next photo (in 2-Up Duel, switches candidate photo in Right pane B)',
+    '連写・ブラケット・重複スタック内のコマ切替（露出ブラケット時は ↑ で EV+ ／ ↓ で EV-）':
+      'Switch frames inside a burst, bracket, or duplicate stack (in AEB brackets: ↑ for EV+, ↓ for EV-)',
+    '表示中の写真（2枚比較時は選択中ペイン）に 優(1) / 良(2) / 棄(3) / 可(0・4) を設定':
+      'Set rating on current photo (or active pane in 2-Up Duel): Ex(1) / Gd(2) / Rj(3) / Nm(0, 4)',
+    'ライトボックスから2枚比較（Duel）モードを開く / 閉じる':
+      'Open / close 2-Up comparison (Duel) mode from Lightbox',
+    '2枚比較時：W で右(B)を左(A:基準)に昇格して次へ ／ S で左右を入れ替え':
+      'In 2-Up Duel: press W to promote Right (B) to Left (A: reference) and advance / press S to swap left and right',
+    'RGB・輝度ヒストグラムの表示 / 非表示を切り替え（2枚比較時は左右同時表示）':
+      'Toggle RGB & Luminance histogram (displays dual side-by-side histograms in 2-Up Duel)',
+    '棄（Rj）評価の ON / OFF を切り替え': 'Toggle Rj (Reject) rating ON / OFF',
+    '表示中の写真を時計回りに90度（R）/ 反時計回りに90度（L）回転（非破壊）':
+      'Rotate current photo 90° clockwise (R) / 90° counter-clockwise (L) (non-destructive)',
+    '表示中の写真の切り抜き・傾き・トーン調整画面を開く（非破壊）':
+      'Open Crop, Straighten & Tone adjustment modal for current photo (non-destructive)',
     'マウスホイール': 'Mouse Wheel',
-    '画像上:': 'Over image:',
-    'カーソル位置を中心に拡大縮小 (100%〜400% / 2枚比較時は左右同期ズーム)':
-      'Zoom centered on cursor (100%–400% / synced zoom in 2-Up Duel)',
-    '連写バー上:': 'Over burst bar:',
-    'スタック内のコマ送り': 'Flip stack frames',
-    '／ 下部フィルム帯上:': '/ Over bottom filmstrip:',
-    '写真送り': 'Prev/Next photo',
+    '画像上：カーソル位置を中心に拡大縮小（100%〜400%）／ 連写バー・下部フィルム帯上：コマ送り':
+      'Over image: zoom centered on cursor (100%–400%) / Over stack bar or filmstrip: flip frames',
     'ダブルクリック': 'Double-Click',
+    '拡大（200%）⇔ 等倍（100%）を切り替え': 'Toggle between 200% zoom and 100% fit',
     'ドラッグ': 'Drag',
-    '拡大中の表示位置を移動（パン移動 / 2枚比較時は左右同期パン、': 'Pan while zoomed (synced pan in 2-Up Duel; hold',
-    '+ドラッグで片側のみ移動）': '+Drag to pan one side independently)',
-    'キーで「棄」にしたら写真が消えました。ファイルが削除されたのですか？':
-      'key to mark a photo as "Rj (Reject)" and it disappeared. Was my file deleted?',
-    'A. いいえ、パソコン内のファイルは削除されていません。画面上部ツールバーの':
-      'A. No, files on your PC are never deleted. Click the',
-    'ボタンを押して点灯させればいつでも再表示でき、':
-      'button on the top toolbar to reveal rejected photos anytime, and press',
-    'キーで元に戻せます。': 'to restore them.',
-    'Q. 回転や明るさ調整をした写真を、実際のファイルとして保存したいときは？':
+    '拡大中の表示位置を移動（2枚比較時は左右同期パン、Alt + ドラッグで片側のみ移動）':
+      'Pan while zoomed (synchronized pan in 2-Up Duel; hold Alt + Drag to move one side independently)',
+    'Q. 3 キーで「棄」にしたら写真が消えました。ファイルが削除されたのですか？':
+      'Q. I pressed 3 to mark a photo as "Rj (Reject)" and it disappeared. Was the file deleted?',
+    'A. いいえ、PC内のファイルは削除されていません。左メニュー最上部の評価フィルタにある「棄」ボタンを押して点灯させればいつでも再表示でき、0キーで元に戻せます。':
+      'A. No, files on your PC are never deleted. Click the "Rj" filter button at the top of the left menu to reveal rejected photos anytime, and press 0 to restore them.',
+    'Q. 回転や明るさ調整をした写真を、実際の画像ファイルとして保存したいときは？':
       'Q. How do I save rotated or brightness-adjusted photos as actual image files?',
-    'A. アプリ内の調整は元ファイルを傷つけない非破壊方式です。調整結果を焼き込んだ画像ファイルを作るには、画面下部バーの':
-      'A. All in-app adjustments are non-destructive. To export new image files with your edits baked in, use',
-    '「 テイクアウト」＞「 スマート・テイクアウト...」': '" Takeout" > " Smart Takeout..."',
-    'から書き出してください。': 'from the bottom action bar.',
+    'A. アプリ内の調整は元ファイルを書き換えない非破壊方式です。調整結果を反映した画像ファイルを作るには、右クリックメニューの「テイクアウト」＞「スマート・テイクアウト...」から別フォルダへ書き出してください。':
+      'A. All adjustments inside the app are non-destructive. To export new image files with your adjustments applied, select "Takeout" > "Smart Takeout..." from the right-click menu.',
     'Q. 初回起動時に「Windows によって PC が保護されました」と表示されました。':
       'Q. Windows displayed "Windows protected your PC" (SmartScreen) on first launch.',
-    'A. 個人開発で商用コード署名証明書を付与していないため表示される確認画面です。「詳細情報」→「実行」で起動するか、同梱の':
-      'A. This appears because this indie tool is not signed with a commercial certificate. Click "More info" → "Run anyway", or double-click the bundled',
-    'を実行してPC上で': 'to compile a fresh',
-    'を再生成してください。': 'locally on your PC.',
+    'A. 商用のコード署名証明書を付与していない個人開発ソフトのため表示される確認画面です。「詳細情報」→「実行」で起動するか、同梱の Build.bat をダブルクリックしてPC上で PhotoManager.exe を生成してください。':
+      'A. This confirmation screen appears because this personal project does not have a commercial code-signing certificate. Click "More info" → "Run anyway", or double-click the included Build.bat to compile PhotoManager.exe locally on your PC.',
+    'さらに詳しい解説はプロジェクトフォルダ内の MANUAL.md をご覧ください。':
+      'For more details, please refer to MANUAL.md in the project folder.',
 
-    // XMP サイドカー & storage 機能
+    // XMP サイドカー & storage 機能 (UIツールチップ・モーダル用)
     'XMPサイドカーファイルが検出されました': 'XMP sidecar file detected',
     'XMPプレビュー': 'XMP Preview',
     '押している間だけPhotoManagerの調整をオフにし、XMPの調整データを反映して表示します':
@@ -1488,46 +1388,6 @@
       ' Also export XMP sidecar (.xmp) (preserves rating, tags & adjustments)',
     '書き出し画像と一緒に評価・タグ・GPS・調整情報を記録した .xmp サイドカーファイルも出力します':
       'Exports a companion .xmp sidecar file containing rating, tags, GPS, and adjustment metadata',
-    ' XMPサイドカー連携 ＆  XMPプレビュー（ホールド比較）:':
-      ' XMP Sidecar Integration &  Hold XMP Preview:',
-    '同名の': 'For photos with a companion',
-    'サイドカーファイル（Lightroom / Adobe Camera Raw 等）が存在する写真では、右インスペクタ上部に':
-      'sidecar file (from Lightroom / Adobe Camera Raw, etc.), the',
-    '「 XMP」バー': '" XMP" bar',
-    '「 XMPプレビュー」ボタンを長押し（ホールド）している間だけ':
-      'While holding down " Hold XMP Preview",',
-    'Photo Manager 側の調整を一時オフにして XMP 側の調整（露出・コントラスト・彩度・クロップ・角度）を反映表示し、指を離すと元の表示に戻ります。また':
-      'Photo Manager temporarily bypasses its own edits to render the XMP adjustments (Exposure, Contrast, Saturation, Crop, Angle), restoring normal view upon release. Click',
-    '「 評価・タグ取込」': '" Import Rating/Tags"',
-    'ボタンから、XMP 内の評価（4段階へ自動変換）や階層タグ（':
-      'to import XMP ratings (converted to 4-stage) and hierarchical keywords (safely isolated under the',
-    'ルート配下に隔離して安全にインポート）を取り込めます。':
-      'root).',
-    '非破壊で行った回転・傾き・切り抜き・明るさ調整の焼き込み、GPS/向きのExif同期、':
-      'Bakes in non-destructive rotation/crop/tone edits, syncs GPS/Orientation Exif,',
-    'XMPサイドカー (': 'exports companion XMP sidecars (',
-    ') の同時出力（評価・タグ・調整情報の保持）': ') preserving ratings/tags/adjustments',
-    '、長辺リサイズ（4K / SNS最適 / フルHD等）、撮影秒数順の連番リネーム、SNS公開用のExifプライバシー消去を一括適用して別フォルダへ書き出します。':
-      ', resizes long edge (4K / Social / FHD), renames sequentially by timestamp, and scrubs private Exif into a separate folder.',
-    ' storage（アプリ内ストレージ）での完結管理 ＆ サイドカー自動追従:':
-      ' Self-Contained "storage" Management & Automatic Sidecar Tracking:',
-    '左サイドバー「 フォルダ」先頭の': 'At the top of " Folders" in the left sidebar,',
-    '「 storage (アプリ内ストレージ)」': '" storage (In-App Storage)"',
-    'には、外部フォルダの写真を選択して': 'lets you select external photos and click',
-    '「 storageへインポート」': '" Import to storage"',
-    '（または左ツリーの': '(or drag & drop onto the',
-    'フォルダへドラッグ＆ドロップ）でコピー取り込みできます。':
-      'folder in the sidebar) to copy them into the app.',
-    '内ではサブフォルダの作成・名前変更、写真のフォルダ間移動（':
-      'supports creating/renaming subfolders, moving photos between folders (',
-    '「 storage内で移動」': '" Move in storage"',
-    '）、ファイル名変更（': '), renaming files (',
-    'で単一リネーム／複数選択時は一括連番リネーム）、フォルダ右クリックからの外部エクスポートが自在に行えます。さらに、写真と同名の':
-      'for single rename or batch sequential rename), and exporting folders externally. Companion',
-    'サイドカーファイル（': 'sidecar files (',
-    '等）が存在する場合は、インポート・移動・リネーム・エクスポート時に自動で追従':
-      'etc.) automatically follow the photo during import, move, rename, and export',
-    'します。': '.',
     'DB管理': 'DB Maint',
     '設定・データベース管理（タグ並び順・DBバックアップ・最適化）': 'Settings & Database Maintenance (Tag Sort Order, DB Backup & VACUUM)',
     '設定 ＆ データベース管理': 'Settings & Database Maintenance',
@@ -2100,7 +1960,7 @@
     setLanguage(nextLang);
     if (typeof showToast === 'function') {
       if (nextLang === 'en') {
-        showToast('Switched UI to English (Washi / Urusi & Slang Edition)', 'info', 2200);
+        showToast('Switched UI language to English', 'info', 2200);
       } else {
         showToast('表示言語を日本語に切り替えました', 'info', 2200);
       }
