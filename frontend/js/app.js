@@ -840,15 +840,33 @@ function renderActiveFilterChips() {
 
   let hasFilter = false;
 
-  function createChip(icon, text, onRemove, extraClass = '') {
+  function flashAndScrollToElement(el) {
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.remove('filter-jump-highlight');
+    void el.offsetWidth;
+    el.classList.add('filter-jump-highlight');
+    setTimeout(() => el.classList.remove('filter-jump-highlight'), 1300);
+  }
+
+  function createChip(icon, text, onRemove, extraClass = '', onNavigate = null) {
     hasFilter = true;
     const chip = document.createElement('span');
     chip.className = `filter-chip ${extraClass}`.trim();
+    if (onNavigate) {
+      chip.title = 'クリックでこのフィルタの場所を開く（×で解除）';
+    }
     const labelHtml = icon ? `${escapeHtml(icon)} ${escapeHtml(text)}` : escapeHtml(text);
     chip.innerHTML = `
       <span class="chip-label">${labelHtml}</span>
       <button class="chip-remove-btn" title="このフィルタを解除">&times;</button>
     `;
+    if (onNavigate) {
+      chip.addEventListener('click', (e) => {
+        if (e.target.closest('.chip-remove-btn')) return;
+        onNavigate();
+      });
+    }
     chip.querySelector('.chip-remove-btn').addEventListener('click', (e) => {
       e.stopPropagation();
       onRemove();
@@ -862,13 +880,27 @@ function renderActiveFilterChips() {
     const name = rawP.split(/[/\\]/).filter(Boolean).pop() || rawP;
     createChip('', name, () => {
       setFilter('all', null, 'すべての写真');
+    }, '', () => {
+      if (typeof window.openSidebarSection === 'function') window.openSidebarSection('folder');
+      if (typeof revealFolderInTree === 'function') revealFolderInTree(rawP);
+      setTimeout(() => {
+        const targetEl = typeof _ftFindItemByPath === 'function' ? _ftFindItemByPath(rawP) : null;
+        flashAndScrollToElement(targetEl);
+      }, 120);
     });
   } else if (state.currentFilter.type === 'folder_exclude' && state.currentFilter.value) {
     const rawP = state.currentFilter.value;
     const name = rawP.split(/[/\\]/).filter(Boolean).pop() || rawP;
     createChip('', `除外: ${name}`, () => {
       setFilter('all', null, 'すべての写真');
-    }, 'chip-tag-exclude');
+    }, 'chip-tag-exclude', () => {
+      if (typeof window.openSidebarSection === 'function') window.openSidebarSection('folder');
+      if (typeof revealFolderInTree === 'function') revealFolderInTree(rawP);
+      setTimeout(() => {
+        const targetEl = typeof _ftFindItemByPath === 'function' ? _ftFindItemByPath(rawP) : null;
+        flashAndScrollToElement(targetEl);
+      }, 120);
+    });
   }
 
   // 2. タイムライン年月 (OR条件)
@@ -876,6 +908,23 @@ function renderActiveFilterChips() {
     Array.from(state.selectedYearMonths).sort().forEach(ym => {
       createChip('', ym, () => {
         toggleTimelineYearMonth(ym);
+      }, '', () => {
+        if (typeof window.openSidebarSection === 'function') window.openSidebarSection('timeline');
+        const yr = String(ym).split('-')[0];
+        if (yr && state.expandedTimelineYears) {
+          state.expandedTimelineYears.add(yr);
+        }
+        const groupEl = document.querySelector(`.timeline-year-header[data-year="${CSS.escape(yr)}"]`)?.parentElement;
+        if (groupEl) {
+          const toggleBtn = groupEl.querySelector('.tree-toggle-btn');
+          const monthListEl = groupEl.querySelector('.timeline-month-list');
+          if (toggleBtn) toggleBtn.classList.remove('collapsed');
+          if (monthListEl) monthListEl.classList.remove('hidden');
+        }
+        setTimeout(() => {
+          const itemEl = document.querySelector(`.timeline-month-item[data-filter-value="${CSS.escape(ym)}"]`);
+          flashAndScrollToElement(itemEl);
+        }, 80);
       });
     });
   }
@@ -889,7 +938,13 @@ function renderActiveFilterChips() {
       const chipClass = mode === 'include' ? 'chip-tag-include' : 'chip-tag-exclude';
       createChip('', `${prefix}${cam}`, () => {
         toggleCameraFilter(cam, true);
-      }, chipClass);
+      }, chipClass, () => {
+        if (typeof window.openSidebarSection === 'function') window.openSidebarSection('camera');
+        setTimeout(() => {
+          const camEl = document.querySelector(`.camera-tree-item[data-camera="${CSS.escape(cam)}"]`);
+          flashAndScrollToElement(camEl);
+        }, 80);
+      });
     });
   }
   if (state.selectedCameras && state.selectedCameras.size > 0) {
@@ -898,7 +953,13 @@ function renderActiveFilterChips() {
       createChip('', `[+] ${cam}`, () => {
         state.selectedCameras.delete(cam);
         toggleCameraFilter(cam, true);
-      }, 'chip-tag-include');
+      }, 'chip-tag-include', () => {
+        if (typeof window.openSidebarSection === 'function') window.openSidebarSection('camera');
+        setTimeout(() => {
+          const camEl = document.querySelector(`.camera-tree-item[data-camera="${CSS.escape(cam)}"]`);
+          flashAndScrollToElement(camEl);
+        }, 80);
+      });
     });
   }
 
@@ -909,7 +970,20 @@ function renderActiveFilterChips() {
       const displayName = lensKey.includes('::') ? lensKey.replace('::', ' / ') : lensKey;
       createChip('', `${prefix}${displayName}`, () => {
         toggleLensFilter(lensKey, displayName, true);
-      }, chipClass);
+      }, chipClass, () => {
+        if (typeof window.openSidebarSection === 'function') window.openSidebarSection('camera');
+        if (lensKey.includes('::')) {
+          const camModel = lensKey.split('::')[0];
+          if (camModel && state.expandedCameras) {
+            state.expandedCameras.add(camModel);
+            if (typeof renderCameras === 'function') renderCameras(state.availableCameras);
+          }
+        }
+        setTimeout(() => {
+          const lensEl = document.querySelector(`.camera-lens-item[data-lens-key="${CSS.escape(lensKey)}"]`);
+          flashAndScrollToElement(lensEl);
+        }, 80);
+      });
     });
   }
 
@@ -933,7 +1007,9 @@ function renderActiveFilterChips() {
       state.labFilter = null;
       if (typeof window.updateLabUIState === 'function') window.updateLabUIState();
       fetchPhotos();
-    }, 'chip-tag-include');
+    }, 'chip-tag-include', () => {
+      if (typeof window.openSidebarSection === 'function') window.openSidebarSection('lab');
+    });
   }
 
   if (state.onThisDay) {
@@ -943,7 +1019,9 @@ function renderActiveFilterChips() {
       state.onThisDay = null;
       if (typeof window.updateLabUIState === 'function') window.updateLabUIState();
       fetchPhotos();
-    }, 'chip-tag-include');
+    }, 'chip-tag-include', () => {
+      if (typeof window.openSidebarSection === 'function') window.openSidebarSection('lab');
+    });
   }
 
   if (state.focalRange) {
@@ -952,7 +1030,9 @@ function renderActiveFilterChips() {
       state.focalRangeLabel = null;
       if (typeof window.updateLabUIState === 'function') window.updateLabUIState();
       fetchPhotos();
-    }, 'chip-tag-include');
+    }, 'chip-tag-include', () => {
+      if (typeof window.openSidebarSection === 'function') window.openSidebarSection('lab');
+    });
   }
 
   if (state.apertureRange) {
@@ -961,7 +1041,9 @@ function renderActiveFilterChips() {
       state.apertureRangeLabel = null;
       if (typeof window.updateLabUIState === 'function') window.updateLabUIState();
       fetchPhotos();
-    }, 'chip-tag-include');
+    }, 'chip-tag-include', () => {
+      if (typeof window.openSidebarSection === 'function') window.openSidebarSection('lab');
+    });
   }
 
   // 4. タグ (3ステート)
@@ -971,7 +1053,38 @@ function renderActiveFilterChips() {
       const chipClass = mode === 'include' ? 'chip-tag-include' : 'chip-tag-exclude';
       createChip('', `${prefix}${tag}`, () => {
         removeTagFilter(tag);
-      }, chipClass);
+      }, chipClass, () => {
+        if (typeof window.openSidebarSection === 'function') window.openSidebarSection('tags');
+        if (typeof COLOR_TAG_MAP !== 'undefined' && (tag in COLOR_TAG_MAP)) {
+          const bodyEl = document.getElementById('colorPaletteBody');
+          const arrowEl = document.getElementById('colorPaletteArrow');
+          if (bodyEl && bodyEl.style.display === 'none') {
+            bodyEl.style.display = 'block';
+            if (arrowEl) arrowEl.textContent = '▼';
+          }
+          setTimeout(() => {
+            flashAndScrollToElement(document.getElementById('colorPaletteSection'));
+          }, 80);
+          return;
+        }
+        if (typeof expandTagAncestors === 'function') {
+          expandTagAncestors(tag);
+        }
+        // 現在の種別フィルタ（手動/AI）で隠れている場合は「すべて」に切り替えて表示
+        const tagObj = (state.availableTags || []).find(t => (t.tag || t.name) === tag);
+        if (tagObj && state.tagSourceFilter !== 'all') {
+          if (state.tagSourceFilter === 'manual' && tagObj.source === 'ai') {
+            state.tagSourceFilter = 'all';
+          } else if (state.tagSourceFilter === 'ai' && tagObj.source === 'manual') {
+            state.tagSourceFilter = 'all';
+          }
+        }
+        if (typeof renderTagList === 'function') renderTagList();
+        setTimeout(() => {
+          const pillEl = document.querySelector(`#tagList .tag-pill-item[data-tag-path="${CSS.escape(tag)}"]`);
+          flashAndScrollToElement(pillEl);
+        }, 80);
+      });
     });
   }
 
@@ -979,17 +1092,40 @@ function renderActiveFilterChips() {
   if (state.untaggedOnly) {
     createChip('', '未分類', () => {
       clearAllTagFilters();
+    }, '', () => {
+      if (typeof window.openSidebarSection === 'function') window.openSidebarSection('quick');
+      setTimeout(() => flashAndScrollToElement(document.getElementById('untaggedNavItem')), 80);
     });
   }
 
-  // 6. 接続状態 (接続中 / 未接続)
+  // 6. 接続状態 (接続中 / 未接続 / リンク消失 / 重複)
   if (state.connectionFilter === 'online') {
     createChip('', '接続中のみ', () => {
       setConnectionFilter('online');
+    }, '', () => {
+      if (typeof window.openSidebarSection === 'function') window.openSidebarSection('quick');
+      setTimeout(() => flashAndScrollToElement(document.getElementById('onlineOnlyNavItem')), 80);
     });
   } else if (state.connectionFilter === 'offline') {
     createChip('', '未接続のみ', () => {
       setConnectionFilter('offline');
+    }, '', () => {
+      if (typeof window.openSidebarSection === 'function') window.openSidebarSection('quick');
+      setTimeout(() => flashAndScrollToElement(document.getElementById('offlineOnlyNavItem')), 80);
+    });
+  } else if (state.connectionFilter === 'unlinked' || state.connectionFilter === 'missing') {
+    createChip('', 'リンク消失の写真', () => {
+      setConnectionFilter('unlinked');
+    }, '', () => {
+      if (typeof window.openSidebarSection === 'function') window.openSidebarSection('quick');
+      setTimeout(() => flashAndScrollToElement(document.getElementById('unlinkedOnlyNavItem')), 80);
+    });
+  } else if (state.connectionFilter === 'duplicates') {
+    createChip('', '重複のある写真', () => {
+      setConnectionFilter('duplicates');
+    }, '', () => {
+      if (typeof window.openSidebarSection === 'function') window.openSidebarSection('quick');
+      setTimeout(() => flashAndScrollToElement(document.getElementById('duplicatesOnlyNavItem')), 80);
     });
   }
 
@@ -997,6 +1133,8 @@ function renderActiveFilterChips() {
   if (state.searchQuery && state.searchQuery.trim() !== '') {
     createChip('', `"${state.searchQuery.trim()}"`, () => {
       elements.clearSearchBtn.click();
+    }, '', () => {
+      if (typeof window.openSidebarSection === 'function') window.openSidebarSection('search');
     });
   }
 
@@ -1014,6 +1152,8 @@ function renderActiveFilterChips() {
       state.ratingFilter = new Set([0, 1, 2]);
       updateRatingFilterUI();
       fetchPhotos();
+    }, '', () => {
+      flashAndScrollToElement(document.getElementById('ratingFilterToggles'));
     });
   }
 
@@ -1030,7 +1170,9 @@ function renderActiveFilterChips() {
     const icon = attrIcons[state.attrFilter] !== undefined ? attrIcons[state.attrFilter] : '';
     createChip(icon, attrLabels[state.attrFilter] || state.attrFilter, () => {
       setAttrFilter('all');
-    }, 'chip-tag-include');
+    }, 'chip-tag-include', () => {
+      flashAndScrollToElement(document.getElementById('attrFilterToggles'));
+    });
   }
 
   // 9. ジオタグツリーフィルタ
@@ -1038,11 +1180,23 @@ function renderActiveFilterChips() {
     if (state.activeLocation.no_location) {
       createChip('', 'ジオタグなし', () => {
         if (typeof clearLocationFilter === 'function') clearLocationFilter();
+      }, '', () => {
+        if (typeof window.openSidebarSection === 'function') window.openSidebarSection('location');
+        setTimeout(() => flashAndScrollToElement(document.getElementById('noLocationNavItem')), 120);
       });
     } else {
       const locLabel = state.activeLocation.label || state.activeLocation.city || state.activeLocation.state || state.activeLocation.country;
       createChip('', `ジオタグ: ${locLabel}`, () => {
         if (typeof clearLocationFilter === 'function') clearLocationFilter();
+      }, '', async () => {
+        if (typeof window.openSidebarSection === 'function') window.openSidebarSection('location');
+        if (typeof window.revealActiveLocationInTree === 'function') {
+          await window.revealActiveLocationInTree();
+        }
+        setTimeout(() => {
+          const activeRow = document.querySelector('#locationTree .location-node-row.active');
+          flashAndScrollToElement(activeRow);
+        }, 120);
       });
     }
   }
@@ -1081,10 +1235,7 @@ function renderActiveFilterChips() {
     }
   });
 
-  // すべて解除ボタンとサイドバーリセットボタンの表示制御
-  if (elements.clearFilterBtn) {
-    elements.clearFilterBtn.style.display = hasFilter ? 'inline-flex' : 'none';
-  }
+  // サイドバーリセットボタンと適用中チップバーの表示制御
   const chipBar = document.getElementById('viewHeaderChipBar');
   const purgeBtn = document.getElementById('purgeUnlinkedBtn');
   const isPurgeVisible = purgeBtn && purgeBtn.style.display !== 'none';
@@ -1093,12 +1244,8 @@ function renderActiveFilterChips() {
   }
 
   const resetBtn = document.getElementById('sidebarResetFilterBtn');
-  const resetDot = document.getElementById('sidebarResetDot');
   if (resetBtn) {
     resetBtn.classList.toggle('has-active-filter', hasFilter);
-  }
-  if (resetDot) {
-    resetDot.style.display = hasFilter ? 'block' : 'none';
   }
 }
 
@@ -1420,6 +1567,9 @@ function setFilter(type, value, titleText) {
     }
   });
 
+  if (typeof window.syncFolderTreeFilterStates === 'function') {
+    window.syncFolderTreeFilterStates();
+  }
   updateTimelineActiveClasses();
   updateCameraActiveClasses();
   fetchPhotos();
@@ -1601,8 +1751,6 @@ function initSidebarAccordion() {
   const sidebar = document.getElementById('sidebar');
   const items = document.querySelectorAll('.sidebar-accordion .accordion-item');
   const railBtns = document.querySelectorAll('#sidebarRail .rail-tab-btn');
-  const resetBtn = document.getElementById('sidebarResetFilterBtn');
-  const toggleAllBtn = document.getElementById('sidebarToggleAllBtn');
   if (!items.length || !sidebar) return;
 
   // 2段階サイドバー用：現在選択中のタブセクション名（常に1つを表示）
@@ -1802,19 +1950,6 @@ function setupEventListeners() {
   // 左サイドバー開閉ボタン
   if (elements.toggleSidebarBtn) {
     elements.toggleSidebarBtn.addEventListener('click', () => toggleSidebar());
-  }
-  if (elements.sidebarCloseBtn) {
-    elements.sidebarCloseBtn.addEventListener('click', () => {
-      const sb = document.getElementById('sidebar');
-      if (!state.isSidebarOpen && sb && sb.classList.contains('is-overlay-open')) {
-        sb.classList.remove('is-overlay-open');
-        if (typeof window.syncSidebarRailActiveState === 'function') {
-          window.syncSidebarRailActiveState();
-        }
-      } else {
-        toggleSidebar(false);
-      }
-    });
   }
 
   // インスペクタのタブ切替イベント初期化
@@ -2033,11 +2168,7 @@ function setupEventListeners() {
     });
   }
 
-  // 絞り込み解除ボタン（タイトル横 ＆ サイドバータブ最下部リセットボタン）
-  if (elements.clearFilterBtn) {
-    elements.clearFilterBtn.addEventListener('click', resetAllFilters);
-  }
-
+  // 絞り込み全解除ボタン（左サイドバー最上部）
   const sidebarResetFilterBtn = document.getElementById('sidebarResetFilterBtn');
   if (sidebarResetFilterBtn) {
     sidebarResetFilterBtn.addEventListener('click', resetAllFilters);

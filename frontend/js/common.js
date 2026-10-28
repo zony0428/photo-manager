@@ -207,7 +207,6 @@ const elements = {
   // サイドバー
   sidebar: document.getElementById('sidebar'),
   toggleSidebarBtn: document.getElementById('toggleSidebarBtn'),
-  sidebarCloseBtn: document.getElementById('sidebarCloseBtn'),
   sidebarToggleLabel: document.getElementById('sidebarToggleLabel'),
   sidebarIndexTabs: document.getElementById('sidebarIndexTabs'),
   timelineTree: document.getElementById('timelineTree'),
@@ -432,7 +431,6 @@ const elements = {
   lightboxBracketBar: document.getElementById('lightboxBracketBar'),
   lightboxBracketBarLabel: document.getElementById('lightboxBracketBarLabel'),
   lightboxBracketPills: document.getElementById('lightboxBracketPills'),
-  clearFilterBtn: document.getElementById('clearFilterBtn'),
   // テーマ切替（和紙 ⇄ 夜墨）
   themeToggleBtn: document.getElementById('themeToggleBtn'),
   themeToggleIcon: document.getElementById('themeToggleIcon'),

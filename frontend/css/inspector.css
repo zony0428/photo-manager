@@ -276,24 +276,6 @@
   transform: scale(1.03);
 }
 
-.inspector-preview-overlay {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background: linear-gradient(to top, rgba(0,0,0,0.85), transparent);
-  padding: 8px;
-  text-align: center;
-  font-size: 0.75rem;
-  color: var(--accent-primary);
-  opacity: 0;
-  transition: opacity var(--transition-fast);
-}
-
-.inspector-preview-wrapper:hover .inspector-preview-overlay {
-  opacity: 1;
-}
-
 /* インスペクタ プレビュー直下の単一写真クイックアクションバー */
 .inspector-quick-actions-bar {
   display: flex;

@@ -311,9 +311,14 @@ function showSingleInspector(photo) {
     window.refreshInspectorHistogram();
   }
 
-  elements.inspectorPreviewWrapper.onclick = () => {
+  elements.inspectorPreviewWrapper.onclick = null;
+  elements.inspectorPreviewWrapper.ondblclick = () => {
     const idx = state.photos.findIndex(p => p.id === photo.id);
-    if (idx >= 0) openLightbox(idx);
+    if (idx >= 0) {
+      openLightbox(idx);
+    } else if (typeof openLightboxForStackMember === 'function') {
+      openLightboxForStackMember(photo, photo);
+    }
   };
 
   // XMPサイドカー検出・ホールドプレビュー・評価/タグ取込バーの表示制御
@@ -771,9 +776,10 @@ function showSingleInspector(photo) {
           }
           updateQuickExifSummary(sp);
 
-          // 上部プレビュー枠クリック時のライトボックス対象もこの sp に切り替え
+          // 上部プレビュー枠ダブルクリック時のライトボックス対象もこの sp に切り替え
           if (elements.inspectorPreviewWrapper) {
-            elements.inspectorPreviewWrapper.onclick = () => {
+            elements.inspectorPreviewWrapper.onclick = null;
+            elements.inspectorPreviewWrapper.ondblclick = () => {
               openLightboxForStackMember(sp, photo);
             };
           }

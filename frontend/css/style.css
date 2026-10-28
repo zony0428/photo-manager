@@ -776,14 +776,16 @@ button, input, select, textarea {
   font-size: 0.76rem;
   font-weight: 600;
   position: relative;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
   color: var(--text-muted);
   transition: all var(--transition-fast);
 }
 
 .sidebar-reset-btn:hover {
-  color: var(--accent-primary);
-  border-color: var(--accent-primary);
-  background: rgba(225, 77, 42, 0.1);
+  color: var(--text-main);
+  border-color: var(--border-color);
+  background: var(--bg-hover);
 }
 
 .sidebar-reset-btn.has-active-filter {
@@ -792,38 +794,9 @@ button, input, select, textarea {
   border-color: var(--accent-primary) !important;
 }
 
-.sidebar-reset-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--accent-primary);
-  box-shadow: 0 0 6px var(--accent-primary);
-}
-
-.sidebar-expand-toggle-btn,
-.sidebar-close-btn {
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-muted);
-  flex-shrink: 0;
-  border-radius: var(--radius-sm, 4px);
-  transition: all var(--transition-fast);
-}
-
-.sidebar-expand-toggle-btn:hover,
-.sidebar-close-btn:hover {
-  color: var(--text-main);
-  background: rgba(255, 255, 255, 0.08);
-}
-
-[data-theme="paper"] .sidebar-expand-toggle-btn:hover,
-[data-theme="paper"] .sidebar-close-btn:hover {
-  color: var(--text-main);
-  background: rgba(0, 0, 0, 0.06);
+.sidebar-reset-btn.has-active-filter:hover {
+  background: var(--accent-primary-hover, #c93d1d) !important;
+  border-color: var(--accent-primary-hover, #c93d1d) !important;
 }
 
 /* アコーディオン本体コンテナ: 親の高さいっぱいに広げ、外側スクロールは抑止 */

@@ -41,17 +41,24 @@ function renderTimeline(timelineItems) {
     const isExpanded = state.expandedTimelineYears.has(year) || hasSelectedMonth;
     const isCollapsed = !isExpanded;
 
-    // その年のすべての月が選択されているか判定
-    const allMonthsSelected = group.months.length > 0 && group.months.every(m => state.selectedYearMonths.has(m.year_month));
+    // その年の選択月数と全月選択判定
+    const selectedInYearCount = group.months.filter(m => state.selectedYearMonths.has(m.year_month)).length;
+    const allMonthsSelected = group.months.length > 0 && selectedInYearCount === group.months.length;
+    const hasPartialSelected = selectedInYearCount > 0 && !allMonthsSelected;
 
     // 年ヘッダー
     const headerEl = document.createElement('div');
-    headerEl.className = `timeline-year-header ${allMonthsSelected ? 'active-all' : ''}`;
+    headerEl.className = `timeline-year-header ${allMonthsSelected ? 'active-all' : (hasPartialSelected ? 'has-active-child' : '')}`.trim();
     headerEl.dataset.year = year;
+
+    const partialBadgeHtml = hasPartialSelected
+      ? `<span class="child-filter-badge is-accent" title="この年のうち ${selectedInYearCount}ヶ月を選択中">+${selectedInYearCount}</span>`
+      : '';
 
     headerEl.innerHTML = `
       <span class="tree-toggle-btn ${isCollapsed ? 'collapsed' : ''}" title="展開/折りたたみ">▼</span>
       <span class="timeline-year-title">${escapeHtml(year)}年</span>
+      ${partialBadgeHtml}
       <span class="nav-count">${group.totalCount}</span>
     `;
 
@@ -203,19 +210,39 @@ function updateTimelineActiveClasses() {
   if (container) {
     container.querySelectorAll('.timeline-year-group').forEach(groupEl => {
       const monthItems = groupEl.querySelectorAll('.timeline-month-item');
-      let allSelected = monthItems.length > 0;
+      let selectedInYearCount = 0;
       monthItems.forEach(itemEl => {
         const ym = itemEl.dataset.filterValue;
         if (ym && state.selectedYearMonths.has(ym)) {
           itemEl.classList.add('active');
+          selectedInYearCount++;
         } else {
           itemEl.classList.remove('active');
-          allSelected = false;
         }
       });
+      const allSelected = monthItems.length > 0 && selectedInYearCount === monthItems.length;
+      const hasPartial = selectedInYearCount > 0 && !allSelected;
       const headerEl = groupEl.querySelector('.timeline-year-header');
       if (headerEl) {
         headerEl.classList.toggle('active-all', allSelected);
+        headerEl.classList.toggle('has-active-child', hasPartial);
+        const existingBadge = headerEl.querySelector('.child-filter-badge');
+        if (hasPartial) {
+          if (existingBadge) {
+            existingBadge.textContent = `+${selectedInYearCount}`;
+            existingBadge.title = `この年のうち ${selectedInYearCount}ヶ月を選択中`;
+          } else {
+            const badge = document.createElement('span');
+            badge.className = 'child-filter-badge is-accent';
+            badge.textContent = `+${selectedInYearCount}`;
+            badge.title = `この年のうち ${selectedInYearCount}ヶ月を選択中`;
+            const countEl = headerEl.querySelector('.nav-count');
+            if (countEl) headerEl.insertBefore(badge, countEl);
+            else headerEl.appendChild(badge);
+          }
+        } else if (existingBadge) {
+          existingBadge.remove();
+        }
       }
     });
   }
@@ -540,7 +567,7 @@ function updateCameraActiveClasses() {
 
   if (!elements.cameraList) return;
 
-  // カメラ親行の更新
+  // カメラ親行の更新（配下レンズのフィルタ状態も集計して道しるべ表示）
   elements.cameraList.querySelectorAll('.camera-tree-item').forEach(el => {
     const cam = el.dataset.camera || el.dataset.filterValue;
     const mode = (state.cameraFilters && state.cameraFilters.get(cam)) ||
@@ -551,6 +578,38 @@ function updateCameraActiveClasses() {
     const badge = el.querySelector('.camera-state-badge');
     if (badge) {
       badge.textContent = mode === 'include' ? '[+]' : (mode === 'exclude' ? '[-]' : '');
+    }
+
+    let childInc = 0;
+    let childExc = 0;
+    if (state.lensFilters && state.lensFilters.size > 0 && cam) {
+      state.lensFilters.forEach((lMode, lKey) => {
+        if (lKey.startsWith(`${cam}::`)) {
+          if (lMode === 'include') childInc++;
+          else if (lMode === 'exclude') childExc++;
+        }
+      });
+    }
+    el.classList.toggle('has-active-child-include', !mode && childInc > 0);
+    el.classList.toggle('has-active-child-exclude', !mode && childInc === 0 && childExc > 0);
+
+    el.querySelectorAll('.child-filter-badge').forEach(b => b.remove());
+    const countEl = el.querySelector('.nav-count');
+    if (childExc > 0) {
+      const b = document.createElement('span');
+      b.className = 'child-filter-badge is-exclude';
+      b.textContent = `−${childExc}`;
+      b.title = `このカメラ配下のレンズに −${childExc} 件の除外フィルタあり`;
+      if (countEl) el.insertBefore(b, countEl);
+      else el.appendChild(b);
+    }
+    if (childInc > 0) {
+      const b = document.createElement('span');
+      b.className = 'child-filter-badge is-include';
+      b.textContent = `+${childInc}`;
+      b.title = `このカメラ配下のレンズに +${childInc} 件のフィルタあり`;
+      if (countEl) el.insertBefore(b, countEl);
+      else el.appendChild(b);
     }
   });
 
@@ -886,12 +945,21 @@ function renderColorPalette() {
   // 常時表示してカラーによる絞り込みを直感的に提供
   elements.colorPaletteSection.style.display = 'block';
 
+  const colorHeaderEl = elements.colorPaletteHeader || document.getElementById('colorPaletteHeader');
+  if (colorHeaderEl) {
+    const hasColorInc = activeColorFilters.some(c => state.tagFilters.get(c) === 'include');
+    const hasColorExc = activeColorFilters.some(c => state.tagFilters.get(c) === 'exclude');
+    colorHeaderEl.classList.toggle('has-active-child-include', hasColorInc);
+    colorHeaderEl.classList.toggle('has-active-child-exclude', !hasColorInc && hasColorExc);
+  }
   if (elements.colorPaletteActiveCount) {
     if (activeColorFilters.length > 0) {
       const activeColor = activeColorFilters[0];
       const mode = state.tagFilters.get(activeColor);
-      const modeText = mode === 'exclude' ? '除外' : '含む';
-      elements.colorPaletteActiveCount.textContent = `(${activeColor}: ${modeText})`;
+      const isExc = mode === 'exclude';
+      const badgeCls = isExc ? 'is-exclude' : 'is-include';
+      const sign = isExc ? '−' : '+';
+      elements.colorPaletteActiveCount.innerHTML = `<span class="child-filter-badge ${badgeCls}">${sign}${escapeHtml(activeColor)}</span>`;
     } else {
       elements.colorPaletteActiveCount.textContent = '';
     }
@@ -995,10 +1063,31 @@ function renderTagList() {
   // カラータグパレットの描画（上部に集約）
   renderColorPalette();
 
-  // セグメントボタンのアクティブ同期
+  // セグメントボタンのアクティブ同期 ＆ 種別ごとのフィルタ適用中ドット表示
   if (elements.tagTypeSegmentedControl) {
+    let hasManualActive = false;
+    let hasAiActive = false;
+    if (state.tagFilters && state.tagFilters.size > 0) {
+      const tagSourceMap = new Map();
+      (state.availableTags || []).forEach(t => {
+        const tName = t.tag || t.name;
+        if (tName && !(tName in COLOR_TAG_MAP)) {
+          tagSourceMap.set(tName, t.source || 'manual');
+        }
+      });
+      state.tagFilters.forEach((_mode, tPath) => {
+        if (tPath in COLOR_TAG_MAP) return;
+        const src = tagSourceMap.get(tPath) || 'manual';
+        if (src === 'manual' || src === 'both') hasManualActive = true;
+        if (src === 'ai' || src === 'both') hasAiActive = true;
+      });
+    }
     elements.tagTypeSegmentedControl.querySelectorAll('.tag-segment-btn').forEach(b => {
-      b.classList.toggle('active', (b.dataset.sourceFilter || 'manual') === state.tagSourceFilter);
+      const sf = b.dataset.sourceFilter || 'manual';
+      b.classList.toggle('active', sf === state.tagSourceFilter);
+      if (sf === 'manual') b.classList.toggle('has-filter', hasManualActive);
+      else if (sf === 'ai') b.classList.toggle('has-filter', hasAiActive);
+      else b.classList.toggle('has-filter', hasManualActive || hasAiActive);
     });
   }
 
@@ -1065,6 +1154,21 @@ function renderTagList() {
     });
   }
 
+  // 子孫ノードに適用中のフィルタ件数（include / exclude）を再帰集計するヘルパー
+  function countDescendantTagFilters(node) {
+    let inc = 0;
+    let exc = 0;
+    node.children.forEach(child => {
+      const m = state.tagFilters.get(child.fullPath);
+      if (m === 'include') inc++;
+      else if (m === 'exclude') exc++;
+      const sub = countDescendantTagFilters(child);
+      inc += sub.inc;
+      exc += sub.exc;
+    });
+    return { inc, exc };
+  }
+
   // ツリーノードを再帰的にDOM構築
   function appendTreeNodes(parentNode, container) {
     parentNode.children.forEach(node => {
@@ -1073,10 +1177,12 @@ function renderTagList() {
 
       const hasChildren = node.children.size > 0;
       const currentMode = state.tagFilters.get(node.fullPath);
+      const descCounts = hasChildren ? countDescendantTagFilters(node) : { inc: 0, exc: 0 };
 
       // ピル行
       const pillItem = document.createElement('div');
       pillItem.className = 'tag-pill-item';
+      pillItem.dataset.tagPath = node.fullPath;
       if (node.source === 'ai') {
         pillItem.classList.add('is-ai-tag');
       }
@@ -1088,6 +1194,10 @@ function renderTagList() {
       } else if (currentMode === 'exclude') {
         pillItem.classList.add('state-exclude');
         stateIcon = '−';
+      } else if (descCounts.inc > 0) {
+        pillItem.classList.add('has-active-child-include');
+      } else if (descCounts.exc > 0) {
+        pillItem.classList.add('has-active-child-exclude');
       }
 
       const isExpanded = state.expandedTagPaths.has(node.fullPath);
@@ -1104,6 +1214,15 @@ function renderTagList() {
         aiIconHtml = '<span class="ai-tag-pill-badge" style="margin-right: 3px;">AI</span>';
       }
 
+      // 配下の子孫フィルタ通知バッジ（折りたたんでいても中にON/除外があることを明示）
+      let childBadgeHtml = '';
+      if (descCounts.inc > 0) {
+        childBadgeHtml += `<span class="child-filter-badge is-include" title="このタグの配下に +${descCounts.inc} 件の含むフィルタがあります">+${descCounts.inc}</span>`;
+      }
+      if (descCounts.exc > 0) {
+        childBadgeHtml += `<span class="child-filter-badge is-exclude" title="このタグの配下に −${descCounts.exc} 件の除外フィルタがあります">−${descCounts.exc}</span>`;
+      }
+
       pillItem.innerHTML = `
         <div class="tag-pill-main">
           ${arrowHtml}
@@ -1112,6 +1231,7 @@ function renderTagList() {
           <span class="tag-name-text" title="${escapeHtml(node.fullPath)}">${escapeHtml(node.name)}</span>
         </div>
         <div class="tag-pill-right">
+          ${childBadgeHtml}
           <span class="tag-pill-count">${node.count}</span>
         </div>
       `;

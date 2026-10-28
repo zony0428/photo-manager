@@ -214,6 +214,7 @@ function renderFolderTree() {
     offline.forEach(v => frag.appendChild(_ftBuildNodeLi(_ftOfflineNode(v))));
   }
   container.replaceChildren(frag);
+  syncFolderTreeFilterStates();
   // スキャン中の場合、再描画後も対象ノードの直下にインライン進捗バーを再アタッチ
   if (_activeScanningPath) {
     const reItem = _ftFindItemByPath(_activeScanningPath);
@@ -289,6 +290,43 @@ function _ftFilterState(node) {
   if (state.currentFilter.type === 'folder_exclude') return 'exclude';
   return null;
 }
+
+/**
+ * フォルダツリー内のすべての .folder-tree-item に対して、
+ * 自身の選択状態（active / active-exclude）および配下サブフォルダの選択状態（has-active-child-* ＆ 道しるべバッジ）を同期する
+ */
+function syncFolderTreeFilterStates() {
+  const isFolderFilter = state.currentFilter &&
+    (state.currentFilter.type === 'folder' || state.currentFilter.type === 'folder_exclude') &&
+    Boolean(state.currentFilter.value);
+  const targetNorm = isFolderFilter ? _ftNormPath(state.currentFilter.value) : '';
+  const isExclude = isFolderFilter && state.currentFilter.type === 'folder_exclude';
+
+  document.querySelectorAll('#folderList .folder-tree-item').forEach(el => {
+    const itemPath = _ftNormPath(el.dataset.filterValue || '');
+    const isExact = isFolderFilter && itemPath && itemPath === targetNorm;
+    const isAncestor = isFolderFilter && itemPath && !isExact && targetNorm.startsWith(itemPath + '\\');
+
+    el.classList.toggle('active', isExact && !isExclude);
+    el.classList.toggle('active-exclude', isExact && isExclude);
+    el.classList.toggle('has-active-child-include', isAncestor && !isExclude);
+    el.classList.toggle('has-active-child-exclude', isAncestor && isExclude);
+
+    el.querySelectorAll('.child-filter-badge').forEach(b => b.remove());
+    if (isAncestor) {
+      const badge = document.createElement('span');
+      badge.className = `child-filter-badge ${isExclude ? 'is-exclude' : 'is-include'}`;
+      badge.textContent = isExclude ? '−1' : '+1';
+      badge.title = isExclude
+        ? `配下のサブフォルダ（${state.currentFilter.value}）を除外中`
+        : `配下のサブフォルダ（${state.currentFilter.value}）で絞り込み中`;
+      const countEl = el.querySelector('.nav-count, .folder-managed-dot');
+      if (countEl) el.insertBefore(badge, countEl);
+      else el.appendChild(badge);
+    }
+  });
+}
+window.syncFolderTreeFilterStates = syncFolderTreeFilterStates;
 
 function _ftBuildNodeLi(node) {
   const li = document.createElement('li');
@@ -419,6 +457,7 @@ function _ftFillChildren(ul, node, data) {
   const frag = document.createDocumentFragment();
   children.forEach(c => frag.appendChild(_ftBuildNodeLi(_ftChildNode(node, c))));
   ul.appendChild(frag);
+  syncFolderTreeFilterStates();
 }
 
 /** 指定キー自身とその配下の展開状態を破棄する */
@@ -448,6 +487,7 @@ function _ftToggle(node, li) {
     toggle.title = willExpand ? '折りたたむ' : '展開';
   }
   if (icon) icon.innerHTML = _ftIcon(node, willExpand);
+  syncFolderTreeFilterStates();
 }
 
 /* --------------------------------------------------------------------------

@@ -11,15 +11,15 @@
   <link rel="manifest" href="/manifest.json?v=2">
   <meta name="theme-color" content="#191816">
   <link rel="stylesheet" href="/vendor/fonts/fonts.css">
-  <link rel="stylesheet" href="/css/style.css?v=3.0.2">
-  <link rel="stylesheet" href="/css/grid-lightbox.css?v=3.0.2">
-  <link rel="stylesheet" href="/css/selection-menu.css?v=3.0.2">
-  <link rel="stylesheet" href="/css/inspector.css?v=3.0.2">
-  <link rel="stylesheet" href="/css/modals-features.css?v=3.0.2">
-  <link rel="stylesheet" href="/css/lab-map.css?v=3.0.2">
-  <link rel="stylesheet" href="/css/histogram.css?v=3.0.2">
-  <link rel="stylesheet" href="/css/compare.css?v=3.0.2">
-  <link rel="stylesheet" href="/css/ui-unify.css?v=3.0.2">
+  <link rel="stylesheet" href="/css/style.css?v=3.1.0">
+  <link rel="stylesheet" href="/css/grid-lightbox.css?v=3.1.0">
+  <link rel="stylesheet" href="/css/selection-menu.css?v=3.1.0">
+  <link rel="stylesheet" href="/css/inspector.css?v=3.1.0">
+  <link rel="stylesheet" href="/css/modals-features.css?v=3.1.0">
+  <link rel="stylesheet" href="/css/lab-map.css?v=3.1.0">
+  <link rel="stylesheet" href="/css/histogram.css?v=3.1.0">
+  <link rel="stylesheet" href="/css/compare.css?v=3.1.0">
+  <link rel="stylesheet" href="/css/ui-unify.css?v=3.1.0">
   <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
   <script src="/vendor/leaflet/leaflet.js"></script>
   <script>
@@ -64,7 +64,7 @@
         <div class="logo">
           <span class="hinomaru-disc" title="Hinomaru Ink"></span>
           <span class="logo-text">PHOTO<span>MANAGER</span></span>
-          <span class="app-version" id="appVersion" title="v3.0.2 (最終更新: 2026-10-27 18:06)">v3.0.2</span>
+          <span class="app-version" id="appVersion" title="v3.1.0 (最終更新: 2026-10-28 15:00)">v3.1.0</span>
         </div>
 
         <!-- テーマ切替（和紙 ⇄ 夜墨） -->
@@ -233,18 +233,11 @@
 
         <!-- 第2段階: 右側 メニュー・ツリー表示エリア -->
         <div class="sidebar-stage" id="sidebarStage">
-        <!-- 上部コントロールバー（全フィルタ解除 ＆ サイドバー非表示） -->
+        <!-- 上部コントロールバー（全フィルタ解除） -->
         <div class="sidebar-top-bar">
           <button class="btn btn-secondary btn-sm sidebar-reset-btn" id="sidebarResetFilterBtn" title="すべてのフィルタを解除して全写真を表示">
             <span class="btn-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg></span>
             <span class="btn-label">フィルタ全解除</span>
-            <span class="sidebar-reset-dot" id="sidebarResetDot" style="display: none;"></span>
-          </button>
-          <button class="btn btn-icon-only btn-sm sidebar-expand-toggle-btn" id="sidebarToggleAllBtn" title="開いているメニューを閉じる">
-            <svg class="toggle-all-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="7 13 12 18 17 13"/><polyline points="7 6 12 11 17 6"/></svg>
-          </button>
-          <button class="btn btn-icon-only btn-sm sidebar-close-btn" id="sidebarCloseBtn" title="サイドバーを非表示にする ([ または B)">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
         </div>
 
@@ -267,10 +260,10 @@
           <div class="rating-filter">
             <label style="display: none;">評価フィルタ:</label>
             <div class="rating-filter-toggles" id="ratingFilterToggles">
-              <button class="rating-toggle active" data-rating="2" title="優 (1キー)">優</button>
-              <button class="rating-toggle active" data-rating="1" title="良 (2キー)">良</button>
-              <button class="rating-toggle active" data-rating="0" title="可 (0キー)">可</button>
-              <button class="rating-toggle" data-rating="-1" title="棄 (3キー)">棄</button>
+              <button class="rating-toggle active" data-rating="2" title="評価「優」の写真を表示/非表示">優</button>
+              <button class="rating-toggle active" data-rating="1" title="評価「良」の写真を表示/非表示">良</button>
+              <button class="rating-toggle active" data-rating="0" title="評価「可」の写真を表示/非表示">可</button>
+              <button class="rating-toggle" data-rating="-1" title="評価「棄」の写真を表示/非表示">棄</button>
             </div>
           </div>
         </div>
@@ -279,7 +272,7 @@
         <div class="sidebar-accordion" id="sidebarAccordion">
           <!-- セクション 1: クイックアクセス -->
           <div class="accordion-item is-open" data-section="quick" id="accordionItem-quick">
-            <div class="accordion-header" data-section="quick" title="クリックで切替 / Shift+クリックで複数同時展開">
+            <div class="accordion-header" data-section="quick">
               <span class="accordion-arrow">▶</span>
               <span class="accordion-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span>
               <span class="accordion-title">クイックアクセス</span>
@@ -348,7 +341,7 @@
 
           <!-- セクション 2: フォルダ -->
           <div class="accordion-item" data-section="folder" id="accordionItem-folder">
-            <div class="accordion-header" data-section="folder" title="クリックで切替 / Shift+クリックで複数同時展開">
+            <div class="accordion-header" data-section="folder">
               <span class="accordion-arrow">▶</span>
               <span class="accordion-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>
               <span class="accordion-title">フォルダ</span>
@@ -407,7 +400,7 @@
 
           <!-- セクション 3: タグ (アルバム) -->
           <div class="accordion-item" data-section="tags" id="accordionItem-tags">
-            <div class="accordion-header" data-section="tags" title="クリックで切替 / Shift+クリックで複数同時展開">
+            <div class="accordion-header" data-section="tags">
               <span class="accordion-arrow">▶</span>
               <span class="accordion-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg></span>
               <span class="accordion-title">タグ (アルバム)</span>
@@ -462,7 +455,7 @@
 
           <!-- セクション 4: ジオタグ -->
           <div class="accordion-item" data-section="location" id="accordionItem-location">
-            <div class="accordion-header" data-section="location" title="クリックで切替 / Shift+クリックで複数同時展開">
+            <div class="accordion-header" data-section="location">
               <span class="accordion-arrow">▶</span>
               <span class="accordion-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg></span>
               <span class="accordion-title">ジオタグ</span>
@@ -498,7 +491,7 @@
 
           <!-- セクション 5: タイムライン -->
           <div class="accordion-item" data-section="timeline" id="accordionItem-timeline">
-            <div class="accordion-header" data-section="timeline" title="クリックで切替 / Shift+クリックで複数同時展開">
+            <div class="accordion-header" data-section="timeline">
               <span class="accordion-arrow">▶</span>
               <span class="accordion-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span>
               <span class="accordion-title">タイムライン</span>
@@ -513,7 +506,7 @@
 
           <!-- セクション 6: カメラ・レンズ -->
           <div class="accordion-item" data-section="camera" id="accordionItem-camera">
-            <div class="accordion-header" data-section="camera" title="クリックで切替 / Shift+クリックで複数同時展開">
+            <div class="accordion-header" data-section="camera">
               <span class="accordion-arrow">▶</span>
               <span class="accordion-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></span>
               <span class="accordion-title">カメラ・レンズ</span>
@@ -540,7 +533,7 @@
 
           <!-- セクション 7: ラボ（実験室：分析・発掘・特殊抽出） -->
           <div class="accordion-item" data-section="lab" id="accordionItem-lab">
-            <div class="accordion-header" data-section="lab" title="クリックで切替 / Shift+クリックで複数同時展開">
+            <div class="accordion-header" data-section="lab">
               <span class="accordion-arrow">▶</span>
               <span class="accordion-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v7.31"/><path d="M14 9.3V1.99"/><path d="M8.5 2h7"/><path d="M14 9.3a6.5 6.5 0 1 1-4 0"/><path d="M5.52 16h12.96"/></svg></span>
               <span class="accordion-title">ラボ</span>
@@ -600,7 +593,7 @@
 
           <!-- セクション 8: ファイル名検索（最下部配置） -->
           <div class="accordion-item" data-section="search" id="accordionItem-search">
-            <div class="accordion-header" data-section="search" title="クリックで切替 / Shift+クリックで複数同時展開">
+            <div class="accordion-header" data-section="search">
               <span class="accordion-arrow">▶</span>
               <span class="accordion-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
               <span class="accordion-title">ファイル名検索</span>
@@ -632,9 +625,6 @@
         <div class="view-header view-chip-bar" id="viewHeaderChipBar" style="display: none;">
           <div class="current-filter-info">
             <div class="active-filter-chips" id="activeFilterChips"></div>
-            <button id="clearFilterBtn" class="clear-filter-pill-btn" style="display: none;" title="絞り込みをすべて解除してすべての写真を表示">
-              すべて解除
-            </button>
             <button id="purgeUnlinkedBtn" class="clear-filter-pill-btn" style="display: none; background: rgba(220, 53, 69, 0.12); color: var(--danger, #dc3545); border-color: rgba(220, 53, 69, 0.3);" title="リンク消失しているすべての写真レコード（サムネイル・タグ含む）をDBから完全に消去">
               リンク消失写真をすべて完全消去
             </button>
@@ -699,11 +689,8 @@
 
         <!-- 上部固定プレビューサムネイル（スクロールしても常に固定表示） -->
         <div class="inspector-fixed-preview" id="inspectorFixedPreview">
-          <div class="inspector-preview-wrapper inspector-preview-container" id="inspectorPreviewWrapper" title="クリックで大画面ビューワを開く (Space)">
+          <div class="inspector-preview-wrapper inspector-preview-container" id="inspectorPreviewWrapper" title="ダブルクリックでライトボックスを開く">
             <img id="inspectorThumb" src="" alt="プレビュー">
-            <div class="inspector-preview-overlay">
-              <span>拡大ビューワ (Space)</span>
-            </div>
           </div>
           <!-- クイックアクションバー（画像調整・ヒストグラム・回転） -->
           <div class="inspector-quick-actions-bar" id="inspectorQuickActionsBar">
@@ -734,10 +721,10 @@
             <!-- 評価 -->
             <div class="inspector-section inspector-rating-section rating-buttons">
               <div class="inspector-rating-btns" id="inspectorRatingBtns">
-                <button class="rating-btn rating-btn-excellent" data-rating="2">優</button>
-                <button class="rating-btn rating-btn-good" data-rating="1">良</button>
-                <button class="rating-btn rating-btn-normal" data-rating="0">可</button>
-                <button class="rating-btn rating-btn-discard" data-rating="-1">棄</button>
+                <button class="rating-btn rating-btn-excellent" data-rating="2" title="優 (1)">優</button>
+                <button class="rating-btn rating-btn-good" data-rating="1" title="良 (2)">良</button>
+                <button class="rating-btn rating-btn-normal" data-rating="0" title="可 (0 / 4)">可</button>
+                <button class="rating-btn rating-btn-discard" data-rating="-1" title="棄 (3 / X)">棄</button>
               </div>
             </div>
 
@@ -952,10 +939,10 @@
             <div class="inspector-section">
               <div class="inspector-label">一括評価を設定</div>
               <div class="batch-rate-buttons" id="batchRateButtons">
-                <button class="btn btn-sm btn-rate btn-rate-excellent" data-rating="2">優</button>
-                <button class="btn btn-sm btn-rate btn-rate-good" data-rating="1">良</button>
-                <button class="btn btn-sm btn-rate btn-rate-normal" data-rating="0">可</button>
-                <button class="btn btn-sm btn-rate-discard" data-rating="-1">棄</button>
+                <button class="btn btn-sm btn-rate btn-rate-excellent" data-rating="2" title="優 (1)">優</button>
+                <button class="btn btn-sm btn-rate btn-rate-good" data-rating="1" title="良 (2)">良</button>
+                <button class="btn btn-sm btn-rate btn-rate-normal" data-rating="0" title="可 (0 / 4)">可</button>
+                <button class="btn btn-sm btn-rate-discard" data-rating="-1" title="棄 (3 / X)">棄</button>
               </div>
             </div>
 
@@ -1216,7 +1203,7 @@
               <li><kbd>3</kbd> または <kbd>X</kbd> キー：<strong>棄 (Rj)</strong>（ピンボケ・目つぶり等のボツ写真。<strong>一覧から自動で隠れ、自動で次の写真へフォーカスが移ります</strong>）</li>
               <li><kbd>0</kbd> または <kbd>4</kbd> キー：<strong>可 (Nm)</strong>（評価を取り消して初期状態に戻す）</li>
             </ul>
-            <p class="help-tip"><strong>「棄」にした写真を見返すには？</strong> ファイル自体は削除されていません。上部ヘッダーの <strong>「棄」</strong> ボタンをクリックして点灯させればいつでも再表示でき、<kbd>0</kbd> キーで復活できます。また隣にある <strong>「すべて ／ RAW ／ 調整済」</strong> ピルおよび <strong>「詳細属性...（JPEG/一般のみ ／ RAW+JPGペア ／ XMPあり）」</strong> で目的の形式や編集状態の写真だけをワンクリックで抽出できます。</p>
+            <p class="help-tip"><strong>「棄」にした写真を見返すには？</strong> ファイル自体は削除されていません。左サイドバー上部の評価フィルタにある <strong>「棄」</strong> ボタンをクリックして点灯させればいつでも再表示でき、<kbd>0</kbd> キーで復活できます。またすぐ上の <strong>「すべて ／ RAW ／ 調整済」</strong> ピルおよび <strong>「詳細...（JPEG/一般のみ ／ RAW+JPGペア ／ XMPあり）」</strong> で目的の形式や編集状態の写真だけをワンクリックで抽出できます。</p>
           </div>
 
           <div class="help-card" style="margin-top: 14px;">
@@ -1234,7 +1221,7 @@
           <div class="help-card" style="margin-top: 14px;">
             <h4>5. 複数の写真をまとめて操作する ＆ 絞り込み検索</h4>
             <p><strong>複数選択:</strong> <kbd>Ctrl</kbd>+クリックで追加選択、<kbd>Shift</kbd>+クリックで範囲選択、<kbd>Ctrl</kbd>+<kbd>A</kbd> で全選択できます。選ぶと<strong>右インスペクタの一括編集パネルや右クリックメニュー</strong>から、まとめて評価付け・タグ付け・回転・書き出し・<strong>「2枚比較」</strong>が行えます。</p>
-            <p><strong>写真を探す:</strong> 左サイドバーの「年月」「機材（機種＞レンズ階層ツリー＆<code>[+]</code>含む/<code>[-]</code>除外検索）」「ラボ」や、「検索」で自在に絞り込めます。元に戻すときは左サイドバー一番上の <strong>「すべての写真」</strong> または <strong>「フィルタ全解除」</strong> を押してください。</p>
+            <p><strong>写真を探す:</strong> 左サイドバーの「年月」「機材（機種＞レンズ階層ツリー＆<code>[+]</code>含む/<code>[-]</code>除外検索）」「ラボ」や、「検索」で自在に絞り込めます。左端アイコンバーの通知ランプや親階層の道標バッジ（<code>+1</code> / <code>-1</code> 破線枠）で適用箇所がひと目で分かり、上部のフィルタチップをクリックすると該当ツリー位置へ自動ジャンプします。元に戻すときは左サイドバー一番上の <strong>「フィルタ全解除」</strong> を押してください。</p>
           </div>
         </div>
 
@@ -1245,7 +1232,7 @@
             <p>上部ツールバーの <strong>「スタック」</strong> ボタンがONのとき、「連写」「露出ブラケット（AEB）」「別フォルダにある同一写真の重複コピー」を自動で1つの束にまとめ、代表の1枚だけを表示します。</p>
             <ul>
               <li><strong>束の中身を見比べる:</strong> ライトボックス（<kbd>Space</kbd>）を開き、<kbd>↑</kbd> / <kbd>↓</kbd> キーや下部のミニサムネイルバーで比較できます。</li>
-              <li><strong>2枚並べて比較（同期ズーム＆パン）:</strong> 写真を2枚選んで右クリックメニュー（または右インスペクタ）の <strong>「2枚比較」</strong>、あるいはライトボックス上部の <strong>「隣と比較」</strong> を押すと、左右に並べて<strong>連動ズーム＆ドラッグ移動</strong>でピントや描写を厳密に見比べられます。Exifの差分もハイライト表示され、左写真は <kbd>1</kbd>〜<kbd>4</kbd>、右写真は <kbd>Shift</kbd>+<kbd>1</kbd>〜<kbd>4</kbd> で即座に評価付けできます。</li>
+              <li><strong>2枚並べて比較（同期ズーム＆パン / <kbd>V</kbd> キー）:</strong> キーボードの <kbd>V</kbd> キー、右クリックメニューの <strong>「2枚並べて比較 (V)」</strong>、左サイドバー「ラボ」の <strong>「2枚比較」</strong>、またはライトボックス上部の <strong>「2枚比較」ボタン</strong> を押すと、左右に並べて<strong>連動ズーム＆ドラッグ移動</strong>でピントや描写を厳密に見比べられます。選択中ペインの写真は <kbd>1</kbd>〜<kbd>3</kbd> / <kbd>0</kbd> キーで評価でき、<kbd>W</kbd> キーで右(B)を左(A:基準)に昇格して次へ進む勝ち抜き選別や、<kbd>S</kbd> キーでの左右入れ替えも行えます。</li>
               <li><strong>代表（表紙）を変える:</strong> 気に入ったコマを表示して、ライトボックス上部（評価ボタンの左隣）の <strong>「代表」バッジ</strong>、または右インスペクタの <strong>「代表に設定」</strong> を押します。</li>
               <li><strong>重複写真の確認:</strong> 別フォルダに同じ写真がある場合はサムネイル右上角に「折り目マーク」が付きます。左サイドバー「クイックアクセス」の <strong>「重複のある写真」</strong> から一覧でき、右インスペクタで保存先フォルダを確認・整理できます。</li>
             </ul>
@@ -1275,7 +1262,7 @@
           <div class="help-card" style="margin-top: 14px;">
             <h4>4. 撮影場所（ジオタグ）ツリー・47都道府県制覇マップ・スマホGPS準用 ＆ 撮影日時シフト補正</h4>
             <p><strong>場所ツリー:</strong> GPS情報付き写真は、左サイドバー「ジオタグ」から「国 ＞ 都道府県 ＞ 市区町村」の階層で絞り込めます。</p>
-            <p><strong>47都道府県 撮影制覇白地図・ヒートマップ・撮影さんぽ軌跡:</strong> 左サイドバー「ラボ」内の <strong>「47都道府県 制覇白地図」</strong> ボタンを押すと、以下の3つの地図分析モードを楽しめます：</p>
+            <p><strong>47都道府県 撮影制覇白地図・ヒートマップ・撮影さんぽ軌跡:</strong> 左サイドバー「ジオタグ」上部の <strong>「制覇マップ」</strong> ボタンを押すと、以下の3つの地図分析モードを楽しめます：</p>
             <ul>
               <li><strong>47都道府県 制覇白地図:</strong> 撮影したことがある都道府県が撮影枚数に応じて色分けされ、制覇率（○/47都道府県）を表示。県をクリックするとその県の写真だけを即座に一覧抽出できます。</li>
               <li><strong>撮影密度ヒートマップ ＆ 撮影さんぽ軌跡ライン:</strong> よく撮影に訪れるスポットがヒートマップで浮かび上がり、さらに日付を選ぶとその日に歩いた撮影ルートを時系列の赤い破線（さんぽ軌跡）で地図上に再現します。</li>
@@ -1418,7 +1405,7 @@
           <div class="help-card" style="margin-top: 18px;">
             <h4>よくある質問（FAQ）</h4>
             <p><strong>Q. <kbd>3</kbd> キーで「棄」にしたら写真が消えました。ファイルが削除されたのですか？</strong><br>
-            A. いいえ、パソコン内のファイルは削除されていません。画面上部ツールバーの <strong>「棄 (Rj)」</strong> ボタンを押して点灯させればいつでも再表示でき、<kbd>0</kbd> キーで元に戻せます。</p>
+            A. いいえ、パソコン内のファイルは削除されていません。左サイドバー上部の評価フィルタにある <strong>「棄 (Rj)」</strong> ボタンを押して点灯させればいつでも再表示でき、<kbd>0</kbd> キーで元に戻せます。</p>
             <p style="margin-top: 8px;"><strong>Q. 回転や明るさ調整をした写真を、実際のファイルとして保存したいときは？</strong><br>
             A. アプリ内の調整は元ファイルを傷つけない非破壊方式です。調整結果を焼き込んだ画像ファイルを作るには、右クリックメニューの <strong>「テイクアウト」＞「スマート・テイクアウト...」</strong> から書き出してください。</p>
             <p style="margin-top: 8px;"><strong>Q. 初回起動時に「Windows によって PC が保護されました」と表示されました。</strong><br>
@@ -2209,10 +2196,10 @@
         <button class="icon-action-btn" id="lightboxResetAdjustBtn" title="回転・調整をリセット (0°)">
           <span style="font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center;">0°</span>
         </button>
-        <button class="icon-action-btn" id="lightboxAdjustBtn" title="画像の調整 (Crop & Rotate)">
+        <button class="icon-action-btn" id="lightboxAdjustBtn" title="切り抜き・傾き・明るさを調整 (C)">
           <span style="font-size: 13px; display: flex; align-items: center; justify-content: center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg></span>
         </button>
-        <button class="icon-action-btn" id="toggleExifBtn" title="EXIF詳細トグル">
+        <button class="icon-action-btn" id="toggleExifBtn" title="詳細情報 (EXIF・タグ) の表示/非表示">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
         </button>
         <button class="icon-action-btn close-btn" id="closeLightboxBtn" title="閉じる (Esc)">&times;</button>
@@ -2734,23 +2721,23 @@
     </div>
   </div>
 
-  <script src="/js/common.js?v=3.0.2"></script>
-  <script src="/js/selection.js?v=3.0.2"></script>
-  <script src="/js/inspector.js?v=3.0.2"></script>
-  <script src="/js/lightbox.js?v=3.0.2"></script>
-  <script src="/js/adjust.js?v=3.0.2"></script>
-  <script src="/js/histogram.js?v=3.0.2"></script>
-  <script src="/js/compare.js?v=3.0.2"></script>
-  <script src="/js/takeout.js?v=3.0.2"></script>
-  <script src="/js/presets.js?v=3.0.2"></script>
-  <script src="/js/slideshow.js?v=3.0.2"></script>
-  <script src="/js/location_tree.js?v=3.0.2"></script>
-  <script src="/js/folder_tree.js?v=3.0.2"></script>
-  <script src="/js/location_map.js?v=3.0.2"></script>
-  <script src="/js/lab.js?v=3.0.2"></script>
-  <script src="/js/sidebar_filters.js?v=3.0.2"></script>
-  <script src="/js/storage.js?v=3.0.2"></script>
-  <script src="/js/app.js?v=3.0.2"></script>
-  <script src="/js/i18n.js?v=3.0.2"></script>
+  <script src="/js/common.js?v=3.1.0"></script>
+  <script src="/js/selection.js?v=3.1.0"></script>
+  <script src="/js/inspector.js?v=3.1.0"></script>
+  <script src="/js/lightbox.js?v=3.1.0"></script>
+  <script src="/js/adjust.js?v=3.1.0"></script>
+  <script src="/js/histogram.js?v=3.1.0"></script>
+  <script src="/js/compare.js?v=3.1.0"></script>
+  <script src="/js/takeout.js?v=3.1.0"></script>
+  <script src="/js/presets.js?v=3.1.0"></script>
+  <script src="/js/slideshow.js?v=3.1.0"></script>
+  <script src="/js/location_tree.js?v=3.1.0"></script>
+  <script src="/js/folder_tree.js?v=3.1.0"></script>
+  <script src="/js/location_map.js?v=3.1.0"></script>
+  <script src="/js/lab.js?v=3.1.0"></script>
+  <script src="/js/sidebar_filters.js?v=3.1.0"></script>
+  <script src="/js/storage.js?v=3.1.0"></script>
+  <script src="/js/app.js?v=3.1.0"></script>
+  <script src="/js/i18n.js?v=3.1.0"></script>
 </body>
 </html>

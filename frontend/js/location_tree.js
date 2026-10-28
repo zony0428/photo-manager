@@ -383,9 +383,12 @@ function clearLocationFilter() {
  * ツリー上のアクティブ項目のハイライト更新
  */
 function updateLocationTreeActiveState() {
-  // ツリー項目
+  // ツリー項目と道しるべバッジのリセット
   const rows = document.querySelectorAll('.location-tree .location-node-row');
-  rows.forEach(r => r.classList.remove('active'));
+  rows.forEach(r => {
+    r.classList.remove('active', 'has-active-child');
+    r.querySelectorAll('.child-filter-badge').forEach(b => b.remove());
+  });
 
   const noLocItem = document.getElementById('noLocationNavItem');
   if (noLocItem) noLocItem.classList.remove('active');
@@ -399,13 +402,33 @@ function updateLocationTreeActiveState() {
 
   const { country, state: st, city } = state.activeLocation;
   let targetPath = country;
-  if (st && city) targetPath = `${country}/${st}/${city}`;
-  else if (st) targetPath = `${country}/${st}`;
+  const ancestorPaths = [];
+  if (st && city) {
+    targetPath = `${country}/${st}/${city}`;
+    ancestorPaths.push(country, `${country}/${st}`);
+  } else if (st) {
+    targetPath = `${country}/${st}`;
+    ancestorPaths.push(country);
+  }
 
   const targetNode = document.querySelector(`.location-tree-node[data-location-path="${CSS.escape(targetPath)}"] > .location-node-row`);
   if (targetNode) {
     targetNode.classList.add('active');
   }
+
+  ancestorPaths.forEach(ancPath => {
+    const ancRow = document.querySelector(`.location-tree-node[data-location-path="${CSS.escape(ancPath)}"] > .location-node-row`);
+    if (ancRow) {
+      ancRow.classList.add('has-active-child');
+      const badge = document.createElement('span');
+      badge.className = 'child-filter-badge is-accent';
+      badge.textContent = '●';
+      badge.title = `配下の地域（${state.activeLocation.label || targetPath}）で絞り込み中`;
+      const countEl = ancRow.querySelector('.location-node-count');
+      if (countEl) ancRow.insertBefore(badge, countEl);
+      else ancRow.appendChild(badge);
+    }
+  });
 }
 
 /**
@@ -438,6 +461,17 @@ function getCountryEmoji(countryName) {
   return '';
 }
 
+/**
+ * 現在選択中のジオタグ地域の親階層を展開してツリーを再描画する
+ */
+async function revealActiveLocationInTree() {
+  if (!state.activeLocation || state.activeLocation.no_location) return;
+  const { country, state: st } = state.activeLocation;
+  if (country) locationExpandedPaths.add(country);
+  if (country && st) locationExpandedPaths.add(`${country}/${st}`);
+  await loadLocationTree();
+}
+
 // グローバル公開
 window.initLocationTree = initLocationTree;
 window.loadLocationTree = loadLocationTree;
@@ -445,4 +479,5 @@ window.clearLocationFilter = clearLocationFilter;
 window.updateLocationTreeActiveState = updateLocationTreeActiveState;
 window.selectLocationFilter = selectLocationFilter;
 window.toggleNoLocationFilter = toggleNoLocationFilter;
+window.revealActiveLocationInTree = revealActiveLocationInTree;
 
