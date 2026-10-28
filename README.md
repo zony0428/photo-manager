@@ -7,9 +7,11 @@ JPEG / PNG / WebP / HEIC や各社カメラの RAW データを、元のファ�
 
 すぐに試す場合は、[GitHub Releases](../../releases) から最新版 ZIP をダウンロードし、解凍して `PhotoManager.exe` を起動してください（インストール不要）。
 
-| びっしり表示（アスペクト比維持・連写スタック） | マウント表示（スライドフィルム枠モード） |
-| :---: | :---: |
-| ![びっしり表示](docs/images/screenshot_masonry.png) | ![マウント表示](docs/images/screenshot_mount.png) |
+![操作ワークフローデモ（片手レーティング選別・表示切替・RAW拡大・連写コマ送り・2枚比較）](docs/images/demo_workflow.webp)
+
+| びっしり表示（アスペクト比維持・連写スタック） | マウント表示（スライドフィルム枠モード） | 2枚比較（Duel）＆ヒストグラム波形比較 |
+| :---: | :---: | :---: |
+| ![びっしり表示](docs/images/screenshot_masonry.png) | ![マウント表示](docs/images/screenshot_mount.png) | ![2枚比較モード](docs/images/screenshot_compare.png) |
 
 ---
 

@@ -7,9 +7,11 @@ Browse, compare, and organize large collections of photos (JPEG, PNG, WebP, HEIC
 
 To try it right away, download the latest ZIP from [GitHub Releases](../../releases), extract it to any folder, and run `PhotoManager.exe` (no installation required).
 
-| Masonry View (Aspect-ratio preserved & Burst Stack) | Slide Mount View (Film Slide Frame Mode) |
-| :---: | :---: |
-| ![Masonry View](docs/images/screenshot_masonry.png) | ![Slide Mount View](docs/images/screenshot_mount.png) |
+![Workflow Demo (One-handed rating, layout & theme toggle, RAW Lightbox, burst frame flip, and 2-Up Duel comparison)](docs/images/demo_workflow.webp)
+
+| Masonry View (Aspect-ratio preserved & Burst Stack) | Slide Mount View (Film Slide Frame Mode) | 2-Up Side-by-Side Duel & RGB Histograms |
+| :---: | :---: | :---: |
+| ![Masonry View](docs/images/screenshot_masonry.png) | ![Slide Mount View](docs/images/screenshot_mount.png) | ![2-Up Duel Comparison](docs/images/screenshot_compare.png) |
 
 ---
 
