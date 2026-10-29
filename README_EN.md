@@ -21,31 +21,37 @@ To try it right away, download the latest ZIP from [GitHub Releases](../../relea
 > - 100% "Vibe Coding" — Built Entirely by Asking AI:  
 >   Every line of code in this application was written by AI. I (the author) have zero knowledge of how the code inside actually works lol. Please don't ask me technical questions like "How does line X work?" because I genuinely have no idea.
 > - Personal Hobby Project (About Feature Requests & Issues):  
->   This software is built for my own personal photography workflow. While I happily read feature requests and bug reports for reference, whether they actually get implemented or fixed depends on the AI's mood. Please use it with a relaxed "lucky if it works for me as-is" mindset.
+>   This software is built for my own personal photography workflow. While I happily read feature requests and bug reports for reference, whether they actually get implemented or fixed depends on the AI's mood. Please use it with a relaxed "lucky if it works for my workflow as-is" mindset. That said, whenever I have free time, I'm constantly pestering the AI to add new features and polish things up.
 > - Real-Time `JP` / `EN` UI Toggle Included (Though My English Skill is Zero):  
 >   I am a Japanese developer with zero English skills. If you talk to me in English, I will rely 100% on machine translation and might sound a bit odd. However, clicking the `JP` / `EN` button in the top header switches the entire UI, tooltips, and the built-in Help Manual into English in real time (also 100% AI-generated lol).
-> - Your Original Photo Files Are Never Modified (100% Non-Destructive & Read-Only):  
->   Although the code is written by AI, one strict rule is enforced throughout: your original photo files (RAW, JPEG, XMP, etc.) in your folders are never modified, moved, or deleted by even a single byte. All ratings, rotations, crops, and edits are saved solely inside the app's own database (`cache/library.db`). If you decide the app isn't for you, simply delete the Photo Manager folder and your PC environment and photo folders remain completely untouched.
+> - Your Original Photo Files & Folders Are Never Modified (100% Non-Destructive & Read-Only):  
+>   Although the code is written by AI, one strict rule is enforced throughout: your original photo files (RAW, JPEG, XMP, etc.) in your folders are never modified, moved, or deleted by even a single byte. It never forces your photos into a proprietary library folder, nor does it scatter sidecar or management files inside your photo folders. All tags, ratings, rotations, and crops are saved solely inside a single database file (`cache/library.db`) within the app's own folder. If you decide the app isn't for you, simply delete the Photo Manager folder and your PC environment and photo folders remain completely untouched.
 
 ---
 
 ## Key Characteristics
 
-### 1. Quiet, Photography-First Workspace
+### 1. Exclusive Search (`[-]` Exclude Filter) to Catch Missing Tags & Trail Indicators
+Built on the snappy tag-browsing experience of Picasa and Tiat, Photo Manager focuses on effortless exclusion (`[-]`) filtering.  
+When filtering by hierarchical tags or the "Camera Body > Lens" tree, you can not only include `[+]` a condition, but also exclude `[-]` specific items with a single click. By combining `[+]` (e.g., show photos from an event) with `[-]` (e.g., hide photos that already have a car model or location tag), you can immediately spot photos where you forgot to apply a tag.  
+When a parent node is collapsed while a child item has an active filter, a dashed border and count badge (`+1` / `-1`) act as a trail marker, and clicking any active filter chip at the top jumps directly to that item in the sidebar tree. Daily tag assignment takes place in the right Inspector and context menu, while structural edits (reorganizing hierarchies, renaming, and deleting tags) are separated into a dedicated editor inside Settings to prevent accidental changes during culling.
+
+### 2. Fast Viewing for Foveon (`X3F`) and Modern Camera RAWs
+Alongside JPEG, PNG, WebP, and HEIC, the app directly displays RAW formats including SIGMA Foveon (`X3F`), Panasonic (`RW2`), Canon (`CR2` / `CR3`), Nikon (`NEF`), Sony (`ARW`), Olympus (`ORF`), Fujifilm (`RAF`), Pentax (`PEF`), and `DNG`.  
+Instead of running slow RAW development, it prioritizes extracting embedded JPEG previews (falling back to LibRaw only when needed), preserving camera-original colors with zero development wait time. Camera bodies and lenses are automatically organized into a hierarchical tree for instant gear-based filtering.
+
+### 3. Clean Photo Folders & XMP Sidecar Integration
+Rotating, leveling horizons, cropping, adjusting tone, shifting capture timestamps, or marking photos as "Rj (Reject)" never alters or deletes your original files on disk, and never creates hidden management files or sidecars inside your photo directories.  
+When companion `.xmp`, `.pp3`, or `.dop` sidecar files already exported by RAW developers (such as Lightroom or Adobe Camera Raw) exist in the same folder, the app reads them non-destructively so you can hold down the "XMP Preview" button in the Inspector to compare adjustments, or import XMP ratings and hierarchical keywords into an isolated `XMP/...` tag branch.
+
+### 4. Quiet, Tiat-Inspired Workspace Where Photos Stand Out
 Visual noise such as colorful emojis and heavy borders is kept to a minimum so the colors and tonal gradations of your photographs stand out naturally.
 - Switch anytime between the bright Japanese paper theme (Washi) and the darkroom-inspired ink theme (Urusi).
+- Choose between aspect-ratio-preserving Masonry view and film-frame Slide Mount view.
 - The left sidebar (Folders, Tags, Geotags, Date, Gear, Lab, etc.) can be collapsed to maximize grid space or opened as an overlay when needed.
 - The right Inspector keeps an uncropped 4:3 preview (double-click to open Lightbox) and a quick EXIF summary (Date Taken, Dimensions, Camera, Lens, and Exposure settings) visible at all times without switching tabs.
 
-### 2. Non-Destructive Workflow & XMP Sidecar Integration
-Rotating, leveling horizons, cropping, adjusting tone, shifting capture timestamps, or marking photos as "Rj (Reject)" never alters or deletes your original files on disk.  
-When companion `.xmp`, `.pp3`, or `.dop` sidecar files (from Lightroom, Adobe Camera Raw, etc.) exist in the same folder, you can hold down the "XMP Preview" button in the Inspector to temporarily preview those adjustments. You can also import XMP ratings and hierarchical keywords into an isolated `XMP/...` tag branch without mixing them into your existing tag tree.
-
-### 3. Exclusive Search (`[-]` Exclude Filter) & Trail Indicators
-When filtering by tags or the "Camera Body > Lens" hierarchy, you can not only include `[+]` a condition, but also exclude `[-]` specific items. This makes it simple to find photos that haven't been added to an album yet or shots taken with anything other than a specific lens.  
-When a parent node is collapsed while a child item has an active filter, a dashed border and count badge (`+1` / `-1`) act as a trail marker, and clicking any active filter chip at the top jumps directly to that item in the sidebar tree. Daily tag assignment takes place in the right Inspector and context menu, while structural edits (reorganizing hierarchies, renaming, and deleting tags) are separated into a dedicated editor inside Settings to prevent accidental changes during culling.
-
-### 4. Local-First Operation & USB Portability
+### 5. Local-First Operation & USB Portability
 Your photos are never sent to any external cloud or server. Web fonts and the map library (Leaflet) are bundled locally with no external CDN requests (only viewing map background tiles connects to OpenStreetMap). AI auto-tagging (CLIP) and reverse geocoding (GPS coordinates to Country, Prefecture/State, and City) run entirely locally on your PC.  
 You can run the app directly from an external SSD or USB flash drive even on a PC without Python installed. When you copy selected photos into the app's internal `storage/` folder, you can organize subfolders and batch-rename files (<kbd>F2</kbd>) while automatically keeping paired RAW files and `.xmp` sidecars together.
 
