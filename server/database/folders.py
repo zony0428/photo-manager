@@ -7,7 +7,16 @@ import logging
 import os
 import threading
 import time
+import re
 from typing import Any, Dict, List, Optional, Tuple
+
+
+def _natural_sort_key(text: Any) -> List[Tuple[int, Any]]:
+    """文字列内の数値部分を整数として評価する自然順ソートキーを生成する"""
+    return [
+        (0, int(part)) if part.isdigit() else (1, part.lower())
+        for part in re.split(r"(\d+)", str(text or ""))
+    ]
 
 logger = logging.getLogger(__name__)
 
@@ -246,7 +255,7 @@ def get_scan_roots_summary() -> List[Dict[str, Any]]:
         # 兄弟フォルダの共通親への自動統合、および親子ルートのマージを実行
         result = list(roots_map.values())
         result = _merge_sibling_roots(result)
-        result.sort(key=lambda x: x["folder_path"].lower())
+        result.sort(key=lambda x: _natural_sort_key(x["folder_path"]))
         return result
 
 
@@ -334,7 +343,7 @@ def _merge_sibling_roots(roots_list: List[Dict[str, Any]]) -> List[Dict[str, Any
                     if not any(existing["directory_path"] == sf["directory_path"] for existing in combined_subfolders):
                         combined_subfolders.append(sf)
 
-            combined_subfolders.sort(key=lambda s: s["directory_path"].lower())
+            combined_subfolders.sort(key=lambda s: _natural_sort_key(s["directory_path"]))
 
             merged_parent_obj = {
                 "folder_path": parent_path,
@@ -354,7 +363,7 @@ def _merge_sibling_roots(roots_list: List[Dict[str, Any]]) -> List[Dict[str, Any
         if r["folder_path"] not in absorbed_siblings:
             merged_roots.append(r)
 
-    merged_roots.sort(key=lambda x: x["folder_path"].lower())
+    merged_roots.sort(key=lambda x: _natural_sort_key(x["folder_path"]))
     return merged_roots
 
 
@@ -559,7 +568,7 @@ def get_folders_summary() -> List[Dict[str, Any]]:
                     })
                     seen_paths.add(sub_key)
 
-        result.sort(key=lambda x: x["directory_path"].lower())
+        result.sort(key=lambda x: _natural_sort_key(x["directory_path"]))
         return result
 
 
@@ -719,9 +728,9 @@ def get_cameras_summary() -> List[Dict[str, Any]]:
         result = list(cam_map.values())
         for cam_obj in result:
             cam_obj["lenses"].sort(
-                key=lambda x: (0 if x["lens_model"] != "__NONE__" else 1, -x["count"], x["lens_model"])
+                key=lambda x: (1 if x["lens_model"] in ("__NONE__", "----") else 0, _natural_sort_key(x["label"]))
             )
-        result.sort(key=lambda x: (-x["count"], x["camera_model"]))
+        result.sort(key=lambda x: (1 if x["camera_model"] in ("不明", "Unknown", "__NONE__") else 0, _natural_sort_key(x["camera_model"])))
         return result
 
 

@@ -1230,7 +1230,23 @@ function _ftInitDbMaintenanceModal() {
       return;
     }
 
-    const treeRoot = typeof buildTagTree === 'function' ? buildTagTree(manualTags) : { children: new Map() };
+    const settingsSortBtn = document.getElementById('settingsTagSortToggleBtn');
+    if (settingsSortBtn) {
+      const isCount = Boolean(state.settingsTagSortByCount);
+      settingsSortBtn.classList.toggle('active', isCount);
+      settingsSortBtn.setAttribute('aria-pressed', isCount ? 'true' : 'false');
+      settingsSortBtn.textContent = isCount ? '枚数順' : '名前順';
+      if (!settingsSortBtn.dataset.bound) {
+        settingsSortBtn.dataset.bound = 'true';
+        settingsSortBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          state.settingsTagSortByCount = !state.settingsTagSortByCount;
+          renderSettingsTagTreeEditor();
+        });
+      }
+    }
+
+    const treeRoot = typeof buildTagTree === 'function' ? buildTagTree(manualTags, { sortByCount: Boolean(state.settingsTagSortByCount) }) : { children: new Map() };
 
     function appendInlineChildCreator(targetEl, parentFullPath, parentDisplayName, indent) {
       const addRow = document.createElement('div');
@@ -1652,7 +1668,7 @@ function _ftInitDbMaintenanceModal() {
     if (sortSelect) {
       sortSelect.value = (state.tagSortMode && state.tagSortMode !== 'count_desc')
         ? state.tagSortMode
-        : 'lexical';
+        : 'natural';
     }
     modal.style.display = 'flex';
     loadStats();
@@ -1700,9 +1716,12 @@ function _ftInitDbMaintenanceModal() {
       ? state.tagSortMode
       : 'lexical';
     sortSelectEl.addEventListener('change', () => {
-      const mode = sortSelectEl.value || 'lexical';
+      const mode = sortSelectEl.value || 'natural';
       state.tagSortMode = mode;
       localStorage.setItem('pm_tag_sort_mode', mode);
+      localStorage.setItem('pm_tag_sort_mode_v2', mode);
+      state.tagSortByCount = false;
+      localStorage.setItem('pm_tag_sort_by_count_v2', 'false');
       if (typeof renderTagList === 'function') {
         renderTagList();
       }

@@ -273,7 +273,8 @@
   color: var(--text-muted);
 }
 
-.tag-sort-count-toggle-btn.active {
+.tag-sort-count-toggle-btn.active { background: var(--accent-primary, #e14d2a) !important; color: #ffffff !important; border-color: var(--accent-primary, #e14d2a) !important; font-weight: 600 !important; }
+.tag-sort-count-toggle-btn.active-legacy {
   background: var(--bg-hover) !important;
   color: var(--text-main) !important;
   border-color: var(--text-muted) !important;

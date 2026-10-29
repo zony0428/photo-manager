@@ -527,11 +527,31 @@ def get_photos(
     if untagged_only:
         query += " AND p.id NOT IN (SELECT photo_id FROM photo_tags)"
     else:
-        # 階層タグ排他検索: 含むタグ（祖先ノード独立保存により完全一致で十分）
+        # 階層タグ排他検索: 含むタグ
+        # ・最上位の親（第1階層）が同じタグ同士は OR 条件で結合
+        # ・最上位の親が異なるグループ間（および親を持たない最上位タグ同士）は AND 条件で結合
+        # ・同一親子ラインで祖先タグと子孫タグが同時に選択されている場合は、より具体的な子孫タグを優先
         if included_tags:
-            for tag in included_tags:
-                query += " AND p.id IN (SELECT photo_id FROM photo_tags WHERE tag = ?)"
-                params.extend([tag])
+            clean_inc = [t.strip() for t in included_tags if t and t.strip()]
+            effective_inc = [
+                t for t in clean_inc
+                if not any(other != t and other.startswith(t + "/") for other in clean_inc)
+            ]
+            tag_groups: Dict[str, List[str]] = {}
+            for tag in effective_inc:
+                root_parent = tag.split("/", 1)[0].strip()
+                group_list = tag_groups.setdefault(root_parent, [])
+                if tag not in group_list:
+                    group_list.append(tag)
+
+            for group_tags in tag_groups.values():
+                if len(group_tags) == 1:
+                    query += " AND p.id IN (SELECT photo_id FROM photo_tags WHERE tag = ?)"
+                    params.append(group_tags[0])
+                else:
+                    placeholders = ",".join(["?"] * len(group_tags))
+                    query += f" AND p.id IN (SELECT photo_id FROM photo_tags WHERE tag IN ({placeholders}))"
+                    params.extend(group_tags)
 
         # 階層タグ排他検索: 除外するタグ（祖先ノード独立保存により完全一致で十分）
         if excluded_tags:

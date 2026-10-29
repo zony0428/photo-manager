@@ -98,11 +98,13 @@ const state = {
   filterPresets: [],       // 表示上限に達したかどうか
   tagSourceFilter: 'manual',  // タグ種別フィルタ ('manual' | 'ai' | 'all')
   tagSearchQuery: '',      // タグ一覧のテキスト検索クエリ (Enter確定)
-  tagSortMode: (localStorage.getItem('pm_tag_sort_mode') && localStorage.getItem('pm_tag_sort_mode') !== 'count_desc')
-    ? localStorage.getItem('pm_tag_sort_mode')
-    : 'lexical', // タグツリーの名前順ルール ('lexical' | 'lexical_desc' | 'natural' | 'natural_desc')
-  tagSortByCount: localStorage.getItem('pm_tag_sort_by_count') === 'true'
-    || localStorage.getItem('pm_tag_sort_mode') === 'count_desc', // 写真枚数が多い順トグル (ON: 枚数順 / OFF: tagSortModeに従う)
+  tagSortMode: (localStorage.getItem('pm_tag_sort_mode_v2') && localStorage.getItem('pm_tag_sort_mode_v2') !== 'count_desc')
+    ? localStorage.getItem('pm_tag_sort_mode_v2')
+    : 'natural', // タグツリーの名前順ルール ('natural' | 'natural_desc' | 'lexical' | 'lexical_desc')
+  tagSortByCount: localStorage.getItem('pm_tag_sort_by_count_v2') === 'true', // 左ペイン: 写真枚数が多い順トグル (ON: 枚数順 / OFF: tagSortModeに従う)
+  inspectorTagSortByCount: localStorage.getItem('pm_inspector_tag_sort_by_count') === 'true', // 右インスペクタ: 独立した枚数順トグル
+  settingsTagSortByCount: false, // 設定モーダル内タグツリーエディタ: 独立した枚数順トグル
+
   settingsTagTreeExpandedPaths: new Set(), // 設定モーダル内タグツリーエディタの展開パス集合
   inspectorActiveTab: localStorage.getItem('pm_inspector_tab') || 'tags', // インスペクタの選択中タブ ('tags' | 'exif' | 'map')
   labFilter: null,             // ラボフィルタ ('shake_risk' | 'golden_hour' | 'blue_hour' | 'magic_all' | 'night' | null)
@@ -1269,8 +1271,8 @@ function showMobileSyncResultModal(resultData, sourceLabel = 'mobile_sync.json',
       const rateLabelMap = {
         2: '<span style="background:rgba(225,77,42,0.22); color:#fb923c; border:1px solid rgba(225,77,42,0.45); border-radius:4px; padding:1px 6px; font-weight:700; font-size:0.76rem;">優 (Ex)</span>',
         1: '<span style="background:rgba(59,130,246,0.22); color:#60a5fa; border:1px solid rgba(59,130,246,0.45); border-radius:4px; padding:1px 6px; font-weight:700; font-size:0.76rem;">良 (Gd)</span>',
-        0: '<span style="background:rgba(148,163,184,0.18); color:#cbd5e1; border:1px solid rgba(148,163,184,0.35); border-radius:4px; padding:1px 6px; font-weight:600; font-size:0.76rem;">可 (Fj)</span>',
-        '-1': '<span style="background:rgba(239,68,68,0.22); color:#f87171; border:1px solid rgba(239,68,68,0.45); border-radius:4px; padding:1px 6px; font-weight:700; font-size:0.76rem;">棄 (Dc)</span>',
+        0: '<span style="background:rgba(148,163,184,0.18); color:var(--text-muted, #94a3b8); border:1px solid rgba(148,163,184,0.35); border-radius:4px; padding:1px 6px; font-weight:600; font-size:0.76rem;">可 (Nm)</span>',
+        '-1': '<span style="background:rgba(239,68,68,0.22); color:#f87171; border:1px solid rgba(239,68,68,0.45); border-radius:4px; padding:1px 6px; font-weight:700; font-size:0.76rem;">棄 (Rj)</span>',
       };
 
       listEl.innerHTML = items
@@ -1334,7 +1336,7 @@ async function loadMobileConnectionInfo(silentCheck = false) {
       urlListEl.innerHTML = urls
         .map(
           (u) => `
-          <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; background:rgba(0,0,0,0.25); padding:6px 10px; border-radius:4px; border:1px solid rgba(255,255,255,0.08);">
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; background:var(--bg-primary, rgba(0,0,0,0.12)); padding:6px 10px; border-radius:4px; border:1px solid var(--border-soft, rgba(128,128,128,0.18));">
             <code style="font-size:0.86rem; color:var(--accent-primary, #e14d2a); font-weight:700; word-break:break-all;">${escapeHtml(u)}</code>
             <button class="btn btn-secondary btn-xs copy-mobile-url-btn" data-url="${escapeHtml(u)}" style="white-space:nowrap;">コピー</button>
           </div>
@@ -1539,6 +1541,20 @@ function initCommonModals() {
   const pasteSyncBtn = document.getElementById('pasteMobileSyncJsonBtn');
   if (pasteSyncBtn) {
     pasteSyncBtn.addEventListener('click', importMobileSyncFromClipboard);
+  }
+  const copyFirewallCmdBtn = document.getElementById('copyFirewallCmdBtn');
+  if (copyFirewallCmdBtn) {
+    copyFirewallCmdBtn.addEventListener('click', async () => {
+      const codeEl = document.getElementById('mobileFirewallCmdCode');
+      const cmdText = codeEl ? codeEl.textContent.trim() : '';
+      if (!cmdText) return;
+      try {
+        await navigator.clipboard.writeText(cmdText);
+        showToast('ファイアウォール許可コマンドをコピーしました（管理者PowerShell等で実行してください）', 'success', 3500);
+      } catch (_e) {
+        showToast(cmdText, 'info', 5000);
+      }
+    });
   }
   if (elements.pickMobileSyncFileBtn && elements.mobileSyncFileInput) {
     elements.pickMobileSyncFileBtn.addEventListener('click', () => {

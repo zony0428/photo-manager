@@ -302,9 +302,14 @@
     document.documentElement.setAttribute('data-theme', t);
     _safeSetStorage('pm_theme', t);
     const icon = document.getElementById('mThemeIcon');
-    if (icon) icon.textContent = t === 'paper' ? '📜' : '🌙';
+    if (icon) {
+      icon.innerHTML =
+        t === 'paper'
+          ? '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>'
+          : '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+    }
     const metaTheme = document.getElementById('mMetaThemeColor');
-    if (metaTheme) metaTheme.setAttribute('content', t === 'paper' ? '#d9d6cc' : '#16181b');
+    if (metaTheme) metaTheme.setAttribute('content', t === 'paper' ? '#e8e4d9' : '#16181b');
   }
 
   function initSavedPrefs() {
@@ -332,13 +337,13 @@
       badge.className = 'm-mode-badge';
       if (mode === 'server') {
         badge.classList.add('mode-server');
-        badge.textContent = '💻 PCプレビュー';
+        badge.textContent = '● Wi-Fi接続';
       } else if (mode === 'localdb') {
         badge.classList.add('mode-localdb');
-        badge.textContent = '🔌 USB DB';
+        badge.textContent = '● USB DB';
       } else {
         badge.classList.add('mode-offline');
-        badge.textContent = '⚪ DB未読込';
+        badge.textContent = '○ DB未読込';
       }
     }
 
@@ -471,9 +476,9 @@
 
       const statusBox = document.getElementById('mLoadedDbStatus');
       if (statusBox) {
-        statusBox.innerHTML = `✅ <strong>${_escHtml(file.name)}</strong> (${(file.size / 1024 / 1024).toFixed(1)} MB) を読込完了`;
+        statusBox.innerHTML = `✓ <strong>${_escHtml(file.name)}</strong> (${(file.size / 1024 / 1024).toFixed(1)} MB) を読込完了`;
       }
-      showToast(`📂 ${file.name} を読み込みました`);
+      showToast(`${file.name} を読み込みました`);
     } catch (err) {
       console.error('DBファイル読込エラー:', err);
       alert('DBの読み込みに失敗しました: ' + (err.message || err));
@@ -730,13 +735,30 @@
       }
     }
 
-    // タグフィルタ
+    // タグフィルタ（最上位の親が同じタグ同士は OR 条件、異なるグループ間・最上位タグ同士は AND 条件）
     if (mState.untaggedOnly) {
       sql += ' AND NOT EXISTS (SELECT 1 FROM photo_tags pt WHERE pt.photo_id = p.id)';
     } else {
-      for (const incTag of mState.includeTags) {
-        sql += ' AND EXISTS (SELECT 1 FROM photo_tags pt WHERE pt.photo_id = p.id AND pt.tag = ?)';
-        params.push(incTag);
+      const cleanInc = (mState.includeTags || []).map((t) => String(t || '').trim()).filter(Boolean);
+      const effectiveInc = cleanInc.filter(
+        (t) => !cleanInc.some((other) => other !== t && other.startsWith(`${t}/`))
+      );
+      const tagGroups = new Map();
+      for (const incTag of effectiveInc) {
+        const rootParent = incTag.split('/')[0].trim();
+        if (!tagGroups.has(rootParent)) tagGroups.set(rootParent, []);
+        const grp = tagGroups.get(rootParent);
+        if (!grp.includes(incTag)) grp.push(incTag);
+      }
+      for (const grpTags of tagGroups.values()) {
+        if (grpTags.length === 1) {
+          sql += ' AND EXISTS (SELECT 1 FROM photo_tags pt WHERE pt.photo_id = p.id AND pt.tag = ?)';
+          params.push(grpTags[0]);
+        } else {
+          const ph = grpTags.map(() => '?').join(',');
+          sql += ` AND EXISTS (SELECT 1 FROM photo_tags pt WHERE pt.photo_id = p.id AND pt.tag IN (${ph}))`;
+          params.push(...grpTags);
+        }
       }
       for (const excTag of mState.excludeTags) {
         sql +=
@@ -976,7 +998,7 @@
 
     const topBadges = [];
     if (photo.stack_count && photo.stack_count > 1) {
-      topBadges.push(`<span class="m-mini-badge stack-badge">🗂️${photo.stack_count}</span>`);
+      topBadges.push(`<span class="m-mini-badge stack-badge"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px;margin-right:2px;"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 12 12 17 22 12"/></svg>${photo.stack_count}</span>`);
     }
     if (photo.is_raw || photo.paired_raw_path) {
       topBadges.push(`<span class="m-mini-badge">RAW</span>`);
@@ -1047,7 +1069,7 @@
     if (tagContainer) {
       let html = `
         <div class="m-filter-item ${mState.untaggedOnly ? 'active-include' : ''}" data-untagged="1">
-          <span>🏷️ 未分類の写真</span>
+          <span>未分類の写真</span>
           <span class="m-filter-count">${mState.untaggedCount}</span>
         </div>
       `;
@@ -1106,7 +1128,7 @@
         const active = mState.yearMonth === ym ? 'active-include' : '';
         html += `
           <div class="m-filter-item ${active}" data-ym="${_escAttr(ym)}">
-            <span>📅 ${_escHtml(ym)}</span>
+            <span>${_escHtml(ym)}</span>
             <span class="m-filter-count">${item.count}</span>
           </div>
         `;
@@ -1127,7 +1149,7 @@
     if (locContainer) {
       let html = `
         <div class="m-filter-item ${mState.noLocationOnly ? 'active-include' : ''}" data-noloc="1">
-          <span>📍 ジオタグなし</span>
+          <span>ジオタグなし</span>
           <span class="m-filter-count">${mState.noLocationCount}</span>
         </div>
       `;
@@ -1138,7 +1160,7 @@
             : '';
         html += `
           <div class="m-filter-item ${cActive}" data-country="${_escAttr(c.country)}">
-            <span>🌍 ${_escHtml(c.country)}</span>
+            <span>${_escHtml(c.country)}</span>
             <span class="m-filter-count">${c.count}</span>
           </div>
         `;
@@ -1152,7 +1174,7 @@
               : '';
           html += `
             <div class="m-filter-item ${sActive}" style="padding-left:22px;" data-country="${_escAttr(c.country)}" data-state="${_escAttr(s.state)}">
-              <span>🗾 ${_escHtml(s.state)}</span>
+              <span>└ ${_escHtml(s.state)}</span>
               <span class="m-filter-count">${s.count}</span>
             </div>
           `;
@@ -1195,7 +1217,7 @@
         const active = mState.cameraModel === cm ? 'active-include' : '';
         html += `
           <div class="m-filter-item ${active}" data-cam="${_escAttr(cm)}">
-            <span>📷 ${_escHtml(cm)}</span>
+            <span>${_escHtml(cm)}</span>
             <span class="m-filter-count">${item.count}</span>
           </div>
         `;
@@ -1220,7 +1242,7 @@
     const chips = [];
     if (mState.searchQuery) {
       chips.push({
-        label: `🔍 "${mState.searchQuery}"`,
+        label: `"${mState.searchQuery}"`,
         clear: () => {
           mState.searchQuery = '';
           document.getElementById('mSearchInput').value = '';
@@ -1229,7 +1251,7 @@
     }
     if (mState.untaggedOnly) {
       chips.push({
-        label: '🏷️ 未分類のみ',
+        label: '未分類のみ',
         clear: () => {
           mState.untaggedOnly = false;
         },
@@ -1237,7 +1259,7 @@
     }
     for (const t of mState.includeTags) {
       chips.push({
-        label: `🏷️ +${t}`,
+        label: `+#${t}`,
         clear: () => {
           mState.includeTags = mState.includeTags.filter((x) => x !== t);
         },
@@ -1245,7 +1267,7 @@
     }
     for (const t of mState.excludeTags) {
       chips.push({
-        label: `🏷️ -${t}`,
+        label: `-#${t}`,
         exclude: true,
         clear: () => {
           mState.excludeTags = mState.excludeTags.filter((x) => x !== t);
@@ -1254,7 +1276,7 @@
     }
     if (mState.yearMonth) {
       chips.push({
-        label: `📅 ${mState.yearMonth}`,
+        label: `${mState.yearMonth}`,
         clear: () => {
           mState.yearMonth = '';
         },
@@ -1262,7 +1284,7 @@
     }
     if (mState.noLocationOnly) {
       chips.push({
-        label: '📍 ジオタグなし',
+        label: 'ジオタグなし',
         clear: () => {
           mState.noLocationOnly = false;
         },
@@ -1270,7 +1292,7 @@
     } else if (mState.country) {
       const locLabel = [mState.country, mState.stateName, mState.city].filter(Boolean).join('/');
       chips.push({
-        label: `🗺️ ${locLabel}`,
+        label: `${locLabel}`,
         clear: () => {
           mState.country = '';
           mState.stateName = '';
@@ -1280,7 +1302,7 @@
     }
     if (mState.cameraModel) {
       chips.push({
-        label: `📷 ${mState.cameraModel}`,
+        label: `${mState.cameraModel}`,
         clear: () => {
           mState.cameraModel = '';
         },
@@ -1387,7 +1409,7 @@
         });
         if (!res.ok) throw new Error('一括評価失敗');
       } catch (e) {
-        showToast('⚠️ サーバー更新エラー');
+        showToast('! サーバー更新エラー');
         return;
       }
     } else if (mState.mode === 'localdb' && mState.localDb) {
@@ -1493,7 +1515,7 @@
     const locStr = [activePhoto.country, activePhoto.state, activePhoto.city]
       .filter(Boolean)
       .join(' ');
-    if (locStr) exifParts.push(`📍${locStr}`);
+    if (locStr) exifParts.push(locStr);
 
     document.getElementById('mViewerExifBrief').textContent =
       exifParts.join(' · ') || 'Exif情報なし';
@@ -1567,7 +1589,7 @@
         });
         if (!res.ok) throw new Error('評価更新失敗');
       } catch (e) {
-        showToast('⚠️ 評価の保存に失敗しました');
+        showToast('! 評価の保存に失敗しました');
         return;
       }
     } else if (mState.mode === 'localdb' && mState.localDb) {
@@ -1690,13 +1712,13 @@
     if (!overlay) return;
 
     if (isBatchMode) {
-      if (titleEl) titleEl.textContent = `🏷️ 選択中の ${mState.selectedIds.size}枚 にタグ一括付与`;
+      if (titleEl) titleEl.textContent = `選択中の ${mState.selectedIds.size}枚 にタグ一括付与`;
       if (exifSec) exifSec.style.display = 'none';
       renderBatchTagSheet();
     } else {
       const photo = getActiveViewerPhoto();
       if (!photo) return;
-      if (titleEl) titleEl.textContent = '🏷️ タグ編集 & Exif詳細';
+      if (titleEl) titleEl.textContent = 'タグ編集 & Exif詳細';
       if (exifSec) exifSec.style.display = 'block';
       renderSinglePhotoInfoSheet(photo);
     }
@@ -1848,7 +1870,9 @@
         const arrowHtml = hasChildren
           ? `<span class="m-tree-arrow">${isExpanded ? '▼' : '▶'}</span>`
           : `<span class="m-tree-arrow"></span>`;
-        const icon = hasChildren ? '📁' : '🏷️';
+        const icon = hasChildren
+          ? '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.75" style="vertical-align:-2px;margin-right:3px;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>'
+          : '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.75" style="vertical-align:-1px;margin-right:3px;"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>';
         const badgeLabel = isBatchMode
           ? '＋ 一括追加'
           : hasTag
@@ -2011,7 +2035,7 @@
         const data = await res.json();
         photo.tags = data.tags || [...new Set([...(photo.tags || []), ...expanded])];
       } catch (e) {
-        showToast('⚠️ タグ追加エラー');
+        showToast('! タグ追加エラー');
         return;
       }
     } else if (mState.mode === 'localdb' && mState.localDb) {
@@ -2029,7 +2053,7 @@
     renderViewerCurrentPhoto();
     await fetchFilterSummaries();
     renderSinglePhotoInfoSheet(photo);
-    showToast(`🏷️ #${tag} を追加しました`);
+    showToast(`#${tag} を追加しました`);
   }
 
   async function removeTagFromPhotoAction(photo, rawTag) {
@@ -2046,7 +2070,7 @@
         photo.tags =
           data.tags || (photo.tags || []).filter((t) => t !== tag && !t.startsWith(`${tag}/`));
       } catch (e) {
-        showToast('⚠️ タグ削除エラー');
+        showToast('! タグ削除エラー');
         return;
       }
     } else if (mState.mode === 'localdb' && mState.localDb) {
@@ -2063,7 +2087,7 @@
     renderViewerCurrentPhoto();
     await fetchFilterSummaries();
     renderSinglePhotoInfoSheet(photo);
-    showToast(`🏷️ #${tag} を解除しました`);
+    showToast(`#${tag} を解除しました`);
   }
 
   async function addTagBatchAction(rawTag) {
@@ -2082,7 +2106,7 @@
         });
         if (!res.ok) throw new Error('一括タグ追加失敗');
       } catch (e) {
-        showToast('⚠️ 一括タグ追加エラー');
+        showToast('! 一括タグ追加エラー');
         return;
       }
     } else if (mState.mode === 'localdb' && mState.localDb) {
@@ -2115,7 +2139,7 @@
     renderBatchTagSheet();
     await fetchFilterSummaries();
     renderBatchTagSheet();
-    showToast(`🏷️ ${ids.length}枚に #${tag} を追加しました`);
+    showToast(`${ids.length}枚に #${tag} を追加しました`);
   }
 
   // ==================== 差分JSON出力 / DB丸ごと出力（完全クローズ＆検証保証） ====================
@@ -2195,8 +2219,8 @@
       if (handle) {
         setLoading(
           true,
-          '⏳ mobile_sync.json を書き込み・ファイルクローズ中...',
-          '⚠️ 完了画面が出るまで、絶対にUSBメモリを抜かないでください！'
+          'mobile_sync.json を書き込み・ファイルクローズ中...',
+          '! 完了画面が出るまで、絶対にUSBメモリを抜かないでください！'
         );
         try {
           const writable = await handle.createWritable({ keepExistingData: false });
@@ -2217,17 +2241,17 @@
           // Android OS の VFAT/exFAT 書き込みキャッシュがUSBフラッシュへ書き出されるまで安全待機
           setLoading(
             true,
-            '⏳ USBメモリの書き込みキャッシュを確定（フラッシュ）中...',
-            '⚠️ あと2秒そのままお待ちください（まだUSBを抜かないでください）'
+            'USBメモリの書き込みキャッシュを確定（フラッシュ）中...',
+            '! あと2秒そのままお待ちください（まだUSBを抜かないでください）'
           );
           await new Promise((resolve) => setTimeout(resolve, 2500));
 
           setLoading(false);
           _showExportCompleteNotice(
-            `✅ ${savedFile.name} (${savedFile.size.toLocaleString()} B / ${cnt}件) の書き込み・クローズが完了しました！`,
+            `✓ ${savedFile.name} (${savedFile.size.toLocaleString()} B / ${cnt}件) の書き込み・クローズが完了しました！`,
             '<strong>【重要】スマホからUSBを抜く前に：</strong><br>スマホ画面の上から通知バーを下ろし、<strong>「USBドライブを取り外す（マウント解除）」</strong>をタップしてからUSBを抜いてください。その後PCに挿して起動すると自動で取り込まれます。'
           );
-          showToast(`✅ ${savedFile.name} の書き込み・クローズが完了しました！`, 4000);
+          showToast(`✓ ${savedFile.name} の書き込み・クローズが完了しました！`, 4000);
           return;
         } catch (writeErr) {
           setLoading(false);
@@ -2256,10 +2280,10 @@
     a.remove();
 
     _showExportCompleteNotice(
-      `📥 mobile_sync.json (${utf8Bytes.byteLength.toLocaleString()} B / ${cnt}件) を出力しました！`,
+      `✓ mobile_sync.json (${utf8Bytes.byteLength.toLocaleString()} B / ${cnt}件) を出力しました！`,
       'ダウンロード先（またはUSBメモリ）へ保存が完了したら、スマホの通知バーから<strong>「USBドライブを取り外す（マウント解除）」</strong>をタップしてからUSBを抜いてください。'
     );
-    showToast('📥 mobile_sync.json を保存しました', 3500);
+    showToast('✓ mobile_sync.json を保存しました', 3500);
   }
 
   /**
@@ -2283,7 +2307,7 @@
             files: [file],
           });
           _showExportCompleteNotice(
-            `📤 共有アプリへ mobile_sync.json (${cnt}件) を渡しました`,
+            `✓ 共有アプリへ mobile_sync.json (${cnt}件) を渡しました`,
             'ファイル管理アプリ等でUSBメモリへの保存が完了したら、スマホの通知バーから<strong>「USBドライブを取り外す（マウント解除）」</strong>をタップしてからUSBを抜いてください。'
           );
           return;
@@ -2313,7 +2337,7 @@
     try {
       if (navigator.clipboard && navigator.clipboard.writeText) {
         await navigator.clipboard.writeText(jsonStr);
-        showToast(`📋 選別データ (${cnt}件) をコピーしました`);
+        showToast(`✓ 選別データ (${cnt}件) をコピーしました`);
         return;
       }
     } catch (e) {}
@@ -2327,7 +2351,7 @@
     ta.select();
     try {
       document.execCommand('copy');
-      showToast(`📋 選別データ (${cnt}件) をコピーしました`);
+      showToast(`✓ 選別データ (${cnt}件) をコピーしました`);
     } catch (e) {
       alert('コピーに失敗しました。ファイル保存をご利用ください。');
     } finally {
@@ -2353,7 +2377,7 @@
       document.body.appendChild(a);
       a.click();
       a.remove();
-      showToast('📦 更新済み library.db を書き出しました');
+      showToast('✓ 更新済み library.db を書き出しました');
     } catch (e) {
       alert('DB書き出しエラー: ' + e.message);
     }

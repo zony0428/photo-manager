@@ -186,7 +186,10 @@ function renderFilterPresetsList() {
   }
 
   container.innerHTML = '';
-  presets.forEach(p => {
+  const sortedPresets = [...presets].sort((a, b) =>
+    String(a.name || '').localeCompare(String(b.name || ''), undefined, { numeric: true, sensitivity: 'base' })
+  );
+  sortedPresets.forEach(p => {
     const card = document.createElement('div');
     card.className = `preset-item-card ${state.activePresetId === p.id ? 'active' : ''}`;
     card.dataset.presetId = p.id;

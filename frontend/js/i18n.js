@@ -1175,8 +1175,8 @@
     '5. 複数の写真をまとめて操作する・絞り込み検索': '5. Batch Operations & Search Filters',
     '複数選択：Ctrl + クリックで追加選択、Shift + クリックで範囲選択、Ctrl + A で全選択できます。複数枚を選ぶと、右インスペクタの一括編集パネルや右クリックメニューから、まとめて評価付け・タグ付け・回転・テイクアウト・日時シフト補正が行えます。':
       'Multi-Select: Use Ctrl + Click to add/toggle, Shift + Click for range selection, and Ctrl + A to select all. When multiple photos are selected, use the batch panel in the right Inspector or the right-click menu to batch-rate, tag, rotate, export, or shift timestamps.',
-    '写真を探す：左サイドバーの「年月」「機材（カメラ ＞ レンズ階層ツリーと [+] 含む / [-] 除外検索）」「ラボ」、および一番下の「検索」で絞り込めます。左端アイコンバーの通知ランプや、折りたたんだ親階層の道標バッジ（+1 / -1 破線枠）でフィルタの適用箇所がひと目で分かり、上部のフィルタチップをクリックすると該当するツリー項目へ直接ジャンプします。すべて解除するときは左メニュー最上部の「フィルタ全解除」を押してください。':
-      'Finding Photos: Filter by "Date", "Gear (Camera > Lens hierarchy with [+] Include / [-] Exclude)", "Lab", or "Search" at the bottom of the left sidebar. Notification dots on the left icon rail and dashed trail badges (+1 / -1) on collapsed parent nodes show where filters are active, and clicking any filter chip at the top jumps directly to that item in the tree. Click "Clear All Filters" at the top of the left menu to reset.',
+    '写真を探す：左サイドバーの「年月」「機材（カメラ ＞ レンズ階層ツリーと [+] 含む / [-] 除外検索）」「ラボ」、および一番下の「検索」で絞り込めます。フィルタ適用中は写真グリッドを一切上下にずらさず、画面下部にフローティングのフィルタフッターバーが現れ、条件が自然な日本語文（「または」「かつ」「除く」）として表示されます。フッター内の条件ピルを左クリックするとその場で条件の変更・追加ポップオーバーが開き、右クリックで含む[+]⇔除外[-]を反転、×で個別解除、「すべて解除」で全解除できます。':
+      'Finding Photos: Filter by "Date", "Gear (Camera > Lens hierarchy with [+] Include / [-] Exclude)", "Lab", or "Search" at the bottom of the left sidebar. While filters are active, a floating filter footer bar appears at the bottom without shifting the photo grid, displaying conditions as natural clauses (OR / AND / Except). Left-click any pill in the footer to open a quick-change popover in place, right-click to flip Include [+] ⇔ Exclude [-], click × to remove, or click "Clear All" to reset.',
 
     // タブ2: Advance編
     '1. 連写・露出ブラケット・重複写真のスタック表示と2枚比較（Duel）':
@@ -1199,8 +1199,8 @@
       'Color Palette (12 Colors): Assign color labels under "Color" in the right Inspector and filter by color from the palette at the top of the "Tags" sidebar (right-click a color to exclude it).',
     'ローカルAI自動タグ付け：左サイドバーのフォルダを右クリックして「AIタグ付け」を選ぶと、ネット通信なしでPC内のAI（CLIP）が「青空」「海」「猫」「料理」「夜景」などのタグを自動付与します。':
       'Local AI Auto-Tagging: Right-click a folder in the left sidebar and select "AI Auto-Tag" to have the local on-device AI (CLIP) assign tags such as Blue Sky, Sea, Cat, Food, and Night View offline.',
-    'タグ・機材の [+] 含む / [-] 除外検索と道標表示：左サイドバーの「タグ」と「機材」では、クリックするたびに [+] 含む → [-] 除外 → 解除 が切り替わり、「特定のレンズ以外で撮った写真」などを抽出できます。親階層を閉じていても、配下の子項目でフィルタが有効な場合は破線枠と件数バッジ（+1 / -1）の道標が表示されます。':
-      'Tag & Gear [+] Include / [-] Exclude Search & Trail Indicators: In both "Tags" and "Gear", clicking an item cycles through [+] Include → [-] Exclude → Off, making it easy to find shots taken without a specific tag or lens. When a parent node is collapsed while a child filter is active, a dashed border and count badge (+1 / -1) indicate the active filter path.',
+    'タグ・機材の [+] 含む / [-] 除外検索と道標表示：タグツリーの一番上の親（1階層目）同士を [+] にすると「しかも（AND）」で絞り込まれ、同じ親の下にある2階層目以降の子タグを複数 [+] にすると「または（OR）」で候補が追加されます。見たくない子タグは右クリックで [-]（除外）を明示して引き算できるため、「トヨタ [+]・プリウス [-]・ロードスター [+]」のように選べば「プリウス以外のトヨタ車とロードスター」を簡単に抽出できます。親階層を閉じていても、配下の子項目でフィルタが有効な場合は破線枠と件数バッジ（+1 / -1）の道標が表示されます。':
+      'Tag & Gear [+] Include / [-] Exclude Search & Trail Indicators: Top-level (1st-tier) tags set to [+] are combined with AND, while 2nd-tier and deeper child tags under the same root are combined with OR to expand candidates. Right-click unwanted child tags to set [-] (Exclude) and subtract them—for example, selecting "Toyota [+], Prius [-], Roadster [+]" easily extracts "all Toyotas except Prius, plus Roadster". When a parent node is collapsed while a child filter is active, a dashed border and count badge (+1 / -1) indicate the active filter path.',
     '3. 傾き補正・切り抜き・トーン調整とリアルタイムヒストグラム（非破壊）':
       '3. Horizon Leveling, Crop, Tone Adjustments & Live Histogram (Non-Destructive)',
     '写真を選んで C キー（または右インスペクタ・ライトボックスの「調整」ボタン）を押すと、元ファイルを一切書き換えずに以下の調整が行えます。':
@@ -1496,6 +1496,45 @@
     '破線枠）で適用箇所がひと目で分かり、上部のフィルタチップをクリックすると該当ツリー位置へ自動ジャンプします。元に戻すときは左サイドバー一番上の':
       '), and clicking any active filter chip jumps straight to that item in the tree. To clear all filters, click',
     '階層タグ ＆ タグツリーエディタ:': 'Hierarchical Tags & Tag Tree Editor:',
+    'スマホからアクセスできないときの設定確認（ファイアウォール・ネットワーク設定）':
+      'Troubleshooting Smartphone Connection (Firewall & Network Settings)',
+    '▼ クリックで開く': '▼ Click to expand',
+    '【確認1】Windowsのネットワークプロファイルを「プライベート」に変更（最も多い原因）':
+      '[Check 1] Set Windows Network Profile to "Private" (Most Common Cause)',
+    'Windowsの「設定」＞「ネットワークとインターネット」＞「Wi-Fi（またはイーサネット）」のプロパティを開き、ネットワークプロファイルの種類が':
+      'Open Windows "Settings" > "Network & internet" > "Wi-Fi (or Ethernet)" properties, and if Network profile type is set to',
+    '「パブリック (Public)」': '"Public"',
+    'になっている場合は': ', switch it to',
+    '「プライベート (Private)」': '"Private"',
+    'に切り替えてください（パブリック設定では他端末からの接続が遮断されます）。':
+      ' (Public profile blocks incoming connections from other devices).',
+    '【確認2】Windows Defender ファイアウォールの通信許可（TCP 8088 / python.exe）':
+      '[Check 2] Allow in Windows Defender Firewall (TCP 8088 / python.exe)',
+    '初回接続時のWindowsセキュリティ警告でブロックされた場合は、「Windows セキュリティ」＞「ファイアウォールとネットワーク保護」＞「ファイアウォールによるアプリケーションの許可」から、Photo Manager 内の':
+      'If blocked by the Windows Security prompt on first connection, open "Windows Security" > "Firewall & network protection" > "Allow an app through firewall" and allow',
+    '（または詳細設定の「受信の規則」で': 'inside Photo Manager (or inbound rule for',
+    'TCP ポート': 'TCP port',
+    '）の「プライベート」にチェックを入れて許可してください。': ') on "Private" networks.',
+    '許可コマンドをコピー': 'Copy Firewall Command',
+    '管理者として開いたPowerShellまたはコマンドプロンプトに貼り付けて実行すると、ファイアウォールのポート8088受信許可を追加できます':
+      'Paste and run in an Administrator PowerShell or Command Prompt to allow inbound TCP port 8088 in Windows Firewall',
+    '※スタートボタンを右クリック ＞「ターミナル (管理者)」または「PowerShell (管理者)」を開き、上記コマンドを貼り付けて Enter を押すと一発で許可登録できます。':
+      '* Right-click the Start button > open "Terminal (Admin)" or "PowerShell (Admin)", paste the command above, and press Enter to register the rule.',
+    '【確認3】同じWi-Fiルーター・ゲストSSID（プライバシーセパレーター）の確認':
+      '[Check 3] Verify Same Wi-Fi Router & Guest SSID (AP Isolation)',
+    'PCとスマホが同じルーターのネットワークに接続されているか確認してください。ゲスト用SSID（':
+      'Make sure your PC and phone are connected to the same Wi-Fi router. Guest SSIDs (e.g.',
+    '等）やモバイルルーター等の「プライバシーセパレーター（ネットワーク分離機能）」が有効な環境では端末間通信が遮断されます。設定変更が難しい場合は、下の':
+      ') or routers with "AP Isolation / Privacy Separator" enabled block device-to-device connections. If network settings cannot be changed, use',
+    '「② USB持ち出し選別」': '"2. USB Portable Sorting"',
+    'ならネットワーク設定不要で確実に利用できます。': 'below—it works 100% offline without any network configuration.',
+    'ファイアウォール許可コマンドをコピーしました（管理者PowerShell等で実行してください）':
+      'Copied Firewall command (run in Administrator PowerShell / Terminal)',
+    '※QRコードを読み取ってもスマホから繋がらない場合は、(1) Windowsの「設定 ＞ ネットワークとインターネット ＞ Wi-Fi（またはイーサネット）」でネットワークプロファイルを「パブリック」から「プライベート」に変更する、(2)「Windows Defender ファイアウォール」で':
+      '* If scanning the QR code cannot connect: (1) Change your Windows network profile from "Public" to "Private" under Settings > Network & internet > Wi-Fi/Ethernet, (2) Allow',
+    '（または TCP ポート': '(or TCP port',
+    '）のプライベート通信を許可する、(3) ゲスト用SSIDやプライバシーセパレーター（端末間分離）でない同じWi-Fiルーターに接続しているかを確認してください（スマホ連携画面内にも詳しい手順と許可コマンドがあります）。':
+      ') on Private networks in Windows Defender Firewall, and (3) Ensure both devices are on the same router without Guest SSID / AP Isolation (detailed steps and a one-line firewall command are available inside the Mobile modal).',
   };
 
   const MONTH_NAMES_SHORT = [

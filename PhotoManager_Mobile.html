@@ -21,10 +21,10 @@
 
 :root,
 [data-theme="paper"] {
-  --bg-primary: #e5e3dc;
-  --bg-secondary: #d9d6cc;
-  --bg-tertiary: #cecabf;
-  --bg-card: #dedbd2;
+  --bg-primary: #e8e4d9;
+  --bg-secondary: #dedad0;
+  --bg-tertiary: #d4d0c5;
+  --bg-card: #e2dfd5;
   --bg-overlay: rgba(22, 24, 27, 0.65);
 
   --text-main: #2a2926;
@@ -39,18 +39,18 @@
   --rating-normal: #6e6a61;
   --rating-discard: #7a766e;
 
-  --border-color: #2a2926;
-  --border-soft: #bcb7aa;
+  --border-color: rgba(42, 41, 38, 0.16);
+  --border-soft: rgba(42, 41, 38, 0.12);
 }
 
 [data-theme="sumi"] {
-  --bg-primary: #141619;
-  --bg-secondary: #1f242b;
-  --bg-tertiary: #2b323c;
-  --bg-card: #1b1f26;
+  --bg-primary: #16181b;
+  --bg-secondary: #1e2126;
+  --bg-tertiary: #262a31;
+  --bg-card: #1b1e23;
   --bg-overlay: rgba(0, 0, 0, 0.78);
 
-  --text-main: #f0f2f5;
+  --text-main: #eceae4;
   --text-muted: #9ca6b5;
   --text-dim: #687487;
 
@@ -62,8 +62,8 @@
   --rating-normal: #8b95a5;
   --rating-discard: #646d7a;
 
-  --border-color: #363f4d;
-  --border-soft: #2a313c;
+  --border-color: rgba(255, 255, 255, 0.12);
+  --border-soft: rgba(255, 255, 255, 0.08);
 }
 
 * {
@@ -501,15 +501,29 @@ body {
 .m-mini-badge {
   padding: 1px 5px;
   border-radius: 3px;
-  background-color: rgba(0, 0, 0, 0.68);
-  color: #f0f2f5;
+  background-color: rgba(20, 20, 20, 0.68);
+  color: #eceae4;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   font-size: 10px;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  display: inline-flex;
+  align-items: center;
 }
 
 .m-mini-badge.stack-badge {
-  background-color: rgba(225, 77, 42, 0.88);
-  color: #ffffff;
+  background-color: rgba(20, 20, 20, 0.68);
+  color: #eceae4;
+}
+
+.m-photo-count,
+.m-filter-count,
+.m-viewer-counter,
+.m-batch-count,
+.m-pending-badge {
+  font-variant-numeric: tabular-nums;
 }
 
 /* 複数選択チェックマーク */
@@ -1577,8 +1591,10 @@ else if (typeof exports === 'object'){
 
       <div class="m-header-right">
         <!-- 和紙 / 夜墨 テーマ切替 -->
-        <button id="mThemeBtn" class="m-icon-btn" title="テーマ切替 (和紙 ⇄ 夜墨)">
-          <span id="mThemeIcon">🌙</span>
+        <button id="mThemeBtn" class="m-icon-btn" title="テーマ切替 (和紙 ⇄ 夜墨)" aria-label="テーマ切替">
+          <span id="mThemeIcon" style="display:inline-flex;align-items:center;justify-content:center;">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          </span>
         </button>
 
         <!-- DB読込 & 差分同期モーダルボタン -->
@@ -1607,13 +1623,13 @@ else if (typeof exports === 'object'){
         <div class="m-quick-divider"></div>
 
         <button id="mStackToggleBtn" class="m-pill active" title="連写・ブラケットのスタック集約表示">
-          🗂️ スタック
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.75" style="vertical-align:-2px;margin-right:3px;"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 12 12 17 22 12"/><polyline points="2 17 12 22 22 17"/></svg>スタック
         </button>
         <button id="mGridColsBtn" class="m-pill" title="グリッドの列数を切り替え (2列 / 3列 / 4列)">
           ⊞ 3列
         </button>
         <button id="mSelectModeBtn" class="m-pill" title="複数選択して一括評価・タグ付け">
-          ☑️ 選択
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.75" style="vertical-align:-2px;margin-right:3px;"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>選択
         </button>
       </div>
     </div>
@@ -1632,7 +1648,7 @@ else if (typeof exports === 'object'){
 
       <!-- DB未接続時のウェルカムカード（USB library.db 選択ガイド） -->
       <div id="mWelcomeCard" class="m-center-card" style="display:none;">
-        <div class="m-welcome-icon">🔌</div>
+        <div class="m-welcome-icon"><svg viewBox="0 0 24 24" width="38" height="38" fill="none" stroke="currentColor" stroke-width="1.5"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></div>
         <h2 class="m-center-title">USBメモリ内の DB を開く</h2>
         <p class="m-center-sub">
           USBメモリ内の <code>cache/library.db</code> を選択するだけで、全サムネイルの高速閲覧・検索・評価選別が行えます。<br>
@@ -1640,14 +1656,15 @@ else if (typeof exports === 'object'){
         </p>
         <div class="m-welcome-actions">
           <button id="mWelcomeLoadDbBtn" class="m-btn m-btn-primary m-btn-large">
-            📂 cache/library.db を選択して開く
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            <span>cache/library.db を選択して開く</span>
           </button>
         </div>
       </div>
 
       <!-- 空状態（該当写真0件） -->
       <div id="mEmptyState" class="m-center-card" style="display:none;">
-        <div class="m-welcome-icon">📷</div>
+        <div class="m-welcome-icon"><svg viewBox="0 0 24 24" width="38" height="38" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div>
         <div class="m-center-title">条件に一致する写真がありません</div>
         <div class="m-center-sub">絞り込み条件を変更するか、フィルタをリセットしてください。</div>
         <button id="mEmptyResetFilterBtn" class="m-btn m-btn-secondary" style="margin-top:12px;">
@@ -1674,7 +1691,9 @@ else if (typeof exports === 'object'){
         <button class="m-rate-btn rate-normal" data-batch-rate="0">○ 可</button>
         <button class="m-rate-btn rate-good" data-batch-rate="1">● 良</button>
         <button class="m-rate-btn rate-excellent" data-batch-rate="2">★ 優</button>
-        <button id="mBatchTagBtn" class="m-rate-btn rate-tag">🏷️ タグ</button>
+        <button id="mBatchTagBtn" class="m-rate-btn rate-tag">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.75" style="vertical-align:-2px;margin-right:2px;"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>タグ
+        </button>
       </div>
     </div>
 
@@ -1682,7 +1701,10 @@ else if (typeof exports === 'object'){
     <div id="mDrawerOverlay" class="m-drawer-overlay" style="display:none;"></div>
     <aside id="mDrawer" class="m-drawer">
       <div class="m-drawer-header">
-        <div class="m-drawer-title">🔍 検索・絞り込み</div>
+        <div class="m-drawer-title" style="display:flex;align-items:center;gap:6px;">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <span>検索・絞り込み</span>
+        </div>
         <button id="mCloseDrawerBtn" class="m-icon-btn" aria-label="閉じる">✕</button>
       </div>
 
@@ -1707,10 +1729,10 @@ else if (typeof exports === 'object'){
           </select>
         </div>
 
-        <!-- 🏷️ タグ階層フィルタ -->
+        <!-- タグ階層フィルタ -->
         <details class="m-accordion" open>
           <summary class="m-accordion-summary">
-            <span>🏷️ タグで絞り込み</span>
+            <span style="display:inline-flex;align-items:center;gap:6px;"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>タグで絞り込み</span>
             <small class="m-accordion-hint">タップ: 含む / 2回: 除外</small>
           </summary>
           <div class="m-accordion-content">
@@ -1718,30 +1740,30 @@ else if (typeof exports === 'object'){
           </div>
         </details>
 
-        <!-- 📅 タイムライン（撮影年月） -->
+        <!-- タイムライン（撮影年月） -->
         <details class="m-accordion">
           <summary class="m-accordion-summary">
-            <span>📅 タイムライン（年月）</span>
+            <span style="display:inline-flex;align-items:center;gap:6px;"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>タイムライン（年月）</span>
           </summary>
           <div class="m-accordion-content">
             <div id="mTimelineFilterList" class="m-filter-list"></div>
           </div>
         </details>
 
-        <!-- 🗺️ ジオタグ（撮影地） -->
+        <!-- ジオタグ（撮影地） -->
         <details class="m-accordion">
           <summary class="m-accordion-summary">
-            <span>🗺️ ジオタグ（撮影地域）</span>
+            <span style="display:inline-flex;align-items:center;gap:6px;"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>ジオタグ（撮影地域）</span>
           </summary>
           <div class="m-accordion-content">
             <div id="mLocationFilterList" class="m-filter-list"></div>
           </div>
         </details>
 
-        <!-- 📷 カメラ機種 -->
+        <!-- カメラ機種 -->
         <details class="m-accordion">
           <summary class="m-accordion-summary">
-            <span>📷 カメラ機種</span>
+            <span style="display:inline-flex;align-items:center;gap:6px;"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>カメラ機種</span>
           </summary>
           <div class="m-accordion-content">
             <div id="mCameraFilterList" class="m-filter-list"></div>
@@ -1772,7 +1794,7 @@ else if (typeof exports === 'object'){
         </div>
 
         <button id="mViewerOpenInfoBtn" class="m-viewer-info-btn" title="タグ編集・Exif詳細を開く">
-          🏷️ タグ・詳細
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.75" style="vertical-align:-2px;margin-right:3px;"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>タグ・詳細
         </button>
       </div>
 
@@ -1801,7 +1823,7 @@ else if (typeof exports === 'object'){
         <div class="m-viewer-dock-options">
           <label class="m-auto-advance-label">
             <input type="checkbox" id="mAutoAdvanceCheck" checked>
-            <span>⚡ 評価したら自動で次の写真へ進む</span>
+            <span>評価したら自動で次の写真へ進む</span>
           </label>
           <span id="mViewerZoomHint" class="m-zoom-hint">ダブルタップで拡大</span>
         </div>
@@ -1833,7 +1855,7 @@ else if (typeof exports === 'object'){
           <div class="m-sheet-handle"></div>
         </div>
         <div class="m-sheet-header">
-          <div id="mInfoSheetTitle" class="m-sheet-title">🏷️ タグ編集 & 詳細情報</div>
+          <div id="mInfoSheetTitle" class="m-sheet-title">タグ編集 &amp; 詳細情報</div>
           <button id="mCloseInfoSheetBtn" class="m-icon-btn">✕</button>
         </div>
 
@@ -1843,13 +1865,13 @@ else if (typeof exports === 'object'){
             <div class="m-sheet-section-title">付いているタグ</div>
             <div id="mCurrentPhotoTags" class="m-tag-chips"></div>
 
-            <div class="m-sheet-section-subtitle">📂 タグツリーから選ぶ（親フォルダ展開で子タグ追加）</div>
+            <div class="m-sheet-section-subtitle">タグツリーから選ぶ（親フォルダ展開で子タグ追加）</div>
             <div id="mQuickTagSelector" class="m-quick-tag-selector"></div>
           </div>
 
           <!-- Exif詳細セクション -->
           <div id="mExifSection" class="m-sheet-section">
-            <div class="m-sheet-section-title">📷 Exif / メタデータ詳細</div>
+            <div class="m-sheet-section-title">Exif / メタデータ詳細</div>
             <div id="mExifTable" class="m-exif-grid"></div>
           </div>
         </div>
@@ -1863,47 +1885,49 @@ else if (typeof exports === 'object'){
           <div class="m-sheet-handle"></div>
         </div>
         <div class="m-sheet-header">
-          <div class="m-sheet-title">📂 DB読込 & 選別データの保存</div>
+          <div class="m-sheet-title">DB読込 &amp; 選別データの保存</div>
           <button id="mCloseDbSyncBtn" class="m-icon-btn">✕</button>
         </div>
 
         <div class="m-sheet-body">
           <!-- セクション1: USB / ローカル library.db 読み込み -->
           <div class="m-sync-card">
-            <div class="m-sync-card-title">🔌 1. USBメモリ内の <code>cache/library.db</code> を開く</div>
+            <div class="m-sync-card-title">1. USBメモリ内の <code>cache/library.db</code> を開く</div>
             <p class="m-sync-card-desc">
               USBメモリ内の <code>cache</code> フォルダにある <code>library.db</code> を選択してメモリに読み込みます。
             </p>
             <input type="file" id="mDbFileInput" accept=".db,.sqlite,.sqlite3,*/*" style="display:none;">
             <button id="mSelectDbFileBtn" class="m-btn m-btn-primary" style="width:100%;">
-              📂 cache/library.db を選択して読み込む
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+              <span>cache/library.db を選択して読み込む</span>
             </button>
             <div id="mLoadedDbStatus" class="m-sync-status-box" style="margin-top:8px;"></div>
           </div>
 
           <!-- セクション2: 選別結果（評価・タグ変更）のPCへの書き戻し -->
           <div class="m-sync-card">
-            <div class="m-sync-card-title">💾 2. 選別結果をUSBメモリに保存してPCへ反映する</div>
+            <div class="m-sync-card-title">2. 選別結果をUSBメモリに保存してPCへ反映する</div>
             <div id="mPendingSummaryBox" class="m-sync-status-box" style="margin-bottom:10px;">
               未反映の変更: <strong>0件</strong>
             </div>
 
             <div class="m-sync-actions-col">
               <div style="background:rgba(255,255,255,0.03); border:1px solid var(--border-soft, rgba(255,255,255,0.1)); border-radius:8px; padding:10px; width:100%; box-sizing:border-box;">
-                <div style="font-size:0.8rem; font-weight:700; margin-bottom:6px;">📥 選別データ（<code>mobile_sync.json</code>）を書き出す</div>
+                <div style="font-size:0.8rem; font-weight:700; margin-bottom:6px;">選別データ（<code>mobile_sync.json</code>）を書き出す</div>
                 <div style="font-size:0.74rem; color:var(--text-muted, #9ca6b5); line-height:1.5; margin-bottom:10px;">
                   下のボタンから USBメモリ直下（または <code>cache</code> フォルダ）へ保存してください。<br>
                   <strong>次回PCにUSBメモリを挿して Photo Manager を起動した瞬間に、全自動でPC側へ反映されます。</strong>
                 </div>
                 <button id="mExportSyncJsonBtn" class="m-btn m-btn-primary" style="width:100%; padding:12px;">
-                  💾 mobile_sync.json を保存する
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  <span>mobile_sync.json を保存する</span>
                 </button>
                 <div style="display:flex; gap:8px; width:100%; margin-top:8px;">
                   <button id="mShareSyncJsonBtn" class="m-btn m-btn-secondary" style="flex:1; font-size:0.75rem; padding:8px;">
-                    📤 共有メニュー（ファイルアプリ等）で保存
+                    共有メニュー（ファイルアプリ等）で保存
                   </button>
                   <button id="mCopySyncJsonBtn" class="m-btn m-btn-secondary" style="flex:1; font-size:0.75rem; padding:8px;">
-                    📋 JSONテキストをコピー
+                    JSONテキストをコピー
                   </button>
                 </div>
               </div>
@@ -1911,7 +1935,7 @@ else if (typeof exports === 'object'){
               <!-- 保存＆ファイルクローズ完了通知ボックス -->
               <div id="mExportCompleteBox" style="display:none; background:rgba(22, 163, 74, 0.16); border:1px solid rgba(34, 197, 94, 0.55); border-radius:8px; padding:10px 12px; width:100%; box-sizing:border-box; margin-top:6px;">
                 <div id="mExportCompleteTitle" style="font-size:0.82rem; font-weight:700; color:#4ade80; margin-bottom:4px;">
-                  ✅ mobile_sync.json の書き込み・ファイルクローズが完了しました！
+                  ✓ mobile_sync.json の書き込み・ファイルクローズが完了しました！
                 </div>
                 <div id="mExportCompleteDesc" style="font-size:0.75rem; color:var(--text-main, #eceae4); line-height:1.5;"></div>
               </div>
@@ -1919,32 +1943,33 @@ else if (typeof exports === 'object'){
               <!-- USB抜き差し時の破損防止ガイド -->
               <div id="mSafeEjectNotice" style="background:rgba(245, 158, 11, 0.12); border:1px solid rgba(245, 158, 11, 0.45); border-radius:8px; padding:10px 12px; width:100%; box-sizing:border-box; margin-top:6px;">
                 <div style="font-size:0.78rem; font-weight:700; color:#fbbf24; margin-bottom:4px;">
-                  ⚠️ USBメモリを引き抜く前の必須手順（データ消失・破損防止）
+                  ! USBメモリを引き抜く前の必須手順（データ消失・破損防止）
                 </div>
                 <ol style="margin:0; padding-left:18px; font-size:0.74rem; color:var(--text-main, #eceae4); line-height:1.55;">
-                  <li>上の保存ボタンを押したあと、<strong>「✅ 書き込み・ファイルクローズが完了しました」</strong>と表示されるまで絶対にUSBを抜かないでください。</li>
+                  <li>上の保存ボタンを押したあと、<strong>「✓ 書き込み・ファイルクローズが完了しました」</strong>と表示されるまで絶対にUSBを抜かないでください。</li>
                   <li>スマホ画面の上から通知バーを下ろし、<strong>「USBドライブを取り外す（マウント解除）」</strong>を必ずタップしてからUSBを抜いてください。<br>
                   <span style="color:var(--text-muted, #9ca6b5);">※マウント解除せずに引き抜くと、スマホOSの書き込みキャッシュが閉じられずWindows接続時に「メディア破損」になります。</span></li>
                 </ol>
               </div>
 
               <button id="mExportFullDbBtn" class="m-btn m-btn-secondary" style="width:100%; display:none;">
-                📦 更新済み library.db 本体を丸ごと書き出し
+                更新済み library.db 本体を丸ごと書き出し
               </button>
               <button id="mClearPendingBtn" class="m-text-btn" style="align-self:flex-end; margin-top:2px;">
-                🗑️ 端末内の変更履歴をリセット
+                端末内の変更履歴をリセット
               </button>
             </div>
           </div>
 
           <!-- セクション3: オフライン用単体完結型HTMLのスマホ保存 -->
           <div class="m-sync-card" id="mStandaloneDownloadCard">
-            <div class="m-sync-card-title">📱 3. この選別アプリ（単体HTML）をスマホ本体に保存</div>
+            <div class="m-sync-card-title">3. この選別アプリ（単体HTML）をスマホ本体に保存</div>
             <p class="m-sync-card-desc">
               <code>PhotoManager_Mobile.html</code> をスマホ本体（ダウンロードフォルダ）にコピーしておくと、USBメモリ上のHTMLを直接開かずに済むため、USBメモリの取り外しがさらに安全になります。
             </p>
             <a id="mDownloadStandaloneHtmlBtn" href="/api/mobile/standalone" download="PhotoManager_Mobile.html" class="m-btn m-btn-secondary" style="width:100%; text-decoration:none; box-sizing:border-box; justify-content:center;">
-              📥 単体完結型HTML (PhotoManager_Mobile.html) をスマホに保存
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              <span>単体完結型HTML (PhotoManager_Mobile.html) をスマホに保存</span>
             </a>
           </div>
         </div>
@@ -2261,9 +2286,14 @@ else if (typeof exports === 'object'){
     document.documentElement.setAttribute('data-theme', t);
     _safeSetStorage('pm_theme', t);
     const icon = document.getElementById('mThemeIcon');
-    if (icon) icon.textContent = t === 'paper' ? '📜' : '🌙';
+    if (icon) {
+      icon.innerHTML =
+        t === 'paper'
+          ? '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>'
+          : '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+    }
     const metaTheme = document.getElementById('mMetaThemeColor');
-    if (metaTheme) metaTheme.setAttribute('content', t === 'paper' ? '#d9d6cc' : '#16181b');
+    if (metaTheme) metaTheme.setAttribute('content', t === 'paper' ? '#e8e4d9' : '#16181b');
   }
 
   function initSavedPrefs() {
@@ -2291,13 +2321,13 @@ else if (typeof exports === 'object'){
       badge.className = 'm-mode-badge';
       if (mode === 'server') {
         badge.classList.add('mode-server');
-        badge.textContent = '💻 PCプレビュー';
+        badge.textContent = '● Wi-Fi接続';
       } else if (mode === 'localdb') {
         badge.classList.add('mode-localdb');
-        badge.textContent = '🔌 USB DB';
+        badge.textContent = '● USB DB';
       } else {
         badge.classList.add('mode-offline');
-        badge.textContent = '⚪ DB未読込';
+        badge.textContent = '○ DB未読込';
       }
     }
 
@@ -2430,9 +2460,9 @@ else if (typeof exports === 'object'){
 
       const statusBox = document.getElementById('mLoadedDbStatus');
       if (statusBox) {
-        statusBox.innerHTML = `✅ <strong>${_escHtml(file.name)}</strong> (${(file.size / 1024 / 1024).toFixed(1)} MB) を読込完了`;
+        statusBox.innerHTML = `✓ <strong>${_escHtml(file.name)}</strong> (${(file.size / 1024 / 1024).toFixed(1)} MB) を読込完了`;
       }
-      showToast(`📂 ${file.name} を読み込みました`);
+      showToast(`${file.name} を読み込みました`);
     } catch (err) {
       console.error('DBファイル読込エラー:', err);
       alert('DBの読み込みに失敗しました: ' + (err.message || err));
@@ -2689,13 +2719,30 @@ else if (typeof exports === 'object'){
       }
     }
 
-    // タグフィルタ
+    // タグフィルタ（最上位の親が同じタグ同士は OR 条件、異なるグループ間・最上位タグ同士は AND 条件）
     if (mState.untaggedOnly) {
       sql += ' AND NOT EXISTS (SELECT 1 FROM photo_tags pt WHERE pt.photo_id = p.id)';
     } else {
-      for (const incTag of mState.includeTags) {
-        sql += ' AND EXISTS (SELECT 1 FROM photo_tags pt WHERE pt.photo_id = p.id AND pt.tag = ?)';
-        params.push(incTag);
+      const cleanInc = (mState.includeTags || []).map((t) => String(t || '').trim()).filter(Boolean);
+      const effectiveInc = cleanInc.filter(
+        (t) => !cleanInc.some((other) => other !== t && other.startsWith(`${t}/`))
+      );
+      const tagGroups = new Map();
+      for (const incTag of effectiveInc) {
+        const rootParent = incTag.split('/')[0].trim();
+        if (!tagGroups.has(rootParent)) tagGroups.set(rootParent, []);
+        const grp = tagGroups.get(rootParent);
+        if (!grp.includes(incTag)) grp.push(incTag);
+      }
+      for (const grpTags of tagGroups.values()) {
+        if (grpTags.length === 1) {
+          sql += ' AND EXISTS (SELECT 1 FROM photo_tags pt WHERE pt.photo_id = p.id AND pt.tag = ?)';
+          params.push(grpTags[0]);
+        } else {
+          const ph = grpTags.map(() => '?').join(',');
+          sql += ` AND EXISTS (SELECT 1 FROM photo_tags pt WHERE pt.photo_id = p.id AND pt.tag IN (${ph}))`;
+          params.push(...grpTags);
+        }
       }
       for (const excTag of mState.excludeTags) {
         sql +=
@@ -2935,7 +2982,7 @@ else if (typeof exports === 'object'){
 
     const topBadges = [];
     if (photo.stack_count && photo.stack_count > 1) {
-      topBadges.push(`<span class="m-mini-badge stack-badge">🗂️${photo.stack_count}</span>`);
+      topBadges.push(`<span class="m-mini-badge stack-badge"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px;margin-right:2px;"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 12 12 17 22 12"/></svg>${photo.stack_count}</span>`);
     }
     if (photo.is_raw || photo.paired_raw_path) {
       topBadges.push(`<span class="m-mini-badge">RAW</span>`);
@@ -3006,7 +3053,7 @@ else if (typeof exports === 'object'){
     if (tagContainer) {
       let html = `
         <div class="m-filter-item ${mState.untaggedOnly ? 'active-include' : ''}" data-untagged="1">
-          <span>🏷️ 未分類の写真</span>
+          <span>未分類の写真</span>
           <span class="m-filter-count">${mState.untaggedCount}</span>
         </div>
       `;
@@ -3065,7 +3112,7 @@ else if (typeof exports === 'object'){
         const active = mState.yearMonth === ym ? 'active-include' : '';
         html += `
           <div class="m-filter-item ${active}" data-ym="${_escAttr(ym)}">
-            <span>📅 ${_escHtml(ym)}</span>
+            <span>${_escHtml(ym)}</span>
             <span class="m-filter-count">${item.count}</span>
           </div>
         `;
@@ -3086,7 +3133,7 @@ else if (typeof exports === 'object'){
     if (locContainer) {
       let html = `
         <div class="m-filter-item ${mState.noLocationOnly ? 'active-include' : ''}" data-noloc="1">
-          <span>📍 ジオタグなし</span>
+          <span>ジオタグなし</span>
           <span class="m-filter-count">${mState.noLocationCount}</span>
         </div>
       `;
@@ -3097,7 +3144,7 @@ else if (typeof exports === 'object'){
             : '';
         html += `
           <div class="m-filter-item ${cActive}" data-country="${_escAttr(c.country)}">
-            <span>🌍 ${_escHtml(c.country)}</span>
+            <span>${_escHtml(c.country)}</span>
             <span class="m-filter-count">${c.count}</span>
           </div>
         `;
@@ -3111,7 +3158,7 @@ else if (typeof exports === 'object'){
               : '';
           html += `
             <div class="m-filter-item ${sActive}" style="padding-left:22px;" data-country="${_escAttr(c.country)}" data-state="${_escAttr(s.state)}">
-              <span>🗾 ${_escHtml(s.state)}</span>
+              <span>└ ${_escHtml(s.state)}</span>
               <span class="m-filter-count">${s.count}</span>
             </div>
           `;
@@ -3154,7 +3201,7 @@ else if (typeof exports === 'object'){
         const active = mState.cameraModel === cm ? 'active-include' : '';
         html += `
           <div class="m-filter-item ${active}" data-cam="${_escAttr(cm)}">
-            <span>📷 ${_escHtml(cm)}</span>
+            <span>${_escHtml(cm)}</span>
             <span class="m-filter-count">${item.count}</span>
           </div>
         `;
@@ -3179,7 +3226,7 @@ else if (typeof exports === 'object'){
     const chips = [];
     if (mState.searchQuery) {
       chips.push({
-        label: `🔍 "${mState.searchQuery}"`,
+        label: `"${mState.searchQuery}"`,
         clear: () => {
           mState.searchQuery = '';
           document.getElementById('mSearchInput').value = '';
@@ -3188,7 +3235,7 @@ else if (typeof exports === 'object'){
     }
     if (mState.untaggedOnly) {
       chips.push({
-        label: '🏷️ 未分類のみ',
+        label: '未分類のみ',
         clear: () => {
           mState.untaggedOnly = false;
         },
@@ -3196,7 +3243,7 @@ else if (typeof exports === 'object'){
     }
     for (const t of mState.includeTags) {
       chips.push({
-        label: `🏷️ +${t}`,
+        label: `+#${t}`,
         clear: () => {
           mState.includeTags = mState.includeTags.filter((x) => x !== t);
         },
@@ -3204,7 +3251,7 @@ else if (typeof exports === 'object'){
     }
     for (const t of mState.excludeTags) {
       chips.push({
-        label: `🏷️ -${t}`,
+        label: `-#${t}`,
         exclude: true,
         clear: () => {
           mState.excludeTags = mState.excludeTags.filter((x) => x !== t);
@@ -3213,7 +3260,7 @@ else if (typeof exports === 'object'){
     }
     if (mState.yearMonth) {
       chips.push({
-        label: `📅 ${mState.yearMonth}`,
+        label: `${mState.yearMonth}`,
         clear: () => {
           mState.yearMonth = '';
         },
@@ -3221,7 +3268,7 @@ else if (typeof exports === 'object'){
     }
     if (mState.noLocationOnly) {
       chips.push({
-        label: '📍 ジオタグなし',
+        label: 'ジオタグなし',
         clear: () => {
           mState.noLocationOnly = false;
         },
@@ -3229,7 +3276,7 @@ else if (typeof exports === 'object'){
     } else if (mState.country) {
       const locLabel = [mState.country, mState.stateName, mState.city].filter(Boolean).join('/');
       chips.push({
-        label: `🗺️ ${locLabel}`,
+        label: `${locLabel}`,
         clear: () => {
           mState.country = '';
           mState.stateName = '';
@@ -3239,7 +3286,7 @@ else if (typeof exports === 'object'){
     }
     if (mState.cameraModel) {
       chips.push({
-        label: `📷 ${mState.cameraModel}`,
+        label: `${mState.cameraModel}`,
         clear: () => {
           mState.cameraModel = '';
         },
@@ -3346,7 +3393,7 @@ else if (typeof exports === 'object'){
         });
         if (!res.ok) throw new Error('一括評価失敗');
       } catch (e) {
-        showToast('⚠️ サーバー更新エラー');
+        showToast('! サーバー更新エラー');
         return;
       }
     } else if (mState.mode === 'localdb' && mState.localDb) {
@@ -3452,7 +3499,7 @@ else if (typeof exports === 'object'){
     const locStr = [activePhoto.country, activePhoto.state, activePhoto.city]
       .filter(Boolean)
       .join(' ');
-    if (locStr) exifParts.push(`📍${locStr}`);
+    if (locStr) exifParts.push(locStr);
 
     document.getElementById('mViewerExifBrief').textContent =
       exifParts.join(' · ') || 'Exif情報なし';
@@ -3526,7 +3573,7 @@ else if (typeof exports === 'object'){
         });
         if (!res.ok) throw new Error('評価更新失敗');
       } catch (e) {
-        showToast('⚠️ 評価の保存に失敗しました');
+        showToast('! 評価の保存に失敗しました');
         return;
       }
     } else if (mState.mode === 'localdb' && mState.localDb) {
@@ -3649,13 +3696,13 @@ else if (typeof exports === 'object'){
     if (!overlay) return;
 
     if (isBatchMode) {
-      if (titleEl) titleEl.textContent = `🏷️ 選択中の ${mState.selectedIds.size}枚 にタグ一括付与`;
+      if (titleEl) titleEl.textContent = `選択中の ${mState.selectedIds.size}枚 にタグ一括付与`;
       if (exifSec) exifSec.style.display = 'none';
       renderBatchTagSheet();
     } else {
       const photo = getActiveViewerPhoto();
       if (!photo) return;
-      if (titleEl) titleEl.textContent = '🏷️ タグ編集 & Exif詳細';
+      if (titleEl) titleEl.textContent = 'タグ編集 & Exif詳細';
       if (exifSec) exifSec.style.display = 'block';
       renderSinglePhotoInfoSheet(photo);
     }
@@ -3807,7 +3854,9 @@ else if (typeof exports === 'object'){
         const arrowHtml = hasChildren
           ? `<span class="m-tree-arrow">${isExpanded ? '▼' : '▶'}</span>`
           : `<span class="m-tree-arrow"></span>`;
-        const icon = hasChildren ? '📁' : '🏷️';
+        const icon = hasChildren
+          ? '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.75" style="vertical-align:-2px;margin-right:3px;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>'
+          : '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.75" style="vertical-align:-1px;margin-right:3px;"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>';
         const badgeLabel = isBatchMode
           ? '＋ 一括追加'
           : hasTag
@@ -3970,7 +4019,7 @@ else if (typeof exports === 'object'){
         const data = await res.json();
         photo.tags = data.tags || [...new Set([...(photo.tags || []), ...expanded])];
       } catch (e) {
-        showToast('⚠️ タグ追加エラー');
+        showToast('! タグ追加エラー');
         return;
       }
     } else if (mState.mode === 'localdb' && mState.localDb) {
@@ -3988,7 +4037,7 @@ else if (typeof exports === 'object'){
     renderViewerCurrentPhoto();
     await fetchFilterSummaries();
     renderSinglePhotoInfoSheet(photo);
-    showToast(`🏷️ #${tag} を追加しました`);
+    showToast(`#${tag} を追加しました`);
   }
 
   async function removeTagFromPhotoAction(photo, rawTag) {
@@ -4005,7 +4054,7 @@ else if (typeof exports === 'object'){
         photo.tags =
           data.tags || (photo.tags || []).filter((t) => t !== tag && !t.startsWith(`${tag}/`));
       } catch (e) {
-        showToast('⚠️ タグ削除エラー');
+        showToast('! タグ削除エラー');
         return;
       }
     } else if (mState.mode === 'localdb' && mState.localDb) {
@@ -4022,7 +4071,7 @@ else if (typeof exports === 'object'){
     renderViewerCurrentPhoto();
     await fetchFilterSummaries();
     renderSinglePhotoInfoSheet(photo);
-    showToast(`🏷️ #${tag} を解除しました`);
+    showToast(`#${tag} を解除しました`);
   }
 
   async function addTagBatchAction(rawTag) {
@@ -4041,7 +4090,7 @@ else if (typeof exports === 'object'){
         });
         if (!res.ok) throw new Error('一括タグ追加失敗');
       } catch (e) {
-        showToast('⚠️ 一括タグ追加エラー');
+        showToast('! 一括タグ追加エラー');
         return;
       }
     } else if (mState.mode === 'localdb' && mState.localDb) {
@@ -4074,7 +4123,7 @@ else if (typeof exports === 'object'){
     renderBatchTagSheet();
     await fetchFilterSummaries();
     renderBatchTagSheet();
-    showToast(`🏷️ ${ids.length}枚に #${tag} を追加しました`);
+    showToast(`${ids.length}枚に #${tag} を追加しました`);
   }
 
   // ==================== 差分JSON出力 / DB丸ごと出力（完全クローズ＆検証保証） ====================
@@ -4154,8 +4203,8 @@ else if (typeof exports === 'object'){
       if (handle) {
         setLoading(
           true,
-          '⏳ mobile_sync.json を書き込み・ファイルクローズ中...',
-          '⚠️ 完了画面が出るまで、絶対にUSBメモリを抜かないでください！'
+          'mobile_sync.json を書き込み・ファイルクローズ中...',
+          '! 完了画面が出るまで、絶対にUSBメモリを抜かないでください！'
         );
         try {
           const writable = await handle.createWritable({ keepExistingData: false });
@@ -4176,17 +4225,17 @@ else if (typeof exports === 'object'){
           // Android OS の VFAT/exFAT 書き込みキャッシュがUSBフラッシュへ書き出されるまで安全待機
           setLoading(
             true,
-            '⏳ USBメモリの書き込みキャッシュを確定（フラッシュ）中...',
-            '⚠️ あと2秒そのままお待ちください（まだUSBを抜かないでください）'
+            'USBメモリの書き込みキャッシュを確定（フラッシュ）中...',
+            '! あと2秒そのままお待ちください（まだUSBを抜かないでください）'
           );
           await new Promise((resolve) => setTimeout(resolve, 2500));
 
           setLoading(false);
           _showExportCompleteNotice(
-            `✅ ${savedFile.name} (${savedFile.size.toLocaleString()} B / ${cnt}件) の書き込み・クローズが完了しました！`,
+            `✓ ${savedFile.name} (${savedFile.size.toLocaleString()} B / ${cnt}件) の書き込み・クローズが完了しました！`,
             '<strong>【重要】スマホからUSBを抜く前に：</strong><br>スマホ画面の上から通知バーを下ろし、<strong>「USBドライブを取り外す（マウント解除）」</strong>をタップしてからUSBを抜いてください。その後PCに挿して起動すると自動で取り込まれます。'
           );
-          showToast(`✅ ${savedFile.name} の書き込み・クローズが完了しました！`, 4000);
+          showToast(`✓ ${savedFile.name} の書き込み・クローズが完了しました！`, 4000);
           return;
         } catch (writeErr) {
           setLoading(false);
@@ -4215,10 +4264,10 @@ else if (typeof exports === 'object'){
     a.remove();
 
     _showExportCompleteNotice(
-      `📥 mobile_sync.json (${utf8Bytes.byteLength.toLocaleString()} B / ${cnt}件) を出力しました！`,
+      `✓ mobile_sync.json (${utf8Bytes.byteLength.toLocaleString()} B / ${cnt}件) を出力しました！`,
       'ダウンロード先（またはUSBメモリ）へ保存が完了したら、スマホの通知バーから<strong>「USBドライブを取り外す（マウント解除）」</strong>をタップしてからUSBを抜いてください。'
     );
-    showToast('📥 mobile_sync.json を保存しました', 3500);
+    showToast('✓ mobile_sync.json を保存しました', 3500);
   }
 
   /**
@@ -4242,7 +4291,7 @@ else if (typeof exports === 'object'){
             files: [file],
           });
           _showExportCompleteNotice(
-            `📤 共有アプリへ mobile_sync.json (${cnt}件) を渡しました`,
+            `✓ 共有アプリへ mobile_sync.json (${cnt}件) を渡しました`,
             'ファイル管理アプリ等でUSBメモリへの保存が完了したら、スマホの通知バーから<strong>「USBドライブを取り外す（マウント解除）」</strong>をタップしてからUSBを抜いてください。'
           );
           return;
@@ -4272,7 +4321,7 @@ else if (typeof exports === 'object'){
     try {
       if (navigator.clipboard && navigator.clipboard.writeText) {
         await navigator.clipboard.writeText(jsonStr);
-        showToast(`📋 選別データ (${cnt}件) をコピーしました`);
+        showToast(`✓ 選別データ (${cnt}件) をコピーしました`);
         return;
       }
     } catch (e) {}
@@ -4286,7 +4335,7 @@ else if (typeof exports === 'object'){
     ta.select();
     try {
       document.execCommand('copy');
-      showToast(`📋 選別データ (${cnt}件) をコピーしました`);
+      showToast(`✓ 選別データ (${cnt}件) をコピーしました`);
     } catch (e) {
       alert('コピーに失敗しました。ファイル保存をご利用ください。');
     } finally {
@@ -4312,7 +4361,7 @@ else if (typeof exports === 'object'){
       document.body.appendChild(a);
       a.click();
       a.remove();
-      showToast('📦 更新済み library.db を書き出しました');
+      showToast('✓ 更新済み library.db を書き出しました');
     } catch (e) {
       alert('DB書き出しエラー: ' + e.message);
     }

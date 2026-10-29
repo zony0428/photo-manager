@@ -149,33 +149,21 @@ function updateTimelineFilterState() {
   state.untaggedOnly = false;
   elements.untaggedNavItem.classList.remove('active');
 
-  // カメラ・レンズ・フォルダ選択を確実にリセット（排他化）
-  if ((state.selectedCameras && state.selectedCameras.size > 0) ||
-      (state.cameraFilters && state.cameraFilters.size > 0) ||
-      (state.lensFilters && state.lensFilters.size > 0) ||
-      (state.selectedLenses && state.selectedLenses.size > 0)) {
-    state.selectedCameras.clear();
-    if (state.cameraFilters) state.cameraFilters.clear();
-    if (state.lensFilters) state.lensFilters.clear();
-    if (state.selectedLenses) state.selectedLenses.clear();
-    updateCameraActiveClasses();
-  }
-  if (elements.folderList) {
-    elements.folderList.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-  }
-
+  const isFolderActive = state.currentFilter && (state.currentFilter.type === 'folder' || state.currentFilter.type === 'folder_exclude');
   const selectedCount = state.selectedYearMonths.size;
-  if (selectedCount === 0) {
-    state.currentFilter = { type: 'all', value: null };
-    elements.viewTitle.textContent = 'すべての写真';
-  } else if (selectedCount === 1) {
-    const singleYm = Array.from(state.selectedYearMonths)[0];
-    state.currentFilter = { type: 'year_month', value: singleYm };
-    elements.viewTitle.textContent = `${singleYm}`;
-  } else {
-    const sortedYearMonths = Array.from(state.selectedYearMonths).sort();
-    state.currentFilter = { type: 'year_months', value: sortedYearMonths };
-    elements.viewTitle.textContent = `複数月選択 (${selectedCount}ヶ月: ${sortedYearMonths.join(', ')})`;
+  if (!isFolderActive) {
+    if (selectedCount === 0) {
+      state.currentFilter = { type: 'all', value: null };
+      elements.viewTitle.textContent = 'すべての写真';
+    } else if (selectedCount === 1) {
+      const singleYm = Array.from(state.selectedYearMonths)[0];
+      state.currentFilter = { type: 'year_month', value: singleYm };
+      elements.viewTitle.textContent = `${singleYm}`;
+    } else {
+      const sortedYearMonths = Array.from(state.selectedYearMonths).sort();
+      state.currentFilter = { type: 'year_months', value: sortedYearMonths };
+      elements.viewTitle.textContent = `複数月選択 (${selectedCount}ヶ月: ${sortedYearMonths.join(', ')})`;
+    }
   }
 
   updateTimelineActiveClasses();
@@ -320,9 +308,24 @@ function renderCameras(cameraItems) {
   if (!state.lensFilters) state.lensFilters = new Map();
 
   elements.cameraList.innerHTML = '';
-  cameraItems.forEach(item => {
+  const sortedCameraItems = [...cameraItems].sort((a, b) => {
+    const ca = String(a.camera_model || '');
+    const cb = String(b.camera_model || '');
+    const aLast = (ca === '不明' || ca === 'Unknown' || ca === '__NONE__') ? 1 : 0;
+    const bLast = (cb === '不明' || cb === 'Unknown' || cb === '__NONE__') ? 1 : 0;
+    if (aLast !== bLast) return aLast - bLast;
+    return ca.localeCompare(cb, undefined, { numeric: true, sensitivity: 'base' });
+  });
+  sortedCameraItems.forEach(item => {
     const camModel = item.camera_model;
-    const lenses = Array.isArray(item.lenses) ? item.lenses : [];
+    const lenses = Array.isArray(item.lenses) ? [...item.lenses].sort((a, b) => {
+      const la = String(a.label || a.lens_model || '');
+      const lb = String(b.label || b.lens_model || '');
+      const aLast = (a.lens_model === '__NONE__' || la === 'レンズ情報なし' || la === '----') ? 1 : 0;
+      const bLast = (b.lens_model === '__NONE__' || lb === 'レンズ情報なし' || lb === '----') ? 1 : 0;
+      if (aLast !== bLast) return aLast - bLast;
+      return la.localeCompare(lb, undefined, { numeric: true, sensitivity: 'base' });
+    }) : [];
     const hasLenses = lenses.length > 0;
 
     // 子レンズにフィルタが適用されているかチェック
@@ -445,35 +448,29 @@ function syncCameraAndLensFilterTitle() {
   state.untaggedOnly = false;
   if (elements.untaggedNavItem) elements.untaggedNavItem.classList.remove('active');
 
-  // タイムライン・フォルダ選択をリセット
-  if (state.selectedYearMonths && state.selectedYearMonths.size > 0) {
-    state.selectedYearMonths.clear();
-    updateTimelineActiveClasses();
-  }
-  if (elements.folderList) {
-    elements.folderList.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-  }
-
+  const isFolderActive = state.currentFilter && (state.currentFilter.type === 'folder' || state.currentFilter.type === 'folder_exclude');
   const camCount = state.cameraFilters ? state.cameraFilters.size : 0;
   const lensCount = state.lensFilters ? state.lensFilters.size : 0;
 
-  if (camCount === 0 && lensCount === 0) {
-    if (state.currentFilter.type === 'cameras' || state.currentFilter.type === 'camera') {
-      state.currentFilter = { type: 'all', value: null };
-      elements.viewTitle.textContent = 'すべての写真';
+  if (!isFolderActive) {
+    if (camCount === 0 && lensCount === 0) {
+      if (state.currentFilter.type === 'cameras' || state.currentFilter.type === 'camera') {
+        state.currentFilter = { type: 'all', value: null };
+        elements.viewTitle.textContent = 'すべての写真';
+      }
+    } else if (lensCount === 1 && camCount === 0) {
+      const [lensKey, mode] = Array.from(state.lensFilters.entries())[0];
+      const displayName = lensKey.includes('::') ? lensKey.split('::')[1] : lensKey;
+      state.currentFilter = { type: 'cameras', value: [lensKey] };
+      elements.viewTitle.textContent = mode === 'exclude' ? `除外: ${displayName}` : `${displayName}`;
+    } else if (camCount === 1 && lensCount === 0) {
+      const [singleCam, mode] = Array.from(state.cameraFilters.entries())[0];
+      state.currentFilter = { type: 'camera', value: mode === 'include' ? singleCam : null };
+      elements.viewTitle.textContent = mode === 'exclude' ? `除外: ${singleCam}` : `${singleCam}`;
+    } else {
+      state.currentFilter = { type: 'cameras', value: Array.from(state.selectedCameras) };
+      elements.viewTitle.textContent = `カメラ・レンズ絞り込み (${camCount + lensCount}件)`;
     }
-  } else if (lensCount === 1 && camCount === 0) {
-    const [lensKey, mode] = Array.from(state.lensFilters.entries())[0];
-    const displayName = lensKey.includes('::') ? lensKey.split('::')[1] : lensKey;
-    state.currentFilter = { type: 'cameras', value: [lensKey] };
-    elements.viewTitle.textContent = mode === 'exclude' ? `除外: ${displayName}` : `${displayName}`;
-  } else if (camCount === 1 && lensCount === 0) {
-    const [singleCam, mode] = Array.from(state.cameraFilters.entries())[0];
-    state.currentFilter = { type: 'camera', value: mode === 'include' ? singleCam : null };
-    elements.viewTitle.textContent = mode === 'exclude' ? `除外: ${singleCam}` : `${singleCam}`;
-  } else {
-    state.currentFilter = { type: 'cameras', value: Array.from(state.selectedCameras) };
-    elements.viewTitle.textContent = `カメラ・レンズ絞り込み (${camCount + lensCount}件)`;
   }
 
   updateCameraActiveClasses();
@@ -748,6 +745,16 @@ function buildFolderTree(folderItems) {
   }
   root.children.forEach(child => calculateTotals(child));
 
+  function sortFolderNodes(node) {
+    if (!node.children || node.children.size === 0) return;
+    const sorted = Array.from(node.children.entries()).sort((a, b) =>
+      String(a[1].name || '').localeCompare(String(b[1].name || ''), undefined, { numeric: true, sensitivity: 'base' })
+    );
+    node.children = new Map(sorted);
+    node.children.forEach(child => sortFolderNodes(child));
+  }
+  sortFolderNodes(root);
+
   return root;
 }
 
@@ -755,7 +762,7 @@ function buildFolderTree(folderItems) {
  * スラッシュ区切りのタグ一覧から階層ツリー構造を構築する
  * 各階層の子ノードは自然順（数字なら小さい方が上・昇順）にソートされる (v2.11)
  */
-function buildTagTree(tagItems) {
+function buildTagTree(tagItems, options = {}) {
   const root = { children: new Map(), count: 0 };
 
   tagItems.forEach(item => {
@@ -786,12 +793,14 @@ function buildTagTree(tagItems) {
   // 各階層の子ノードを設定されたソート順（枚数順トグルON時は枚数順優先、OFF時は設定画面の名前順ルール）で再帰的に整列
   const sortMode = (typeof state !== 'undefined' && state.tagSortMode && state.tagSortMode !== 'count_desc')
     ? state.tagSortMode
-    : (localStorage.getItem('pm_tag_sort_mode') && localStorage.getItem('pm_tag_sort_mode') !== 'count_desc'
-      ? localStorage.getItem('pm_tag_sort_mode')
-      : 'lexical');
-  const sortByCount = (typeof state !== 'undefined' && state.tagSortByCount !== undefined)
-    ? Boolean(state.tagSortByCount)
-    : (localStorage.getItem('pm_tag_sort_by_count') === 'true');
+    : (localStorage.getItem('pm_tag_sort_mode_v2') && localStorage.getItem('pm_tag_sort_mode_v2') !== 'count_desc'
+      ? localStorage.getItem('pm_tag_sort_mode_v2')
+      : 'natural');
+  const sortByCount = (options && typeof options.sortByCount === 'boolean')
+    ? options.sortByCount
+    : ((typeof state !== 'undefined' && state.tagSortByCount !== undefined)
+      ? Boolean(state.tagSortByCount)
+      : (localStorage.getItem('pm_tag_sort_by_count_v2') === 'true'));
 
   function compareTagNames(nameA, nameB) {
     if (sortMode === 'lexical_desc') {
@@ -1026,34 +1035,27 @@ function renderTagList() {
   const hasActiveFilters = state.tagFilters.size > 0;
   elements.clearTagFiltersBtn.style.display = hasActiveFilters ? 'inline' : 'none';
 
-  // 「📊 枚数順」トグルボタンの状態同期＆イベントバインド
+  // 左ペイン専用「名前順 ⇄ 枚数順」トグルボタンの状態同期＆イベントバインド
   const countToggleBtn = elements.tagSortByCountToggleBtn || document.getElementById('tagSortByCountToggleBtn');
   if (countToggleBtn) {
-    countToggleBtn.classList.toggle('active', Boolean(state.tagSortByCount));
-    countToggleBtn.setAttribute('aria-pressed', state.tagSortByCount ? 'true' : 'false');
+    const isCount = Boolean(state.tagSortByCount);
+    countToggleBtn.classList.toggle('active', isCount);
+    countToggleBtn.setAttribute('aria-pressed', isCount ? 'true' : 'false');
+    countToggleBtn.textContent = isCount ? '枚数順' : '名前順';
     if (!countToggleBtn.dataset.bound) {
       countToggleBtn.dataset.bound = 'true';
       countToggleBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         state.tagSortByCount = !state.tagSortByCount;
-        localStorage.setItem('pm_tag_sort_by_count', state.tagSortByCount ? 'true' : 'false');
+        localStorage.setItem('pm_tag_sort_by_count_v2', state.tagSortByCount ? 'true' : 'false');
         renderTagList();
-        if (state.selectedPhotoIds && state.selectedPhotoIds.size > 1 && typeof showBatchInspector === 'function') {
-          showBatchInspector();
-        } else if (state.activeInspectorPhotoId && typeof showSingleInspector === 'function') {
-          const p = state.photos.find(x => x.id === state.activeInspectorPhotoId);
-          if (p) showSingleInspector(p);
-        }
-        if (typeof window.renderSettingsTagTreeEditor === 'function') {
-          window.renderSettingsTagTreeEditor();
-        }
         if (typeof showToast === 'function') {
           showToast(
             state.tagSortByCount
-              ? 'タグを「写真枚数が多い順」に並べ替えました'
-              : 'タグを「名前順（設定ルール）」に並べ替えました',
+              ? '左ペインのタグを「枚数順」に切り替えました'
+              : '左ペインのタグを「名前順（自然順）」に切り替えました',
             'info',
-            2000
+            1800
           );
         }
       });
@@ -1138,7 +1140,7 @@ function renderTagList() {
   }
 
   elements.tagList.innerHTML = '';
-  const treeRoot = buildTagTree(tagsToDisplay);
+  const treeRoot = buildTagTree(tagsToDisplay, { sortByCount: Boolean(state.tagSortByCount) });
 
   // 選択中フィルタがある場合、そのタグの祖先を展開
   if (state.tagFilters && state.tagFilters.size > 0) {

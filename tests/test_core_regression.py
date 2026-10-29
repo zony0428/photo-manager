@@ -614,6 +614,90 @@ class TestCoreRegression(unittest.TestCase):
             self.assertIn("FE 24-70mm F2.8 GM II", html_text)
             self.assertIn("data:image/webp;base64,", html_text)
 
+    def test_09_tag_filter_same_root_or_and_different_root_and(self):
+        """階層タグフィルタで最上位親が同じタグ同士はOR条件、異なる親グループや最上位タグ同士はAND条件になることを検証"""
+        p_cx5 = upsert_photo({
+            "file_path": r"C:\Photos\Cars\CX5.JPG",
+            "directory_path": r"C:\Photos\Cars",
+            "file_name": "CX5.JPG",
+            "file_size": 1000,
+            "date_taken": "2026:10:01 10:00:00",
+        })
+        p_prius = upsert_photo({
+            "file_path": r"C:\Photos\Cars\PRIUS.JPG",
+            "directory_path": r"C:\Photos\Cars",
+            "file_name": "PRIUS.JPG",
+            "file_size": 2000,
+            "date_taken": "2026:10:02 10:00:00",
+        })
+        p_roadster = upsert_photo({
+            "file_path": r"C:\Photos\Cars\ROADSTER.JPG",
+            "directory_path": r"C:\Photos\Cars",
+            "file_name": "ROADSTER.JPG",
+            "file_size": 3000,
+            "date_taken": "2026:10:03 10:00:00",
+        })
+
+        # タグ付与（add_tag_to_photo により祖先ノードも自動保存される）
+        add_tag_to_photo(p_cx5, "車/Mazda/CX-5")
+        add_tag_to_photo(p_cx5, "季節/秋")
+        add_tag_to_photo(p_cx5, "お気に入り")
+
+        add_tag_to_photo(p_prius, "車/Toyota/Prius")
+        add_tag_to_photo(p_prius, "季節/秋")
+
+        add_tag_to_photo(p_roadster, "車/Mazda/Roadster")
+        add_tag_to_photo(p_roadster, "季節/夏")
+        add_tag_to_photo(p_roadster, "お気に入り")
+
+        # 1. 最上位の親（"車"）が同じ3階層タグ同士（車/Mazda/CX-5 と 車/Toyota/Prius）-> OR 条件で2枚ヒット
+        res_same_root = get_photos(included_tags=["車/Mazda/CX-5", "車/Toyota/Prius"], stacked=False)
+        self.assertEqual(sorted([p["id"] for p in res_same_root]), sorted([p_cx5, p_prius]))
+
+        # 2. 同じ "車" グループの2つ（OR） ＋ 別グループ "季節/秋"（AND） -> p_cx5 と p_prius がヒット（季節/夏の p_roadster は除外）
+        res_or_and = get_photos(
+            included_tags=["車/Mazda/CX-5", "車/Mazda/Roadster", "季節/秋"],
+            stacked=False,
+        )
+        self.assertEqual([p["id"] for p in res_or_and], [p_cx5])
+
+        # 3. 親を持たない最上位タグ同士（"車" と "お気に入り"） -> 従来通り AND 条件で p_cx5 と p_roadster がヒット
+        res_top_and = get_photos(included_tags=["車", "お気に入り"], stacked=False)
+        self.assertEqual(sorted([p["id"] for p in res_top_and]), sorted([p_cx5, p_roadster]))
+
+        # 4. 親タグ自身（"車"）とその子孫タグ（"車/Mazda/CX-5"）を同時に選択した場合 -> 子孫の具体的な絞り込みが優先される
+        res_parent_and_child = get_photos(included_tags=["車", "車/Mazda/CX-5"], stacked=False)
+        self.assertEqual([p["id"] for p in res_parent_and_child], [p_cx5])
+
+        # 5. 「車/Toyota」を [+]、「車/Toyota/Prius」を [-]、「車/Mazda/Roadster」と「車/Mazda/CX-5」を [+] にした場合
+        #    -> プリウス以外のトヨタ車（Crown）＋ ロードスター ＋ CX-5 が表示され、Prius と Mazda3 は除外される
+        p_crown = upsert_photo({
+            "file_path": r"C:\Photos\Cars\CROWN.JPG",
+            "directory_path": r"C:\Photos\Cars",
+            "file_name": "CROWN.JPG",
+            "file_size": 4000,
+            "date_taken": "2026:10:04 10:00:00",
+        })
+        p_mazda3 = upsert_photo({
+            "file_path": r"C:\Photos\Cars\MAZDA3.JPG",
+            "directory_path": r"C:\Photos\Cars",
+            "file_name": "MAZDA3.JPG",
+            "file_size": 5000,
+            "date_taken": "2026:10:05 10:00:00",
+        })
+        add_tag_to_photo(p_crown, "車/Toyota/Crown")
+        add_tag_to_photo(p_mazda3, "車/Mazda/Mazda3")
+
+        res_mixed = get_photos(
+            included_tags=["車/Toyota", "車/Mazda/Roadster", "車/Mazda/CX-5"],
+            excluded_tags=["車/Toyota/Prius"],
+            stacked=False,
+        )
+        self.assertEqual(
+            sorted([p["id"] for p in res_mixed]),
+            sorted([p_crown, p_roadster, p_cx5]),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

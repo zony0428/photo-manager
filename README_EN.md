@@ -31,10 +31,10 @@ To try it right away, download the latest ZIP from [GitHub Releases](../../relea
 
 ## Key Characteristics
 
-### 1. Exclusive Search (`[-]` Exclude Filter) to Catch Missing Tags & Trail Indicators
-Built on the snappy tag-browsing experience of Picasa and Tiat, Photo Manager focuses on effortless exclusion (`[-]`) filtering.  
-When filtering by hierarchical tags or the "Camera Body > Lens" tree, you can not only include `[+]` a condition, but also exclude `[-]` specific items with a single click. By combining `[+]` (e.g., show photos from an event) with `[-]` (e.g., hide photos that already have a car model or location tag), you can immediately spot photos where you forgot to apply a tag.  
-When a parent node is collapsed while a child item has an active filter, a dashed border and count badge (`+1` / `-1`) act as a trail marker, and clicking any active filter chip at the top jumps directly to that item in the sidebar tree. Daily tag assignment takes place in the right Inspector and context menu, while structural edits (reorganizing hierarchies, renaming, and deleting tags) are separated into a dedicated editor inside Settings to prevent accidental changes during culling.
+### 1. Exclusive Search (`[-]` Exclude Filter) & Floating Natural-Language Filter Bar
+Built on the snappy tag-browsing experience of Picasa and Tiat, Photo Manager focuses on effortless exclusion (`[-]`) and hierarchical combination filtering.  
+When filtering by hierarchical tags or the "Camera Body > Lens" tree, left-click to include `[+]` or right-click to exclude `[-]`. Sub-tags under the same top-level parent combine with `OR`, while different top-level groups combine with `AND`. You can select a broad parent category with `[+]` and subtract specific sub-tags with `[-]`, or immediately spot photos where you forgot to apply a tag.  
+Whenever filters are active, a floating filter footer bar appears at the bottom of the screen displaying your active conditions as a readable sentence. Clicking any condition pill opens an inline popover to add/exclude sibling tags or select the same month across all years without opening the sidebar, while collapsed parent nodes display a dashed border and count badge (`+1` / `-1`) as a trail marker. Daily tag assignment takes place in the right Inspector and context menu, while structural edits (reorganizing hierarchies, renaming, and deleting tags) are separated into a dedicated editor inside Settings to prevent accidental changes during culling.
 
 ### 2. Fast Viewing for Foveon (`X3F`) and Modern Camera RAWs
 Alongside JPEG, PNG, WebP, and HEIC, the app directly displays RAW formats including SIGMA Foveon (`X3F`), Panasonic (`RW2`), Canon (`CR2` / `CR3`), Nikon (`NEF`), Sony (`ARW`), Olympus (`ORF`), Fujifilm (`RAF`), Pentax (`PEF`), and `DNG`.  

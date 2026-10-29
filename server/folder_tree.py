@@ -6,10 +6,19 @@
 
 import os
 from pathlib import Path
+import re
 import string
 import sys
 import time
 from typing import Any, Dict, List, Optional, Tuple
+
+
+def _natural_sort_key(text: Any) -> List[Tuple[int, Any]]:
+    """文字列内の数値部分を整数として評価する自然順ソートキーを生成する"""
+    return [
+        (0, int(part)) if part.isdigit() else (1, part.lower())
+        for part in re.split(r"(\d+)", str(text or ""))
+    ]
 
 from .database import (
     SYSTEM_IGNORE_NAMES,
@@ -256,7 +265,7 @@ def build_roots(quick_access: List[Dict[str, Any]]) -> Dict[str, Any]:
     offline_volumes = list(offline_map.values())
     for v in offline_volumes:
         v["name"] = f"{v['label']} ({v['letter']})" if v["label"] else v["letter"]
-    offline_volumes.sort(key=lambda v: (v["letter"], v["label"]))
+    offline_volumes.sort(key=lambda v: (_natural_sort_key(v["letter"]), _natural_sort_key(v["label"])))
 
     return {"shortcuts": shortcuts, "drives": drives, "offline_volumes": offline_volumes}
 
@@ -357,7 +366,7 @@ def list_children(
             child_item["is_storage_root"] = (child_key == storage_key)
         result.append(child_item)
 
-    result.sort(key=lambda c: c["name"].lower())
+    result.sort(key=lambda c: _natural_sort_key(c["name"]))
     return {
         "path": parent,
         "exists": parent_exists,

@@ -331,7 +331,8 @@ button, input, select, textarea {
   letter-spacing: 0.5px;
   padding: 1px 5px;
   border: 1px solid var(--border-soft);
-  color: var(--text-dim);
+  color: var(--text-muted);
+  font-weight: 600;
   background: transparent;
   border-radius: var(--radius-sm);
   user-select: none;
@@ -858,7 +859,8 @@ button, input, select, textarea {
 
 .accordion-arrow {
   font-size: 0.65rem;
-  color: var(--text-dim);
+  color: var(--text-muted);
+  font-weight: 600;
   transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   display: inline-flex;
   align-items: center;
@@ -1264,7 +1266,8 @@ body.resizing .resize-handle {
 .nav-count {
   margin-left: auto;
   font-size: 0.72rem;
-  color: var(--text-dim);
+  color: var(--text-muted);
+  font-weight: 600;
   background: var(--bg-tertiary);
   border: 1px solid var(--border-soft);
   padding: 1px 6px;
@@ -1420,7 +1423,8 @@ body.resizing .resize-handle {
   align-items: center;
   justify-content: center;
   font-size: 0.62rem;
-  color: var(--text-dim);
+  color: var(--text-muted);
+  font-weight: 600;
   cursor: pointer;
   border-radius: 2px;
   flex-shrink: 0;
@@ -1468,7 +1472,8 @@ body.resizing .resize-handle {
 
 /* フォルダツリーアイテム状態（管理中 / 未管理 / 除外） - Hinomaru Ink デザイン */
 .folder-tree-item.status-unmanaged {
-  color: var(--text-dim);
+  color: var(--text-muted);
+  font-weight: 600;
 }
 .folder-tree-item.status-unmanaged .folder-tree-icon {
   opacity: 0.5;
@@ -1479,7 +1484,8 @@ body.resizing .resize-handle {
 }
 
 .folder-tree-item.status-ignored {
-  color: var(--text-dim);
+  color: var(--text-muted);
+  font-weight: 600;
   opacity: 0.65;
 }
 .folder-tree-item.status-ignored .folder-tree-icon {
@@ -1504,10 +1510,12 @@ body.resizing .resize-handle {
   user-select: none;
 }
 .badge-folder-status.unmanaged {
-  color: var(--text-dim);
+  color: var(--text-muted);
+  font-weight: 600;
 }
 .badge-folder-status.ignored {
-  color: var(--text-dim);
+  color: var(--text-muted);
+  font-weight: 600;
   border-color: rgba(225, 77, 42, 0.45);
 }
 
@@ -1535,7 +1543,8 @@ body.resizing .resize-handle {
 }
 
 .folder-tree-item.is-missing .folder-tree-name {
-  color: var(--text-dim);
+  color: var(--text-muted);
+  font-weight: 600;
 }
 
 /* セクション見出し（ショートカット / 接続中のドライブ / 未接続） */
@@ -1563,7 +1572,8 @@ body.resizing .resize-handle {
 .folder-tree-hint {
   font-size: 0.65rem;
   padding: 3px 8px;
-  color: var(--text-dim);
+  color: var(--text-muted);
+  font-weight: 600;
 }
 
 /* ドライブ・ショートカット行 */
@@ -2059,7 +2069,8 @@ body.resizing .resize-handle {
   justify-content: flex-end;
   gap: 6px;
   font-size: 0.65rem;
-  color: var(--text-dim);
+  color: var(--text-muted);
+  font-weight: 600;
   padding: 0 0 6px 0;
   border-bottom: none;
   margin-bottom: 4px;
@@ -2102,7 +2113,8 @@ body.resizing .resize-handle {
   border-color: var(--text-muted);
 }
 
-.tag-sort-count-toggle-btn.active {
+.tag-sort-count-toggle-btn.active { color: #ffffff !important; background: var(--accent-primary, #e14d2a) !important; border-color: var(--accent-primary, #e14d2a) !important; font-weight: 600; }
+.tag-sort-count-toggle-btn.active-legacy {
   color: var(--text-main);
   background: var(--bg-hover);
   border-color: var(--text-muted);
@@ -2189,7 +2201,8 @@ body.resizing .resize-handle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-dim);
+  color: var(--text-muted);
+  font-weight: 600;
   cursor: pointer;
   transition: transform var(--transition-fast);
   user-select: none;
@@ -2232,8 +2245,10 @@ body.resizing .resize-handle {
 
 .tag-pill-count {
   font-size: 0.68rem;
-  color: var(--text-dim);
-  background: rgba(0, 0, 0, 0.3);
+  color: var(--text-muted);
+  font-weight: 600;
+  background: rgba(128, 128, 128, 0.16);
+  border: 1px solid var(--border-soft);
   padding: 1px 6px;
   border-radius: 8px;
   flex-shrink: 0;
@@ -2332,7 +2347,8 @@ body.resizing .resize-handle {
   padding: 6px 8px;
   font-size: 0.72rem;
   font-weight: 600;
-  color: var(--text-dim);
+  color: var(--text-muted);
+  font-weight: 600;
   cursor: pointer;
   user-select: none;
   transition: background var(--transition-fast, 0.15s ease), color var(--transition-fast, 0.15s ease);
@@ -2707,7 +2723,8 @@ body.resizing .resize-handle {
 .empty-hint {
   padding: 8px 10px;
   font-size: 0.65rem;
-  color: var(--text-dim);
+  color: var(--text-muted);
+  font-weight: 600;
   font-style: italic;
 }
 

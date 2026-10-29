@@ -705,7 +705,8 @@
 
 .inspector-tree-count {
   font-size: 0.66rem;
-  color: var(--text-dim, #64748b);
+  color: var(--text-muted, #4a4843);
+  font-weight: 600;
   background: rgba(128, 128, 128, 0.12);
   padding: 0 4px;
   border-radius: 8px;
@@ -722,7 +723,8 @@
 .inspector-tag-edit-btn {
   background: transparent;
   border: 1px solid transparent;
-  color: var(--text-dim, #64748b);
+  color: var(--text-muted, #4a4843);
+  font-weight: 600;
   font-size: 0.68rem;
   line-height: 1;
   padding: 2px 4px;

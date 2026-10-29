@@ -1658,6 +1658,37 @@ function renderInspectorQuickTree(container, onSelect) {
     targetEl.appendChild(addRow);
   }
 
+  // 右インスペクタ専用「名前順 ⇄ 枚数順」トグルボタンの状態同期＆イベントバインド
+  document.querySelectorAll('.inspector-tag-sort-toggle-btn').forEach(btn => {
+    const isCount = Boolean(state.inspectorTagSortByCount);
+    btn.classList.toggle('active', isCount);
+    btn.setAttribute('aria-pressed', isCount ? 'true' : 'false');
+    btn.textContent = isCount ? '枚数順' : '名前順';
+    if (!btn.dataset.bound) {
+      btn.dataset.bound = 'true';
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        state.inspectorTagSortByCount = !state.inspectorTagSortByCount;
+        localStorage.setItem('pm_inspector_tag_sort_by_count', state.inspectorTagSortByCount ? 'true' : 'false');
+        if (state.selectedPhotoIds && state.selectedPhotoIds.size > 1 && typeof showBatchInspector === 'function') {
+          showBatchInspector();
+        } else if (state.activeInspectorPhotoId && typeof showSingleInspector === 'function') {
+          const p = state.photos.find(x => x.id === state.activeInspectorPhotoId);
+          if (p) showSingleInspector(p);
+        }
+        if (typeof showToast === 'function') {
+          showToast(
+            state.inspectorTagSortByCount
+              ? '右インスペクタのタグを「枚数順」に切り替えました'
+              : '右インスペクタのタグを「名前順（自然順）」に切り替えました',
+            'info',
+            1800
+          );
+        }
+      });
+    }
+  });
+
   // 「⚙️ ツリー編集」ショートカットボタンのイベントバインド
   document.querySelectorAll('.inspector-open-tag-editor-btn').forEach(btn => {
     if (!btn.dataset.bound) {
@@ -1681,7 +1712,7 @@ function renderInspectorQuickTree(container, onSelect) {
     return;
   }
 
-  const treeRoot = buildTagTree(manualTags);
+  const treeRoot = buildTagTree(manualTags, { sortByCount: Boolean(state.inspectorTagSortByCount) });
 
   // 単一表示時の対象写真に既に付いているタグ集合
   const activeSinglePhoto = (state.selectedPhotoIds.size <= 1 && state.activeInspectorPhotoId)

@@ -11,15 +11,15 @@
   <link rel="manifest" href="/manifest.json?v=2">
   <meta name="theme-color" content="#191816">
   <link rel="stylesheet" href="/vendor/fonts/fonts.css">
-  <link rel="stylesheet" href="/css/style.css?v=3.1.0">
-  <link rel="stylesheet" href="/css/grid-lightbox.css?v=3.1.0">
-  <link rel="stylesheet" href="/css/selection-menu.css?v=3.1.0">
-  <link rel="stylesheet" href="/css/inspector.css?v=3.1.0">
-  <link rel="stylesheet" href="/css/modals-features.css?v=3.1.0">
-  <link rel="stylesheet" href="/css/lab-map.css?v=3.1.0">
-  <link rel="stylesheet" href="/css/histogram.css?v=3.1.0">
-  <link rel="stylesheet" href="/css/compare.css?v=3.1.0">
-  <link rel="stylesheet" href="/css/ui-unify.css?v=3.1.0">
+  <link rel="stylesheet" href="/css/style.css?v=3.2.0">
+  <link rel="stylesheet" href="/css/grid-lightbox.css?v=3.2.0">
+  <link rel="stylesheet" href="/css/selection-menu.css?v=3.2.0">
+  <link rel="stylesheet" href="/css/inspector.css?v=3.2.0">
+  <link rel="stylesheet" href="/css/modals-features.css?v=3.2.0">
+  <link rel="stylesheet" href="/css/lab-map.css?v=3.2.0">
+  <link rel="stylesheet" href="/css/histogram.css?v=3.2.0">
+  <link rel="stylesheet" href="/css/compare.css?v=3.2.0">
+  <link rel="stylesheet" href="/css/ui-unify.css?v=3.2.0">
   <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
   <script src="/vendor/leaflet/leaflet.js"></script>
   <script>
@@ -64,7 +64,7 @@
         <div class="logo">
           <span class="hinomaru-disc" title="Hinomaru Ink"></span>
           <span class="logo-text">PHOTO<span>MANAGER</span></span>
-          <span class="app-version" id="appVersion" title="v3.1.0 (最終更新: 2026-10-28 15:00)">v3.1.0</span>
+          <span class="app-version" id="appVersion" title="v3.2.0 (最終更新: 2026-10-28 15:00)">v3.2.0</span>
         </div>
 
         <!-- テーマ切替（和紙 ⇄ 夜墨） -->
@@ -444,7 +444,7 @@
                 <span>クリックで <strong>[+]含む</strong> → <strong>[-]除外</strong> → <strong>解除</strong></span>
                 <div class="tag-filter-hint-actions">
                   <button class="clear-tags-btn" id="clearTagFiltersBtn" style="display: none;">クリア</button>
-                  <button type="button" class="tag-sort-count-toggle-btn" id="tagSortByCountToggleBtn" title="ON: 写真枚数が多い順 ／ OFF: 設定された名前順">枚数順</button>
+                  <button type="button" class="tag-sort-count-toggle-btn" id="tagSortByCountToggleBtn" title="クリックで「名前順（自然順）」と「枚数順」を切り替え（左ペインのみ独立）">名前順</button>
                 </div>
               </div>
               <ul class="tag-pill-list" id="tagList">
@@ -622,9 +622,14 @@
       <!-- 右メインペイン（サムネイルグリッド） -->
       <main class="content-area">
         <!-- 適用中フィルタチップ・サブバー（絞り込み条件がある時のみ自動表示、通常時は完全非表示で1段ヘッダー化） -->
-        <div class="view-header view-chip-bar" id="viewHeaderChipBar" style="display: none;">
+        <div class="nl-filter-popover" id="nlFilterPopover" style="display: none;" role="dialog" aria-label="フィルタ条件の変更"></div>
+        <div class="view-header view-chip-bar floating-filter-footer" id="viewHeaderChipBar" style="display: none;">
           <div class="current-filter-info">
-            <div class="active-filter-chips" id="activeFilterChips"></div>
+            <span class="floating-filter-icon" title="適用中の絞り込み条件（クリックで変更・右クリックで含む/除外反転・×で解除）">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+            </span>
+            <div class="active-filter-chips nl-filter-sentence" id="activeFilterChips"></div>
+            <button id="floatingClearAllFiltersBtn" class="clear-filter-pill-btn floating-clear-all-btn" type="button" title="すべての絞り込み条件を解除">すべて解除</button>
             <button id="purgeUnlinkedBtn" class="clear-filter-pill-btn" style="display: none; background: rgba(220, 53, 69, 0.12); color: var(--danger, #dc3545); border-color: rgba(220, 53, 69, 0.3);" title="リンク消失しているすべての写真レコード（サムネイル・タグ含む）をDBから完全に消去">
               リンク消失写真をすべて完全消去
             </button>
@@ -801,7 +806,7 @@
                     <div class="inspector-quick-tags" style="margin-top: 10px;">
                       <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; padding: 4px 8px 0 8px;">
                         <div class="inspector-label" style="margin: 0;">タグ一覧から付与・作成</div>
-                        <button type="button" class="btn btn-secondary btn-xs inspector-open-tag-editor-btn" title="設定画面の「タグツリーエディタ」を開く（ドラッグ＆ドロップ階層移動・リネーム・整理）">ツリー編集</button>
+                        <div style="display: flex; align-items: center; gap: 4px;"><button type="button" class="tag-sort-count-toggle-btn inspector-tag-sort-toggle-btn" style="height: 22px !important; padding: 0 7px; font-size: 0.68rem;" title="クリックで「名前順（自然順）」と「枚数順」を切り替え（右ペインのみ独立）">名前順</button><button type="button" class="btn btn-secondary btn-xs inspector-open-tag-editor-btn" title="設定画面の「タグツリーエディタ」を開く（ドラッグ＆ドロップ階層移動・リネーム・整理）">ツリー編集</button></div>
                       </div>
                       <div class="inspector-quick-tree" id="inspectorQuickTree">
                         <!-- 階層ツリーを描画、+追加ボタンで付与＆新規追加 -->
@@ -970,7 +975,7 @@
               <div class="inspector-quick-tags" style="margin-top: 10px;">
                 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; padding: 4px 8px 0 8px;">
                   <div class="inspector-label" style="margin: 0;">タグ一覧から一括付与・作成</div>
-                  <button type="button" class="btn btn-secondary btn-xs inspector-open-tag-editor-btn" title="設定画面の「タグツリーエディタ」を開く（ドラッグ＆ドロップ階層移動・リネーム・整理）">ツリー編集</button>
+                  <div style="display: flex; align-items: center; gap: 4px;"><button type="button" class="tag-sort-count-toggle-btn inspector-tag-sort-toggle-btn" style="height: 22px !important; padding: 0 7px; font-size: 0.68rem;" title="クリックで「名前順（自然順）」と「枚数順」を切り替え（右ペインのみ独立）">名前順</button><button type="button" class="btn btn-secondary btn-xs inspector-open-tag-editor-btn" title="設定画面の「タグツリーエディタ」を開く（ドラッグ＆ドロップ階層移動・リネーム・整理）">ツリー編集</button></div>
                 </div>
                 <div class="batch-quick-tree" id="batchQuickTree">
                   <!-- 階層ツリーを一覧表示、+追加ボタンで一括追加＆新規追加 -->
@@ -1193,7 +1198,7 @@
           <div class="help-card" style="margin-top: 14px;">
             <h4>5. 複数の写真をまとめて操作する・絞り込み検索</h4>
             <p>複数選択：Ctrl + クリックで追加選択、Shift + クリックで範囲選択、Ctrl + A で全選択できます。複数枚を選ぶと、右インスペクタの一括編集パネルや右クリックメニューから、まとめて評価付け・タグ付け・回転・テイクアウト・日時シフト補正が行えます。</p>
-            <p>写真を探す：左サイドバーの「年月」「機材（カメラ ＞ レンズ階層ツリーと [+] 含む / [-] 除外検索）」「ラボ」、および一番下の「検索」で絞り込めます。左端アイコンバーの通知ランプや、折りたたんだ親階層の道標バッジ（+1 / -1 破線枠）でフィルタの適用箇所がひと目で分かり、上部のフィルタチップをクリックすると該当するツリー項目へ直接ジャンプします。すべて解除するときは左メニュー最上部の「フィルタ全解除」を押してください。</p>
+            <p>写真を探す：左サイドバーの「年月」「機材（カメラ ＞ レンズ階層ツリーと [+] 含む / [-] 除外検索）」「ラボ」、および一番下の「検索」で絞り込めます。フィルタ適用中は写真グリッドを一切上下にずらさず、画面下部にフローティングのフィルタフッターバーが現れ、条件が自然な日本語文（「または」「かつ」「除く」）として表示されます。フッター内の条件ピルを左クリックするとその場で条件の変更・追加ポップオーバーが開き、右クリックで含む[+]⇔除外[-]を反転、×で個別解除、「すべて解除」で全解除できます。</p>
           </div>
         </div>
 
@@ -1215,7 +1220,7 @@
             <p>階層タグとタグツリーエディタ：タグ入力時に「旅行/2026北海道/小樽」のようにスラッシュ（/）で区切ると親子ツリーとして整理されます。左サイドバー「タグ」の「枚数順」ボタンで枚数順と名前順を切り替えられるほか、「設定」（または右インスペクタの「ツリー編集」）の「タグツリーエディタ」でドラッグ＆ドロップによる階層組み替え・名前変更・削除が行えます。</p>
             <p>色合い（12色パレット）：右インスペクタの「色合い」で写真にカラーラベルを登録し、左サイドバー「タグ」上部の「カラー」から色別に絞り込めます（右クリックでその色を除外）。</p>
             <p>ローカルAI自動タグ付け：左サイドバーのフォルダを右クリックして「AIタグ付け」を選ぶと、ネット通信なしでPC内のAI（CLIP）が「青空」「海」「猫」「料理」「夜景」などのタグを自動付与します。</p>
-            <p>タグ・機材の [+] 含む / [-] 除外検索と道標表示：左サイドバーの「タグ」と「機材」では、クリックするたびに [+] 含む → [-] 除外 → 解除 が切り替わり、「特定のレンズ以外で撮った写真」などを抽出できます。親階層を閉じていても、配下の子項目でフィルタが有効な場合は破線枠と件数バッジ（+1 / -1）の道標が表示されます。</p>
+            <p>タグ・機材の [+] 含む / [-] 除外検索と道標表示：タグツリーの一番上の親（1階層目）同士を [+] にすると「しかも（AND）」で絞り込まれ、同じ親の下にある2階層目以降の子タグを複数 [+] にすると「または（OR）」で候補が追加されます。見たくない子タグは右クリックで [-]（除外）を明示して引き算できるため、「トヨタ [+]・プリウス [-]・ロードスター [+]」のように選べば「プリウス以外のトヨタ車とロードスター」を簡単に抽出できます。親階層を閉じていても、配下の子項目でフィルタが有効な場合は破線枠と件数バッジ（+1 / -1）の道標が表示されます。</p>
           </div>
 
           <div class="help-card" style="margin-top: 14px;">
@@ -1287,6 +1292,7 @@
               <li>表示されたQRコードをスマートフォンのカメラで読み取ってブラウザで開きます（同じWi-Fiに接続）。QRコードには専用のアクセストークンが含まれており、閲覧・選別以外の操作は遮断されます。</li>
               <li>スマートフォンで付けた評価やタグが、そのままPC側の画面へリアルタイムに反映されます（30分間通信がない場合は、安全のためスマホ向けの待受が自動で停止します）。</li>
             </ol>
+            <p class="help-tip" style="margin-top: 6px;">※QRコードを読み取ってもスマホから繋がらない場合は、(1) Windowsの「設定 ＞ ネットワークとインターネット ＞ Wi-Fi（またはイーサネット）」でネットワークプロファイルを「パブリック」から「プライベート」に変更する、(2)「Windows Defender ファイアウォール」で <code>python\python.exe</code>（または TCP ポート <code>8088</code>）のプライベート通信を許可する、(3) ゲスト用SSIDやプライバシーセパレーター（端末間分離）でない同じWi-Fiルーターに接続しているかを確認してください（スマホ連携画面内にも詳しい手順と許可コマンドがあります）。</p>
             <p style="margin-top: 8px;">方法B：外出先・ネット圏外でUSBメモリを直接スマートフォンに挿す（完全オフライン）</p>
             <ol>
               <li>PCの電源が切れているときやネット圏外でも使えます。Photo Manager が入ったUSBメモリをAndroidスマートフォン等に挿します。</li>
@@ -1461,7 +1467,7 @@
             </div>
           </div>
           <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
-            <div id="mobileQrContainer" style="width: 132px; height: 132px; background: #ffffff; border-radius: 8px; padding: 6px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-shadow: 0 2px 8px rgba(0,0,0,0.25);">
+            <div id="mobileQrContainer" style="width: 132px; height: 132px; background: #ffffff; border: 1px solid var(--border-soft, rgba(42,41,38,0.14)); border-radius: 8px; padding: 6px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-shadow: 0 2px 8px rgba(0,0,0,0.15);">
               <img id="mobileQrImg" src="/api/mobile/qr.svg" alt="スマホ版QRコード" style="width: 120px; height: 120px; display: block;">
             </div>
             <div style="flex: 1; min-width: 210px;">
@@ -1473,6 +1479,36 @@
               </div>
             </div>
           </div>
+
+          <!-- スマホからアクセスできないときのトラブルシューティング（ファイアウォール・ネットワーク設定ガイド） -->
+          <details id="mobileTroubleshootDetails" style="margin-top: 12px; border-top: 1px solid var(--border-soft, rgba(128,128,128,0.18)); padding-top: 10px;">
+            <summary style="cursor: pointer; font-weight: 700; font-size: 0.81rem; color: var(--accent-primary, #e14d2a); display: flex; align-items: center; gap: 6px; user-select: none; list-style: none;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink: 0;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              <span>スマホからアクセスできないときの設定確認（ファイアウォール・ネットワーク設定）</span>
+              <span style="font-size: 0.72rem; color: var(--text-muted, #94a3b8); font-weight: 500; margin-left: auto;">▼ クリックで開く</span>
+            </summary>
+            <div style="margin-top: 10px; display: flex; flex-direction: column; gap: 8px; font-size: 0.79rem; line-height: 1.55; color: var(--text-main, #eceae4);">
+              <div style="background: var(--bg-primary, rgba(0,0,0,0.12)); border: 1px solid var(--border-soft, rgba(128,128,128,0.18)); border-left: 3px solid var(--accent-primary, #e14d2a); border-radius: 4px; padding: 8px 10px;">
+                <strong>【確認1】Windowsのネットワークプロファイルを「プライベート」に変更（最も多い原因）</strong><br>
+                <span style="color: var(--text-muted, #94a3b8);">Windowsの「設定」＞「ネットワークとインターネット」＞「Wi-Fi（またはイーサネット）」のプロパティを開き、ネットワークプロファイルの種類が<strong>「パブリック (Public)」</strong>になっている場合は<strong>「プライベート (Private)」</strong>に切り替えてください（パブリック設定では他端末からの接続が遮断されます）。</span>
+              </div>
+
+              <div style="background: var(--bg-primary, rgba(0,0,0,0.12)); border: 1px solid var(--border-soft, rgba(128,128,128,0.18)); border-left: 3px solid #3b82f6; border-radius: 4px; padding: 8px 10px;">
+                <strong>【確認2】Windows Defender ファイアウォールの通信許可（TCP 8088 / python.exe）</strong><br>
+                <span style="color: var(--text-muted, #94a3b8);">初回接続時のWindowsセキュリティ警告でブロックされた場合は、「Windows セキュリティ」＞「ファイアウォールとネットワーク保護」＞「ファイアウォールによるアプリケーションの許可」から、Photo Manager 内の <code>python\python.exe</code>（または詳細設定の「受信の規則」で <strong>TCP ポート <code>8088</code></strong>）の「プライベート」にチェックを入れて許可してください。</span>
+                <div style="margin-top: 6px; display: flex; align-items: center; justify-content: space-between; gap: 8px; background: var(--bg-secondary, rgba(128,128,128,0.08)); border: 1px solid var(--border-soft, rgba(128,128,128,0.2)); border-radius: 4px; padding: 5px 8px; flex-wrap: wrap;">
+                  <code id="mobileFirewallCmdCode" style="font-size: 0.72rem; color: var(--text-main, #eceae4); word-break: break-all; flex: 1;">netsh advfirewall firewall add rule name="Photo Manager Mobile (TCP 8088)" dir=in action=allow protocol=TCP localport=8088 profile=private</code>
+                  <button type="button" class="btn btn-secondary btn-xs" id="copyFirewallCmdBtn" title="管理者として開いたPowerShellまたはコマンドプロンプトに貼り付けて実行すると、ファイアウォールのポート8088受信許可を追加できます" style="white-space: nowrap;">許可コマンドをコピー</button>
+                </div>
+                <div style="font-size: 0.71rem; color: var(--text-dim, #64748b); margin-top: 3px;">※スタートボタンを右クリック ＞「ターミナル (管理者)」または「PowerShell (管理者)」を開き、上記コマンドを貼り付けて Enter を押すと一発で許可登録できます。</div>
+              </div>
+
+              <div style="background: var(--bg-primary, rgba(0,0,0,0.12)); border: 1px solid var(--border-soft, rgba(128,128,128,0.18)); border-left: 3px solid #16a34a; border-radius: 4px; padding: 8px 10px;">
+                <strong>【確認3】同じWi-Fiルーター・ゲストSSID（プライバシーセパレーター）の確認</strong><br>
+                <span style="color: var(--text-muted, #94a3b8);">PCとスマホが同じルーターのネットワークに接続されているか確認してください。ゲスト用SSID（<code>Guest</code> 等）やモバイルルーター等の「プライバシーセパレーター（ネットワーク分離機能）」が有効な環境では端末間通信が遮断されます。設定変更が難しい場合は、下の<strong>「② USB持ち出し選別」</strong>ならネットワーク設定不要で確実に利用できます。</span>
+              </div>
+            </div>
+          </details>
         </div>
 
         <!-- ② 外出先・USBメモリ持ち出し: USBメモリの抜き差し 4ステップ -->
@@ -1482,23 +1518,23 @@
           </div>
 
           <div style="display: flex; flex-direction: column; gap: 8px; font-size: 0.81rem; line-height: 1.55; color: var(--text-main, #eceae4);">
-            <div style="background: rgba(0,0,0,0.18); border-left: 3px solid var(--accent-primary, #e14d2a); border-radius: 4px; padding: 8px 10px;">
+            <div style="background: var(--bg-primary, rgba(0,0,0,0.12)); border: 1px solid var(--border-soft, rgba(128,128,128,0.18)); border-left: 3px solid var(--accent-primary, #e14d2a); border-radius: 4px; padding: 8px 10px;">
               <strong>【Step 1】PCからUSBを抜くとき</strong><br>
               <span style="color: var(--text-muted, #94a3b8);">PC画面右上の <strong>「終了」ボタン</strong> から「サーバーを停止して終了」を実行し（ウィンドウの「&times;」だけではバックグラウンド常駐が維持されます）、Windowsタスクバー右下の「ハードウェアの安全な取り外し」を行ってからUSBメモリを抜きます。</span>
             </div>
 
-            <div style="background: rgba(0,0,0,0.18); border-left: 3px solid #3b82f6; border-radius: 4px; padding: 8px 10px;">
+            <div style="background: var(--bg-primary, rgba(0,0,0,0.12)); border: 1px solid var(--border-soft, rgba(128,128,128,0.18)); border-left: 3px solid #3b82f6; border-radius: 4px; padding: 8px 10px;">
               <strong>【Step 2】スマホにUSBを挿して写真を読み込む</strong><br>
               <span style="color: var(--text-muted, #94a3b8);">スマホにUSBを挿し、「ファイル」アプリでUSB内の <code>PhotoManager_Mobile.html</code> を開きます。続けて <strong>「library.db を読み込む」</strong> から <code>cache/library.db</code>（現在 <strong id="mobileDbSizeLabel">- MB</strong>）を選ぶと全写真が表示され、親指で高速選別できます（選別中はUSBを挿したままでOKです）。</span>
             </div>
 
-            <div style="background: rgba(245, 158, 11, 0.1); border-left: 3px solid #f59e0b; border-radius: 4px; padding: 8px 10px;">
+            <div style="background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.25); border-left: 3px solid #f59e0b; border-radius: 4px; padding: 8px 10px;">
               <strong>【Step 3】選別結果をUSBに保存してスマホから抜く（最重要）</strong><br>
               <span style="color: var(--text-muted, #94a3b8);">選別が終わったらスマホ画面右上の「DB/同期」から <strong>「mobile_sync.json を保存する」</strong> でUSB直下に保存します。<br>
               <strong>「書き込み・クローズ完了」</strong>と表示されたら、スマホ画面上の通知バーから<strong>「USBドライブを取り外す（マウント解除）」</strong>を必ずタップしてからUSBを抜いてください。</span>
             </div>
 
-            <div style="background: rgba(22, 163, 74, 0.1); border-left: 3px solid #22c55e; border-radius: 4px; padding: 8px 10px;">
+            <div style="background: rgba(22, 163, 74, 0.08); border: 1px solid rgba(34, 197, 94, 0.25); border-left: 3px solid #22c55e; border-radius: 4px; padding: 8px 10px;">
               <strong>【Step 4】PCにUSBを挿して起動すると自動反映＆通知！</strong><br>
               <span style="color: var(--text-muted, #94a3b8);">USBをPCに挿して <code>PhotoManager.exe</code> を起動すると、自動的に <code>mobile_sync.json</code> が取り込まれ、画面中央に<strong>「スマホ選別データの取り込み完了」通知ウィンドウ</strong>が表示されます。</span>
             </div>
@@ -1545,7 +1581,7 @@
 
         <div id="mobileSyncResultListWrap" style="display: flex; flex-direction: column; gap: 6px;">
           <div style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted, #94a3b8);">反映された写真の内訳:</div>
-          <div id="mobileSyncResultList" style="max-height: 220px; overflow-y: auto; background: rgba(0,0,0,0.2); border: 1px solid var(--border-soft, rgba(255,255,255,0.1)); border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; font-size: 0.82rem;">
+          <div id="mobileSyncResultList" style="max-height: 220px; overflow-y: auto; background: var(--bg-primary, rgba(0,0,0,0.2)); border: 1px solid var(--border-soft, rgba(255,255,255,0.1)); border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; font-size: 0.82rem;">
           </div>
         </div>
       </div>
@@ -1663,10 +1699,10 @@
               <div style="font-size: 0.76rem; color: var(--text-dim, #64748b); margin-top: 2px;">左ペインの「枚数順」がオフのときに使われる名前ソート順を保存します</div>
             </div>
             <select id="settingTagSortModeSelect" class="styled-select" style="width: 100%;">
+              <option value="natural">数値の自然順・昇順（標準 / 例: 1 → 2 → 10 / 24 → 25 → 2410）</option>
+              <option value="natural_desc">数値の自然順・降順（例: 2410 → 25 → 24 / 10 → 2 → 1）</option>
               <option value="lexical">文字順・昇順（例: 24-イベント → 2410-旅行 → 25-正月）</option>
               <option value="lexical_desc">文字順・降順（例: 25-正月 → 2410-旅行 → 24-イベント）</option>
-              <option value="natural">数値の自然順・昇順（例: 1 → 2 → 10 / 24 → 25 → 2410）</option>
-              <option value="natural_desc">数値の自然順・降順（例: 2410 → 25 → 24 / 10 → 2 → 1）</option>
             </select>
           </div>
 
@@ -1713,6 +1749,7 @@
               <div style="font-size: 0.75rem; color: var(--text-dim, #64748b); margin-top: 2px;">タグをドラッグ＆ドロップして他のタグの配下へ移動、またはリネーム・子タグ追加（+子）・全体削除が行えます</div>
             </div>
             <div style="display: flex; gap: 4px; flex-shrink: 0;">
+              <button type="button" class="tag-sort-count-toggle-btn" id="settingsTagSortToggleBtn" style="height: 24px !important; padding: 0 8px; font-size: 0.72rem;" title="クリックで「名前順（自然順）」と「枚数順」を切り替え（エディタのみ独立）">名前順</button>
               <button type="button" class="btn btn-secondary btn-xs" id="settingsTagExpandAllBtn" title="すべての階層を展開">すべて展開</button>
               <button type="button" class="btn btn-secondary btn-xs" id="settingsTagCollapseAllBtn" title="すべて折りたたむ">折りたたむ</button>
             </div>
@@ -2688,23 +2725,23 @@
     </div>
   </div>
 
-  <script src="/js/common.js?v=3.1.0"></script>
-  <script src="/js/selection.js?v=3.1.0"></script>
-  <script src="/js/inspector.js?v=3.1.0"></script>
-  <script src="/js/lightbox.js?v=3.1.0"></script>
-  <script src="/js/adjust.js?v=3.1.0"></script>
-  <script src="/js/histogram.js?v=3.1.0"></script>
-  <script src="/js/compare.js?v=3.1.0"></script>
-  <script src="/js/takeout.js?v=3.1.0"></script>
-  <script src="/js/presets.js?v=3.1.0"></script>
-  <script src="/js/slideshow.js?v=3.1.0"></script>
-  <script src="/js/location_tree.js?v=3.1.0"></script>
-  <script src="/js/folder_tree.js?v=3.1.0"></script>
-  <script src="/js/location_map.js?v=3.1.0"></script>
-  <script src="/js/lab.js?v=3.1.0"></script>
-  <script src="/js/sidebar_filters.js?v=3.1.0"></script>
-  <script src="/js/storage.js?v=3.1.0"></script>
-  <script src="/js/app.js?v=3.1.0"></script>
-  <script src="/js/i18n.js?v=3.1.0"></script>
+  <script src="/js/common.js?v=3.2.0"></script>
+  <script src="/js/selection.js?v=3.2.0"></script>
+  <script src="/js/inspector.js?v=3.2.0"></script>
+  <script src="/js/lightbox.js?v=3.2.0"></script>
+  <script src="/js/adjust.js?v=3.2.0"></script>
+  <script src="/js/histogram.js?v=3.2.0"></script>
+  <script src="/js/compare.js?v=3.2.0"></script>
+  <script src="/js/takeout.js?v=3.2.0"></script>
+  <script src="/js/presets.js?v=3.2.0"></script>
+  <script src="/js/slideshow.js?v=3.2.0"></script>
+  <script src="/js/location_tree.js?v=3.2.0"></script>
+  <script src="/js/folder_tree.js?v=3.2.0"></script>
+  <script src="/js/location_map.js?v=3.2.0"></script>
+  <script src="/js/lab.js?v=3.2.0"></script>
+  <script src="/js/sidebar_filters.js?v=3.2.0"></script>
+  <script src="/js/storage.js?v=3.2.0"></script>
+  <script src="/js/app.js?v=3.2.0"></script>
+  <script src="/js/i18n.js?v=3.2.0"></script>
 </body>
 </html>
