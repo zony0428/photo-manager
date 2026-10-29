@@ -25,58 +25,48 @@ To try it right away, download the latest ZIP from [GitHub Releases](../../relea
 > - Real-Time `JP` / `EN` UI Toggle Included (Though My English Skill is Zero):  
 >   I am a Japanese developer with zero English skills. If you talk to me in English, I will rely 100% on machine translation and might sound a bit odd. However, clicking the `JP` / `EN` button in the top header switches the entire UI, tooltips, and the built-in Help Manual into English in real time (also 100% AI-generated lol).
 > - Your Original Photo Files & Folders Are Never Modified (100% Non-Destructive & Read-Only):  
->   Although the code is written by AI, one strict rule is enforced throughout: your original photo files (RAW, JPEG, XMP, etc.) in your folders are never modified, moved, or deleted by even a single byte. It never forces your photos into a proprietary library folder, nor does it scatter sidecar or management files inside your photo folders. All tags, ratings, rotations, and crops are saved solely inside a single database file (`cache/library.db`) within the app's own folder. If you decide the app isn't for you, simply delete the Photo Manager folder and your PC environment and photo folders remain completely untouched.
+>   Although the code is written by AI, one strict rule is enforced throughout: your original photo files in your folders are never modified, moved, or deleted by even a single byte. If you decide the app isn't for you, simply delete the Photo Manager folder and your PC environment and photo folders remain completely untouched.
 
 ---
 
-## Key Characteristics
+## Features & Design Philosophy
 
-### 1. Exclusive Search (`[-]` Exclude Filter) & Floating Natural-Language Filter Bar
-Built on the snappy tag-browsing experience of Picasa and Tiat, Photo Manager focuses on effortless exclusion (`[-]`) and hierarchical combination filtering.  
-When filtering by hierarchical tags or the "Camera Body > Lens" tree, left-click to include `[+]` or right-click to exclude `[-]`. Sub-tags under the same top-level parent combine with `OR`, while different top-level groups combine with `AND`. You can select a broad parent category with `[+]` and subtract specific sub-tags with `[-]`, or immediately spot photos where you forgot to apply a tag.  
-Whenever filters are active, a floating filter footer bar appears at the bottom of the screen displaying your active conditions as a readable sentence. Clicking any condition pill opens an inline popover to add/exclude sibling tags or select the same month across all years without opening the sidebar, while collapsed parent nodes display a dashed border and count badge (`+1` / `-1`) as a trail marker. Daily tag assignment takes place in the right Inspector and context menu, while structural edits (reorganizing hierarchies, renaming, and deleting tags) are separated into a dedicated editor inside Settings to prevent accidental changes during culling.
+### 1. Flexible Classification and Search, Independent of Where Photos Are Stored.
+Over the years, photos naturally spread across internal drives and external SSDs, and reorganizing folders or importing everything into a proprietary library just to suit a management app is a burden. Photo Manager is designed so you can keep your existing folders and storage locations as they are, while freely grouping, combining, and subtracting photos across drives using tags and shooting metadata.
 
-### 2. Fast Viewing for Foveon (`X3F`) and Modern Camera RAWs
-Alongside JPEG, PNG, WebP, and HEIC, the app directly displays RAW formats including SIGMA Foveon (`X3F`), Panasonic (`RW2`), Canon (`CR2` / `CR3`), Nikon (`NEF`), Sony (`ARW`), Olympus (`ORF`), Fujifilm (`RAF`), Pentax (`PEF`), and `DNG`.  
-Instead of running slow RAW development, it prioritizes extracting embedded JPEG previews (falling back to LibRaw only when needed), preserving camera-original colors with zero development wait time. Camera bodies and lenses are automatically organized into a hierarchical tree for instant gear-based filtering.
+- Cross-Drive Browsing Without Moving Folders: Browse and search across internal drives and multiple external drives while keeping your existing directory structure intact.
+- Hierarchical Tag & Gear Include `[+]` / Exclude `[-]` Search: Combine include `[+]` and exclude `[-]` conditions across hierarchical tags and the "Camera > Lens" tree. Sibling tags under the same top-level parent combine with `OR`, while different top-level groups combine with `AND`, making it easy to subtract unwanted sub-tags or spot untagged photos.
+- Floating Natural-Language Filter Bar & Trail Markers: While filters are active, a bottom floating bar summarizes your query in natural language with click-to-edit popovers for sibling tags and same-month selection across years. Collapsed parent nodes display dashed borders and count badges (`+1` / `-1`) to indicate active sub-filters.
+- Multi-Axis Filtering, Sorting & Presets: Filter by Date Taken, Location (Country > State/Prefecture > City), 12-Color Palette, Format/Attribute (RAW / JPEG Only / RAW+JPG Pair / Edited / Has XMP), and 4-Tier Rating, sort by EXIF parameters (Focal Length, Aperture, Shutter Speed, ISO), and save frequent combinations as Filter Presets.
+- Photography Lab & Map Insights: Explore your 47-prefecture footprint map, density heatmaps, chronological walk trajectories, "Winning Lens & Sweet-Spot Chart" based on high-rated keeper rates, solar-angle Golden/Blue Hour extraction, "On This Day", and random unrated folder Gacha.
 
-### 3. Clean Photo Folders & XMP Sidecar Integration
-Rotating, leveling horizons, cropping, adjusting tone, shifting capture timestamps, or marking photos as "Rj (Reject)" never alters or deletes your original files on disk, and never creates hidden management files or sidecars inside your photo directories.  
-When companion `.xmp`, `.pp3`, or `.dop` sidecar files already exported by RAW developers (such as Lightroom or Adobe Camera Raw) exist in the same folder, the app reads them non-destructively so you can hold down the "XMP Preview" button in the Inspector to compare adjustments, or import XMP ratings and hierarchical keywords into an isolated `XMP/...` tag branch.
+### 2. Never Touch or Break Original Files — Yet Go Beyond Just Viewing.
+No one wants an application to silently alter original RAW/JPEG files or scatter hidden management and sidecar files inside photo folders. At the same time, a viewer that only displays images forces you to open another editor just to fix a tilted horizon, crop, shift a camera clock, or export. Photo Manager strictly preserves your original files and folders untouched while handling culling, non-destructive adjustments, export, and optional file organization in one continuous workflow.
 
-### 4. Quiet, Tiat-Inspired Workspace Where Photos Stand Out
-Visual noise such as colorful emojis and heavy borders is kept to a minimum so the colors and tonal gradations of your photographs stand out naturally.
-- Switch anytime between the bright Japanese paper theme (Washi) and the darkroom-inspired ink theme (Urusi).
-- Choose between aspect-ratio-preserving Masonry view and film-frame Slide Mount view.
-- The left sidebar (Folders, Tags, Geotags, Date, Gear, Lab, etc.) can be collapsed to maximize grid space or opened as an overlay when needed.
-- The right Inspector keeps an uncropped 4:3 preview (double-click to open Lightbox) and a quick EXIF summary (Date Taken, Dimensions, Camera, Lens, and Exposure settings) visible at all times without switching tabs.
+- Zero Writes to Original Files or Photo Folders: Rotating, adjusting, tagging, shifting timestamps, or marking photos as "Rj (Reject)" never modifies or deletes your original files. All records are stored solely inside a single database (`cache/library.db`) within the app folder.
+- Non-Destructive Rotate, Straighten, Crop & Tone: Apply 90° rotations, fine horizon leveling (±45°), aspect-ratio cropping, and brightness/contrast/saturation adjustments (linked with a live RGB & Luminance histogram), complete with instant before/after comparison and batch copy/paste.
+- Capture Time Shift & Smartphone GPS Copy: Batch-offset capture timestamps to fix camera clock drift or travel timezones (with one-click reset to original EXIF), and non-destructively copy GPS coordinates from smartphone photos taken within ±1 hour.
+- Non-Destructive XMP Sidecar Integration: Read existing `.xmp`, `.pp3`, or `.dop` sidecars exported by Lightroom or other RAW developers without modifying them, compare adjustments via the "XMP Preview" button, and import XMP ratings and hierarchical keywords into an isolated `XMP/...` branch.
+- Flexible Export Options: Batch-export with "Smart Takeout" (applying edits, resizing, sequential capture-order renaming, EXIF stripping, and optional `.xmp` output), generate darkroom-style "Contact Sheet HTML" with red grease-pencil marks and A4 print layout, or copy images directly to the clipboard (<kbd>Ctrl</kbd>+<kbd>C</kbd>).
+- Optional Internal Storage for Physical File Organization: Copy only the specific photos you want to physically reorganize into the app's `storage/` folder to move across subfolders or batch-rename (<kbd>F2</kbd>) while automatically keeping paired RAW and `.xmp` files together.
 
-### 5. Local-First Operation & USB Portability
-Your photos are never sent to any external cloud or server. Web fonts and the map library (Leaflet) are bundled locally with no external CDN requests (only viewing map background tiles connects to OpenStreetMap). AI auto-tagging (CLIP) and reverse geocoding (GPS coordinates to Country, Prefecture/State, and City) run entirely locally on your PC.  
-You can run the app directly from an external SSD or USB flash drive even on a PC without Python installed. When you copy selected photos into the app's internal `storage/` folder, you can organize subfolders and batch-rename files (<kbd>F2</kbd>) while automatically keeping paired RAW files and `.xmp` sidecars together.
+### 3. A Quiet Look & Feel That Stays Out of Your Way.
+When comparing and culling hundreds or thousands of frames, colorful icons, heavy borders, slow RAW loading, or accidental drag-and-drop changes to your tag tree break your concentration. The interface is kept visually quiet so the colors and tones of your photographs stand out naturally, allowing you to cull smoothly with the keyboard and minimal eye movement.
 
----
+- Quiet, Photo-First Interface: Free of colorful emojis and heavy visual clutter, with one-click switching between the bright Japanese paper theme (Washi), darkroom ink theme (Urusi), and `JP` / `EN` display languages.
+- Three Grid Layouts & Collapsible Panels: Switch between Standard Grid, aspect-ratio-preserving Masonry view, and film-frame Slide Mount view. Hide thumbnail text overlays (<kbd>I</kbd> key) or collapse sidebars to maximize space, while keeping an uncropped 4:3 preview and Quick EXIF summary visible in the right Inspector.
+- Fast Viewing for Foveon (`X3F`) & Camera RAWs: Supports SIGMA (`X3F`), Panasonic (`RW2`), Canon (`CR2` / `CR3`), Nikon (`NEF`), Sony (`ARW`), Olympus (`ORF`), Fujifilm (`RAF`), Pentax (`PEF`), `DNG`, and more, prioritizing embedded previews for instant viewing in camera-original colors.
+- Smart Stacks for Bursts & Brackets: Automatically stacks continuous bursts, exposure brackets (AEB), RAW+JPG pairs, and duplicates. Flip through stacked frames with <kbd>↑</kbd> <kbd>↓</kbd> in Lightbox and switch the cover shot via the top Primary button.
+- One-Handed 4-Tier Rating & 2-Up Duel Comparison: Cull with one hand using number keys (<kbd>1</kbd>: Ex / <kbd>2</kbd>: Gd / <kbd>3</kbd>: Rj / <kbd>0</kbd>: Nm), where rejected photos immediately hide from the view without confirmation dialogs. Compare two close contenders side-by-side (<kbd>V</kbd> key) with synchronized zoom/pan and dual histograms, promoting winners with the <kbd>W</kbd> key.
+- Separation of Daily Tagging and Tree Editing: Daily tag assignment is limited to the right Inspector and context menu, while moving, renaming, and deleting tag hierarchies are isolated inside a dedicated Settings editor to prevent accidental edits. Left and right tag lists also support independent Name (natural order) vs. Count sorting.
 
-## Feature Overview
+### 4. No Reliance on the Cloud — Yet Fully Portable.
+Photo Manager was built from the desire not to leave personal photo libraries locked in external cloud services or struggle with environment setup and database migration every time you replace a PC. Every feature runs locally without an internet connection, and placing the folder on an external SSD or USB flash drive lets you carry your entire environment across different PCs and even onto your smartphone.
 
-| Category | Feature | Description |
-| :--- | :--- | :--- |
-| Culling & Comparison | 4-Tier Rating | One-handed culling with number keys (<kbd>1</kbd>: Ex / <kbd>2</kbd>: Gd / <kbd>3</kbd>: Rj / <kbd>0</kbd>: Nm). Rejected photos hide immediately from the grid |
-| | 2-Up Side-by-Side Duel | Compare two photos side-by-side with synchronized zoom & pan and knockout selection (<kbd>W</kbd> key) |
-| | Smart Stacks | Automatically groups continuous bursts, exposure brackets (AEB), and duplicates. Flip frames with <kbd>↑</kbd> <kbd>↓</kbd> in Lightbox and promote the cover frame via the top Primary button |
-| Search & Filtering | Type & Rating Bar | Persistent filter bar at the top of the left menu for format/attribute (RAW / JPEG Only / RAW+JPG Pair / Edited / Has XMP) and ratings (Ex / Gd / Nm / Rj) |
-| | Include `[+]` / Exclude `[-]` Filter | Exclusive filtering across tags and the Camera > Lens hierarchy, with collapsed-tree trail indicators and click-to-jump filter chips |
-| | Multi-Axis Sorting | Sort by Date Taken, Rating, Filename, File Size, Focal Length, Aperture, Shutter Speed, or ISO |
-| Non-Destructive Edits | Crop, Straighten & Tone | Fine horizon leveling (±45°), aspect-ratio cropping, exposure/contrast/saturation adjustments, and batch copy/paste |
-| | Live RGB Histogram | Real-time RGB & Luminance histogram (<kbd>H</kbd> key) linked dynamically to tone adjustments |
-| | Batch Capture Time Shift | Non-destructively offset capture timestamps (Days/Hours/Min/Sec) to fix camera clock drift or timezones, with one-click reset to original EXIF |
-| Export & Print | Smart Takeout | Batch-export selected photos with baked-in edits, resizing, sequential renaming, EXIF stripping, and optional `.xmp` sidecar output |
-| | Contact Sheet HTML (Betayaki) | Generate a darkroom-style negative contact sheet in a single standalone HTML file with red grease-pencil marks and A4 print layout |
-| Photography Lab | Winning Lens & Sweet-Spot Chart | Summarizes your keeper rates (Ex / Gd) to highlight your best-performing lenses and sweet-spot focal lengths, apertures, and hours |
-| | Solar Elevation & Shake Check | Computes solar angle from timestamp & GPS to extract Golden Hour, Blue Hour, and Night shots, plus slow-shutter shake candidates |
-| | Prefecture Map & Walk Trajectory | Visualize your shooting footprint across Japan's 47 prefectures, density heatmaps, and chronological photo-walk trajectories |
-| | On This Day & Folder Gacha | Rediscover photos taken on the same calendar date across years, or open a random unrated folder to cull |
-| Mobile Sync | Smartphone Wi-Fi & Offline Culling | Token-authenticated QR Wi-Fi culling (auto-stops after 30 min idle), plus offline culling by loading `cache/library.db` via WebAssembly on your phone and syncing back to PC |
+- 100% Local Execution with Zero Uploads: Never sends photos to external servers or loads external CDNs (only viewing map background tiles connects to OpenStreetMap). Local AI auto-tagging (CLIP) and offline GPS reverse geocoding (Country, State/Prefecture, and City) run entirely on your PC.
+- No Installation Required — Run Directly from USB: The portable Python runtime and SQLite database (`cache/library.db`) live inside a single folder, launching directly from an external SSD or USB drive even on a PC without Python installed. Updates require only overwriting with a lightweight diff ZIP.
+- Drive-Letter Tracking & Unplugged Browsing: Tracks drives by Volume Serial Number (VSN) so links never break when drive letters change (`E:\` to `F:\`) across PCs. Even when external drives are unplugged, you can continue browsing thumbnails, searching, tagging, and rating.
+- Smartphone Wi-Fi & Offline USB Culling: Cull on your smartphone over home Wi-Fi (QR one-time token authentication, auto-stops after 30 min idle) or completely offline on the go by opening `PhotoManager_Mobile.html` and `cache/library.db` directly in your phone's browser via WebAssembly, then sync changes back to your PC.
 
 ---
 
