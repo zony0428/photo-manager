@@ -9,6 +9,7 @@
 
 | ドキュメント | 概要 |
 |---|---|
+| [design-philosophy-four-pillars.md](design-philosophy-four-pillars.md) | **【4つの設計原則（4本の柱）と機能体系】** Photo Manager の根幹をなす4原則（保存先に縛られない分類・検索／元データを汚さず見るだけで終わらない／作業を邪魔しないLook&Feel／クラウドに頼らずポータブル）と実現機能・編集原則の定義 |
 | [feature-code-map.md](feature-code-map.md) | **【機能別コードマップ】** ユーザー機能（グリッド・ライトボックス・タグ・スタック・スキャン・storage・XMP等）と対応するフロントエンドJS・API・DBモジュールの完全対応表 |
 | [portable-storage-patterns.md](portable-storage-patterns.md) | USBポータブル運用、ドライブレター変動（D:→E:）への動的追跡、ボリュームシリアル番号（VSN）照合の仕組み |
 | [sqlite-blob-thumbnails.md](sqlite-blob-thumbnails.md) | サムネイル管理の変遷（ファイル方式からSQLite BLOB方式への移行理由、PRAGMA高速化、マイグレーション実績） |

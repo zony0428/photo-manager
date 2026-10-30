@@ -560,8 +560,10 @@ def api_get_photos(
     focal_range: Optional[str] = None,
     aperture_range: Optional[str] = None,
     attr_filter: Optional[str] = None,
+    tag_and_roots: Optional[str] = None,
+    tag_group_op: str = "and",
 ):
-    """写真一覧を取得する（タグの含む/除外排他検索、年月OR条件、カメラ・レンズ含む/除外条件、場所階層絞り込み、ラボ分析フィルタ、ブラケットスタック表示、重複抽出、属性フィルタ対応）"""
+    """写真一覧を取得する（タグの含む/除外排他検索、同グループ内AND/異グループ間OR切替、年月OR条件、カメラ・レンズ含む/除外条件、場所階層絞り込み、ラボ分析フィルタ、ブラケットスタック表示、重複抽出、属性フィルタ対応）"""
     if missing_only:
         photos = get_missing_photos()
         for p in photos:
@@ -570,6 +572,7 @@ def api_get_photos(
 
     inc_list = [t.strip() for t in include_tags.split(",") if t.strip()] if include_tags else None
     exc_list = [t.strip() for t in exclude_tags.split(",") if t.strip()] if exclude_tags else None
+    and_roots_list = [r.strip() for r in tag_and_roots.split(",") if r.strip()] if tag_and_roots else None
     ym_list = [y.strip() for y in year_months.split(",") if y.strip()] if year_months else None
     cam_list = [c.strip() for c in cameras.split(",") if c.strip()] if cameras else None
     raw_ex_cams = excluded_cameras or exclude_cameras
@@ -606,6 +609,8 @@ def api_get_photos(
         focal_range=focal_range,
         aperture_range=aperture_range,
         attr_filter=attr_filter,
+        tag_and_roots=and_roots_list,
+        tag_group_op=tag_group_op,
     )
 
     # ポータブル運用・オフライン状態判定および実体消失判定

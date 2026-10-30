@@ -50,6 +50,8 @@ function getCurrentFilterState() {
     apertureRangeLabel: state.apertureRangeLabel || null,
     isStacked: state.isStacked !== undefined ? state.isStacked : true,
     tagFilters: tagFiltersObj,
+    tagAndRoots: Array.from(state.tagAndRoots || []),
+    tagInterGroupMode: state.tagInterGroupMode || 'and',
   };
 }
 
@@ -375,6 +377,8 @@ function applyFilterPreset(preset) {
       state.tagFilters.set(tag, mode);
     });
   }
+  state.tagAndRoots = new Set(Array.isArray(f.tagAndRoots) ? f.tagAndRoots : []);
+  state.tagInterGroupMode = f.tagInterGroupMode === 'or' ? 'or' : 'and';
   state.untaggedOnly = !!f.untaggedOnly;
   const untaggedNavItem = document.getElementById('untaggedNavItem');
   if (untaggedNavItem) {

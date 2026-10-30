@@ -190,6 +190,11 @@ photo-manager/
 ## 6. 詳細ルールへのリファレンス
 
 詳細なコンテキストや仕様は、以下のプロジェクト内ファイルを参照すること：
+- **4つの設計原則（4本の柱）と機能体系**: `docs/knowledge/design-philosophy-four-pillars.md`
+  1. 保存先に縛られない、簡単で自由な分類と検索。
+  2. 元データは汚さず壊さず。でも、見るだけでは終わらない。
+  3. 作業を邪魔しない、Look&Feel。
+  4. クラウドには頼らない。でもポータブル。
 - **UI/UXデザインシステム & 編集規約 (v3.00 Tiat志向設計)**: `.agents/rules/ui-design-system.md` / `docs/knowledge/ui-design-system-and-tiat-guidelines.md`
 - **コーディング規約詳細**: `.agents/rules/coding-standards.md`
 - **PowerShell文字化け対策**: `.agents/rules/powershell-encoding.md`

@@ -47,6 +47,7 @@ Photo Manager の設計判断、パフォーマンス最適化パターン、セ
 
 | ドキュメント | 概要 |
 | :--- | :--- |
+| [design-philosophy-four-pillars.md](knowledge/design-philosophy-four-pillars.md) | **【4つの設計原則（4本の柱）】** プロダクトの基本思想4原則と、それを実現する全機能体系・対外文章の編集原則 |
 | [feature-code-map.md](knowledge/feature-code-map.md) | **【機能別コードマップ】** 14の大分類（グリッド・ライトボックス・タグ・スタック・スキャン・storage・画像調整・セキュリティ等）とコードの対応表 |
 | [ui-design-system-and-tiat-guidelines.md](knowledge/ui-design-system-and-tiat-guidelines.md) | **【UI/UXデザインシステム】** 2段階左サイドバー、1段ヘッダー、4:3インスペクタ、脱絵文字、和紙/夜墨テーマ等の規約 |
 | [security-architecture.md](knowledge/security-architecture.md) | **【セキュリティアーキテクチャ】** 4層防御（Host検証、Origin検証、LANトークン認証、LAN APIホワイトリスト）、自動停止タイマー |

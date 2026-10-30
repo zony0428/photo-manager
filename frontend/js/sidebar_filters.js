@@ -1456,6 +1456,10 @@ function handleTagLeftClick(tag) {
   const current = state.tagFilters.get(tag);
   if (current) {
     state.tagFilters.delete(tag);
+    if (state.tagFilters.size === 0) {
+      if (state.tagAndRoots) state.tagAndRoots.clear();
+      state.tagInterGroupMode = 'and';
+    }
   } else {
     state.tagFilters.set(tag, 'include');
     expandTagAncestors(tag);
@@ -1477,6 +1481,10 @@ function handleTagRightClick(tag) {
   const current = state.tagFilters.get(tag);
   if (current === 'exclude') {
     state.tagFilters.delete(tag);
+    if (state.tagFilters.size === 0) {
+      if (state.tagAndRoots) state.tagAndRoots.clear();
+      state.tagInterGroupMode = 'and';
+    }
   } else {
     state.tagFilters.set(tag, 'exclude');
     expandTagAncestors(tag);
@@ -1494,6 +1502,10 @@ const toggleTagFilter = handleTagLeftClick;
  */
 function removeTagFilter(tag) {
   state.tagFilters.delete(tag);
+  if (state.tagFilters.size === 0) {
+    if (state.tagAndRoots) state.tagAndRoots.clear();
+    state.tagInterGroupMode = 'and';
+  }
   renderTagList();
   fetchPhotos();
 }
@@ -1503,6 +1515,8 @@ function removeTagFilter(tag) {
  */
 function clearAllTagFilters() {
   state.tagFilters.clear();
+  if (state.tagAndRoots) state.tagAndRoots.clear();
+  state.tagInterGroupMode = 'and';
   state.untaggedOnly = false;
   elements.untaggedNavItem.classList.remove('active');
   renderTagList();

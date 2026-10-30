@@ -11,15 +11,15 @@
   <link rel="manifest" href="/manifest.json?v=2">
   <meta name="theme-color" content="#191816">
   <link rel="stylesheet" href="/vendor/fonts/fonts.css">
-  <link rel="stylesheet" href="/css/style.css?v=3.2.0">
-  <link rel="stylesheet" href="/css/grid-lightbox.css?v=3.2.0">
-  <link rel="stylesheet" href="/css/selection-menu.css?v=3.2.0">
-  <link rel="stylesheet" href="/css/inspector.css?v=3.2.0">
-  <link rel="stylesheet" href="/css/modals-features.css?v=3.2.0">
-  <link rel="stylesheet" href="/css/lab-map.css?v=3.2.0">
-  <link rel="stylesheet" href="/css/histogram.css?v=3.2.0">
-  <link rel="stylesheet" href="/css/compare.css?v=3.2.0">
-  <link rel="stylesheet" href="/css/ui-unify.css?v=3.2.0">
+  <link rel="stylesheet" href="/css/style.css?v=3.2.1">
+  <link rel="stylesheet" href="/css/grid-lightbox.css?v=3.2.1">
+  <link rel="stylesheet" href="/css/selection-menu.css?v=3.2.1">
+  <link rel="stylesheet" href="/css/inspector.css?v=3.2.1">
+  <link rel="stylesheet" href="/css/modals-features.css?v=3.2.1">
+  <link rel="stylesheet" href="/css/lab-map.css?v=3.2.1">
+  <link rel="stylesheet" href="/css/histogram.css?v=3.2.1">
+  <link rel="stylesheet" href="/css/compare.css?v=3.2.1">
+  <link rel="stylesheet" href="/css/ui-unify.css?v=3.2.1">
   <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
   <script src="/vendor/leaflet/leaflet.js"></script>
   <script>
@@ -64,7 +64,7 @@
         <div class="logo">
           <span class="hinomaru-disc" title="Hinomaru Ink"></span>
           <span class="logo-text">PHOTO<span>MANAGER</span></span>
-          <span class="app-version" id="appVersion" title="v3.2.0 (最終更新: 2026-10-28 15:00)">v3.2.0</span>
+          <span class="app-version" id="appVersion" title="v3.2.1 (最終更新: 2026-10-30 18:56)">v3.2.1</span>
         </div>
 
         <!-- テーマ切替（和紙 ⇄ 夜墨） -->
@@ -1198,7 +1198,7 @@
           <div class="help-card" style="margin-top: 14px;">
             <h4>5. 複数の写真をまとめて操作する・絞り込み検索</h4>
             <p>複数選択：Ctrl + クリックで追加選択、Shift + クリックで範囲選択、Ctrl + A で全選択できます。複数枚を選ぶと、右インスペクタの一括編集パネルや右クリックメニューから、まとめて評価付け・タグ付け・回転・テイクアウト・日時シフト補正が行えます。</p>
-            <p>写真を探す：左サイドバーの「年月」「機材（カメラ ＞ レンズ階層ツリーと [+] 含む / [-] 除外検索）」「ラボ」、および一番下の「検索」で絞り込めます。フィルタ適用中は写真グリッドを一切上下にずらさず、画面下部にフローティングのフィルタフッターバーが現れ、条件が自然な日本語文（「または」「かつ」「除く」）として表示されます。フッター内の条件ピルを左クリックするとその場で条件の変更・追加ポップオーバーが開き、右クリックで含む[+]⇔除外[-]を反転、×で個別解除、「すべて解除」で全解除できます。</p>
+            <p>写真を探す：左サイドバーの「年月」「機材（カメラ ＞ レンズ階層ツリーと [+] 含む / [-] 除外検索）」「ラボ」、および一番下の「検索」で絞り込めます。フィルタ適用中は写真グリッドを一切上下にずらさず、画面下部にフローティングのフィルタフッターバーが現れ、条件が自然な日本語文（「または」「かつ」「除く」）として表示されます。フッター内の条件ピルを左クリックするとその場で条件の変更・追加ポップオーバーが開き、右クリックで含む[+]⇔除外[-]を反転、タグ条件の接続詞（「または」「かつ」）をクリックでAND⇔OR切替、×で個別解除、「すべて解除」で全解除できます。</p>
           </div>
         </div>
 
@@ -1220,7 +1220,7 @@
             <p>階層タグとタグツリーエディタ：タグ入力時に「旅行/2026北海道/小樽」のようにスラッシュ（/）で区切ると親子ツリーとして整理されます。左サイドバー「タグ」の「枚数順」ボタンで枚数順と名前順を切り替えられるほか、「設定」（または右インスペクタの「ツリー編集」）の「タグツリーエディタ」でドラッグ＆ドロップによる階層組み替え・名前変更・削除が行えます。</p>
             <p>色合い（12色パレット）：右インスペクタの「色合い」で写真にカラーラベルを登録し、左サイドバー「タグ」上部の「カラー」から色別に絞り込めます（右クリックでその色を除外）。</p>
             <p>ローカルAI自動タグ付け：左サイドバーのフォルダを右クリックして「AIタグ付け」を選ぶと、ネット通信なしでPC内のAI（CLIP）が「青空」「海」「猫」「料理」「夜景」などのタグを自動付与します。</p>
-            <p>タグ・機材の [+] 含む / [-] 除外検索と道標表示：タグツリーの一番上の親（1階層目）同士を [+] にすると「しかも（AND）」で絞り込まれ、同じ親の下にある2階層目以降の子タグを複数 [+] にすると「または（OR）」で候補が追加されます。見たくない子タグは右クリックで [-]（除外）を明示して引き算できるため、「トヨタ [+]・プリウス [-]・ロードスター [+]」のように選べば「プリウス以外のトヨタ車とロードスター」を簡単に抽出できます。親階層を閉じていても、配下の子項目でフィルタが有効な場合は破線枠と件数バッジ（+1 / -1）の道標が表示されます。</p>
+            <p>タグ・機材の [+] 含む / [-] 除外検索と道標表示：タグツリーの一番上の親（1階層目）同士を [+] にすると既定で「かつ（AND）」で絞り込まれ、同じ親の下にある2階層目以降の子タグを複数 [+] にすると既定で「または（OR）」で候補が追加されます（画面下部フッターバーの「または」「かつ」をクリックすると、同グループ内のOR⇔ANDや異グループ間のAND⇔ORをその場で切り替えられます）。見たくない子タグは右クリックで [-]（除外）を明示して引き算できるため、「トヨタ [+]・プリウス [-]・ロードスター [+]」のように選べば「プリウス以外のトヨタ車とロードスター」を簡単に抽出できます。親階層を閉じていても、配下の子項目でフィルタが有効な場合は破線枠と件数バッジ（+1 / -1）の道標が表示されます。</p>
           </div>
 
           <div class="help-card" style="margin-top: 14px;">
@@ -2725,23 +2725,23 @@
     </div>
   </div>
 
-  <script src="/js/common.js?v=3.2.0"></script>
-  <script src="/js/selection.js?v=3.2.0"></script>
-  <script src="/js/inspector.js?v=3.2.0"></script>
-  <script src="/js/lightbox.js?v=3.2.0"></script>
-  <script src="/js/adjust.js?v=3.2.0"></script>
-  <script src="/js/histogram.js?v=3.2.0"></script>
-  <script src="/js/compare.js?v=3.2.0"></script>
-  <script src="/js/takeout.js?v=3.2.0"></script>
-  <script src="/js/presets.js?v=3.2.0"></script>
-  <script src="/js/slideshow.js?v=3.2.0"></script>
-  <script src="/js/location_tree.js?v=3.2.0"></script>
-  <script src="/js/folder_tree.js?v=3.2.0"></script>
-  <script src="/js/location_map.js?v=3.2.0"></script>
-  <script src="/js/lab.js?v=3.2.0"></script>
-  <script src="/js/sidebar_filters.js?v=3.2.0"></script>
-  <script src="/js/storage.js?v=3.2.0"></script>
-  <script src="/js/app.js?v=3.2.0"></script>
-  <script src="/js/i18n.js?v=3.2.0"></script>
+  <script src="/js/common.js?v=3.2.1"></script>
+  <script src="/js/selection.js?v=3.2.1"></script>
+  <script src="/js/inspector.js?v=3.2.1"></script>
+  <script src="/js/lightbox.js?v=3.2.1"></script>
+  <script src="/js/adjust.js?v=3.2.1"></script>
+  <script src="/js/histogram.js?v=3.2.1"></script>
+  <script src="/js/compare.js?v=3.2.1"></script>
+  <script src="/js/takeout.js?v=3.2.1"></script>
+  <script src="/js/presets.js?v=3.2.1"></script>
+  <script src="/js/slideshow.js?v=3.2.1"></script>
+  <script src="/js/location_tree.js?v=3.2.1"></script>
+  <script src="/js/folder_tree.js?v=3.2.1"></script>
+  <script src="/js/location_map.js?v=3.2.1"></script>
+  <script src="/js/lab.js?v=3.2.1"></script>
+  <script src="/js/sidebar_filters.js?v=3.2.1"></script>
+  <script src="/js/storage.js?v=3.2.1"></script>
+  <script src="/js/app.js?v=3.2.1"></script>
+  <script src="/js/i18n.js?v=3.2.1"></script>
 </body>
 </html>

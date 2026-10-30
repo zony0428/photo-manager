@@ -698,6 +698,38 @@ class TestCoreRegression(unittest.TestCase):
             sorted([p_crown, p_roadster, p_cx5]),
         )
 
+        # 6. 同グループ内のORをANDに切り替えた場合（tag_and_roots=["車"]）
+        #    -> p_collab に「車/Toyota/Crown」と「車/Mazda/Roadster」の両方を付与し、両方持つ写真のみヒットすることを検証
+        p_collab = upsert_photo({
+            "file_path": r"C:\Photos\Cars\COLLAB.JPG",
+            "directory_path": r"C:\Photos\Cars",
+            "file_name": "COLLAB.JPG",
+            "file_size": 6000,
+            "date_taken": "2026:10:06 10:00:00",
+        })
+        add_tag_to_photo(p_collab, "車/Toyota/Crown")
+        add_tag_to_photo(p_collab, "車/Mazda/Roadster")
+
+        res_intra_and = get_photos(
+            included_tags=["車/Toyota/Crown", "車/Mazda/Roadster"],
+            tag_and_roots=["車"],
+            stacked=False,
+        )
+        self.assertEqual([p["id"] for p in res_intra_and], [p_collab])
+
+        # 7. 異グループ間のANDをORに切り替えた場合（tag_group_op="or"）
+        #    -> 「車: Toyota（除く: − Prius）」または「季節: 夏」で p_crown, p_collab, p_roadster がヒットし、p_prius は除外される
+        res_inter_or = get_photos(
+            included_tags=["車/Toyota", "季節/夏"],
+            excluded_tags=["車/Toyota/Prius"],
+            tag_group_op="or",
+            stacked=False,
+        )
+        self.assertEqual(
+            sorted([p["id"] for p in res_inter_or]),
+            sorted([p_crown, p_collab, p_roadster]),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

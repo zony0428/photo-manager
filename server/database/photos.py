@@ -275,8 +275,10 @@ def get_photos(
     focal_range: Optional[str] = None,
     aperture_range: Optional[str] = None,
     attr_filter: Optional[str] = None,
+    tag_and_roots: Optional[List[str]] = None,
+    tag_group_op: str = "and",
 ) -> List[Dict[str, Any]]:
-    """条件に合致する写真一覧を取得する（タグの含む/除外排他検索、複数年月OR条件、カメラ・レンズ含む/除外条件、場所階層絞り込み、ラボ分析フィルタ、ブラケットスタック表示、重複写真抽出に対応）"""
+    """条件に合致する写真一覧を取得する（タグの含む/除外排他検索、同グループ内AND/異グループ間OR切替、複数年月OR条件、カメラ・レンズ含む/除外条件、場所階層絞り込み、ラボ分析フィルタ、ブラケットスタック表示、重複写真抽出に対応）"""
     # デフォルト: 棄(-1)を除く全て (優・良・可: [0, 1, 2])
     if ratings is None:
         ratings = [0, 1, 2]
@@ -527,37 +529,106 @@ def get_photos(
     if untagged_only:
         query += " AND p.id NOT IN (SELECT photo_id FROM photo_tags)"
     else:
-        # 階層タグ排他検索: 含むタグ
-        # ・最上位の親（第1階層）が同じタグ同士は OR 条件で結合
-        # ・最上位の親が異なるグループ間（および親を持たない最上位タグ同士）は AND 条件で結合
+        # カラータグ定義（独立した色フィルタ文節として常にグローバルAND適用）
+        _color_tag_names = {
+            "赤", "青", "緑", "黄色", "黒", "白",
+            "銀・シルバー", "金・ゴールド", "茶色", "紫", "オレンジ", "ピンク",
+        }
+        and_roots_set = {r.strip() for r in (tag_and_roots or []) if r and r.strip()}
+        inter_group_or = (tag_group_op or "and").strip().lower() == "or"
+
+        clean_inc = [t.strip() for t in (included_tags or []) if t and t.strip()]
+        clean_exc = [t.strip() for t in (excluded_tags or []) if t and t.strip()]
+
+        color_inc = [t for t in clean_inc if t in _color_tag_names]
+        general_inc = [t for t in clean_inc if t not in _color_tag_names]
+        color_exc = [t for t in clean_exc if t in _color_tag_names]
+        general_exc = [t for t in clean_exc if t not in _color_tag_names]
+
+        # 1. カラータグ条件（含む / 除外）
+        if color_inc:
+            if len(color_inc) == 1:
+                query += " AND p.id IN (SELECT photo_id FROM photo_tags WHERE tag = ?)"
+                params.append(color_inc[0])
+            else:
+                placeholders = ",".join(["?"] * len(color_inc))
+                query += f" AND p.id IN (SELECT photo_id FROM photo_tags WHERE tag IN ({placeholders}))"
+                params.extend(color_inc)
+        for c_tag in color_exc:
+            query += " AND p.id NOT IN (SELECT photo_id FROM photo_tags WHERE tag = ?)"
+            params.append(c_tag)
+
+        # 2. 階層タグ・一般タグ排他検索
+        # ・最上位の親（第1階層）が同じタグ同士は既定で OR 条件で結合（tag_and_roots に含まれるルートは AND 結合）
+        # ・最上位の親が異なるグループ間は既定で AND 条件で結合（tag_group_op='or' の場合は OR 結合）
         # ・同一親子ラインで祖先タグと子孫タグが同時に選択されている場合は、より具体的な子孫タグを優先
-        if included_tags:
-            clean_inc = [t.strip() for t in included_tags if t and t.strip()]
+        tag_groups: Dict[str, List[str]] = {}
+        if general_inc:
             effective_inc = [
-                t for t in clean_inc
-                if not any(other != t and other.startswith(t + "/") for other in clean_inc)
+                t for t in general_inc
+                if not any(other != t and other.startswith(t + "/") for other in general_inc)
             ]
-            tag_groups: Dict[str, List[str]] = {}
             for tag in effective_inc:
                 root_parent = tag.split("/", 1)[0].strip()
                 group_list = tag_groups.setdefault(root_parent, [])
                 if tag not in group_list:
                     group_list.append(tag)
 
-            for group_tags in tag_groups.values():
+        exc_by_root: Dict[str, List[str]] = {}
+        for tag in general_exc:
+            root_parent = tag.split("/", 1)[0].strip()
+            exc_list_for_root = exc_by_root.setdefault(root_parent, [])
+            if tag not in exc_list_for_root:
+                exc_list_for_root.append(tag)
+
+        if tag_groups:
+            group_sql_clauses: List[str] = []
+            group_sql_params: List[Any] = []
+
+            for root_parent, group_tags in tag_groups.items():
+                sub_parts: List[str] = []
+                sub_params: List[Any] = []
+
                 if len(group_tags) == 1:
-                    query += " AND p.id IN (SELECT photo_id FROM photo_tags WHERE tag = ?)"
-                    params.append(group_tags[0])
+                    sub_parts.append("p.id IN (SELECT photo_id FROM photo_tags WHERE tag = ?)")
+                    sub_params.append(group_tags[0])
+                elif root_parent in and_roots_set:
+                    for g_tag in group_tags:
+                        sub_parts.append("p.id IN (SELECT photo_id FROM photo_tags WHERE tag = ?)")
+                        sub_params.append(g_tag)
                 else:
                     placeholders = ",".join(["?"] * len(group_tags))
-                    query += f" AND p.id IN (SELECT photo_id FROM photo_tags WHERE tag IN ({placeholders}))"
-                    params.extend(group_tags)
+                    sub_parts.append(f"p.id IN (SELECT photo_id FROM photo_tags WHERE tag IN ({placeholders}))")
+                    sub_params.extend(group_tags)
 
-        # 階層タグ排他検索: 除外するタグ（祖先ノード独立保存により完全一致で十分）
-        if excluded_tags:
-            for tag in excluded_tags:
+                # 複数グループ間OR結合時、同じルートグループ内に除外タグがある場合（「車: Toyota（除く: − Prius）」）は当該文節内に束ねる
+                if inter_group_or and len(tag_groups) > 1 and root_parent in exc_by_root:
+                    for ex_tag in exc_by_root[root_parent]:
+                        sub_parts.append("p.id NOT IN (SELECT photo_id FROM photo_tags WHERE tag = ?)")
+                        sub_params.append(ex_tag)
+
+                if len(sub_parts) == 1:
+                    group_sql_clauses.append(sub_parts[0])
+                else:
+                    group_sql_clauses.append(f"({' AND '.join(sub_parts)})")
+                group_sql_params.extend(sub_params)
+
+            if inter_group_or and len(group_sql_clauses) > 1:
+                joined_or = " OR ".join(f"({c})" for c in group_sql_clauses)
+                query += f" AND ({joined_or})"
+                params.extend(group_sql_params)
+            else:
+                for c in group_sql_clauses:
+                    query += f" AND {c}"
+                params.extend(group_sql_params)
+
+        # 除外タグの適用（inter_group_or 時に含むグループ内で束ね済みのものは重複適用しない）
+        for root_parent, ex_tags in exc_by_root.items():
+            if inter_group_or and len(tag_groups) > 1 and root_parent in tag_groups:
+                continue
+            for ex_tag in ex_tags:
                 query += " AND p.id NOT IN (SELECT photo_id FROM photo_tags WHERE tag = ?)"
-                params.extend([tag])
+                params.append(ex_tag)
 
     # ソート条件の検証
     ss_sql = _shutter_speed_seconds_sql("p.shutter_speed")

@@ -1535,6 +1535,18 @@
     '（または TCP ポート': '(or TCP port',
     '）のプライベート通信を許可する、(3) ゲスト用SSIDやプライバシーセパレーター（端末間分離）でない同じWi-Fiルーターに接続しているかを確認してください（スマホ連携画面内にも詳しい手順と許可コマンドがあります）。':
       ') on Private networks in Windows Defender Firewall, and (3) Ensure both devices are on the same router without Guest SSID / AP Isolation (detailed steps and a one-line firewall command are available inside the Mobile modal).',
+    'かつ': 'AND',
+    'または': 'or',
+    'または (OR)': 'OR',
+    'かつ (AND)': 'AND',
+    '同グループ内の結合:': 'Within this group:',
+    '別グループとの結合:': 'Between tag groups:',
+    'を除く': 'excluded',
+    '（除く:': '(Except:',
+    '異グループ間: OR検索（いずれかのタグ条件に一致）\nクリックで「かつ (AND)」に戻す':
+      'Between tag groups: OR search (match any group)\nClick to switch back to "AND"',
+    '異グループ間: AND検索（両方のタグ条件に一致）\nクリックで「または (OR)」に切り替える':
+      'Between tag groups: AND search (match all groups)\nClick to switch to "OR"',
   };
 
   const MONTH_NAMES_SHORT = [
@@ -1718,6 +1730,10 @@
     [/^([\s\S]+)\n撮影時刻:\s*(.+)\n露出:\s*(.+)$/, (_, head, t, exp) => `${head.replace('連写スタートコマ (0.000s)', 'Burst Start (0.000s)').replace(/開始から \+([\d.]+)s/, '+$1s from start').replace(/連写 #(\d+) コマ目/, 'Burst Frame #$1')}\nTime: ${t === '不明' ? 'Unknown' : t}\nExposure: ${exp}`],
     [/^(.+)（ドライブ未接続）$/, '$1 (Offline)'],
     [/^(.+)（実フォルダ消失）$/, '$1 (Folder Missing)'],
+    [/^「(.+)」内:\s*AND検索（すべて含む写真のみ）\nクリックで「または\s*\(OR\)」に戻す$/, 'Inside "$1": AND search (must match all)\nClick to switch back to "or (OR)"'],
+    [/^「(.+)」内:\s*OR検索（いずれかを含む写真）\nクリックで「かつ\s*\(AND\)」に切り替える$/, 'Inside "$1": OR search (match any)\nClick to switch to "AND"'],
+    [/^タグ条件:\s*(.+)（同グループ内は(AND|OR)・除外はNOT）$/, 'Tag Filter: $1 (Intra-group: $2, Exclude: NOT)'],
+    [/^「(.+)」内の別タグを追加\s*\((AND|OR)\)\s*または除外\s*\(NOT\)$/, 'Add another tag in "$1" ($2) or exclude (NOT)'],
 
     // バージョン更新日時ツールチップ
     [/^v([\d.a-zA-Z]+)\s*\(最終更新:\s*(.+)\)$/, 'v$1 (Updated: $2)'],

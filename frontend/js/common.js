@@ -71,6 +71,8 @@ const state = {
   viewMode: 'grid',         // 'grid' | 'masonry' | 'mount'
   isMinimalView: false,     // 情報表示ON/OFF (クリーンモード)
   tagFilters: new Map(),    // タグ名 -> 'include' | 'exclude' (3ステート排他管理)
+  tagAndRoots: new Set(),   // 同グループ内の [+] タグを OR(既定) から AND('かつ') に切り替えたルート名集合
+  tagInterGroupMode: 'and', // 異グループ間のタグ文節結合モード ('and' = かつ[既定] | 'or' = または)
   untaggedOnly: false,      // 未分類写真フィルタ
   onlineOnly: false,        // 接続中の写真のみ表示フィルタ (後方互換)
   connectionFilter: 'all',  // 'all' | 'online' | 'offline' (接続中 / 未接続フィルタ)

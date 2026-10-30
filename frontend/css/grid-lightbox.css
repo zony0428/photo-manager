@@ -155,6 +155,78 @@
   white-space: nowrap;
 }
 
+.nl-conjunction.is-interactive,
+.nl-or.is-interactive {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: inherit;
+  font-weight: 600;
+  line-height: 1.25;
+  padding: 2px 7px;
+  margin: 0 2px;
+  background: var(--bg-tertiary, #27272a);
+  border: 1px solid rgba(161, 161, 170, 0.45);
+  border-radius: var(--ui-radius-click, 5px) !important;
+  color: var(--text-main);
+  opacity: 1;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.nl-conjunction.is-interactive::after,
+.nl-or.is-interactive::after {
+  content: " ⇄";
+  font-size: 0.62rem;
+  opacity: 0.72;
+  margin-left: 2px;
+}
+
+.nl-conjunction.is-interactive:hover,
+.nl-or.is-interactive:hover {
+  color: var(--accent-primary);
+  border-color: var(--accent-primary);
+  background: rgba(230, 74, 25, 0.10);
+}
+
+.nl-conjunction.is-interactive.is-toggled,
+.nl-or.is-interactive.is-toggled {
+  font-weight: 700;
+  color: var(--accent-primary);
+  border: 1px solid var(--accent-primary);
+  background: rgba(230, 74, 25, 0.16);
+}
+
+.nl-conjunction.is-interactive.is-toggled:hover,
+.nl-or.is-interactive.is-toggled:hover {
+  background: rgba(230, 74, 25, 0.26);
+}
+
+.nl-pop-logic-bar {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 5px;
+}
+
+.nl-pop-logic-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.nl-pop-logic-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.nl-pop-state-btn.is-logic-active {
+  background: rgba(230, 74, 25, 0.16);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
 .nl-except-wrap {
   display: inline-flex;
   align-items: center;

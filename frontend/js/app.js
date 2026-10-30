@@ -288,6 +288,12 @@ async function fetchPhotos() {
 
       if (includeList.length > 0) {
         params.append('include_tags', includeList.join(','));
+        if (state.tagAndRoots && state.tagAndRoots.size > 0) {
+          params.append('tag_and_roots', Array.from(state.tagAndRoots).join(','));
+        }
+        if (state.tagInterGroupMode === 'or') {
+          params.append('tag_group_op', 'or');
+        }
       }
       if (excludeList.length > 0) {
         params.append('exclude_tags', excludeList.join(','));
@@ -948,6 +954,10 @@ function setTagFilterModeDirect(tagPath, mode) {
       state.tagFilters.delete(tagPath);
     }
   }
+  if (state.tagFilters.size === 0) {
+    if (state.tagAndRoots) state.tagAndRoots.clear();
+    state.tagInterGroupMode = 'and';
+  }
   if (typeof renderTagList === 'function') renderTagList();
   fetchPhotos();
 }
@@ -1018,6 +1028,7 @@ function renderActiveFilterChips() {
 
   let hasFilter = false;
   let clauseCount = 0;
+  let prevClauseIsTagInclude = false;
 
   function flashAndScrollToElement(el) {
     if (!el) return;
@@ -1028,17 +1039,37 @@ function renderActiveFilterChips() {
     setTimeout(() => el.classList.remove('filter-jump-highlight'), 1300);
   }
 
-  function appendClause(clauseEl) {
+  function appendClause(clauseEl, options = {}) {
     if (!clauseEl) return;
     hasFilter = true;
+    const isTagInclude = Boolean(options && options.isTagIncludeClause);
     if (clauseCount > 0) {
-      const conj = document.createElement('span');
-      conj.className = 'nl-conjunction';
-      conj.textContent = (typeof t === 'function' && window.currentLang === 'en') ? 'AND' : 'かつ';
-      container.appendChild(conj);
+      if (prevClauseIsTagInclude && isTagInclude) {
+        const isInterOr = state.tagInterGroupMode === 'or';
+        const conjBtn = document.createElement('button');
+        conjBtn.type = 'button';
+        conjBtn.className = `nl-conjunction is-interactive${isInterOr ? ' is-toggled' : ''}`;
+        conjBtn.textContent = isInterOr ? 'または' : 'かつ';
+        conjBtn.title = isInterOr
+          ? '異グループ間: OR検索（いずれかのタグ条件に一致）\nクリックで「かつ (AND)」に戻す'
+          : '異グループ間: AND検索（両方のタグ条件に一致）\nクリックで「または (OR)」に切り替える';
+        conjBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          closeNlFilterPopover();
+          state.tagInterGroupMode = (state.tagInterGroupMode === 'or') ? 'and' : 'or';
+          fetchPhotos();
+        });
+        container.appendChild(conjBtn);
+      } else {
+        const conj = document.createElement('span');
+        conj.className = 'nl-conjunction';
+        conj.textContent = 'かつ';
+        container.appendChild(conj);
+      }
     }
     container.appendChild(clauseEl);
     clauseCount++;
+    prevClauseIsTagInclude = isTagInclude;
   }
 
   function createClauseBox(prefixText = '', onPrefixClick = null, prefixTitle = '') {
@@ -1599,14 +1630,18 @@ function renderActiveFilterChips() {
       return partsA.length - partsB.length;
     };
 
-    const sortedRootKeys = Array.from(rootGroups.keys()).sort((a, b) =>
-      String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' })
-    );
+    const sortedRootKeys = Array.from(rootGroups.keys()).sort((a, b) => {
+      const aHasInc = (rootGroups.get(a)?.includes?.length || 0) > 0 ? 0 : 1;
+      const bHasInc = (rootGroups.get(b)?.includes?.length || 0) > 0 ? 0 : 1;
+      if (aHasInc !== bHasInc) return aHasInc - bHasInc;
+      return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
+    });
 
     sortedRootKeys.forEach((root) => {
       const grp = rootGroups.get(root);
       const includes = [...grp.includes].sort(compareNaturalPath);
       const excludes = [...grp.excludes].sort(compareNaturalPath);
+      const isIntraAnd = Boolean(state.tagAndRoots && state.tagAndRoots.has(root));
       const rootHasSubTags = allAvailTags.some(t => {
         const tn = t.tag || t.name || '';
         return tn.startsWith(root + '/');
@@ -1632,7 +1667,10 @@ function renderActiveFilterChips() {
       const openTagGroupPopover = (anchor, focusTag = null) => {
         const popKey = `tag:${root}:${focusTag || 'group'}`;
         openNlFilterPopover(popKey, anchor, (pop) => {
-          const headerTitle = rootHasSubTags ? `タグ条件: ${root}（同グループ内はOR・除外はNOT）` : `タグ条件: ${focusTag || root}`;
+          const nowIntraAnd = Boolean(state.tagAndRoots && state.tagAndRoots.has(root));
+          const headerTitle = rootHasSubTags
+            ? `タグ条件: ${root}（同グループ内は${nowIntraAnd ? 'AND' : 'OR'}・除外はNOT）`
+            : `タグ条件: ${focusTag || root}`;
           buildPopoverHeader(pop, headerTitle, () => jumpToTagInTree(focusTag));
 
           // クリックされた個別タグの即時切替バー
@@ -1661,6 +1699,59 @@ function renderActiveFilterChips() {
               });
             });
             pop.appendChild(curBar);
+          }
+
+          // グループ内（OR ⇄ AND）および異グループ間（AND ⇄ OR）の結合モード切替バー
+          const includeGroupCount = sortedRootKeys.filter(k => (rootGroups.get(k)?.includes?.length || 0) > 0).length;
+          if (rootHasSubTags || includes.length >= 2 || includeGroupCount >= 2) {
+            const logicBar = document.createElement('div');
+            logicBar.className = 'nl-pop-current-bar nl-pop-logic-bar';
+
+            if (rootHasSubTags || includes.length >= 2) {
+              const intraRow = document.createElement('div');
+              intraRow.className = 'nl-pop-logic-row';
+              const curIntraAnd = Boolean(state.tagAndRoots && state.tagAndRoots.has(root));
+              intraRow.innerHTML = `
+                <span class="nl-pop-logic-label">同グループ内の結合:</span>
+                <div class="nl-pop-state-group">
+                  <button type="button" class="nl-pop-state-btn${!curIntraAnd ? ' active is-logic-active' : ''}" data-intra="or">または (OR)</button>
+                  <button type="button" class="nl-pop-state-btn${curIntraAnd ? ' active is-logic-active' : ''}" data-intra="and">かつ (AND)</button>
+                </div>
+              `;
+              intraRow.querySelectorAll('button[data-intra]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                  if (!state.tagAndRoots) state.tagAndRoots = new Set();
+                  if (btn.dataset.intra === 'and') state.tagAndRoots.add(root);
+                  else state.tagAndRoots.delete(root);
+                  closeNlFilterPopover();
+                  fetchPhotos();
+                });
+              });
+              logicBar.appendChild(intraRow);
+            }
+
+            if (includeGroupCount >= 2) {
+              const interRow = document.createElement('div');
+              interRow.className = 'nl-pop-logic-row';
+              const curInterOr = state.tagInterGroupMode === 'or';
+              interRow.innerHTML = `
+                <span class="nl-pop-logic-label">別グループとの結合:</span>
+                <div class="nl-pop-state-group">
+                  <button type="button" class="nl-pop-state-btn${!curInterOr ? ' active is-logic-active' : ''}" data-inter="and">かつ (AND)</button>
+                  <button type="button" class="nl-pop-state-btn${curInterOr ? ' active is-logic-active' : ''}" data-inter="or">または (OR)</button>
+                </div>
+              `;
+              interRow.querySelectorAll('button[data-inter]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                  state.tagInterGroupMode = btn.dataset.inter === 'or' ? 'or' : 'and';
+                  closeNlFilterPopover();
+                  fetchPhotos();
+                });
+              });
+              logicBar.appendChild(interRow);
+            }
+
+            pop.appendChild(logicBar);
           }
 
           // 検索フィルタ欄
@@ -1773,9 +1864,26 @@ function renderActiveFilterChips() {
         rootHasSubTags ? `クリックで「${root}」配下のタグ条件を追加・変更` : ''
       );
 
-      // [+] 含むタグ（同ルート内は「または」で連結）
+      // [+] 含むタグ（同ルート内は既定「または」、クリックで「かつ」へ切替可能）
       includes.forEach((tag, idx) => {
-        if (idx > 0) clause.appendChild(createOrSpan());
+        if (idx > 0) {
+          const intraBtn = document.createElement('button');
+          intraBtn.type = 'button';
+          intraBtn.className = `nl-or is-interactive${isIntraAnd ? ' is-toggled' : ''}`;
+          intraBtn.textContent = isIntraAnd ? 'かつ' : 'または';
+          intraBtn.title = isIntraAnd
+            ? `「${root}」内: AND検索（すべて含む写真のみ）\nクリックで「または (OR)」に戻す`
+            : `「${root}」内: OR検索（いずれかを含む写真）\nクリックで「かつ (AND)」に切り替える`;
+          intraBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            closeNlFilterPopover();
+            if (!state.tagAndRoots) state.tagAndRoots = new Set();
+            if (state.tagAndRoots.has(root)) state.tagAndRoots.delete(root);
+            else state.tagAndRoots.add(root);
+            fetchPhotos();
+          });
+          clause.appendChild(intraBtn);
+        }
         const disp = formatTagInGroup(tag);
         clause.appendChild(createPill({
           labelHtml: escapeHtml(disp),
@@ -1842,7 +1950,7 @@ function renderActiveFilterChips() {
         const addBtn = document.createElement('button');
         addBtn.type = 'button';
         addBtn.className = 'nl-group-add-btn';
-        addBtn.title = `「${root}」内の別タグを追加 (OR) または除外 (NOT)`;
+        addBtn.title = `「${root}」内の別タグを追加 (${isIntraAnd ? 'AND' : 'OR'}) または除外 (NOT)`;
         addBtn.textContent = '+';
         addBtn.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -1851,7 +1959,7 @@ function renderActiveFilterChips() {
         clause.appendChild(addBtn);
       }
 
-      appendClause(clause);
+      appendClause(clause, { isTagIncludeClause: includes.length > 0 });
     });
   }
 
@@ -2667,6 +2775,8 @@ function resetAllFilters() {
   if (elements.clearSearchBtn) elements.clearSearchBtn.style.display = 'none';
 
   state.tagFilters.clear();
+  if (state.tagAndRoots) state.tagAndRoots.clear();
+  state.tagInterGroupMode = 'and';
   state.selectedYearMonths.clear();
   state.selectedCameras.clear();
   if (state.cameraFilters) state.cameraFilters.clear();
