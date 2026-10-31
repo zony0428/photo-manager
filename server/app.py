@@ -29,6 +29,7 @@ from .database import (
     update_rating,
     upsert_photo,
     get_timeline_summary,
+    get_calendar_summary,
     get_folders_summary,
     get_scan_roots_summary,
     get_cameras_summary,
@@ -545,6 +546,7 @@ def api_get_photos(
     folder: Optional[str] = None,
     year_month: Optional[str] = None,
     year_months: Optional[str] = None,
+    dates: Optional[str] = None,
     cameras: Optional[str] = None,
     exclude_cameras: Optional[str] = None,
     excluded_cameras: Optional[str] = None,
@@ -585,6 +587,7 @@ def api_get_photos(
     exc_list = [t.strip() for t in exclude_tags.split(",") if t.strip()] if exclude_tags else None
     and_roots_list = [r.strip() for r in tag_and_roots.split(",") if r.strip()] if tag_and_roots else None
     ym_list = [y.strip() for y in year_months.split(",") if y.strip()] if year_months else None
+    dates_list = [d.strip() for d in dates.split(",") if d.strip()] if dates else None
     cam_list = [c.strip() for c in cameras.split(",") if c.strip()] if cameras else None
     raw_ex_cams = excluded_cameras or exclude_cameras
     ex_cam_list = [c.strip() for c in raw_ex_cams.split(",") if c.strip()] if raw_ex_cams else None
@@ -597,6 +600,7 @@ def api_get_photos(
         folder=folder,
         year_month=year_month,
         year_months=ym_list,
+        dates=dates_list,
         cameras=cam_list,
         excluded_cameras=ex_cam_list,
         lenses=lens_list,
@@ -1873,6 +1877,13 @@ def api_get_timeline():
     """年・月ごとの写真枚数集計を取得する"""
     timeline = get_timeline_summary()
     return _fast_json({"timeline": timeline})
+
+
+@app.get("/api/calendar/summary")
+def api_get_calendar_summary():
+    """日別（YYYY-MM-DD）の写真枚数・優枚数・代表写真ID・代表撮影地を集計して返す（ミニカレンダー＆拡大カレンダー用）"""
+    days = get_calendar_summary()
+    return _fast_json({"days": days})
 
 
 @app.get("/api/folders")

@@ -104,6 +104,7 @@ Because the portable Python runtime and all required libraries are bundled, no p
 > Upgrading from Photo Manager v3.x & Downgrade Compatibility
 >
 > - Automatic Launcher Cleanup: When you overwrite an existing `PhotoManager` folder and launch `Tetheract.exe`, legacy `PhotoManager.exe` and `PhotoManager_Mobile.html` files in the root folder are automatically cleaned up and unified into `Tetheract.exe` and `Tetheract_Mobile.html`.
+> - Regenerating `autorun.inf` on USB Drives (Recommended): If you run from the root of a USB drive and use `autorun.inf` for a custom drive icon and label, delete your existing `autorun.inf` and re-run `Build.bat` to regenerate `autorun.inf` with the new icon and volume label (`TETHERACT pm`).
 > - Automatic DB Snapshot & Backward Compatibility: Immediately before running the `tag_keys_v1` schema migration on first startup, a full snapshot of your database is automatically backed up to `cache/backups/library_pre_tag_keys_v1_YYYYMMDD_HHMMSS.db`. Furthermore, because the migrated `cache/library.db` retains the legacy table and column structure in a hybrid layout, it remains compatible even if you revert the program files to v3.x (or you can restore the pre-migration snapshot from `cache/backups/`).
 
 > [!IMPORTANT]

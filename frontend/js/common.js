@@ -78,6 +78,12 @@ const state = {
   connectionFilter: 'all',  // 'all' | 'online' | 'offline' (接続中 / 未接続フィルタ)
   availableTags: [],        // 利用可能なタグ一覧
   selectedYearMonths: new Set(), // タイムライン複数選択（OR条件）用Set
+  selectedDates: new Set(),      // カレンダー日付複数選択（YYYY-MM-DD・OR条件）用Set
+  lastClickedCalendarDate: null, // カレンダーShift範囲選択の起点日 (YYYY-MM-DD)
+  miniCalendarYm: null,          // 左ペインミニカレンダーで現在表示中の YYYY-MM
+  isMiniCalendarCollapsed: localStorage.getItem('pm_mini_cal_collapsed') === 'true', // ミニカレンダー開閉状態
+  availableTimeline: [],         // タイムライン年月集計キャッシュ
+  calendarDaysMap: new Map(),    // 日別集計マップ ('YYYY-MM-DD' -> 日別サマリオブジェクト)
   expandedTimelineYears: new Set(), // 展開されたタイムライン年集合 (デフォルトはすべて閉じた状態)
   selectedCameras: new Set(),    // カメラ機種複数選択（OR条件）用Set (後方互換)
   cameraFilters: new Map(),      // カメラ名 -> 'include' | 'exclude' (3ステート管理)
@@ -85,6 +91,7 @@ const state = {
   expandedCameras: new Set(),    // 展開されたカメラツリー機種名集合
   selectedLenses: new Set(),     // レンズ選択（OR条件）用Set
   availableCameras: [],          // 利用可能なカメラ機種一覧
+  cameraSortByCount: localStorage.getItem('pm_camera_sort_by_count') === 'true', // カメラ・レンズ一覧の枚数順トグル (ON: 枚数順 / OFF: 名前順)
   selectedPhotoIds: new Set(), // マルチ選択中の写真IDセット
   lastSelectedIndex: -1,       // Shift範囲選択用インデックス
   selectionBaseIds: null,      // Shift範囲選択開始前のベース選択Set

@@ -48,6 +48,7 @@ function getCurrentFilterState() {
     untaggedOnly: !!state.untaggedOnly,
     connectionFilter: state.connectionFilter || 'all',
     selectedYearMonths: Array.from(state.selectedYearMonths || []),
+    selectedDates: Array.from(state.selectedDates || []),
     selectedCameras: Array.from(state.selectedCameras || []),
     selectedLenses: Array.from(state.selectedLenses || []),
     cameraFilters: cameraFiltersObj,
@@ -80,10 +81,15 @@ function renderPresetCurrentChips() {
     chips.push({ icon: '\u{1F4C1}', label: name });
   }
 
-  // 2. year_months
+  // 2. year_months & dates
   if (state.selectedYearMonths && state.selectedYearMonths.size > 0) {
     Array.from(state.selectedYearMonths).sort().forEach(ym => {
       chips.push({ icon: '\u{1F4C5}', label: ym });
+    });
+  }
+  if (state.selectedDates && state.selectedDates.size > 0) {
+    Array.from(state.selectedDates).sort().forEach(d => {
+      chips.push({ icon: '\u{1F4C5}', label: d });
     });
   }
 
@@ -215,6 +221,9 @@ function renderFilterPresetsList() {
     }
     if (f.selectedYearMonths && f.selectedYearMonths.length > 0) {
       condBadges.push(`\u{1F4C5} ${escapeHtml(f.selectedYearMonths.join(', '))}`);
+    }
+    if (f.selectedDates && f.selectedDates.length > 0) {
+      condBadges.push(`\u{1F4C5} ${escapeHtml(f.selectedDates.join(', '))}`);
     }
     if (f.cameraFilters && Object.keys(f.cameraFilters).length > 0) {
       const cams = Object.keys(f.cameraFilters).map(c => (f.cameraFilters[c] === 'include' ? `+${c}` : `\u2212${c}`));
@@ -418,6 +427,7 @@ function applyFilterPreset(preset) {
 
   // 4. timeline
   state.selectedYearMonths = new Set(f.selectedYearMonths || []);
+  state.selectedDates = new Set(f.selectedDates || []);
   if (typeof updateTimelineActiveClasses === 'function') updateTimelineActiveClasses();
 
   // 5. cameras & lenses

@@ -251,6 +251,7 @@ def get_photos(
     folder: Optional[str] = None,
     year_month: Optional[str] = None,
     year_months: Optional[List[str]] = None,
+    dates: Optional[List[str]] = None,
     cameras: Optional[List[str]] = None,
     excluded_cameras: Optional[List[str]] = None,
     lenses: Optional[List[str]] = None,
@@ -349,15 +350,28 @@ def get_photos(
         query += f" AND NOT {ex_sql}"
         params.extend(ex_params)
 
-    # タイムライン複数年月フィルタ（OR条件）
-    target_yms = list(year_months) if year_months else []
-    if year_month and year_month not in target_yms:
-        target_yms.append(year_month)
+    # タイムライン複数年月・複数日付フィルタ（同一タイムライン軸内でOR条件）
+    target_yms = [ym.strip() for ym in (year_months or []) if ym and ym.strip()]
+    if year_month and year_month.strip() and year_month.strip() not in target_yms:
+        target_yms.append(year_month.strip())
+    target_dates = [d.strip().replace(":", "-") for d in (dates or []) if d and d.strip()]
 
+    timeline_or_clauses: List[str] = []
+    timeline_or_params: List[Any] = []
     if target_yms:
-        placeholders = ",".join(["?"] * len(target_yms))
-        query += f" AND p.year_month IN ({placeholders})"
-        params.extend(target_yms)
+        ym_placeholders = ",".join(["?"] * len(target_yms))
+        timeline_or_clauses.append(f"p.year_month IN ({ym_placeholders})")
+        timeline_or_params.extend(target_yms)
+    if target_dates:
+        date_placeholders = ",".join(["?"] * len(target_dates))
+        timeline_or_clauses.append(
+            f"(p.date_taken IS NOT NULL AND SUBSTR(REPLACE(p.date_taken, ':', '-'), 1, 10) IN ({date_placeholders}))"
+        )
+        timeline_or_params.extend(target_dates)
+
+    if timeline_or_clauses:
+        query += f" AND ({' OR '.join(timeline_or_clauses)})"
+        params.extend(timeline_or_params)
 
     # カメラ機種・レンズ [+] (include) 条件（同一機材カテゴリ内は OR 結合）
     equip_inc_clauses: List[str] = []

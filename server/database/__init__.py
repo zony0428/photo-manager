@@ -128,6 +128,7 @@ from .folders import (
     get_volume_by_serial,
     get_all_volumes,
     get_timeline_summary,
+    get_calendar_summary,
     get_folders_summary,
     get_scan_roots_summary,
     get_cameras_summary,

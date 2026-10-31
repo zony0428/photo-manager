@@ -192,6 +192,10 @@ async function fetchPhotos() {
       params.append('year_month', state.currentFilter.value);
     }
 
+    if (state.selectedDates && state.selectedDates.size > 0) {
+      params.append('dates', Array.from(state.selectedDates).join(','));
+    }
+
     // カメラ機種フィルタ（3ステート: 含む / 除外 ＋ 後方互換 selectedCameras）
     const includeCams = new Set();
     const excludeCams = new Set();
@@ -402,6 +406,9 @@ window.loadPhotos = fetchPhotos;
  */
 async function fetchTimeline() {
   try {
+    if (typeof window.fetchCalendarSummary === 'function') {
+      window.fetchCalendarSummary();
+    }
     const response = await fetch('/api/timeline');
     if (!response.ok) throw new Error('タイムライン取得失敗');
     const data = await response.json();
@@ -1272,12 +1279,21 @@ function renderActiveFilterChips() {
   }
 
   // =========================================================================
-  // 2. タイムライン年月 (OR条件)
+  // 2. タイムライン年月・日付 (OR条件)
   // =========================================================================
-  if (state.selectedYearMonths && state.selectedYearMonths.size > 0) {
-    const sortedYms = Array.from(state.selectedYearMonths).sort((a, b) =>
-      String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' })
-    );
+  const hasSelectedYms = Boolean(state.selectedYearMonths && state.selectedYearMonths.size > 0);
+  const hasSelectedDates = Boolean(state.selectedDates && state.selectedDates.size > 0);
+  if (hasSelectedYms || hasSelectedDates) {
+    const sortedYms = hasSelectedYms
+      ? Array.from(state.selectedYearMonths).sort((a, b) =>
+          String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' })
+        )
+      : [];
+    const sortedDates = hasSelectedDates
+      ? Array.from(state.selectedDates).sort((a, b) =>
+          String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' })
+        )
+      : [];
 
     const formatYm = (ym) => {
       const parts = String(ym).split('-');
@@ -1287,11 +1303,24 @@ function renderActiveFilterChips() {
       return String(ym);
     };
 
+    const formatDateLabel = (dateStr) => {
+      const parts = String(dateStr).split('-');
+      if (parts.length === 3) {
+        const m = parseInt(parts[1], 10);
+        const d = parseInt(parts[2], 10);
+        if (!isNaN(m) && !isNaN(d)) {
+          return `${parts[0]}年${m}月${d}日`;
+        }
+      }
+      return String(dateStr);
+    };
+
     const openTimelinePopover = (anchor, focusYm = null) => {
       openNlFilterPopover(`timeline:${focusYm || 'group'}`, anchor, (pop) => {
         const jumpTimeline = () => {
           if (typeof window.openSidebarSection === 'function') window.openSidebarSection('timeline');
-          const targetYm = focusYm || sortedYms[0];
+          const fallbackYm = sortedDates[0] ? sortedDates[0].slice(0, 7) : null;
+          const targetYm = focusYm || sortedYms[0] || fallbackYm;
           const yr = String(targetYm || '').split('-')[0];
           if (yr && state.expandedTimelineYears) state.expandedTimelineYears.add(yr);
           const groupEl = document.querySelector(`.timeline-year-header[data-year="${CSS.escape(yr)}"]`)?.parentElement;
@@ -1300,15 +1329,33 @@ function renderActiveFilterChips() {
             groupEl.querySelector('.timeline-month-list')?.classList.remove('hidden');
           }
           setTimeout(() => {
-            const itemEl = document.querySelector(`.timeline-month-item[data-filter-value="${CSS.escape(targetYm)}"]`);
+            const itemEl = targetYm
+              ? document.querySelector(`.timeline-month-item[data-filter-value="${CSS.escape(targetYm)}"]`)
+              : document.getElementById('sidebarMiniCalendarBox');
             flashAndScrollToElement(itemEl);
           }, 80);
         };
 
-        buildPopoverHeader(pop, '撮影年月の変更・追加 (複数月はOR検索)', jumpTimeline);
+        buildPopoverHeader(pop, '撮影年月・日付の変更・追加 (OR検索)', jumpTimeline);
 
         const body = document.createElement('div');
         body.className = 'nl-pop-body';
+
+        // 拡大カレンダー起動ボタン
+        const calBar = document.createElement('div');
+        calBar.className = 'nl-pop-option-grid';
+        const openCalBtn = document.createElement('button');
+        openCalBtn.type = 'button';
+        openCalBtn.className = 'nl-pop-option-btn';
+        openCalBtn.textContent = '拡大カレンダーを開いて日付・年月を選択...';
+        openCalBtn.addEventListener('click', () => {
+          closeNlFilterPopover();
+          if (typeof window.openCalendarModal === 'function') {
+            window.openCalendarModal('month');
+          }
+        });
+        calBar.appendChild(openCalBtn);
+        body.appendChild(calBar);
 
         // もし特定の月（例: 10月）が選択されている場合、「すべての年の〇月を一括選択」ショートカットを表示
         const targetMonthStr = focusYm ? String(focusYm).split('-')[1] : (sortedYms[0] ? String(sortedYms[0]).split('-')[1] : null);
@@ -1370,26 +1417,99 @@ function renderActiveFilterChips() {
       });
     };
 
-    const clause = createClauseBox('年月:', (pref) => openTimelinePopover(pref, null), 'クリックで撮影年月を追加・変更');
-    sortedYms.forEach((ym, idx) => {
-      if (idx > 0) clause.appendChild(createOrSpan());
-      clause.appendChild(createPill({
+    // 年単位で全月が選択されている場合は「YYYY年 (全体)」ピルに集約表示
+    const availByYear = new Map();
+    if (Array.isArray(state.availableTimeline)) {
+      state.availableTimeline.forEach(item => {
+        if (!item || !item.year_month || item.year_month === '不明') return;
+        const yr = String(item.year_month).split('-')[0];
+        if (!yr) return;
+        if (!availByYear.has(yr)) availByYear.set(yr, []);
+        availByYear.get(yr).push(item.year_month);
+      });
+    }
+
+    const consolidatedYears = new Set();
+    const pillsToRender = [];
+
+    availByYear.forEach((ymsInYear, yr) => {
+      if (ymsInYear.length >= 2 && ymsInYear.every(ym => state.selectedYearMonths.has(ym))) {
+        consolidatedYears.add(yr);
+        pillsToRender.push({
+          sortKey: `${yr}-00`,
+          labelHtml: escapeHtml(`${yr}年 (全体)`),
+          title: `${yr}年の全${ymsInYear.length}ヶ月を選択中\n左クリック: 他の年月を追加・変更 ｜ ×: ${yr}年を解除`,
+          onRemove: () => {
+            if (typeof window.toggleYearMonths === 'function') {
+              window.toggleYearMonths(yr, ymsInYear);
+            } else {
+              ymsInYear.forEach(ym => state.selectedYearMonths.delete(ym));
+              fetchPhotos();
+            }
+          },
+          onClick: (chip) => openTimelinePopover(chip, ymsInYear[0]),
+        });
+      }
+    });
+
+    sortedYms.forEach(ym => {
+      const yr = String(ym).split('-')[0];
+      if (consolidatedYears.has(yr)) return;
+      pillsToRender.push({
+        sortKey: ym,
         labelHtml: escapeHtml(formatYm(ym)),
-        extraClass: 'chip-tag-include',
         title: `${ym}\n左クリック: 他の年月を追加・変更 ｜ ×: 解除`,
         onRemove: () => toggleTimelineYearMonth(ym),
         onClick: (chip) => openTimelinePopover(chip, ym),
+      });
+    });
+
+    sortedDates.forEach(dStr => {
+      pillsToRender.push({
+        sortKey: dStr,
+        labelHtml: escapeHtml(formatDateLabel(dStr)),
+        title: `${dStr}\n左クリック: カレンダーで変更 ｜ ×: 解除`,
+        onRemove: () => {
+          if (typeof window.toggleTimelineDate === 'function') {
+            window.toggleTimelineDate(dStr, false);
+          } else {
+            state.selectedDates.delete(dStr);
+            fetchPhotos();
+          }
+        },
+        onClick: () => {
+          state.miniCalendarYm = dStr.slice(0, 7);
+          if (typeof window.openCalendarModal === 'function') {
+            window.openCalendarModal('month');
+          }
+        },
+      });
+    });
+
+    pillsToRender.sort((a, b) =>
+      String(a.sortKey).localeCompare(String(b.sortKey), undefined, { numeric: true, sensitivity: 'base' })
+    );
+
+    const clause = createClauseBox('年月:', (pref) => openTimelinePopover(pref, null), 'クリックで撮影年月・日付を追加・変更');
+    pillsToRender.forEach((pItem, idx) => {
+      if (idx > 0) clause.appendChild(createOrSpan());
+      clause.appendChild(createPill({
+        labelHtml: pItem.labelHtml,
+        extraClass: 'chip-tag-include',
+        title: pItem.title,
+        onRemove: pItem.onRemove,
+        onClick: pItem.onClick,
       }));
     });
 
     const addYmBtn = document.createElement('button');
     addYmBtn.type = 'button';
     addYmBtn.className = 'nl-group-add-btn';
-    addYmBtn.title = '別の撮影年月をOR条件で追加';
+    addYmBtn.title = '別の撮影年月・日付をOR条件で追加';
     addYmBtn.textContent = '+';
     addYmBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      openTimelinePopover(addYmBtn, sortedYms[0]);
+      openTimelinePopover(addYmBtn, sortedYms[0] || (sortedDates[0] ? sortedDates[0].slice(0, 7) : null));
     });
     clause.appendChild(addYmBtn);
     appendClause(clause);
@@ -2554,13 +2674,22 @@ function renderActiveFilterChips() {
     labAccordion.classList.toggle('has-filter', hasLab);
   }
 
+  const timelineAccordion = document.getElementById('accordionItem-timeline');
+  if (timelineAccordion) {
+    const hasTimeline = Boolean(
+      (state.selectedYearMonths && state.selectedYearMonths.size > 0) ||
+      (state.selectedDates && state.selectedDates.size > 0)
+    );
+    timelineAccordion.classList.toggle('has-filter', hasTimeline);
+  }
+
   // 垂直タブレール (.rail-tab-btn) へのフィルタ適用インジケータ同期
   const sectionFilterMap = {
     quick: Boolean(state.untaggedOnly || (state.connectionFilter && state.connectionFilter !== 'all') || (state.currentFilter && state.currentFilter.type === 'duplicates')),
     folder: Boolean(state.currentFilter && (state.currentFilter.type === 'folder' || state.currentFilter.type === 'folder_exclude' || state.currentFilter.type === 'unlinked')),
     tags: Boolean(state.tagFilters && state.tagFilters.size > 0),
     location: Boolean(state.activeLocation),
-    timeline: Boolean(state.selectedYearMonths && state.selectedYearMonths.size > 0),
+    timeline: Boolean((state.selectedYearMonths && state.selectedYearMonths.size > 0) || (state.selectedDates && state.selectedDates.size > 0)),
     camera: Boolean((state.cameraFilters && state.cameraFilters.size > 0) || (state.lensFilters && state.lensFilters.size > 0) || (state.selectedCameras && state.selectedCameras.size > 0)),
     lab: Boolean(state.labFilter || state.onThisDay || state.focalRange || state.apertureRange),
     search: Boolean(state.searchQuery && state.searchQuery.trim().length > 0),
@@ -2778,6 +2907,8 @@ function resetAllFilters() {
   if (state.tagAndRoots) state.tagAndRoots.clear();
   state.tagInterGroupMode = 'and';
   state.selectedYearMonths.clear();
+  if (state.selectedDates) state.selectedDates.clear();
+  state.lastClickedCalendarDate = null;
   state.selectedCameras.clear();
   if (state.cameraFilters) state.cameraFilters.clear();
   if (state.lensFilters) state.lensFilters.clear();
@@ -2864,8 +2995,10 @@ function updateViewHeader() {
 function setFilter(type, value, titleText) {
   if (type !== 'year_month' && type !== 'year_months') {
     state.selectedYearMonths.clear();
+    if (state.selectedDates) state.selectedDates.clear();
   } else if (type === 'year_month' && value) {
     state.selectedYearMonths.clear();
+    if (state.selectedDates) state.selectedDates.clear();
     state.selectedYearMonths.add(value);
     const yr = value.split('-')[0];
     if (yr) state.expandedTimelineYears.add(yr);

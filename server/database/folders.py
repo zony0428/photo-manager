@@ -85,6 +85,65 @@ def get_timeline_summary() -> List[Dict[str, Any]]:
         return [dict(row) for row in rows]
 
 
+def get_calendar_summary() -> List[Dict[str, Any]]:
+    """
+    日別（YYYY-MM-DD）の写真枚数・優枚数・代表写真ID・代表撮影地を一括集計する。
+    ミニカレンダーおよび拡大カレンダーモーダル（月間フォトカレンダー／年間ヒートマップ）で使用する。
+    """
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            WITH daily_ranked AS (
+                SELECT
+                    SUBSTR(REPLACE(p.date_taken, ':', '-'), 1, 10) AS date_ymd,
+                    p.year_month AS ym,
+                    p.id AS photo_id,
+                    p.file_name AS file_name,
+                    p.rating AS rating,
+                    p.state AS state,
+                    p.city AS city,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY SUBSTR(REPLACE(p.date_taken, ':', '-'), 1, 10)
+                        ORDER BY p.rating DESC, COALESCE(p.is_stack_primary, 1) DESC, p.date_taken ASC, p.id ASC
+                    ) AS rn
+                FROM photos p
+                WHERE p.date_taken IS NOT NULL
+                  AND LENGTH(TRIM(p.date_taken)) >= 10
+                  AND IFNULL(p.is_unlinked, 0) = 0
+            )
+            SELECT
+                date_ymd AS date,
+                COALESCE(NULLIF(ym, ''), SUBSTR(date_ymd, 1, 7)) AS year_month,
+                COUNT(*) AS count,
+                SUM(CASE WHEN rating >= 0 THEN 1 ELSE 0 END) AS active_count,
+                SUM(CASE WHEN rating = 2 THEN 1 ELSE 0 END) AS excellent_count,
+                SUM(CASE WHEN rating = 1 THEN 1 ELSE 0 END) AS good_count,
+                MAX(CASE WHEN rn = 1 THEN photo_id END) AS rep_photo_id,
+                MAX(CASE WHEN rn = 1 THEN file_name END) AS rep_file_name,
+                MAX(CASE WHEN rn = 1 THEN state END) AS rep_state,
+                MAX(CASE WHEN rn = 1 THEN city END) AS rep_city
+            FROM daily_ranked
+            WHERE date_ymd GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+            GROUP BY date_ymd
+            ORDER BY date_ymd DESC
+            """
+        )
+        rows = cursor.fetchall()
+        result: List[Dict[str, Any]] = []
+        for row in rows:
+            d = dict(row)
+            st = (d.get("rep_state") or "").strip()
+            ct = (d.get("rep_city") or "").strip()
+            if st and ct:
+                loc_label = f"{st} {ct}" if st != ct else st
+            else:
+                loc_label = st or ct or ""
+            d["location_label"] = loc_label
+            result.append(d)
+        return result
+
+
 
 def add_scan_root(folder_path: str) -> None:
     """スキャン対象として指定された親フォルダ（ルート）を登録する"""

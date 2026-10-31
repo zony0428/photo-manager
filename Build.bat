@@ -59,7 +59,7 @@ if errorlevel 2 goto :FINISH_BUILD
 :CREATE_AUTORUN
 > "%~dp0autorun.inf" echo [AutoRun]
 >> "%~dp0autorun.inf" echo icon=frontend\favicon.ico,0
->> "%~dp0autorun.inf" echo label=Tetheract Photo Manager
+>> "%~dp0autorun.inf" echo label=TETHERACT pm
 if exist "%~dp0autorun.inf" (
     echo       [OK] autorun.inf created.
 )

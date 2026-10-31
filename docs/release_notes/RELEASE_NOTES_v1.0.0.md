@@ -9,7 +9,7 @@
 > [!NOTE]
 > **差分アップデート・旧バージョンからの移行案内 / Lightweight Diff Update & Migration Guide**
 >
-> - **既存ユーザー様向け（差分版 `Tetheract_v1.0.0diff.zip`）**: 解凍して既存の `PhotoManager` フォルダへ上書きコピーし、新しく追加された **`Tetheract.exe`** を起動してください（`cache/`・`storage/`・`python/`・`models/` はそのまま引き継がれ、残っていた旧 `PhotoManager.exe` / `PhotoManager_Mobile.html` は起動時に自動整理されます）。
+> - **既存ユーザー様向け（差分版 `Tetheract_v1.0.0diff.zip`）**: 解凍して既存の `PhotoManager` フォルダへ上書きコピーし、新しく追加された **`Tetheract.exe`** を起動してください（`cache/`・`storage/`・`python/`・`models/` はそのまま引き継がれ、残っていた旧 `PhotoManager.exe` / `PhotoManager_Mobile.html` は起動時に自動整理されます。USBルート直下で `autorun.inf` をお使いの場合は、既存の `autorun.inf` を削除してから `Build.bat` を実行し直すと新しいボリューム名 `TETHERACT pm` とアイコンで再生成されます）。
 > - **安全なDB自動バックアップと後方互換性**: 初回起動時のDB移行処理（`tag_keys_v1`）の直前に、`cache/backups/library_pre_tag_keys_v1_YYYYMMDD_HHMMSS.db` として移行前のDBが自動バックアップされます。また、移行後のDBは旧 v3.x とも後方互換を保つハイブリッド構造のため、万が一旧版へ戻した場合でもそのまま動作します。
 > - **初回導入の方（フルパッケージ版 `Tetheract_v1.0.0.zip`）**: ポータブル Python 同梱版を解凍し、`Tetheract.exe` を起動してください。
 > - **For Existing Users (`Tetheract_v1.0.0diff.zip`)**: Extract and overwrite your existing folder, then launch **`Tetheract.exe`**. Legacy `PhotoManager.exe` and `PhotoManager_Mobile.html` are automatically cleaned up on startup, and a pre-migration DB snapshot is saved to `cache/backups/`.

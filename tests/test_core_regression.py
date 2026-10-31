@@ -941,6 +941,75 @@ class TestCoreRegression(unittest.TestCase):
         finally:
             switch_database_path(prev_db)
 
+    def test_12_calendar_summary_and_date_or_filtering(self):
+        """日別カレンダー集計 get_calendar_summary() と、year_months / dates の OR 結合フィルタを検証"""
+        from server.database import get_calendar_summary
+
+        p1 = upsert_photo({
+            "file_path": r"C:\Photos\2024\IMG_20240510_1.JPG",
+            "directory_path": r"C:\Photos\2024",
+            "file_name": "IMG_20240510_1.JPG",
+            "file_size": 1000,
+            "date_taken": "2024:05:10 10:00:00",
+            "rating": 1,
+            "state": "北海道",
+            "city": "小樽市",
+        })
+        p2 = upsert_photo({
+            "file_path": r"C:\Photos\2025\IMG_20251015_1.JPG",
+            "directory_path": r"C:\Photos\2025",
+            "file_name": "IMG_20251015_1.JPG",
+            "file_size": 2000,
+            "date_taken": "2025:10:15 09:00:00",
+            "rating": 0,
+            "state": "京都府",
+            "city": "京都市",
+        })
+        p3 = upsert_photo({
+            "file_path": r"C:\Photos\2025\IMG_20251015_2.JPG",
+            "directory_path": r"C:\Photos\2025",
+            "file_name": "IMG_20251015_2.JPG",
+            "file_size": 3000,
+            "date_taken": "2025:10:15 15:30:00",
+            "rating": 2,
+            "state": "京都府",
+            "city": "宇治市",
+        })
+        p4 = upsert_photo({
+            "file_path": r"C:\Photos\2025\IMG_20251020_1.JPG",
+            "directory_path": r"C:\Photos\2025",
+            "file_name": "IMG_20251020_1.JPG",
+            "file_size": 4000,
+            "date_taken": "2025-10-20 18:00:00",
+        })
+        update_rating(p1, 1)
+        update_rating(p3, 2)
+
+        summary = get_calendar_summary()
+        by_date = {item["date"]: item for item in summary}
+        self.assertIn("2024-05-10", by_date)
+        self.assertIn("2025-10-15", by_date)
+        self.assertIn("2025-10-20", by_date)
+
+        day_1015 = by_date["2025-10-15"]
+        self.assertEqual(day_1015["count"], 2)
+        self.assertEqual(day_1015["excellent_count"], 1)
+        # 評価「優 (2)」の p3 がその日の代表写真として選出されること
+        self.assertEqual(day_1015["rep_photo_id"], p3)
+        self.assertIn("京都府", day_1015["location_label"])
+
+        # 単一日付フィルタ
+        only_1015 = get_photos(dates=["2025-10-15"], stacked=False)
+        self.assertEqual(sorted([p["id"] for p in only_1015]), sorted([p2, p3]))
+
+        # ハイフン区切りの date_taken でも一致すること
+        only_1020 = get_photos(dates=["2025-10-20"], stacked=False)
+        self.assertEqual([p["id"] for p in only_1020], [p4])
+
+        # 年月 (2024-05) と 特定日 (2025-10-15) の OR 結合フィルタ
+        combined = get_photos(year_months=["2024-05"], dates=["2025-10-15"], stacked=False)
+        self.assertEqual(sorted([p["id"] for p in combined]), sorted([p1, p2, p3]))
+
 
 if __name__ == "__main__":
     unittest.main()

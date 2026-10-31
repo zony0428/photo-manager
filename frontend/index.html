@@ -498,9 +498,37 @@
               <span class="accordion-arrow">▶</span>
               <span class="accordion-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span>
               <span class="accordion-title">タイムライン</span>
-              <span class="badge-sub" title="年・月をクリックしてOR条件で絞り込み可能">複数選択可</span>
+              <span class="badge-sub" title="年・月・日をクリックしてOR条件で絞り込み可能">複数選択可</span>
             </div>
             <div class="accordion-body">
+              <div class="location-toolbar" id="timelineToolbar">
+                <div class="location-toolbar-group">
+                  <button type="button" class="btn-mini-text" id="reloadTimelineTreeBtn" title="タイムラインとカレンダーを再読み込み"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
+                  <button type="button" class="btn-mini-text" id="timelineOpenCalendarBtn" title="拡大フォトカレンダー ＆ 年間12ヶ月ヒートマップを開く">拡大カレンダー</button>
+                </div>
+                <div class="location-toolbar-group">
+                  <button type="button" class="btn-mini-text" id="expandAllTimelineBtn" title="すべての年を展開">展開</button>
+                  <button type="button" class="btn-mini-text" id="collapseAllTimelineBtn" title="すべての年を折りたたむ">閉じる</button>
+                </div>
+              </div>
+              <!-- 上部常設ミニカレンダー（7列グリッド・月ツリー連動・折りたたみ可） -->
+              <div class="sidebar-mini-calendar-box" id="sidebarMiniCalendarBox">
+                <div class="mini-cal-header-bar" id="miniCalHeaderBar">
+                  <button type="button" class="mini-cal-collapse-btn" id="miniCalCollapseBtn" title="ミニカレンダーを開閉">▼</button>
+                  <button type="button" class="mini-cal-nav-btn" id="miniCalPrevMonthBtn" title="前の撮影月へ">◀</button>
+                  <button type="button" class="mini-cal-title-btn" id="miniCalTitleBtn" title="クリックでこの月全体を選択/解除">-</button>
+                  <button type="button" class="mini-cal-nav-btn" id="miniCalNextMonthBtn" title="次の撮影月へ">▶</button>
+                  <button type="button" class="mini-cal-expand-btn" id="miniCalOpenModalBtn" title="拡大カレンダーで開く">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+                  </button>
+                </div>
+                <div class="mini-cal-body" id="miniCalBody">
+                  <div class="mini-cal-weekdays">
+                    <span class="is-sun">日</span><span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span class="is-sat">土</span>
+                  </div>
+                  <div class="mini-cal-grid" id="miniCalGrid"></div>
+                </div>
+              </div>
               <div class="timeline-tree" id="timelineTree">
                 <div class="empty-hint">読み込み中...</div>
               </div>
@@ -519,6 +547,7 @@
               <div class="location-toolbar" id="cameraToolbar">
                 <div class="location-toolbar-group">
                   <button class="btn-mini-text" id="reloadCameraTreeBtn" title="カメラ・レンズ一覧を再読み込み"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
+                  <button type="button" class="tag-sort-count-toggle-btn" id="cameraSortByCountToggleBtn" style="height: 24px !important; padding: 0 7px; font-size: 0.7rem;" title="クリックで「名前順（自然順）」と「枚数順」を切り替え">名前順</button>
                 </div>
                 <div class="location-toolbar-group">
                   <button class="btn-mini-text" id="expandAllCamerasBtn" title="すべてのレンズ一覧を展開">展開</button>
@@ -1201,7 +1230,7 @@
           <div class="help-card" style="margin-top: 14px;">
             <h4>5. 複数の写真をまとめて操作する・絞り込み検索</h4>
             <p>複数選択：Ctrl + クリックで追加選択、Shift + クリックで範囲選択、Ctrl + A で全選択できます。複数枚を選ぶと、右インスペクタの一括編集パネルや右クリックメニューから、まとめて評価付け・タグ付け・回転・テイクアウト・日時シフト補正が行えます。</p>
-            <p>写真を探す：左サイドバーの「年月」「機材（カメラ ＞ レンズ階層ツリーと [+] 含む / [-] 除外検索）」「ラボ」、および一番下の「検索」で絞り込めます。フィルタ適用中は写真グリッドを一切上下にずらさず、画面下部にフローティングのフィルタフッターバーが現れ、条件が自然な日本語文（「または」「かつ」「除く」）として表示されます。フッター内の条件ピルを左クリックするとその場で条件の変更・追加ポップオーバーが開き、右クリックで含む[+]⇔除外[-]を反転、タグ条件の接続詞（「または」「かつ」）をクリックでAND⇔OR切替、×で個別解除、「すべて解除」で全解除できます。</p>
+            <p>写真を探す：左サイドバーの「年月（複数年のOR選択・ミニカレンダー・拡大カレンダー）」「機材（カメラ ＞ レンズ階層ツリーと [+] 含む / [-] 除外検索）」「ラボ」、および一番下の「検索」で絞り込めます。フィルタ適用中は写真グリッドを一切上下にずらさず、画面下部にフローティングのフィルタフッターバーが現れ、条件が自然な日本語文（「または」「かつ」「除く」）として表示されます。フッター内の条件ピルを左クリックするとその場で条件の変更・追加ポップオーバーが開き、右クリックで含む[+]⇔除外[-]を反転、タグ条件の接続詞（「または」「かつ」）をクリックでAND⇔OR切替、×で個別解除、「すべて解除」で全解除できます。</p>
           </div>
         </div>
 

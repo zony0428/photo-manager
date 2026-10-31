@@ -104,6 +104,7 @@ Python 実行環境や必要なライブラリがすべて同梱されている�
 > 旧バージョン（Photo Manager v3.x）からの上書き移行とダウングレード互換性について
 >
 > - ランチャーの自動整理：旧 `PhotoManager` フォルダへ上書きして `Tetheract.exe` を起動すると、フォルダ内に残っていた旧 `PhotoManager.exe` および `PhotoManager_Mobile.html` は自動的に整理（削除）され、`Tetheract.exe` / `Tetheract_Mobile.html` へ一本化されます。
+> - USBドライブの `autorun.inf` 再生成（推奨）：USBメモリや外付けSSDのルート直下で `autorun.inf`（カスタムドライブアイコン・ボリューム名）をお使いの場合は、既存の `autorun.inf` を一度削除してから `Build.bat` を実行し直すことで、新しいアイコンとボリューム名（`TETHERACT pm`）の `autorun.inf` を再生成できます。
 > - データベースの自動バックアップと後方互換性：初回起動時のデータベース移行処理（`tag_keys_v1`）が走る直前に、移行前のDBスナップショットが `cache/backups/library_pre_tag_keys_v1_YYYYMMDD_HHMMSS.db` として自動保存されます。また、移行後の `cache/library.db` は旧バージョンのテーブル・カラム構造を維持したハイブリッド設計になっているため、万が一旧バージョン（v3.x）のプログラムを上書きして戻した場合でも、同じDBのまま動作します（`cache/backups/` のバックアップから完全復元することも可能です）。
 
 > [!IMPORTANT]
