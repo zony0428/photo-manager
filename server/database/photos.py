@@ -525,38 +525,41 @@ def get_photos(
     # RAW単体（ペアなし）はそのまま表示される
     query += " AND NOT (p.is_raw = 1 AND p.paired_raw_path IS NOT NULL)"
 
-    # 未分類（タグなし）のみ
+    # カラータグ定義（独立した色フィルタ文節として常にグローバルAND適用、未分類判定からは除外）
+    _color_tag_tuple = (
+        "赤", "青", "緑", "黄色", "黒", "白",
+        "銀・シルバー", "金・ゴールド", "茶色", "紫", "オレンジ", "ピンク",
+    )
+    _color_tag_names = set(_color_tag_tuple)
+    clean_inc = [t.strip() for t in (included_tags or []) if t and t.strip()]
+    clean_exc = [t.strip() for t in (excluded_tags or []) if t and t.strip()]
+
+    color_inc = [t for t in clean_inc if t in _color_tag_names]
+    general_inc = [t for t in clean_inc if t not in _color_tag_names]
+    color_exc = [t for t in clean_exc if t in _color_tag_names]
+    general_exc = [t for t in clean_exc if t not in _color_tag_names]
+
+    # 1. カラータグ条件（含む / 除外）
+    if color_inc:
+        if len(color_inc) == 1:
+            query += " AND p.id IN (SELECT photo_id FROM photo_tags WHERE tag = ?)"
+            params.append(color_inc[0])
+        else:
+            placeholders = ",".join(["?"] * len(color_inc))
+            query += f" AND p.id IN (SELECT photo_id FROM photo_tags WHERE tag IN ({placeholders}))"
+            params.extend(color_inc)
+    for c_tag in color_exc:
+        query += " AND p.id NOT IN (SELECT photo_id FROM photo_tags WHERE tag = ?)"
+        params.append(c_tag)
+
+    # 未分類（AI自動タグ・カラータグ以外の手動一般タグなし）のみ
     if untagged_only:
-        query += " AND p.id NOT IN (SELECT photo_id FROM photo_tags)"
+        color_placeholders = ",".join(["?"] * len(_color_tag_tuple))
+        query += f" AND p.id NOT IN (SELECT photo_id FROM photo_tags WHERE COALESCE(source, 'manual') != 'ai' AND tag NOT IN ({color_placeholders}))"
+        params.extend(_color_tag_tuple)
     else:
-        # カラータグ定義（独立した色フィルタ文節として常にグローバルAND適用）
-        _color_tag_names = {
-            "赤", "青", "緑", "黄色", "黒", "白",
-            "銀・シルバー", "金・ゴールド", "茶色", "紫", "オレンジ", "ピンク",
-        }
         and_roots_set = {r.strip() for r in (tag_and_roots or []) if r and r.strip()}
         inter_group_or = (tag_group_op or "and").strip().lower() == "or"
-
-        clean_inc = [t.strip() for t in (included_tags or []) if t and t.strip()]
-        clean_exc = [t.strip() for t in (excluded_tags or []) if t and t.strip()]
-
-        color_inc = [t for t in clean_inc if t in _color_tag_names]
-        general_inc = [t for t in clean_inc if t not in _color_tag_names]
-        color_exc = [t for t in clean_exc if t in _color_tag_names]
-        general_exc = [t for t in clean_exc if t not in _color_tag_names]
-
-        # 1. カラータグ条件（含む / 除外）
-        if color_inc:
-            if len(color_inc) == 1:
-                query += " AND p.id IN (SELECT photo_id FROM photo_tags WHERE tag = ?)"
-                params.append(color_inc[0])
-            else:
-                placeholders = ",".join(["?"] * len(color_inc))
-                query += f" AND p.id IN (SELECT photo_id FROM photo_tags WHERE tag IN ({placeholders}))"
-                params.extend(color_inc)
-        for c_tag in color_exc:
-            query += " AND p.id NOT IN (SELECT photo_id FROM photo_tags WHERE tag = ?)"
-            params.append(c_tag)
 
         # 2. 階層タグ・一般タグ排他検索
         # ・最上位の親（第1階層）が同じタグ同士は既定で OR 条件で結合（tag_and_roots に含まれるルートは AND 結合）

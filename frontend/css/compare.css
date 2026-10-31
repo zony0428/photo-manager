@@ -57,8 +57,8 @@
   font-weight: 600;
   padding: 2px 9px;
   border-radius: 999px;
-  background: rgba(225, 77, 42, 0.18);
-  border: 1px solid rgba(225, 77, 42, 0.45);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.18);
+  border: 1px solid rgba(var(--accent-rgb, 225, 77, 42), 0.45);
   color: #ffb4a2;
   white-space: nowrap;
 }
@@ -121,7 +121,7 @@
 }
 
 .compare-tool-btn.is-hist.active {
-  background: rgba(225, 77, 42, 0.22);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.22);
   border-color: var(--accent-primary, #e14d2a);
   color: #ffb4a2;
 }
@@ -222,7 +222,7 @@
 }
 
 .compare-pane.is-active-target[data-side="B"] {
-  border-color: rgba(225, 77, 42, 0.75);
+  border-color: rgba(var(--accent-rgb, 225, 77, 42), 0.75);
 }
 
 /* ペイン上部情報＆評価バー */
@@ -263,8 +263,8 @@
 }
 
 .compare-slot-badge.slot-b {
-  background: rgba(225, 77, 42, 0.22);
-  border: 1px solid rgba(225, 77, 42, 0.55);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.22);
+  border: 1px solid rgba(var(--accent-rgb, 225, 77, 42), 0.55);
   color: #ffb4a2;
 }
 
@@ -488,7 +488,7 @@
 
 .compare-strip-item.is-slot-b {
   border-color: #e14d2a;
-  box-shadow: 0 0 0 1px #e14d2a, 0 3px 10px rgba(225, 77, 42, 0.4);
+  box-shadow: 0 0 0 1px #e14d2a, 0 3px 10px rgba(var(--accent-rgb, 225, 77, 42), 0.4);
 }
 
 .compare-strip-slot-tag {

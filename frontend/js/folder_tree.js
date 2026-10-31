@@ -1165,6 +1165,9 @@ function _ftInitDbMaintenanceModal() {
       }
       replaceTagPrefixInLocalPhotos(oldFullPath, newFullPath);
       await syncAfterTagMutation(data);
+      if (typeof fetchFilterPresets === 'function') {
+        fetchFilterPresets().catch(() => {});
+      }
       if (typeof showToast === 'function') {
         showToast(successMsg || `タグを「${newFullPath}」に更新しました`, 'success', 2600);
       }
@@ -1363,18 +1366,29 @@ function _ftInitDbMaintenanceModal() {
         }
         const icon = hasChildren
           ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>'
-          : '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>';
+          : '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="10" y="10" width="7.5" height="7.5"/><line x1="3.6" y1="3.6" x2="10" y2="10"/><line x1="20.4" y1="3.6" x2="17.5" y2="10"/><line x1="20.4" y1="20.4" x2="17.5" y2="17.5"/><line x1="3.6" y1="20.4" x2="10" y2="17.5"/></svg>';
         const countVal = node.count || 0;
+        const shortNameVal = (node.short_name || '').trim();
+        const isPinnedVal = Boolean(node.is_pinned);
+        const shortBadgeHtml = shortNameVal
+          ? `<span class="settings-tag-short-badge" title="スマホ・クイック表示用の略称: ${escapeHtml(shortNameVal)}" style="font-size:0.68rem; color:var(--accent-primary); background:rgba(212,163,115,0.12); border:1px solid rgba(212,163,115,0.3); border-radius:4px; padding:0 5px; margin-left:4px; flex-shrink:0;">📱${escapeHtml(shortNameVal)}</span>`
+          : '';
+        const pinBtnStyle = isPinnedVal
+          ? 'color:#f59e0b; border-color:rgba(245,158,11,0.45); background:rgba(245,158,11,0.12);'
+          : '';
 
         item.innerHTML = `
           <div class="inspector-tree-item-left">
             <span class="settings-tag-drag-handle" title="ドラッグして他のタグ配下やルートへ移動">⋮⋮</span>
             ${toggleBtnHtml}
             <span style="flex-shrink:0; display:inline-flex; align-items:center;">${icon}</span>
-            <span class="inspector-tree-name" title="${escapeHtml(node.fullPath)}">${escapeHtml(node.name)}</span>
+            <span class="inspector-tree-name" title="${escapeHtml(node.fullPath)}${node.tag_key ? ' [' + escapeHtml(node.tag_key) + ']' : ''}">${escapeHtml(node.name)}</span>
+            ${shortBadgeHtml}
             <span class="inspector-tree-count" title="付与されている写真枚数">${countVal}枚</span>
           </div>
           <div class="inspector-tree-item-actions settings-tag-item-actions">
+            <button type="button" class="inspector-tag-edit-btn settings-tag-pin-btn${isPinnedVal ? ' active' : ''}" title="${isPinnedVal ? 'ピン留め解除（クイックタグから外す）' : 'ピン留め（インスペクタ・スマホの上部に常時表示）'}" style="${pinBtnStyle}">${isPinnedVal ? '★' : '☆'}</button>
+            <button type="button" class="inspector-tag-edit-btn settings-tag-short-btn" title="スマホ・クイック表示用のショート名（略称）を設定">略称</button>
             <button type="button" class="inspector-tag-edit-btn settings-tag-subadd-btn" title="「${escapeHtml(node.name)}」の子タグを作成">+子</button>
             <button type="button" class="inspector-tag-edit-btn settings-tag-rename-btn" title="タグ「${escapeHtml(node.name)}」の名前を変更">編集</button>
             <button type="button" class="inspector-tag-edit-btn settings-tag-delete-btn" title="タグ「${escapeHtml(node.fullPath)}」をライブラリ全体から削除">削除</button>
@@ -1488,6 +1502,104 @@ function _ftInitDbMaintenanceModal() {
             if (toggleBtn) toggleBtn.classList.remove('collapsed');
             const subInput = childrenContainer.querySelector(':scope > .inspector-tree-inline-add .inspector-tree-inline-input');
             if (subInput) setTimeout(() => subInput.focus(), 30);
+          });
+        }
+
+        const pinBtn = item.querySelector('.settings-tag-pin-btn');
+        if (pinBtn) {
+          pinBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            try {
+              const res = await fetch('/api/tags-meta', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  tag: node.fullPath,
+                  tag_key: node.tag_key || null,
+                  is_pinned: !Boolean(node.is_pinned),
+                }),
+              });
+              const data = await res.json();
+              if (!res.ok) throw new Error(data.detail || 'ピン留め設定の更新に失敗しました');
+              await syncAfterTagMutation(data);
+              if (typeof showToast === 'function') {
+                showToast(
+                  !node.is_pinned
+                    ? `「${node.name}」をクイックタグにピン留めしました`
+                    : `「${node.name}」のピン留めを解除しました`,
+                  'info',
+                  2000
+                );
+              }
+            } catch (err) {
+              if (typeof showToast === 'function') showToast(`エラー: ${err.message}`, 'error');
+            }
+          });
+        }
+
+        const shortBtn = item.querySelector('.settings-tag-short-btn');
+        if (shortBtn) {
+          shortBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (item.querySelector('.tag-short-input')) return;
+            const leftDiv = item.querySelector('.inspector-tree-item-left');
+            if (!leftDiv) return;
+            const oldShort = (node.short_name || '').trim();
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'tag-rename-input inspector-tag-rename-input tag-short-input';
+            input.placeholder = 'スマホ略称 (空で解除)';
+            input.value = oldShort;
+            input.style.maxWidth = '130px';
+            leftDiv.appendChild(input);
+            input.focus();
+            input.select();
+
+            let done = false;
+            const commitShort = async () => {
+              if (done) return;
+              done = true;
+              const nextShort = input.value.trim();
+              input.remove();
+              if (nextShort === oldShort) return;
+              try {
+                const res = await fetch('/api/tags-meta', {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    tag: node.fullPath,
+                    tag_key: node.tag_key || null,
+                    short_name: nextShort,
+                  }),
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || '略称の保存に失敗しました');
+                await syncAfterTagMutation(data);
+                if (typeof showToast === 'function') {
+                  showToast(
+                    nextShort
+                      ? `「${node.name}」の略称を「${nextShort}」に設定しました`
+                      : `「${node.name}」の略称を解除しました`,
+                    'success',
+                    2200
+                  );
+                }
+              } catch (err) {
+                if (typeof showToast === 'function') showToast(`エラー: ${err.message}`, 'error');
+              }
+            };
+            input.addEventListener('keydown', (ke) => {
+              ke.stopPropagation();
+              if (ke.key === 'Enter') {
+                ke.preventDefault();
+                commitShort();
+              } else if (ke.key === 'Escape') {
+                done = true;
+                input.remove();
+              }
+            });
+            input.addEventListener('blur', () => setTimeout(commitShort, 100));
+            input.addEventListener('click', (ce) => ce.stopPropagation());
           });
         }
 
@@ -1651,6 +1763,10 @@ function _ftInitDbMaintenanceModal() {
   }
 
   const openModal = () => {
+    const themeSelect = document.getElementById('settingThemeSelect');
+    if (themeSelect) {
+      themeSelect.value = document.documentElement.getAttribute('data-scheme') || localStorage.getItem('pm_theme_scheme') || 'tetheract-d';
+    }
     const winSelect = elements.settingStartupWindowModeSelect || document.getElementById('settingStartupWindowModeSelect');
     if (winSelect) {
       winSelect.value = localStorage.getItem('pm_startup_window_mode') || 'maximized';

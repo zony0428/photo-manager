@@ -2,8 +2,8 @@
 リリース配布用ZIPアーカイブ自動生成スクリプト
 build_dist.bat から呼び出され、VERSION ファイルのバージョン番号に基づいて
 以下の2つのZIPパッケージをルートディレクトリに生成する：
-  1. PhotoManager_v<VERSION>diff.zip (dist_update/ から生成する軽量差分アップデート版)
-  2. PhotoManager_v<VERSION>.zip     (dist/ から生成するフルパッケージ版)
+  1. Tetheract_v<VERSION>diff.zip (dist_update/ から生成する軽量差分アップデート版)
+  2. Tetheract_v<VERSION>.zip     (dist/ から生成するフルパッケージ版)
 """
 
 from pathlib import Path
@@ -56,13 +56,13 @@ def main() -> None:
 
     dist_update_dir = ROOT_DIR / "dist_update"
     if dist_update_dir.exists():
-        diff_zip = ROOT_DIR / f"PhotoManager_v{ver}diff.zip"
+        diff_zip = ROOT_DIR / f"Tetheract_v{ver}diff.zip"
         size_mb = _create_zip_from_dir(dist_update_dir, diff_zip)
         print(f"       [OK] {diff_zip.name} ({size_mb:.2f} MB)")
 
     dist_full_dir = ROOT_DIR / "dist"
     if dist_full_dir.exists():
-        full_zip = ROOT_DIR / f"PhotoManager_v{ver}.zip"
+        full_zip = ROOT_DIR / f"Tetheract_v{ver}.zip"
         print(f"       Creating {full_zip.name} (compressing python/ & models/, please wait)...")
         size_mb = _create_zip_from_dir(dist_full_dir, full_zip)
         print(f"       [OK] {full_zip.name} ({size_mb:.2f} MB)")

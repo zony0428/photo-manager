@@ -20,9 +20,16 @@
   --text-dim: #7a766e;            /* 薄墨 */
 
   --accent-primary: #e14d2a;      /* 朱（Shu - 日の丸） */
+  --accent-rgb: 225, 77, 42;
+  /* Tetheract ロゴカラー (D: 和紙モード 墨枠×琥珀アンバー結線) */
+  --logo-outer: #2a2926;
+  --logo-inner: #2a2926;
+  --logo-tether: #b46e28;
+  --logo-text: #2a2926;
+  --logo-pm: #a55f1e;
   --accent-primary-hover: #c43818;
-  --accent-glow: rgba(225, 77, 42, 0.15);
-  --accent-subtle: rgba(225, 77, 42, 0.08);
+  --accent-glow: rgba(var(--accent-rgb, 225, 77, 42), 0.15);
+  --accent-subtle: rgba(var(--accent-rgb, 225, 77, 42), 0.08);
 
   --star-active: #e14d2a;         /* 朱色の星印（後方互換） */
   --star-empty: #b5b0a3;
@@ -79,9 +86,16 @@
   --text-dim: #687487;            /* 影墨 */
 
   --accent-primary: #e14d2a;      /* 朱（闇に灯る鮮烈な赤） */
+  --accent-rgb: 225, 77, 42;
+  /* Tetheract ロゴカラー (B: 夜墨モード シャンパンゴールド刻印調) */
+  --logo-outer: #f2d5b2;
+  --logo-inner: #f0f2f5;
+  --logo-tether: #b48a5c;
+  --logo-text: #f0f2f5;
+  --logo-pm: #d4a373;
   --accent-primary-hover: #ff5b33;
-  --accent-glow: rgba(225, 77, 42, 0.25);
-  --accent-subtle: rgba(225, 77, 42, 0.15);
+  --accent-glow: rgba(var(--accent-rgb, 225, 77, 42), 0.25);
+  --accent-subtle: rgba(var(--accent-rgb, 225, 77, 42), 0.15);
 
   --star-active: #e14d2a;         /* 朱色の星印（後方互換） */
   --star-empty: #45433d;
@@ -121,6 +135,85 @@
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
   --transition-fast: 0.12s ease;
   --transition-normal: 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+
+/* ==========================================================================
+   Tetheract Champagne & Monotone Color Schemes (Tetheract D / Tetheract L)
+   目に優しいニュートラル・ウォームモノトーン × シャンパンゴールド / アンバーブロンズ
+   ========================================================================== */
+[data-scheme="tetheract-d"] {
+  --bg-primary: #171615;          /* 暗室マットチャコール（青みを排した目に優しい黒） */
+  --bg-secondary: #21201e;        /* ウォームグラファイト（サイドバー・インスペクタ・カード） */
+  --bg-tertiary: #1b1a18;         /* ディープモノトーン（アイコンレール・凹み枠・入力欄） */
+  --bg-panel: #2b2926;            /* アクティブタブ・浮き上がりパネル面 */
+  --bg-hover: #33302c;            /* ホバー時 */
+  --bg-glass: rgba(23, 22, 21, 0.94);
+  --bg-modal: rgba(25, 24, 22, 0.98);
+
+  --text-main: #edeae4;           /* 眩しさを抑えたシルキーアイボリーホワイト */
+  --text-muted: #a39e93;          /* ウォームシルバーグレー */
+  --text-dim: #706c64;            /* 落ち着いたグレージュ */
+
+  --accent-primary: #c89d6c;      /* シャンパンブロンズ・ゴールド */
+  --accent-rgb: 200, 157, 108;
+  --accent-primary-hover: #dab282;
+  --accent-glow: rgba(200, 157, 108, 0.22);
+  --accent-subtle: rgba(200, 157, 108, 0.14);
+  --accent-soft: rgba(200, 157, 108, 0.14);
+
+  --logo-outer: #f2d5b2;
+  --logo-inner: #f0f2f5;
+  --logo-tether: #b48a5c;
+  --logo-text: #f0f2f5;
+  --logo-pm: #d4a373;
+
+  --star-active: #c89d6c;
+  --star-empty: #45433d;
+  --rating-excellent: #e2b857;    /* 優: シャンパンゴールド */
+  --rating-good: #c89d6c;         /* 良: ブロンズアンバー */
+  --rating-discard: #5c5954;      /* 棄: モノトーングレー */
+
+  --border-color: rgba(242, 213, 178, 0.11);
+  --border-soft: rgba(242, 213, 178, 0.05);
+  --border-focus: #c89d6c;
+}
+
+[data-scheme="tetheract-l"] {
+  --bg-primary: #e8e6e1;          /* 目に優しいシルキーストーン（白飛びしないギャラリーライト） */
+  --bg-secondary: #f2f0ec;        /* アイボリーマット（サイドバー・インスペクタ・カード） */
+  --bg-tertiary: #dfdcd5;         /* ソフトモノトーングレー（アイコンレール・凹み枠・入力欄） */
+  --bg-panel: #faf9f6;            /* アクティブタブ・浮き上がりパネル面 */
+  --bg-hover: #d5d1c9;            /* ホバー時 */
+  --bg-glass: rgba(242, 240, 236, 0.94);
+  --bg-modal: rgba(246, 245, 241, 0.98);
+
+  --text-main: #262523;           /* チャコールインク */
+  --text-muted: #595650;          /* ミディアムチャコール */
+  --text-dim: #87837b;            /* ソフトグレー */
+
+  --accent-primary: #a86825;      /* アンバーブロンズ（シャンパンの反転ペア） */
+  --accent-rgb: 168, 104, 37;
+  --accent-primary-hover: #8f561b;
+  --accent-glow: rgba(168, 104, 37, 0.16);
+  --accent-subtle: rgba(168, 104, 37, 0.10);
+  --accent-soft: rgba(168, 104, 37, 0.10);
+
+  --logo-outer: #2a2926;
+  --logo-inner: #2a2926;
+  --logo-tether: #b46e28;
+  --logo-text: #2a2926;
+  --logo-pm: #a55f1e;
+
+  --star-active: #a86825;
+  --star-empty: #b8b4ab;
+  --rating-excellent: #c28d14;    /* 優: アンティークゴールド */
+  --rating-good: #a86825;         /* 良: アンバーブロンズ */
+  --rating-discard: #78746d;      /* 棄: モノトーングレー */
+
+  --border-color: rgba(38, 37, 35, 0.12);
+  --border-soft: rgba(38, 37, 35, 0.06);
+  --border-focus: #a86825;
 }
 
 /* リセット＆基本設定 */
@@ -235,14 +328,14 @@ button, input, select, textarea {
 /* アクティブ（ペイン表示中）: 控えめで品のある淡いティント配色 */
 #toggleSidebarBtn.btn-sidebar-toggle.active,
 #toggleInspectorBtn.btn-inspector-toggle.active {
-  background: rgba(225, 77, 42, 0.12);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.12);
   color: var(--accent-primary);
-  border-color: rgba(225, 77, 42, 0.28);
+  border-color: rgba(var(--accent-rgb, 225, 77, 42), 0.28);
 }
 
 #toggleSidebarBtn.btn-sidebar-toggle.active:hover,
 #toggleInspectorBtn.btn-inspector-toggle.active:hover {
-  background: rgba(225, 77, 42, 0.2);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.2);
   color: var(--accent-primary);
   border-color: var(--accent-primary);
 }
@@ -256,14 +349,14 @@ button, input, select, textarea {
 
 [data-theme="paper"] #toggleSidebarBtn.btn-sidebar-toggle.active,
 [data-theme="paper"] #toggleInspectorBtn.btn-inspector-toggle.active {
-  background: rgba(225, 77, 42, 0.1);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.1);
   color: var(--accent-primary);
-  border-color: rgba(225, 77, 42, 0.25);
+  border-color: rgba(var(--accent-rgb, 225, 77, 42), 0.25);
 }
 
 [data-theme="paper"] #toggleSidebarBtn.btn-sidebar-toggle.active:hover,
 [data-theme="paper"] #toggleInspectorBtn.btn-inspector-toggle.active:hover {
-  background: rgba(225, 77, 42, 0.16);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.16);
   border-color: var(--accent-primary);
 }
 
@@ -291,11 +384,18 @@ button, input, select, textarea {
 .logo {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 8px;
   font-family: 'Outfit', sans-serif;
   font-weight: 700;
   letter-spacing: 1px;
   white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.logo-lockup-svg {
+  height: 26px;
+  width: auto;
+  display: block;
   flex-shrink: 0;
 }
 
@@ -391,8 +491,8 @@ button, input, select, textarea {
 }
 
 .btn-lang-toggle.is-en {
-  border-color: rgba(225, 77, 42, 0.55);
-  background: rgba(225, 77, 42, 0.12);
+  border-color: rgba(var(--accent-rgb, 225, 77, 42), 0.55);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.12);
 }
 
 .btn-lang-toggle .lang-icon {
@@ -1282,9 +1382,9 @@ body.resizing .resize-handle {
 }
 
 .nav-count.badge-warning {
-  background: rgba(225, 77, 42, 0.15);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.15);
   color: var(--accent-primary, #e14d2a);
-  border-color: rgba(225, 77, 42, 0.35);
+  border-color: rgba(var(--accent-rgb, 225, 77, 42), 0.35);
   font-weight: 600;
 }
 
@@ -1400,7 +1500,7 @@ body.resizing .resize-handle {
 
 /* 左クリック2回目の除外絞り込み選択状態 */
 .folder-tree-item.active-exclude {
-  background: var(--accent-subtle, rgba(225, 77, 42, 0.1));
+  background: var(--accent-subtle, rgba(var(--accent-rgb, 225, 77, 42), 0.1));
   color: var(--text-main, #2a2926);
   border-left: 2px dashed var(--accent-primary, #e14d2a);
   font-weight: 600;
@@ -1516,7 +1616,7 @@ body.resizing .resize-handle {
 .badge-folder-status.ignored {
   color: var(--text-muted);
   font-weight: 600;
-  border-color: rgba(225, 77, 42, 0.45);
+  border-color: rgba(var(--accent-rgb, 225, 77, 42), 0.45);
 }
 
 /* 実フォルダ消失 / 未接続警告バッジ (Hinomaru Ink: 朱の控えめなアクセント) */
@@ -1528,7 +1628,7 @@ body.resizing .resize-handle {
   letter-spacing: 0.2px;
   white-space: nowrap;
   flex-shrink: 0;
-  border: 1px solid rgba(225, 77, 42, 0.45);
+  border: 1px solid rgba(var(--accent-rgb, 225, 77, 42), 0.45);
   color: var(--accent-primary);
   background: var(--accent-subtle);
   user-select: none;
@@ -1664,7 +1764,7 @@ body.resizing .resize-handle {
 .folder-inline-scan-progress {
   margin: 3px 6px 5px 22px;
   padding: 6px 8px;
-  background: var(--bg-tertiary, rgba(225, 77, 42, 0.08));
+  background: var(--bg-tertiary, rgba(var(--accent-rgb, 225, 77, 42), 0.08));
   border: 1px solid var(--accent-primary, #e14d2a);
   border-radius: var(--radius-sm, 4px);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
@@ -1735,7 +1835,7 @@ body.resizing .resize-handle {
 
 /* スキャン対象フォルダ項目のアクティブ装飾 */
 .folder-tree-item.is-scanning-target {
-  background: rgba(225, 77, 42, 0.12) !important;
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.12) !important;
   border-left: 3px solid var(--accent-primary, #e14d2a) !important;
 }
 
@@ -1815,7 +1915,7 @@ body.resizing .resize-handle {
 
 /* AI自動タグトグルボタンのアクティブ状態 */
 #folderAutoAiToggleBtn.active {
-  background: var(--accent-subtle, rgba(225, 77, 42, 0.12)) !important;
+  background: var(--accent-subtle, rgba(var(--accent-rgb, 225, 77, 42), 0.12)) !important;
   color: var(--accent-primary, #e14d2a) !important;
   border-color: var(--accent-primary, #e14d2a) !important;
   font-weight: 600;
@@ -1842,8 +1942,8 @@ body.resizing .resize-handle {
 .folder-warning-banner {
   margin: 10px 18px 4px 18px;
   padding: 10px 16px;
-  background: var(--accent-subtle, rgba(225, 77, 42, 0.08));
-  border: 1px solid rgba(225, 77, 42, 0.35);
+  background: var(--accent-subtle, rgba(var(--accent-rgb, 225, 77, 42), 0.08));
+  border: 1px solid rgba(var(--accent-rgb, 225, 77, 42), 0.35);
   border-radius: var(--radius-md, 8px);
   display: flex;
   align-items: center;
@@ -1901,8 +2001,8 @@ body.resizing .resize-handle {
   font-size: 0.78rem;
   font-weight: 500;
   color: var(--accent-primary, #e14d2a);
-  background: rgba(225, 77, 42, 0.12);
-  border: 1px solid rgba(225, 77, 42, 0.4);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.12);
+  border: 1px solid rgba(var(--accent-rgb, 225, 77, 42), 0.4);
   border-radius: var(--radius-sm, 6px);
   cursor: pointer;
   white-space: nowrap;
@@ -2140,7 +2240,7 @@ body.resizing .resize-handle {
 .inspector-open-tag-editor-btn:hover {
   color: var(--accent-primary, #e14d2a);
   border-color: var(--accent-primary, #e14d2a);
-  background: var(--accent-subtle, rgba(225, 77, 42, 0.08));
+  background: var(--accent-subtle, rgba(var(--accent-rgb, 225, 77, 42), 0.08));
 }
 
 .clear-tags-btn {

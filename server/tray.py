@@ -91,7 +91,7 @@ class TrayManager:
 
         menu = pystray.Menu(
             pystray.MenuItem(
-                "Photo Manager を開く",
+                "Tetheract Photo Manager を開く",
                 self._action_open_app,
                 default=True,
             ),
@@ -109,7 +109,7 @@ class TrayManager:
         self._icon = pystray.Icon(
             name="PhotoManager",
             icon=image,
-            title=f"Photo Manager (稼働中: {self.app_url})",
+            title=f"Tetheract Photo Manager (稼働中: {self.app_url})",
             menu=menu,
         )
 

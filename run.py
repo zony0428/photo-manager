@@ -121,8 +121,43 @@ def launch_app_window() -> None:
         ).start()
 
 
+
+def _migrate_legacy_launcher_files() -> None:
+    """
+    旧バージョンの PhotoManager.exe / PhotoManager_Mobile.html が残っている場合、
+    ランチャープロセス終了後（0.4秒後）に自動で Tetheract.exe / Tetheract_Mobile.html へ
+    リネームまたは重複削除してクリーンアップする。
+    """
+    def _worker():
+        time.sleep(0.4)
+        root_dir = Path(_PROJECT_ROOT)
+        pairs = [
+            ("PhotoManager.exe", "Tetheract.exe"),
+            ("PhotoManager_Mobile.html", "Tetheract_Mobile.html"),
+        ]
+        for old_name, new_name in pairs:
+            old_p = root_dir / old_name
+            new_p = root_dir / new_name
+            if not old_p.exists():
+                continue
+            for _ in range(5):
+                try:
+                    if new_p.exists():
+                        old_p.unlink()
+                        print(f"[MIGRATE] 旧ファイルを整理しました: {old_name} (新: {new_name})")
+                    else:
+                        old_p.replace(new_p)
+                        print(f"[MIGRATE] ランチャーをリネームしました: {old_name} -> {new_name}")
+                    break
+                except Exception:
+                    time.sleep(0.3)
+
+    threading.Thread(target=_worker, daemon=True, name="LegacyFileMigrator").start()
+
+
 def main() -> None:
     """エントリポイント"""
+    _migrate_legacy_launcher_files()
     # 既にサーバーが稼働中の場合は、ブラウザウィンドウだけ開いて終了する
     if is_port_in_use(PORT, HOST):
         print(f"[INFO] サーバーは既に稼働中です ({APP_URL})。アプリ画面を開きます。")
@@ -130,7 +165,7 @@ def main() -> None:
         return
 
     print("=" * 60)
-    print("  Photo Manager (Hinomaru Ink & Picasa Inspired)")
+    print("  Tetheract Photo Manager")
     print(f"  URL: {APP_URL}")
     print("=" * 60)
 
@@ -175,7 +210,7 @@ def main() -> None:
     try:
         server.run()
     except KeyboardInterrupt:
-        print("\n[INFO] Photo Manager を終了しました。")
+        print("\n[INFO] Tetheract Photo Manager を終了しました。")
     except Exception as e:
         print(f"[ERROR] 起動エラー: {e}")
     finally:

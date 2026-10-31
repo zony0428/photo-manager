@@ -351,7 +351,7 @@ function showSingleInspector(photo) {
           const adjSummary = Array.isArray(xmpInfo.adjustments.summary) ? xmpInfo.adjustments.summary : [];
           xmpPreviewBtn.title = adjSummary.length > 0
             ? `押している間だけXMPの調整データを反映します (${adjSummary.join(' / ')})`
-            : '押している間だけPhotoManagerの調整をオフにし、XMPの調整データを反映して表示します';
+            : '押している間だけTetheractの調整をオフにし、XMPの調整データを反映して表示します';
 
           const xmpThumbUrl = `/api/photo/${photo.id}/xmp-preview?mode=thumb&t=${photo.file_mtime || 0}`;
           const xmpViewUrl = `/api/photo/${photo.id}/xmp-preview?mode=view&t=${photo.file_mtime || 0}`;
@@ -474,7 +474,7 @@ function showSingleInspector(photo) {
             if (hasXmpRating) {
               const rawR = xmpInfo.rating.raw_rating !== undefined ? xmpInfo.rating.raw_rating : '?';
               const pmLabel = ratingLabelMap[String(xmpInfo.rating.pm_rating)] || '可';
-              confirmLines.push(`・評価: XMP評価 (${rawR}) → Photo Manager 4段階評価「${pmLabel}」`);
+              confirmLines.push(`・評価: XMP評価 (${rawR}) → Tetheract 4段階評価「${pmLabel}」`);
             }
             if (hasXmpTags) {
               const previewTags = xmpTags.slice(0, 5).join(', ') + (xmpTags.length > 5 ? ' ほか' : '');
@@ -1812,6 +1812,33 @@ function renderInspectorQuickTree(container, onSelect) {
 
       targetEl.appendChild(nodeWrapper);
     });
+  }
+
+  const pinnedTags = manualTags.filter(t => Boolean(t.is_pinned));
+  if (pinnedTags.length > 0) {
+    const pinBar = document.createElement('div');
+    pinBar.className = 'inspector-pinned-tags-bar';
+    pinBar.style.cssText = 'display:flex; flex-wrap:wrap; gap:4px; padding:4px 6px 6px 6px; margin-bottom:4px; border-bottom:1px dashed var(--border-color);';
+    pinnedTags.forEach(pt => {
+      const fullTag = pt.tag || pt.name;
+      const leaf = fullTag.split('/').pop();
+      const label = (pt.short_name && pt.short_name.trim()) ? pt.short_name.trim() : leaf;
+      const isAssigned = assignedTagsSet.has(fullTag);
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = `inspector-pinned-tag-chip${isAssigned ? ' is-assigned' : ''}`;
+      btn.title = `${fullTag}${isAssigned ? ' (付与済み)' : ' (クリックで付与)'}`;
+      btn.style.cssText = isAssigned
+        ? 'font-size:0.72rem; padding:2px 7px; border-radius:999px; border:1px solid rgba(16,185,129,0.5); background:rgba(16,185,129,0.14); color:#10b981; cursor:pointer;'
+        : 'font-size:0.72rem; padding:2px 7px; border-radius:999px; border:1px solid rgba(245,158,11,0.4); background:rgba(245,158,11,0.1); color:var(--text-primary); cursor:pointer;';
+      btn.textContent = `${isAssigned ? '✓ ' : '★ '}${label}`;
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        onSelect(fullTag);
+      });
+      pinBar.appendChild(btn);
+    });
+    container.appendChild(pinBar);
   }
 
   appendTreeItems(treeRoot, container, 0);

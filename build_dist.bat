@@ -2,7 +2,7 @@
 setlocal
 chcp 65001 >nul 2>&1
 
-title Photo Manager - Build Distribution (Full ^& Lightweight Update)
+title Tetheract Photo Manager - Build Distribution (Full ^& Lightweight Update)
 
 :: ================================================================
 :: Distribution package builder
@@ -30,7 +30,7 @@ set "DIST_UPD=%~dp0dist_update"
 
 echo.
 echo ============================================================
-echo   Photo Manager - Build Distribution Packages
+echo   Tetheract Photo Manager - Build Distribution Packages
 echo ============================================================
 echo.
 echo   Source          : %SRC%
@@ -151,6 +151,10 @@ goto :FAILED
 echo.
 echo [2/4] Copying startup, docs and setup files...
 
+:: --- Remove legacy filenames from dist/ if present ---
+if exist "%DIST%\PhotoManager.exe" del /q "%DIST%\PhotoManager.exe" >nul 2>&1
+if exist "%DIST%\PhotoManager_Mobile.html" del /q "%DIST%\PhotoManager_Mobile.html" >nul 2>&1
+
 :: --- Backend core scripts ---
 copy /y "%SRC%run.py" "%DIST%\server\run.py" >nul 2>&1
 copy /y "%SRC%run.py" "%DIST%\run.py" >nul 2>&1
@@ -186,14 +190,14 @@ for %%F in (README.md README_EN.md MANUAL.md README_USB.md RELEASE_NOTES.md LICE
     )
 )
 
-:: --- Standalone Mobile HTML (PhotoManager_Mobile.html) ---
+:: --- Standalone Mobile HTML (Tetheract_Mobile.html) ---
 if exist "%SRC%python\python.exe" (
     "%SRC%python\python.exe" "%SRC%server\mobile_bundle.py" >nul 2>&1
 )
-if exist "%SRC%PhotoManager_Mobile.html" (
-    echo        PhotoManager_Mobile.html
-    copy /y "%SRC%PhotoManager_Mobile.html" "%DIST%\PhotoManager_Mobile.html" >nul 2>&1
-    copy /y "%SRC%PhotoManager_Mobile.html" "%DIST_UPD%\PhotoManager_Mobile.html" >nul 2>&1
+if exist "%SRC%Tetheract_Mobile.html" (
+    echo        Tetheract_Mobile.html
+    copy /y "%SRC%Tetheract_Mobile.html" "%DIST%\Tetheract_Mobile.html" >nul 2>&1
+    copy /y "%SRC%Tetheract_Mobile.html" "%DIST_UPD%\Tetheract_Mobile.html" >nul 2>&1
 )
 
 :: --- Working directories for portable USB (storage & take_out) ---
@@ -206,10 +210,10 @@ goto :BUILD_LAUNCHER
 echo [ERROR] Failed to copy startup files.
 goto :FAILED
 
-:: --- Build / Copy PhotoManager.exe ---
+:: --- Build / Copy Tetheract.exe ---
 :BUILD_LAUNCHER
 echo.
-echo [3/4] Generating PhotoManager.exe...
+echo [3/4] Generating Tetheract.exe...
 
 set "CSC=C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
 if not exist "%CSC%" (
@@ -217,23 +221,23 @@ if not exist "%CSC%" (
 )
 
 if exist "%CSC%" (
-    "%CSC%" /nologo /target:winexe /optimize+ /win32icon:"%SRC%frontend\favicon.ico" /out:"%DIST%\PhotoManager.exe" "%SRC%launcher\Launcher.cs" >nul 2>&1
-    if exist "%DIST%\PhotoManager.exe" (
-        copy /y "%DIST%\PhotoManager.exe" "%SRC%PhotoManager.exe" >nul 2>&1
-        copy /y "%DIST%\PhotoManager.exe" "%DIST_UPD%\PhotoManager.exe" >nul 2>&1
-        echo        [OK] PhotoManager.exe compiled and bundled.
+    "%CSC%" /nologo /target:winexe /optimize+ /win32icon:"%SRC%frontend\favicon.ico" /out:"%DIST%\Tetheract.exe" "%SRC%launcher\Launcher.cs" >nul 2>&1
+    if exist "%DIST%\Tetheract.exe" (
+        copy /y "%DIST%\Tetheract.exe" "%SRC%Tetheract.exe" >nul 2>&1
+        copy /y "%DIST%\Tetheract.exe" "%DIST_UPD%\Tetheract.exe" >nul 2>&1
+        echo        [OK] Tetheract.exe compiled and bundled.
         goto :MAKE_ZIPS
     )
 )
 
-if exist "%SRC%PhotoManager.exe" (
-    copy /y "%SRC%PhotoManager.exe" "%DIST%\PhotoManager.exe" >nul 2>&1
-    copy /y "%SRC%PhotoManager.exe" "%DIST_UPD%\PhotoManager.exe" >nul 2>&1
-    echo        [OK] PhotoManager.exe copied from root.
+if exist "%SRC%Tetheract.exe" (
+    copy /y "%SRC%Tetheract.exe" "%DIST%\Tetheract.exe" >nul 2>&1
+    copy /y "%SRC%Tetheract.exe" "%DIST_UPD%\Tetheract.exe" >nul 2>&1
+    echo        [OK] Tetheract.exe copied from root.
     goto :MAKE_ZIPS
 )
 
-echo [ERROR] Failed to build or copy PhotoManager.exe.
+echo [ERROR] Failed to build or copy Tetheract.exe.
 goto :FAILED
 
 :: --- Create Release ZIP packages ---
@@ -254,11 +258,11 @@ if not exist "%DIST%\frontend" set "OK=0"
 if not exist "%DIST%\server" set "OK=0"
 if not exist "%DIST%\server\run.py" set "OK=0"
 if not exist "%DIST%\run.py" set "OK=0"
-if not exist "%DIST%\PhotoManager.exe" set "OK=0"
+if not exist "%DIST%\Tetheract.exe" set "OK=0"
 if not exist "%DIST%\MANUAL.md" set "OK=0"
 if not exist "%DIST_UPD%\frontend" set "OK=0"
 if not exist "%DIST_UPD%\server" set "OK=0"
-if not exist "%DIST_UPD%\PhotoManager.exe" set "OK=0"
+if not exist "%DIST_UPD%\Tetheract.exe" set "OK=0"
 if exist "%SRC%models" (
     if not exist "%DIST%\models" set "OK=0"
 )

@@ -9,9 +9,19 @@ if (typeof state !== 'undefined') {
 
 function getCurrentFilterState() {
   const tagFiltersObj = {};
+  const tagFilterKeysObj = {};
+  const tagToKeyMap = new Map(
+    (state.availableTags || [])
+      .filter(t => t && t.tag_key)
+      .map(t => [t.tag || t.name, t.tag_key])
+  );
   if (state.tagFilters) {
     state.tagFilters.forEach((val, key) => {
       tagFiltersObj[key] = val;
+      const tKey = tagToKeyMap.get(key);
+      if (tKey) {
+        tagFilterKeysObj[tKey] = val;
+      }
     });
   }
 
@@ -50,6 +60,7 @@ function getCurrentFilterState() {
     apertureRangeLabel: state.apertureRangeLabel || null,
     isStacked: state.isStacked !== undefined ? state.isStacked : true,
     tagFilters: tagFiltersObj,
+    tagFilterKeys: tagFilterKeysObj,
     tagAndRoots: Array.from(state.tagAndRoots || []),
     tagInterGroupMode: state.tagInterGroupMode || 'and',
   };
@@ -370,9 +381,28 @@ function applyFilterPreset(preset) {
     clearSearchBtn.style.display = state.searchQuery ? 'block' : 'none';
   }
 
-  // 3. tags
+  // 3. tags (tagFilterKeys がある場合は最新のリネーム後タグ名を優先解決)
   state.tagFilters.clear();
-  if (f.tagFilters) {
+  const keyToTagMap = new Map(
+    (state.availableTags || [])
+      .filter(t => t && t.tag_key)
+      .map(t => [t.tag_key, t.tag || t.name])
+  );
+  if (f.tagFilterKeys && typeof f.tagFilterKeys === 'object' && Object.keys(f.tagFilterKeys).length > 0 && keyToTagMap.size > 0) {
+    if (f.tagFilters) {
+      Object.entries(f.tagFilters).forEach(([tag, mode]) => {
+        if (typeof COLOR_TAG_MAP !== 'undefined' && tag in COLOR_TAG_MAP) {
+          state.tagFilters.set(tag, mode);
+        }
+      });
+    }
+    Object.entries(f.tagFilterKeys).forEach(([tKey, mode]) => {
+      const resolvedTag = keyToTagMap.get(tKey);
+      if (resolvedTag) {
+        state.tagFilters.set(resolvedTag, mode);
+      }
+    });
+  } else if (f.tagFilters) {
     Object.entries(f.tagFilters).forEach(([tag, mode]) => {
       state.tagFilters.set(tag, mode);
     });

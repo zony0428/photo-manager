@@ -53,7 +53,7 @@
 
 .camera-tree-expander:not(.empty):hover {
   color: var(--accent-primary, #e14d2a);
-  background: rgba(225, 77, 42, 0.12);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.12);
 }
 
 .camera-tree-expander.empty {
@@ -78,16 +78,16 @@
 /* カメラ・レンズ 3ステート強調 (include / exclude) */
 .camera-tree-item.include,
 .camera-lens-item.include {
-  background: rgba(225, 77, 42, 0.14);
-  border-color: rgba(225, 77, 42, 0.42);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.14);
+  border-color: rgba(var(--accent-rgb, 225, 77, 42), 0.42);
   color: var(--accent-primary, #e14d2a);
   font-weight: 600;
 }
 
 [data-theme="sumi"] .camera-tree-item.include,
 [data-theme="sumi"] .camera-lens-item.include {
-  background: rgba(225, 77, 42, 0.22);
-  border-color: rgba(225, 77, 42, 0.5);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.22);
+  border-color: rgba(var(--accent-rgb, 225, 77, 42), 0.5);
   color: #ff7a59;
 }
 
@@ -243,7 +243,7 @@
   background: var(--accent-primary, #e14d2a) !important;
   border-color: var(--accent-primary, #e14d2a) !important;
   color: #ffffff !important;
-  box-shadow: 0 2px 6px rgba(225, 77, 42, 0.35);
+  box-shadow: 0 2px 6px rgba(var(--accent-rgb, 225, 77, 42), 0.35);
 }
 
 /* --- 3. タブ切り替え共通（囲み枠なし・アンダーライン方式） --- */
@@ -354,7 +354,7 @@
 }
 
 .lab-insight-banner {
-  background: rgba(225, 77, 42, 0.1);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.1);
   border-left: 3px solid var(--accent-primary, #e14d2a);
   padding: 9px 13px;
   border-radius: 4px;
@@ -365,7 +365,7 @@
 }
 
 [data-theme="sumi"] .lab-insight-banner {
-  background: rgba(225, 77, 42, 0.16);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.16);
   color: #f5f5f4;
 }
 
@@ -557,8 +557,8 @@
 
 /* 制覇済み都道府県タイル（クリックで写真一覧を抽出可能） */
 .pref-tile.conquered {
-  background: rgba(225, 77, 42, 0.14);
-  border: 1px solid rgba(225, 77, 42, 0.45);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.14);
+  border: 1px solid rgba(var(--accent-rgb, 225, 77, 42), 0.45);
   color: var(--text-primary, #1f1e1b);
   font-weight: 600;
   cursor: pointer;
@@ -567,13 +567,13 @@
 
 .pref-tile.conquered:hover {
   transform: translateY(-1px);
-  background: rgba(225, 77, 42, 0.24);
-  box-shadow: 0 2px 6px rgba(225, 77, 42, 0.22);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.24);
+  box-shadow: 0 2px 6px rgba(var(--accent-rgb, 225, 77, 42), 0.22);
 }
 
 [data-theme="sumi"] .pref-tile.conquered {
   color: #f5f5f4;
-  background: rgba(225, 77, 42, 0.22);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.22);
 }
 
 /* 未訪問都道府県タイル（非インタラクティブ表示） */
@@ -651,7 +651,7 @@
 
 .compare-pane.active-pane {
   border-color: var(--accent-primary, #e14d2a);
-  box-shadow: 0 0 0 1px rgba(225, 77, 42, 0.45);
+  box-shadow: 0 0 0 1px rgba(var(--accent-rgb, 225, 77, 42), 0.45);
 }
 
 .compare-pane-header,

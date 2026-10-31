@@ -781,10 +781,13 @@ function buildTagTree(tagItems, options = {}) {
         });
       }
       const childNode = current.children.get(part);
-      // 祖先ノード独立保存: 各ノードはDB上の自身の件数のみを表示（累計しない）
+      // 祖先ノード独立保存: 各ノードはDB上の自身の件数・メタデータのみを表示（累計しない）
       if (idx === parts.length - 1) {
         childNode.count = item.count;
         childNode.source = item.source || 'manual';
+        childNode.tag_key = item.tag_key || '';
+        childNode.short_name = item.short_name || '';
+        childNode.is_pinned = Boolean(item.is_pinned);
       }
       current = childNode;
     });

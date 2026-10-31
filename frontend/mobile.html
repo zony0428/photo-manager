@@ -8,12 +8,12 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#16181b" id="mMetaThemeColor">
-  <title>Photo Manager Mobile</title>
+  <title>Tetheract Photo Manager Mobile</title>
   <link rel="icon" type="image/x-icon" href="/favicon.ico?v=2">
   <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png?v=2">
   <link rel="apple-touch-icon" href="/icons/icon-192.png?v=2">
   <link rel="manifest" href="/manifest_mobile.json?v=1">
-  <link rel="stylesheet" href="/css/mobile.css?v=3.2.1">
+  <link rel="stylesheet" href="/css/mobile.css?v=1.0.0">
   <!-- オフラインUSB library.db 直接読み込み用 WebAssembly SQLite (sql.js) -->
   <script src="/vendor/sqljs/sql-wasm.js"></script>
 </head>
@@ -31,10 +31,22 @@
           <span id="mFilterDot" class="m-filter-dot" style="display:none;"></span>
         </button>
 
-        <div class="m-brand">
-          <span class="m-hinomaru-disc"></span>
+        <div class="m-brand" title="Tetheract Photo Manager Mobile">
+          <svg class="m-logo-icon" viewBox="8 8 48 48" width="26" height="26" fill="none" aria-hidden="true">
+            <line x1="11.5" y1="11.5" x2="27.18" y2="27.18" stroke="var(--logo-tether)" stroke-width="2.8" stroke-linecap="round"/>
+            <line x1="52.5" y1="11.5" x2="45.41" y2="27.18" stroke="var(--logo-tether)" stroke-width="2.8" stroke-linecap="round"/>
+            <line x1="52.5" y1="52.5" x2="45.41" y2="45.41" stroke="var(--logo-tether)" stroke-width="2.8" stroke-linecap="round"/>
+            <line x1="11.5" y1="52.5" x2="27.18" y2="45.41" stroke="var(--logo-tether)" stroke-width="2.8" stroke-linecap="round"/>
+            <rect x="10" y="10" width="44" height="44" rx="5.0" stroke="var(--logo-outer)" stroke-width="3.0"/>
+            <rect x="27.18" y="27.18" width="18.23" height="18.23" stroke="var(--logo-inner)" stroke-width="2.8"/>
+          </svg>
           <div class="m-brand-titles">
-            <div class="m-brand-main">PM <span>MOBILE</span></div>
+            <div class="m-brand-main">
+              <svg class="m-brand-wordmark" viewBox="62 12 232 36" height="15" fill="none" role="img" aria-label="TETHERACT pm">
+                <text x="0" y="45.41" fill="var(--logo-text)" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif" font-size="44.38" font-weight="700" letter-spacing="2.8" textLength="269.4" lengthAdjust="spacingAndGlyphs" transform="translate(64, 0) scale(0.7071, 1)">TETHERACT</text>
+                <text x="0" y="45.41" fill="var(--logo-pm)" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif" font-size="35.60" font-weight="600" letter-spacing="1.0" transform="translate(261, 0) scale(0.75, 1)">pm</text>
+              </svg>
+            </div>
             <div class="m-brand-sub">
               <span id="mModeBadge" class="m-mode-badge mode-checking">確認中...</span>
               <span id="mPhotoCount" class="m-photo-count">0枚</span>
@@ -146,7 +158,7 @@
         <button class="m-rate-btn rate-good" data-batch-rate="1">● 良</button>
         <button class="m-rate-btn rate-excellent" data-batch-rate="2">★ 優</button>
         <button id="mBatchTagBtn" class="m-rate-btn rate-tag">
-          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.75" style="vertical-align:-2px;margin-right:2px;"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>タグ
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.75" style="vertical-align:-2px;margin-right:2px;"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="10" y="10" width="7.5" height="7.5"/><line x1="3.6" y1="3.6" x2="10" y2="10"/><line x1="20.4" y1="3.6" x2="17.5" y2="10"/><line x1="20.4" y1="20.4" x2="17.5" y2="17.5"/><line x1="3.6" y1="20.4" x2="10" y2="17.5"/></svg>タグ
         </button>
       </div>
     </div>
@@ -186,7 +198,7 @@
         <!-- タグ階層フィルタ -->
         <details class="m-accordion" open>
           <summary class="m-accordion-summary">
-            <span style="display:inline-flex;align-items:center;gap:6px;"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>タグで絞り込み</span>
+            <span style="display:inline-flex;align-items:center;gap:6px;"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="10" y="10" width="7.5" height="7.5"/><line x1="3.6" y1="3.6" x2="10" y2="10"/><line x1="20.4" y1="3.6" x2="17.5" y2="10"/><line x1="20.4" y1="20.4" x2="17.5" y2="17.5"/><line x1="3.6" y1="20.4" x2="10" y2="17.5"/></svg>タグで絞り込み</span>
             <small class="m-accordion-hint">タップ: 含む / 2回: 除外</small>
           </summary>
           <div class="m-accordion-content">
@@ -207,7 +219,7 @@
         <!-- ジオタグ（撮影地） -->
         <details class="m-accordion">
           <summary class="m-accordion-summary">
-            <span style="display:inline-flex;align-items:center;gap:6px;"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>ジオタグ（撮影地域）</span>
+            <span style="display:inline-flex;align-items:center;gap:6px;"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M19.5 9.5c0 5.5-7.5 10.5-7.5 10.5S4.5 15 4.5 9.5a7.5 7.5 0 0 1 15 0z"/><circle cx="12" cy="9.5" r="2.6"/><path d="M17.9 19a7.5 2 0 1 1-11.8 0"/></svg>ジオタグ（撮影地域）</span>
           </summary>
           <div class="m-accordion-content">
             <div id="mLocationFilterList" class="m-filter-list"></div>
@@ -248,7 +260,7 @@
         </div>
 
         <button id="mViewerOpenInfoBtn" class="m-viewer-info-btn" title="タグ編集・Exif詳細を開く">
-          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.75" style="vertical-align:-2px;margin-right:3px;"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>タグ・詳細
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.75" style="vertical-align:-2px;margin-right:3px;"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="10" y="10" width="7.5" height="7.5"/><line x1="3.6" y1="3.6" x2="10" y2="10"/><line x1="20.4" y1="3.6" x2="17.5" y2="10"/><line x1="20.4" y1="20.4" x2="17.5" y2="17.5"/><line x1="3.6" y1="20.4" x2="10" y2="17.5"/></svg>タグ・詳細
         </button>
       </div>
 
@@ -370,7 +382,7 @@
                 <div style="font-size:0.8rem; font-weight:700; margin-bottom:6px;">選別データ（<code>mobile_sync.json</code>）を書き出す</div>
                 <div style="font-size:0.74rem; color:var(--text-muted, #9ca6b5); line-height:1.5; margin-bottom:10px;">
                   下のボタンから USBメモリ直下（または <code>cache</code> フォルダ）へ保存してください。<br>
-                  <strong>次回PCにUSBメモリを挿して Photo Manager を起動した瞬間に、全自動でPC側へ反映されます。</strong>
+                  <strong>次回PCにUSBメモリを挿して Tetheract を起動した瞬間に、全自動でPC側へ反映されます。</strong>
                 </div>
                 <button id="mExportSyncJsonBtn" class="m-btn m-btn-primary" style="width:100%; padding:12px;">
                   <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -419,11 +431,11 @@
           <div class="m-sync-card" id="mStandaloneDownloadCard">
             <div class="m-sync-card-title">3. この選別アプリ（単体HTML）をスマホ本体に保存</div>
             <p class="m-sync-card-desc">
-              <code>PhotoManager_Mobile.html</code> をスマホ本体（ダウンロードフォルダ）にコピーしておくと、USBメモリ上のHTMLを直接開かずに済むため、USBメモリの取り外しがさらに安全になります。
+              <code>Tetheract_Mobile.html</code> をスマホ本体（ダウンロードフォルダ）にコピーしておくと、USBメモリ上のHTMLを直接開かずに済むため、USBメモリの取り外しがさらに安全になります。
             </p>
-            <a id="mDownloadStandaloneHtmlBtn" href="/api/mobile/standalone" download="PhotoManager_Mobile.html" class="m-btn m-btn-secondary" style="width:100%; text-decoration:none; box-sizing:border-box; justify-content:center;">
+            <a id="mDownloadStandaloneHtmlBtn" href="/api/mobile/standalone" download="Tetheract_Mobile.html" class="m-btn m-btn-secondary" style="width:100%; text-decoration:none; box-sizing:border-box; justify-content:center;">
               <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              <span>単体完結型HTML (PhotoManager_Mobile.html) をスマホに保存</span>
+              <span>単体完結型HTML (Tetheract_Mobile.html) をスマホに保存</span>
             </a>
           </div>
         </div>
@@ -434,6 +446,6 @@
     <div id="mToast" class="m-toast" style="display:none;"></div>
   </div>
 
-  <script src="/js/mobile.js?v=3.2.1"></script>
+  <script src="/js/mobile.js?v=1.0.0"></script>
 </body>
 </html>

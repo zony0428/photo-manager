@@ -731,6 +731,217 @@ class TestCoreRegression(unittest.TestCase):
         )
 
 
+    def test_color_tags_excluded_from_untagged_and_tag_keys_migration(self) -> None:
+        """
+        1. 12色カラータグのみが付与された写真は「未分類（untagged_only）」として扱われること
+        2. 既存ユーザーのレガシーDBに対する tag_keys_v1 マイグレーションで事前バックアップ生成・tag_key 採番・プリセット引き継ぎが安全に行われること
+        3. タグのリネーム・階層移動時に tag_key / short_name / is_pinned および保存済みプリセットが完全維持されること
+        4. モバイル同期 (_apply_mobile_sync_changes) で PC側リネーム後のタグへ tag_key 解決されること
+        """
+        import json
+        import sqlite3
+        from server.database import (
+            close_thread_connection,
+            create_filter_preset,
+            get_all_tags_summary,
+            get_connection,
+            get_filter_presets,
+            get_tag_key_map,
+            get_untagged_count,
+            initialize_database,
+            rename_tag,
+            update_tag_metadata,
+        )
+        from server.app import _apply_mobile_sync_changes
+
+        # --- Step 1: レガシーDB（tag_keys_v1 適用前）の状態を再現してマイグレーションを検証 ---
+        close_thread_connection()
+        legacy_db_path = Path(self._temp_dir.name) / "legacy_user.db"
+        raw_conn = sqlite3.connect(str(legacy_db_path))
+        raw_cur = raw_conn.cursor()
+        raw_cur.execute(
+            """
+            CREATE TABLE photos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                file_path TEXT UNIQUE NOT NULL,
+                file_name TEXT NOT NULL,
+                directory_path TEXT NOT NULL,
+                file_size INTEGER NOT NULL,
+                width INTEGER,
+                height INTEGER,
+                date_taken TEXT,
+                year_month TEXT,
+                camera_model TEXT,
+                rating INTEGER DEFAULT 0,
+                is_favorite INTEGER DEFAULT 0,
+                is_raw INTEGER DEFAULT 0,
+                paired_raw_path TEXT,
+                is_unlinked INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        raw_cur.execute(
+            """
+            CREATE TABLE photo_tags (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                photo_id INTEGER NOT NULL,
+                tag TEXT NOT NULL,
+                source TEXT DEFAULT 'manual',
+                confidence REAL DEFAULT 1.0,
+                UNIQUE(photo_id, tag)
+            )
+            """
+        )
+        # 旧スキーマの tag_definitions（tag_key, short_name, is_pinned カラムなし）
+        raw_cur.execute(
+            """
+            CREATE TABLE tag_definitions (
+                tag TEXT PRIMARY KEY,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        raw_cur.execute(
+            """
+            CREATE TABLE filter_presets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE NOT NULL,
+                description TEXT DEFAULT '',
+                filters TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        raw_cur.execute(
+            """
+            CREATE TABLE migrations (
+                name TEXT PRIMARY KEY,
+                applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        # 既存写真3枚＋タグ＋空タグ定義＋プリセットを投入
+        raw_cur.execute(
+            "INSERT INTO photos (id, file_path, file_name, directory_path, file_size, date_taken) VALUES (1, 'C:\\Legacy\\P1.JPG', 'P1.JPG', 'C:\\Legacy', 1000, '2026:05:01 10:00:00')"
+        )
+        raw_cur.execute(
+            "INSERT INTO photos (id, file_path, file_name, directory_path, file_size, date_taken) VALUES (2, 'C:\\Legacy\\P2.JPG', 'P2.JPG', 'C:\\Legacy', 2000, '2026:05:02 10:00:00')"
+        )
+        raw_cur.execute(
+            "INSERT INTO photos (id, file_path, file_name, directory_path, file_size, date_taken) VALUES (3, 'C:\\Legacy\\P3.JPG', 'P3.JPG', 'C:\\Legacy', 3000, '2026:05:03 10:00:00')"
+        )
+        # P1: 階層タグ「イベント/運動会/2025」＋ カラータグ「赤」
+        raw_cur.execute("INSERT INTO photo_tags (photo_id, tag) VALUES (1, 'イベント/運動会/2025')")
+        raw_cur.execute("INSERT INTO photo_tags (photo_id, tag) VALUES (1, '赤')")
+        # P2: カラータグ「青」と「金・ゴールド」のみ（一般タグなし -> 未分類扱いになるべき）
+        raw_cur.execute("INSERT INTO photo_tags (photo_id, tag) VALUES (2, '青')")
+        raw_cur.execute("INSERT INTO photo_tags (photo_id, tag) VALUES (2, '金・ゴールド')")
+        # P3: タグ一切なし（未分類）
+        # 空のタグ定義
+        raw_cur.execute("INSERT INTO tag_definitions (tag) VALUES ('家族/旅行')")
+        # 旧形式プリセット（tagFilterKeys なし）
+        legacy_preset_filters = json.dumps({
+            "tagFilters": {"イベント/運動会/2025": "include", "赤": "include"},
+            "untaggedOnly": False,
+        }, ensure_ascii=False)
+        raw_cur.execute(
+            "INSERT INTO filter_presets (name, filters) VALUES ('運動会セット', ?)",
+            (legacy_preset_filters,),
+        )
+        raw_conn.commit()
+        raw_conn.close()
+
+        # レガシーDBへ接続を切り替えてマイグレーション実行
+        prev_db = switch_database_path(legacy_db_path)
+        try:
+            initialize_database()
+
+            # 1. 事前安全バックアップが自動作成されていること
+            backup_dir = legacy_db_path.parent / "backups"
+            backups = list(backup_dir.glob("library_pre_tag_keys_v1_*.db"))
+            self.assertEqual(len(backups), 1, "マイグレーション前の自動バックアップが生成されていること")
+
+            # 2. 全一般タグ（祖先ノード含む）にユニークな tag_key が発行され、カラータグは tag_definitions に混入していないこと
+            key_map = get_tag_key_map()
+            for expected_tag in ("イベント", "イベント/運動会", "イベント/運動会/2025", "家族", "家族/旅行"):
+                self.assertIn(expected_tag, key_map)
+                self.assertTrue(key_map[expected_tag].startswith("tk_"))
+            self.assertNotIn("赤", key_map)
+            self.assertNotIn("青", key_map)
+            self.assertNotIn("金・ゴールド", key_map)
+
+            # 冪等性チェック: 再度 initialize_database() を呼んでも tag_key が変わらないこと
+            old_key_undokai = key_map["イベント/運動会/2025"]
+            old_key_parent = key_map["イベント/運動会"]
+            initialize_database()
+            self.assertEqual(get_tag_key_map()["イベント/運動会/2025"], old_key_undokai)
+
+            # 3. カラータグのみが付与された写真(P2)とタグなし写真(P3)、さらにAIタグのみ付与した場合も「未分類」に含まれること
+            from server.database import add_ai_tags_to_photo, promote_ai_tag
+            add_ai_tags_to_photo(2, [{"tag": "風景・自然", "confidence": 0.85}])
+            self.assertEqual(get_untagged_count(), 2)
+            untagged_photos = get_photos(untagged_only=True, stacked=False)
+            self.assertEqual(sorted([p["id"] for p in untagged_photos]), [2, 3])
+
+            # AIタグを手動タグへ昇格（確定）すると「未分類」から外れ、後に削除すると再び未分類に戻ること
+            promote_ai_tag(2, "風景・自然")
+            self.assertEqual(get_untagged_count(), 1)
+            from server.database import remove_tag_from_photo
+            remove_tag_from_photo(2, "風景・自然")
+            self.assertEqual(get_untagged_count(), 2)
+
+            # 未分類フィルタ ＋ カラータグ「青」の絞り込みを併用した場合、P2 のみがヒットすること
+            untagged_blue = get_photos(untagged_only=True, included_tags=["青"], stacked=False)
+            self.assertEqual([p["id"] for p in untagged_blue], [2])
+
+            # 4. ショート名・ピン留めの設定と、親タグリネーム・階層移動時の完全引き継ぎ検証
+            meta_updated = update_tag_metadata(
+                tag="イベント/運動会/2025",
+                short_name="運25",
+                is_pinned=True,
+            )
+            self.assertEqual(meta_updated["tag_key"], old_key_undokai)
+            self.assertEqual(meta_updated["short_name"], "運25")
+            self.assertTrue(meta_updated["is_pinned"])
+
+            # 親タグ「イベント/運動会」を「学校行事/スポーツ」へ階層移動・リネーム
+            rename_tag("イベント/運動会", "学校行事/スポーツ")
+
+            tags_summary = {t["tag"]: t for t in get_all_tags_summary()}
+            self.assertIn("学校行事/スポーツ/2025", tags_summary)
+            moved_leaf = tags_summary["学校行事/スポーツ/2025"]
+            self.assertEqual(moved_leaf["tag_key"], old_key_undokai, "リネーム・階層移動後も固有キー tag_key が不変であること")
+            self.assertEqual(moved_leaf["short_name"], "運25", "リネーム・階層移動後も short_name が引き継がれること")
+            self.assertTrue(moved_leaf["is_pinned"], "リネーム・階層移動後も is_pinned が引き継がれること")
+            self.assertEqual(tags_summary["学校行事/スポーツ"]["tag_key"], old_key_parent)
+
+            # 5. 保存済みフィルタプリセット「運動会セット」のタグ条件が自動的に新パスへ追従していること
+            presets = get_filter_presets()
+            self.assertEqual(len(presets), 1)
+            pf = presets[0]["filters"]
+            self.assertIn("学校行事/スポーツ/2025", pf["tagFilters"])
+            self.assertNotIn("イベント/運動会/2025", pf["tagFilters"])
+            self.assertEqual(pf["tagFilters"]["赤"], "include")
+
+            # 6. モバイル同期: スマホ側が古いタグ名「イベント/運動会/2025」のままでも tag_key により最新名「学校行事/スポーツ/2025」としてP3に付与されること
+            sync_res = _apply_mobile_sync_changes([
+                {
+                    "photo_id": 3,
+                    "file_name": "P3.JPG",
+                    "add_tags": ["イベント/運動会/2025"],
+                    "add_tag_keys": {old_key_undokai: "イベント/運動会/2025"},
+                }
+            ])
+            self.assertEqual(sync_res["applied_count"], 1)
+            p3_after = get_photos(included_tags=["学校行事/スポーツ/2025"], stacked=False)
+            self.assertEqual(sorted([p["id"] for p in p3_after]), [1, 3])
+        finally:
+            switch_database_path(prev_db)
+
+
 if __name__ == "__main__":
     unittest.main()
 

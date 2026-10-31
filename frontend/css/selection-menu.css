@@ -95,7 +95,7 @@ body.selection-active .card-select-checkbox {
 }
 
 .context-menu-item:hover {
-  background: rgba(225, 77, 42, 0.12);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.12);
   color: #e14d2a;
   font-weight: 600;
 }
@@ -217,7 +217,7 @@ body.selection-active .card-select-checkbox {
 }
 
 .submenu-tag-node:hover {
-  background: rgba(225, 77, 42, 0.12);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.12);
   color: #e14d2a;
 }
 
@@ -232,9 +232,9 @@ body.selection-active .card-select-checkbox {
   font-size: 0.68rem;
   padding: 1px 6px;
   border-radius: 3px;
-  background: rgba(225, 77, 42, 0.12);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.12);
   color: #e14d2a;
-  border: 1px solid rgba(225, 77, 42, 0.3);
+  border: 1px solid rgba(var(--accent-rgb, 225, 77, 42), 0.3);
   flex-shrink: 0;
   transition: background var(--transition-fast), color var(--transition-fast);
 }
@@ -256,15 +256,15 @@ body.selection-active .card-select-checkbox {
   font-size: 0.78rem;
   font-weight: 600;
   color: #e14d2a;
-  background: rgba(225, 77, 42, 0.08);
-  border: 1px solid rgba(225, 77, 42, 0.25);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.08);
+  border: 1px solid rgba(var(--accent-rgb, 225, 77, 42), 0.25);
   cursor: pointer;
   transition: all var(--transition-fast);
   margin-bottom: 4px;
 }
 
 .context-import-action:hover {
-  background: rgba(225, 77, 42, 0.18);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.18);
   border-color: #e14d2a;
   transform: translateY(-1px);
 }
@@ -306,7 +306,7 @@ body.selection-active .card-select-checkbox {
 }
 
 .submenu-folder-node:hover {
-  background: rgba(225, 77, 42, 0.12);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.12);
   color: #e14d2a;
 }
 
@@ -317,7 +317,7 @@ body.selection-active .card-select-checkbox {
 }
 
 .submenu-folder-node.root-folder:hover {
-  background: rgba(225, 77, 42, 0.15);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.15);
   color: #e14d2a;
 }
 
@@ -350,9 +350,9 @@ body.selection-active .card-select-checkbox {
   font-size: 0.68rem;
   padding: 1px 6px;
   border-radius: 3px;
-  background: rgba(225, 77, 42, 0.12);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.12);
   color: #e14d2a;
-  border: 1px solid rgba(225, 77, 42, 0.3);
+  border: 1px solid rgba(var(--accent-rgb, 225, 77, 42), 0.3);
   flex-shrink: 0;
   opacity: 0;
   transition: all var(--transition-fast);
@@ -389,7 +389,7 @@ body.selection-active .card-select-checkbox {
 }
 
 .submenu-rate-option:hover {
-  background: rgba(225, 77, 42, 0.12);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.12);
   color: #e14d2a;
   font-weight: 600;
 }
@@ -413,7 +413,7 @@ body.selection-active .card-select-checkbox {
 }
 
 .submenu-item:hover {
-  background: rgba(225, 77, 42, 0.12);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.12);
   color: #e14d2a;
   font-weight: 600;
 }
@@ -438,7 +438,7 @@ body.selection-active .card-select-checkbox {
 }
 
 [data-theme="sumi"] .context-menu-item:hover {
-  background: rgba(225, 77, 42, 0.22);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.22);
   color: #ff6b4a;
 }
 
@@ -475,15 +475,15 @@ body.selection-active .card-select-checkbox {
 
 [data-theme="sumi"] .submenu-tag-node:hover,
 [data-theme="sumi"] .submenu-folder-node:hover {
-  background: rgba(225, 77, 42, 0.22);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.22);
   color: #ff6b4a;
 }
 
 [data-theme="sumi"] .submenu-tag-node .apply-badge,
 [data-theme="sumi"] .submenu-folder-node .send-badge {
-  background: rgba(225, 77, 42, 0.2);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.2);
   color: #ff6b4a;
-  border: 1px solid rgba(225, 77, 42, 0.4);
+  border: 1px solid rgba(var(--accent-rgb, 225, 77, 42), 0.4);
 }
 
 [data-theme="sumi"] .submenu-tag-node:hover .apply-badge,
@@ -494,13 +494,13 @@ body.selection-active .card-select-checkbox {
 }
 
 [data-theme="sumi"] .context-import-action {
-  background: rgba(225, 77, 42, 0.15);
-  border: 1px solid rgba(225, 77, 42, 0.35);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.15);
+  border: 1px solid rgba(var(--accent-rgb, 225, 77, 42), 0.35);
   color: #ff6b4a;
 }
 
 [data-theme="sumi"] .context-import-action:hover {
-  background: rgba(225, 77, 42, 0.25);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.25);
   border-color: #ff6b4a;
 }
 
@@ -510,7 +510,7 @@ body.selection-active .card-select-checkbox {
 }
 
 [data-theme="sumi"] .submenu-folder-node.root-folder:hover {
-  background: rgba(225, 77, 42, 0.22);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.22);
   color: #ff6b4a;
 }
 
@@ -529,7 +529,7 @@ body.selection-active .card-select-checkbox {
 }
 
 [data-theme="sumi"] .submenu-rate-option:hover {
-  background: rgba(225, 77, 42, 0.22);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.22);
   color: #ff6b4a;
 }
 
@@ -538,7 +538,7 @@ body.selection-active .card-select-checkbox {
 }
 
 [data-theme="sumi"] .submenu-item:hover {
-  background: rgba(225, 77, 42, 0.22);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.22);
   color: #ff6b4a;
   font-weight: 600;
 }

@@ -5,14 +5,14 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
-[assembly: AssemblyTitle("Photo Manager Launcher")]
-[assembly: AssemblyDescription("Photo Manager Standalone Desktop Launcher")]
-[assembly: AssemblyCompany("Photo Manager Project")]
-[assembly: AssemblyProduct("Photo Manager")]
-[assembly: AssemblyCopyright("Copyright (c) 2026 Photo Manager Project (MIT License)")]
+[assembly: AssemblyTitle("Tetheract Photo Manager Launcher")]
+[assembly: AssemblyDescription("Tetheract Photo Manager Standalone Desktop Launcher")]
+[assembly: AssemblyCompany("Tetheract Project")]
+[assembly: AssemblyProduct("Tetheract Photo Manager")]
+[assembly: AssemblyCopyright("Copyright (c) 2026 Tetheract Project (MIT License)")]
 [assembly: ComVisible(false)]
-[assembly: AssemblyVersion("3.2.1.0")]
-[assembly: AssemblyFileVersion("3.2.1.0")]
+[assembly: AssemblyVersion("1.0.0.0")]
+[assembly: AssemblyFileVersion("1.0.0.0")]
 
 namespace PhotoManager
 {
@@ -42,7 +42,7 @@ namespace PhotoManager
                 {
                     MessageBox.Show(
                         "run.py が見つかりません。\n配置場所（server\\run.py または run.py）を確認してください:\n" + baseDir,
-                        "Photo Manager 起動エラー",
+                        "Tetheract Photo Manager 起動エラー",
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Error
                     );
@@ -65,7 +65,7 @@ namespace PhotoManager
                         "ポータブルPythonが見つかりませんでした。\n\n" +
                         "USBメモリで持ち歩き利用する場合は、\n" +
                         "「setup_portable_python.bat」を実行してポータブルPythonをセットアップしてください。",
-                        "Photo Manager - セットアップが必要です",
+                        "Tetheract Photo Manager - セットアップが必要です",
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Warning
                     );
@@ -85,8 +85,8 @@ namespace PhotoManager
             catch (Exception ex)
             {
                 MessageBox.Show(
-                    "Photo Manager の起動に失敗しました:\n" + ex.Message,
-                    "Photo Manager 起動エラー",
+                    "Tetheract Photo Manager の起動に失敗しました:\n" + ex.Message,
+                    "Tetheract Photo Manager 起動エラー",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error
                 );

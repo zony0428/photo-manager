@@ -606,36 +606,56 @@ function getPhotoAspectInfo(photo) {
  * テーマ切り替え管理（Hinomaru Ink: 和紙モード ⇄ 夜墨モード）
  */
 function initTheme() {
-  const savedTheme = localStorage.getItem('pm_hinomaru_theme') || 'paper';
-  applyTheme(savedTheme);
+  // v1.0.0: Tetheract D / Tetheract L / 夜墨(sumi) / 和紙(paper) の4プリセット対応
+  let savedScheme = localStorage.getItem('pm_theme_scheme');
+  if (!savedScheme) {
+    const legacy = localStorage.getItem('pm_hinomaru_theme');
+    savedScheme = (legacy === 'paper') ? 'tetheract-l' : 'tetheract-d';
+    try {
+      localStorage.setItem('pm_theme_scheme', savedScheme);
+    } catch (e) {}
+  }
+  applyTheme(savedScheme);
 
   if (elements.themeToggleBtn) {
     elements.themeToggleBtn.addEventListener('click', toggleTheme);
   }
+  const settingThemeSelect = document.getElementById('settingThemeSelect');
+  if (settingThemeSelect && !settingThemeSelect.dataset.boundTheme) {
+    settingThemeSelect.dataset.boundTheme = 'true';
+    settingThemeSelect.value = savedScheme;
+    settingThemeSelect.addEventListener('change', () => {
+      applyTheme(settingThemeSelect.value || 'tetheract-d');
+    });
+  }
 }
 
-function applyTheme(theme) {
-  const root = document.documentElement;
-  root.setAttribute('data-theme', theme);
-  localStorage.setItem('pm_hinomaru_theme', theme);
+function applyTheme(schemeOrTheme) {
+  const validSchemes = new Set(['tetheract-d', 'tetheract-l', 'sumi', 'paper']);
+  const scheme = validSchemes.has(schemeOrTheme) ? schemeOrTheme : 'tetheract-d';
+  // 既存コンポーネントの明暗セレクタ ([data-theme="paper" | "sumi"]) との完全互換を維持しつつ data-scheme を付与
+  const baseMode = (scheme === 'tetheract-l' || scheme === 'paper') ? 'paper' : 'sumi';
 
-  if (elements.themeToggleIcon && elements.themeToggleLabel) {
-    if (theme === 'paper') {
-      elements.themeToggleIcon.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
-      elements.themeToggleLabel.textContent = '和紙';
-      elements.themeToggleBtn.title = '夜墨（ダーク）モードに切り替え';
-    } else {
-      elements.themeToggleIcon.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
-      elements.themeToggleLabel.textContent = '夜墨';
-      elements.themeToggleBtn.title = '和紙（ライト）モードに切り替え';
-    }
+  const root = document.documentElement;
+  root.setAttribute('data-theme', baseMode);
+  root.setAttribute('data-scheme', scheme);
+  try {
+    localStorage.setItem('pm_theme_scheme', scheme);
+    localStorage.setItem('pm_hinomaru_theme', baseMode);
+  } catch (e) {}
+
+  const settingThemeSelect = document.getElementById('settingThemeSelect');
+  if (settingThemeSelect && settingThemeSelect.value !== scheme) {
+    settingThemeSelect.value = scheme;
   }
 }
 
 function toggleTheme() {
-  const current = document.documentElement.getAttribute('data-theme') || 'paper';
-  const nextTheme = current === 'paper' ? 'sumi' : 'paper';
-  applyTheme(nextTheme);
+  const current = document.documentElement.getAttribute('data-scheme') || 'tetheract-d';
+  const nextScheme = current === 'tetheract-d' ? 'tetheract-l'
+    : current === 'tetheract-l' ? 'tetheract-d'
+    : current === 'sumi' ? 'paper' : 'sumi';
+  applyTheme(nextScheme);
 }
 
 /**
@@ -904,6 +924,92 @@ function initPaneResize() {
       savedPanelWidth = 320;
     }
   }
+  // 0. 左端アイコンバー（#sidebarRail: 54px〜108px [標準の最大2倍]）のドラッグリサイズ
+  const railEl = document.getElementById('sidebarRail');
+  const railResizer = document.getElementById('sidebarRailResizer');
+  const RAIL_BASE_W = 54;
+  const RAIL_MIN_W = 54;
+  const RAIL_MAX_W = 108;
+
+  function applyRailWidth(rawWidth, saveToStorage = false) {
+    const w = Math.max(RAIL_MIN_W, Math.min(RAIL_MAX_W, Math.round(rawWidth || RAIL_BASE_W)));
+    const scale = (w / RAIL_BASE_W).toFixed(4);
+    document.documentElement.style.setProperty('--rail-width', w + 'px');
+    document.documentElement.style.setProperty('--rail-scale', scale);
+    if (saveToStorage) {
+      try {
+        localStorage.setItem('pm_sidebar_rail_width', String(w));
+      } catch (e) {}
+    }
+    return w;
+  }
+
+  const savedRailWidth = parseInt(localStorage.getItem('pm_sidebar_rail_width'), 10);
+  if (savedRailWidth && !isNaN(savedRailWidth)) {
+    applyRailWidth(savedRailWidth, false);
+  }
+
+  if (railResizer && railEl) {
+    railResizer.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const startX = e.clientX;
+      const startRailW = railEl.getBoundingClientRect().width || RAIL_BASE_W;
+      const isCollapsed = sidebar ? sidebar.classList.contains('is-collapsed') : false;
+      const startSidebarW = (sidebar && !isCollapsed) ? sidebar.getBoundingClientRect().width : 0;
+
+      railResizer.classList.add('active');
+      document.body.classList.add('resizing');
+
+      function onMouseMove(ev) {
+        const delta = ev.clientX - startX;
+        const newRailW = applyRailWidth(startRailW + delta, false);
+        const appliedDelta = newRailW - startRailW;
+        if (sidebar && !isCollapsed && startSidebarW > 0) {
+          const newSidebarW = Math.round(startSidebarW + appliedDelta);
+          sidebar.style.width = newSidebarW + 'px';
+          document.documentElement.style.setProperty('--sidebar-width', newSidebarW + 'px');
+        }
+      }
+
+      function onMouseUp() {
+        railResizer.classList.remove('active');
+        document.body.classList.remove('resizing');
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+        const finalRailW = Math.round(railEl.getBoundingClientRect().width || RAIL_BASE_W);
+        applyRailWidth(finalRailW, true);
+        if (sidebar && !isCollapsed) {
+          const finalSidebarW = Math.round(sidebar.getBoundingClientRect().width);
+          try {
+            localStorage.setItem('pm_sidebar_width', String(finalSidebarW));
+          } catch (e) {}
+        }
+      }
+
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+    });
+
+    // ダブルクリックで標準幅（54px / 1.0倍）にリセット
+    railResizer.addEventListener('dblclick', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const prevRailW = railEl.getBoundingClientRect().width || RAIL_BASE_W;
+      const delta = RAIL_BASE_W - prevRailW;
+      applyRailWidth(RAIL_BASE_W, true);
+      if (sidebar && !sidebar.classList.contains('is-collapsed') && Math.abs(delta) > 0.5) {
+        const currentSidebarW = sidebar.getBoundingClientRect().width;
+        const nextSidebarW = Math.max(245, Math.round(currentSidebarW + delta));
+        sidebar.style.width = nextSidebarW + 'px';
+        document.documentElement.style.setProperty('--sidebar-width', nextSidebarW + 'px');
+        try {
+          localStorage.setItem('pm_sidebar_width', String(nextSidebarW));
+        } catch (err) {}
+      }
+    });
+  }
+
   // 1. 左サイドバーのリサイズ（アコーディオンサイドバー）
   if (handleLeft && sidebar) {
     // 保存済みサイドバー幅の復元

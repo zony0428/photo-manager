@@ -1,11 +1,11 @@
 @echo off
 setlocal enabledelayedexpansion
-title Photo Manager (Portable)
+title Tetheract Photo Manager (Portable)
 
 cd /d "%~dp0"
 
 echo ============================================================
-echo   Photo Manager - Portable Launcher
+echo   Tetheract Photo Manager - Portable Launcher
 echo ============================================================
 
 set "PY_EXE="

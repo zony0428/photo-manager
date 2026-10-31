@@ -34,6 +34,7 @@ dist/
 dist_update/
 *.zip
 PhotoManager.exe
+Tetheract.exe
 autorun.inf
 
 # エディタ・IDE固有設定・バックアップ

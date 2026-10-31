@@ -2,18 +2,18 @@
 setlocal
 cd /d "%~dp0"
 
-title Photo Manager - Initial Build ^& Setup
+title Tetheract Photo Manager - Initial Build ^& Setup
 
 echo ============================================================
-echo   Photo Manager - Launcher Setup (Build.bat)
+echo   Tetheract Photo Manager - Launcher Setup (Build.bat)
 echo ============================================================
 echo.
 
 :: ------------------------------------------------------------
-:: 1. Compile PhotoManager.exe using Windows built-in C# compiler
+:: 1. Compile Tetheract.exe using Windows built-in C# compiler
 :: ------------------------------------------------------------
 :BUILD_EXE
-echo [1/2] Building PhotoManager.exe...
+echo [1/2] Building Tetheract.exe...
 
 set "CSC=C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
 if exist "%CSC%" goto :CHECK_CS_SRC
@@ -32,11 +32,11 @@ pause
 exit /b 1
 
 :RUN_CSC
-"%CSC%" /nologo /target:winexe /optimize+ /win32icon:"%~dp0frontend\favicon.ico" /out:"%~dp0PhotoManager.exe" "%~dp0launcher\Launcher.cs"
+"%CSC%" /nologo /target:winexe /optimize+ /win32icon:"%~dp0frontend\favicon.ico" /out:"%~dp0Tetheract.exe" "%~dp0launcher\Launcher.cs"
 if errorlevel 1 goto :CSC_FAIL
-if not exist "%~dp0PhotoManager.exe" goto :CSC_FAIL
+if not exist "%~dp0Tetheract.exe" goto :CSC_FAIL
 
-echo       [OK] PhotoManager.exe created successfully!
+echo       [OK] Tetheract.exe created successfully!
 
 :: ------------------------------------------------------------
 :: 2. Optional: Generate autorun.inf (only when requested or at drive root)
@@ -59,7 +59,7 @@ if errorlevel 2 goto :FINISH_BUILD
 :CREATE_AUTORUN
 > "%~dp0autorun.inf" echo [AutoRun]
 >> "%~dp0autorun.inf" echo icon=frontend\favicon.ico,0
->> "%~dp0autorun.inf" echo label=Photo Manager
+>> "%~dp0autorun.inf" echo label=Tetheract Photo Manager
 if exist "%~dp0autorun.inf" (
     echo       [OK] autorun.inf created.
 )
@@ -67,17 +67,17 @@ if exist "%~dp0autorun.inf" (
 :FINISH_BUILD
 echo.
 echo ============================================================
-echo   Setup Complete! Launching Photo Manager...
-echo   (Next time, just double-click "PhotoManager.exe" to start)
+echo   Setup Complete! Launching Tetheract Photo Manager...
+echo   (Next time, just double-click "Tetheract.exe" to start)
 echo ============================================================
 echo.
 
 if defined NO_LAUNCH exit /b 0
-start "" "%~dp0PhotoManager.exe"
+start "" "%~dp0Tetheract.exe"
 exit /b 0
 
 :CSC_FAIL
-echo       [ERROR] Failed to compile PhotoManager.exe.
+echo       [ERROR] Failed to compile Tetheract.exe.
 echo               Launching via start.bat instead...
 if defined NO_LAUNCH exit /b 1
 call "%~dp0start.bat"

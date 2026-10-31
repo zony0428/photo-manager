@@ -1,6 +1,6 @@
 {
-  "name": "Photo Manager Mobile",
-  "short_name": "PM Mobile",
+  "name": "Tetheract Photo Manager Mobile",
+  "short_name": "Tetheract pm",
   "description": "Photo Manager モバイル閲覧・高速選別アプリ (USB DB / Wi-Fi直結対応)",
   "start_url": "/mobile.html",
   "scope": "/",

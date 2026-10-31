@@ -13,6 +13,11 @@
   // ==================== 定数 & 状態管理 ====================
   const GRID_CHUNK_SIZE = 120;
   const PENDING_STORAGE_KEY = 'pm_mobile_pending_changes_v1';
+  const MOBILE_COLOR_TAGS = [
+    '赤', '青', '緑', '黄色', '黒', '白',
+    '銀・シルバー', '金・ゴールド', '茶色', '紫', 'オレンジ', 'ピンク',
+  ];
+  const MOBILE_COLOR_TAG_SET = new Set(MOBILE_COLOR_TAGS);
 
   const mState = {
     mode: 'checking', // 'checking' | 'server' | 'localdb' | 'offline'
@@ -205,6 +210,11 @@
     updatePendingBadgeUI();
   }
 
+  function _findTagKey(tagName) {
+    const found = (mState.availableTags || []).find((t) => t && t.tag === tagName);
+    return (found && found.tag_key) ? String(found.tag_key) : '';
+  }
+
   function recordPendingChange(photo, changeType, value) {
     if (!photo || !photo.id) return;
     const key = String(photo.id);
@@ -217,22 +227,37 @@
         rating: undefined,
         add_tags: [],
         remove_tags: [],
+        add_tag_keys: {},
+        remove_tag_keys: {},
       };
     }
     const item = mState.pendingChanges.items[key];
+    if (!item.add_tag_keys || typeof item.add_tag_keys !== 'object') item.add_tag_keys = {};
+    if (!item.remove_tag_keys || typeof item.remove_tag_keys !== 'object') item.remove_tag_keys = {};
+
     if (changeType === 'rating') {
       item.rating = Number(value);
     } else if (changeType === 'add_tag') {
       const tag = String(value).trim();
+      const tKey = _findTagKey(tag);
       item.remove_tags = (item.remove_tags || []).filter((t) => t !== tag);
+      if (tKey) delete item.remove_tag_keys[tKey];
       if (!item.add_tags.includes(tag)) {
         item.add_tags.push(tag);
       }
+      if (tKey) {
+        item.add_tag_keys[tKey] = tag;
+      }
     } else if (changeType === 'remove_tag') {
       const tag = String(value).trim();
+      const tKey = _findTagKey(tag);
       item.add_tags = (item.add_tags || []).filter((t) => t !== tag);
+      if (tKey) delete item.add_tag_keys[tKey];
       if (!item.remove_tags.includes(tag)) {
         item.remove_tags.push(tag);
+      }
+      if (tKey) {
+        item.remove_tag_keys[tKey] = tag;
       }
     }
     savePendingChangesToStorage();
@@ -413,7 +438,7 @@
 
   /**
    * sql.js (WebAssembly) インスタンスを初期化する
-   * 単体HTML (PhotoManager_Mobile.html) では内蔵Base64から直接メモリ展開し、
+   * 単体HTML (Tetheract_Mobile.html) では内蔵Base64から直接メモリ展開し、
    * 外部 .wasm ファイルへの fetch (CORS/content://制限) を100%回避する。
    */
   async function ensureSqlJsLoaded() {
@@ -461,7 +486,7 @@
       const check = db.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='photos'");
       if (!check || check.length === 0) {
         db.close();
-        throw new Error('有効な Photo Manager データベース (photosテーブル) が見つかりません');
+        throw new Error('有効な Tetheract データベース (photosテーブル) が見つかりません');
       }
 
       mState.localDb = db;
@@ -737,7 +762,9 @@
 
     // タグフィルタ（最上位の親が同じタグ同士は OR 条件、異なるグループ間・最上位タグ同士は AND 条件）
     if (mState.untaggedOnly) {
-      sql += ' AND NOT EXISTS (SELECT 1 FROM photo_tags pt WHERE pt.photo_id = p.id)';
+      const cPh = MOBILE_COLOR_TAGS.map(() => '?').join(',');
+      sql += ` AND NOT EXISTS (SELECT 1 FROM photo_tags pt WHERE pt.photo_id = p.id AND IFNULL(pt.source, 'manual') != 'ai' AND pt.tag NOT IN (${cPh}))`;
+      params.push(...MOBILE_COLOR_TAGS);
     } else {
       const cleanInc = (mState.includeTags || []).map((t) => String(t || '').trim()).filter(Boolean);
       const effectiveInc = cleanInc.filter(
@@ -872,20 +899,75 @@
         console.warn('フィルタ集計の取得エラー:', e);
       }
     } else if (mState.mode === 'localdb' && mState.localDb) {
-      // タグ集計
-      mState.availableTags = queryLocalDbObjects(`
+      // タグ集計 (tag_definitions の tag_key / short_name / is_pinned メタデータも統合)
+      const ptRows = queryLocalDbObjects(`
         SELECT pt.tag, COUNT(DISTINCT pt.photo_id) AS count
         FROM photo_tags pt
         INNER JOIN photos p ON p.id = pt.photo_id
         WHERE IFNULL(p.is_unlinked, 0) = 0
+          AND NOT (p.is_raw = 1 AND p.paired_raw_path IS NOT NULL)
         GROUP BY pt.tag
         ORDER BY pt.tag ASC
       `);
-      const untaggedRow = queryLocalDbObjects(`
-        SELECT COUNT(*) AS cnt FROM photos p
-        WHERE IFNULL(p.is_unlinked, 0) = 0
-          AND NOT EXISTS (SELECT 1 FROM photo_tags pt WHERE pt.photo_id = p.id)
-      `);
+      const defMap = new Map();
+      try {
+        const colRows = queryLocalDbObjects('PRAGMA table_info(tag_definitions)');
+        if (colRows.length > 0) {
+          const colNames = new Set(colRows.map((c) => c.name));
+          const selKey = colNames.has('tag_key') ? 'tag_key' : "'' AS tag_key";
+          const selShort = colNames.has('short_name') ? "COALESCE(short_name, '') AS short_name" : "'' AS short_name";
+          const selPin = colNames.has('is_pinned') ? 'COALESCE(is_pinned, 0) AS is_pinned' : '0 AS is_pinned';
+          const defRows = queryLocalDbObjects(
+            `SELECT tag, ${selKey}, ${selShort}, ${selPin} FROM tag_definitions ORDER BY tag ASC`
+          );
+          for (const dr of defRows) {
+            if (dr.tag) {
+              defMap.set(dr.tag, {
+                tag_key: dr.tag_key || '',
+                short_name: dr.short_name || '',
+                is_pinned: Boolean(dr.is_pinned),
+              });
+            }
+          }
+        }
+      } catch (e) {
+        console.debug('tag_definitions 参照スキップ:', e);
+      }
+
+      const mergedTagsMap = new Map();
+      for (const r of ptRows) {
+        const meta = defMap.get(r.tag) || {};
+        mergedTagsMap.set(r.tag, {
+          tag: r.tag,
+          count: r.count || 0,
+          tag_key: meta.tag_key || '',
+          short_name: meta.short_name || '',
+          is_pinned: Boolean(meta.is_pinned),
+        });
+      }
+      for (const [defTag, meta] of defMap.entries()) {
+        if (!mergedTagsMap.has(defTag)) {
+          mergedTagsMap.set(defTag, {
+            tag: defTag,
+            count: 0,
+            tag_key: meta.tag_key || '',
+            short_name: meta.short_name || '',
+            is_pinned: Boolean(meta.is_pinned),
+          });
+        }
+      }
+      mState.availableTags = Array.from(mergedTagsMap.values()).sort((a, b) =>
+        String(a.tag).localeCompare(String(b.tag), undefined, { numeric: true, sensitivity: 'base' })
+      );
+
+      const cPh = MOBILE_COLOR_TAGS.map(() => '?').join(',');
+      const untaggedRow = queryLocalDbObjects(
+        `SELECT COUNT(*) AS cnt FROM photos p
+         WHERE IFNULL(p.is_unlinked, 0) = 0
+           AND NOT (p.is_raw = 1 AND p.paired_raw_path IS NOT NULL)
+           AND NOT EXISTS (SELECT 1 FROM photo_tags pt WHERE pt.photo_id = p.id AND IFNULL(pt.source, 'manual') != 'ai' AND pt.tag NOT IN (${cPh}))`,
+        MOBILE_COLOR_TAGS
+      );
       mState.untaggedCount = untaggedRow[0] ? untaggedRow[0].cnt : 0;
 
       // タイムライン集計
@@ -1755,6 +1837,9 @@
         const childNode = current.children.get(part);
         if (idx === parts.length - 1) {
           childNode.count = item.count || 0;
+          childNode.tag_key = item.tag_key || '';
+          childNode.short_name = item.short_name || '';
+          childNode.is_pinned = Boolean(item.is_pinned);
         }
         current = childNode;
       });
@@ -1872,7 +1957,7 @@
           : `<span class="m-tree-arrow"></span>`;
         const icon = hasChildren
           ? '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.75" style="vertical-align:-2px;margin-right:3px;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>'
-          : '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.75" style="vertical-align:-1px;margin-right:3px;"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>';
+          : '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.75" style="vertical-align:-1px;margin-right:3px;"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="10" y="10" width="7.5" height="7.5"/><line x1="3.6" y1="3.6" x2="10" y2="10"/><line x1="20.4" y1="3.6" x2="17.5" y2="10"/><line x1="20.4" y1="20.4" x2="17.5" y2="17.5"/><line x1="3.6" y1="20.4" x2="10" y2="17.5"/></svg>';
         const badgeLabel = isBatchMode
           ? '＋ 一括追加'
           : hasTag
@@ -1881,10 +1966,14 @@
           ? '＋ 親付与'
           : '＋ 追加';
 
+        const shortLabel = (node.short_name || '').trim();
+        const displayTitle = shortLabel
+          ? `${_escHtml(shortLabel)} <small style="opacity:0.65;font-weight:400;">(${_escHtml(node.name)})</small>`
+          : _escHtml(node.name);
         row.innerHTML = `
           <span class="m-tree-row-left">
             ${arrowHtml}
-            <span class="m-tree-name">${icon} ${_escHtml(node.name)}</span>
+            <span class="m-tree-name">${icon} ${displayTitle}</span>
           </span>
           <span class="m-tree-badge ${hasTag ? 'has-tag' : ''}">${badgeLabel}</span>
         `;
@@ -1931,6 +2020,34 @@
 
         targetEl.appendChild(nodeWrapper);
       });
+    }
+
+    const pinnedList = (mState.availableTags || []).filter(
+      (t) => Boolean(t.is_pinned) && !MOBILE_COLOR_TAG_SET.has(t.tag)
+    );
+    if (pinnedList.length > 0) {
+      const pinStrip = document.createElement('div');
+      pinStrip.className = 'm-pinned-tag-strip';
+      pinStrip.style.cssText =
+        'display:flex; flex-wrap:wrap; gap:6px; padding:6px 8px 8px 8px; margin-bottom:6px; border-bottom:1px dashed rgba(255,255,255,0.12);';
+      pinnedList.forEach((pt) => {
+        const fullTag = pt.tag;
+        const leaf = fullTag.split('/').pop();
+        const disp = (pt.short_name && pt.short_name.trim()) ? pt.short_name.trim() : leaf;
+        const hasTag = !isBatchMode && (photoTags || []).includes(fullTag);
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.style.cssText = hasTag
+          ? 'font-size:12px; padding:4px 10px; border-radius:999px; border:1px solid #10b981; background:rgba(16,185,129,0.2); color:#10b981; font-weight:600;'
+          : 'font-size:12px; padding:4px 10px; border-radius:999px; border:1px solid rgba(245,158,11,0.45); background:rgba(245,158,11,0.12); color:var(--text-primary, #f3f4f6);';
+        btn.textContent = `${hasTag ? '✓ ' : '★ '}${disp}`;
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          onTagAction(fullTag, false);
+        });
+        pinStrip.appendChild(btn);
+      });
+      container.appendChild(pinStrip);
     }
 
     appendTreeItems(treeRoot.children, container, 0);
@@ -2026,10 +2143,11 @@
 
     if (mState.mode === 'server') {
       try {
+        const tKey = _findTagKey(tag);
         const res = await fetch(`/api/photo/${photo.id}/tags`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tag }),
+          body: JSON.stringify({ tag, tag_key: tKey || undefined }),
         });
         if (!res.ok) throw new Error('タグ追加失敗');
         const data = await res.json();
@@ -2099,10 +2217,11 @@
 
     if (mState.mode === 'server') {
       try {
+        const tKey = _findTagKey(tag);
         const res = await fetch('/api/photos/batch-tags', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ photo_ids: ids, tag, action: 'add' }),
+          body: JSON.stringify({ photo_ids: ids, tag, tag_key: tKey || undefined, action: 'add' }),
         });
         if (!res.ok) throw new Error('一括タグ追加失敗');
       } catch (e) {
@@ -2202,7 +2321,7 @@
           suggestedName: 'mobile_sync.json',
           types: [
             {
-              description: 'Photo Manager 選別差分ファイル',
+              description: 'Tetheract 選別差分ファイル',
               accept: { 'application/json': ['.json'] },
             },
           ],
@@ -2303,7 +2422,7 @@
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
           await navigator.share({
             title: 'mobile_sync.json',
-            text: `Photo Manager 選別差分データ (${cnt}件)`,
+            text: `Tetheract 選別差分データ (${cnt}件)`,
             files: [file],
           });
           _showExportCompleteNotice(

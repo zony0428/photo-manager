@@ -75,6 +75,12 @@ from .lab_analytics import (
 
 # タグ管理
 from .tags import (
+    COLOR_TAG_NAMES,
+    is_color_tag,
+    get_tag_key_map,
+    get_key_to_tag_map,
+    resolve_tag_by_key_or_name,
+    update_tag_metadata,
     add_tag_to_photo,
     remove_tag_from_photo,
     batch_add_tag,

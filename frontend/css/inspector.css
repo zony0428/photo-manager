@@ -310,14 +310,14 @@
 }
 
 .inspector-quick-action-btn:hover {
-  background: var(--bg-hover, rgba(225, 77, 42, 0.14));
+  background: var(--bg-hover, rgba(var(--accent-rgb, 225, 77, 42), 0.14));
   border-color: var(--accent-primary, #e14d2a);
   color: var(--accent-primary, #e14d2a);
   transform: translateY(-1px);
 }
 
 .inspector-quick-action-btn.active {
-  background: rgba(225, 77, 42, 0.18);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.18);
   border-color: var(--accent-primary, #e14d2a);
   color: var(--accent-primary, #e14d2a);
 }
@@ -536,8 +536,8 @@
 }
 
 .inspector-rating-btns .rating-btn-good.active {
-  background: rgba(225, 77, 42, 0.15);
-  text-shadow: 0 0 10px rgba(225, 77, 42, 0.4);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.15);
+  text-shadow: 0 0 10px rgba(var(--accent-rgb, 225, 77, 42), 0.4);
 }
 
 .inspector-rating-btns .rating-btn-normal {
@@ -1133,7 +1133,7 @@
 }
 
 .btn-rate-good:hover {
-  background: rgba(225, 77, 42, 0.15);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.15);
   border-color: var(--rating-good);
 }
 

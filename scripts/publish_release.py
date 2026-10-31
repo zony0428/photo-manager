@@ -4,7 +4,7 @@ GitHub Releases 自動公開スクリプト (Photo Manager)
 実行内容:
 1. VERSION ファイルから現在のバージョン番号 (例: 3.0.1) を取得
 2. docs/release_notes/RELEASE_NOTES_v<VERSION>.md と配布ZIP 2種
-   (PhotoManager_v<VERSION>diff.zip / PhotoManager_v<VERSION>.zip) の存在を検証
+   (Tetheract_v<VERSION>diff.zip / Tetheract_v<VERSION>.zip) の存在を検証
 3. 公開用リポジトリ (public: zony0428/photo-manager) の main ブランチへ
    現在の HEAD ツリーを単一コミットとして反映し、タグ v<VERSION> をプッシュ
 4. GitHub REST API を用いて zony0428/photo-manager に Release を作成（または更新）し、
@@ -34,7 +34,7 @@ from server.version import get_version
 
 PUBLIC_REPO = "zony0428/photo-manager"
 PUBLIC_REMOTE = "public"
-DEFAULT_RELEASE_TITLE = "Photo Manager (Windows USB-Portable)"
+DEFAULT_RELEASE_TITLE = "Tetheract Photo Manager v1.0.0 - Rebrand, Tag Keys & Champagne Monotone Themes"
 
 
 def _run_git(*args: str) -> str:
@@ -227,8 +227,8 @@ def main() -> None:
     ver = get_version()
     tag_name = f"v{ver}"
     notes_path = ROOT_DIR / "docs" / "release_notes" / f"RELEASE_NOTES_v{ver}.md"
-    diff_zip = ROOT_DIR / f"PhotoManager_v{ver}diff.zip"
-    full_zip = ROOT_DIR / f"PhotoManager_v{ver}.zip"
+    diff_zip = ROOT_DIR / f"Tetheract_v{ver}diff.zip"
+    full_zip = ROOT_DIR / f"Tetheract_v{ver}.zip"
 
     if not notes_path.exists():
         raise FileNotFoundError(f"リリースノートが見つかりません: {notes_path}")

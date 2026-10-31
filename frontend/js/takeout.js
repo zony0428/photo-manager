@@ -619,7 +619,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           photo_ids: targetIds,
-          title: 'Photo Manager Contact Sheet',
+          title: 'Tetheract Contact Sheet',
           theme: 'darkroom',
           columns: 5,
           open_after: true

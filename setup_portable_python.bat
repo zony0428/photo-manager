@@ -1,10 +1,10 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-title Photo Manager - Setup Portable Python
+title Tetheract Photo Manager - Setup Portable Python
 
 echo ============================================================
-echo   Photo Manager - Portable Python Auto Setup
+echo   Tetheract Photo Manager - Portable Python Auto Setup
 echo ============================================================
 echo.
 

@@ -114,7 +114,7 @@
     'ヘルプ': 'Help',
     '操作マニュアル & ショートカット一覧 (? / F1)': 'User Manual & Shortcuts (? / F1)',
     '終了': 'Quit',
-    'Photo Manager を終了する': 'Quit Photo Manager',
+    'Tetheract Photo Manager を終了する': 'Quit Tetheract Photo Manager',
 
     // --- 4段階評価（優 / 良 / 可 / 棄  Ex / Gd / Nm / Rj） ---
     '評価フィルタ:': 'Rating:',
@@ -702,9 +702,9 @@
     'エクスプローラーで開く': 'Open in File Explorer',
 
     // --- 各種モーダル（終了・DBメンテナンス・フォルダ登録・タグ削除・スマホ連携） ---
-    'Photo Manager の終了': 'Exit Photo Manager',
+    'Tetheract Photo Manager の終了': 'Exit Tetheract Photo Manager',
     'サーバー停止の確認': 'Confirm Server Shutdown',
-    'サーバーを停止して終了しますか？': 'Stop server and quit Photo Manager?',
+    'サーバーを停止して終了しますか？': 'Stop server and quit Tetheract Photo Manager?',
     'バックエンドサーバーを安全に停止し、データベースを完全にクローズして終了します。': 'Safely stops the local backend server and closes the SQLite database.',
     '終了後にUSBメモリをPCから安全に取り外せます。': 'You can safely remove the USB drive from PC after exit.',
     'サーバーを停止して終了': 'Stop Server & Quit',
@@ -720,7 +720,7 @@
     '今すぐ作成': 'Backup Now',
     '保存先フォルダを開く': 'Open Backup Folder',
     'フォルダの管理登録': 'Folder Management Registration',
-    'ライブラリへのフォルダ追加': 'Add folder to Photo Manager library',
+    'ライブラリへのフォルダ追加': 'Add folder to Tetheract library',
     '登録範囲を選択してください。サブフォルダの写真もまとめて登録する場合は「子フォルダを含む」を選択してください。': 'Choose scan depth. Select "Include Subfolders" to scan nested folders as well.',
     '直下のみ': 'Direct Only',
     '子フォルダを含む': 'Include Subfolders',
@@ -746,14 +746,14 @@
     'JPEG, PNG, WebP などの画像ファイルをここにドロップしてください': 'Drop JPEG, PNG, WebP or RAW files here to copy into library',
 
     // --- ヘルプモーダル タブ見出し & フッター & Overview / Shortcuts ---
-    'Photo Manager 操作マニュアル & ヘルプ': 'Photo Manager User Manual & Help',
+    'Tetheract Photo Manager 操作マニュアル & ヘルプ': 'Tetheract Photo Manager User Manual & Help',
     '初めての方から応用・スマホ連携まで、目的に合わせて読めるレベル別ガイド': 'Complete guide from basic 1-hand culling to Lab Karte, Duel & Mobile USB sync',
     'はじめに': 'Overview',
     'Basic編 (基本)': 'Basics',
     'Advance編 (応用)': 'Advanced & Lab',
     'Mobile & USB編': 'Mobile & USB',
     'ショートカット & FAQ': 'Shortcuts & FAQ',
-    'Photo Manager へようこそ — 安心・軽快なローカル写真管理': 'Welcome to Photo Manager — Fast, Safe & Portable Local Photo Culling',
+    'Tetheract Photo Manager へようこそ — 安心・軽快なローカル写真管理': 'Welcome to Tetheract Photo Manager — Fast, Safe & Portable Local Photo Culling',
     '元写真は絶対に傷つけない（完全非破壊）': '100% Non-Destructive (Original Files Untouched)',
     'アプリ内で写真を回転したり、傾き・明るさを調整したり、「棄（ボツ）」の評価を付けても、パソコン内の元ファイルは1バイトも変更・削除されません。いつでも元の状態に戻せます。': 'Rotating, leveling, adjusting exposure, or marking a photo as "Rj (Botsu)" never alters or deletes a single byte of your original files.',
     'ネット接続不要（完全オフライン動作）': '100% Offline & Local Privacy',
@@ -1088,8 +1088,8 @@
       'Operation guide covering basic culling, advanced organization, and mobile / USB workflows',
     'Basic編 (基本操作)': 'Basics',
     'Advance編 (応用・整理)': 'Advanced & Lab',
-    'Photo Manager — 非破壊・ローカル完結の写真閲覧・選別ツール':
-      'Photo Manager — Non-Destructive, Local-First Photo Viewer & Culling Tool',
+    'Tetheract Photo Manager — 非破壊・ローカル完結の写真閲覧・選別ツール':
+      'Tetheract Photo Manager — Non-Destructive, Local-First Photo Viewer & Culling Tool',
     '大量の写真（JPEG / PNG / WebP / HEIC および各社カメラの RAW データ）を、元のファイルを変更することなく軽快に閲覧・選別・整理できるビューアです。':
       'Browse, compare, and organize large collections of photos (JPEG, PNG, WebP, HEIC, and RAW files from major camera brands) smoothly without modifying your original files.',
     '目的に合わせて上部の「Basic編」「Advance編」「Mobile & USB編」「ショートカット & FAQ」タブを切り替えてご覧ください。':
@@ -1133,10 +1133,10 @@
 
     // タブ1: Basic編
     '1. 起動と終了のしかた（2つの閉じかた）': '1. Launching & Closing (Two Ways to Exit)',
-    '起動：フォルダ内の PhotoManager.exe をダブルクリックすると専用ウィンドウが開きます。':
-      'Launch: Double-click PhotoManager.exe in the folder to open the dedicated application window.',
-    '※初回起動時に SmartScreen の確認画面が出た場合や PhotoManager.exe が見当たらない場合は、フォルダ内の Build.bat をダブルクリックすると、お使いのPC上でソースコードから PhotoManager.exe が生成されてそのまま起動します。':
-      '* If a Windows SmartScreen prompt appears on first launch or PhotoManager.exe is missing, double-click Build.bat in the folder to compile PhotoManager.exe locally from source code and launch immediately.',
+    '起動：フォルダ内の Tetheract.exe をダブルクリックすると専用ウィンドウが開きます。':
+      'Launch: Double-click Tetheract.exe in the folder to open the dedicated application window.',
+    '※初回起動時に SmartScreen の確認画面が出た場合や Tetheract.exe が見当たらない場合は、フォルダ内の Build.bat をダブルクリックすると、お使いのPC上でソースコードから Tetheract.exe が生成されてそのまま起動します。':
+      '* If a Windows SmartScreen prompt appears on first launch or Tetheract.exe is missing, double-click Build.bat in the folder to compile Tetheract.exe locally from source code and launch immediately.',
     '完全終了（USBを抜く前など）：画面右上の「終了」ボタン →「サーバーを停止して終了」を選びます。':
       'Complete Exit (before unplugging USB, etc.): Click the top-right "Exit" button → "Stop Server & Exit".',
     'ウィンドウだけ閉じる（待機状態）：ウィンドウ右上の「×」で閉じるとタスクトレイに待機し、次回起動時に素早く画面が復元します（タスクトレイのアイコンを右クリックして完全終了することもできます）。':
@@ -1259,12 +1259,12 @@
     // タブ3: Mobile & USB編
     '1. USBメモリ・外付けSSDでの3つの持ち歩きスタイル':
       '1. Three Portable Workflows with USB Flash Drives & External SSDs',
-    'スタイル1（写真もアプリもUSBに入れる）：Photo Manager フォルダと写真（または storage）をUSBドライブに入れておけば、別のPCに挿して PhotoManager.exe を開くだけで同じ環境で使えます。':
-      'Style 1 (App + Photos on USB): Keep both the Photo Manager folder and your photos (or storage/) on a USB drive so you can plug it into any PC and run PhotoManager.exe with the exact same environment.',
-    'スタイル2（元写真は自宅に置きカタログだけ持ち歩く）：大容量の元写真は自宅のHDDに置いたまま、Photo Manager が入ったUSBメモリだけを持ち歩けます。元写真が未接続でも、全写真のサムネイル閲覧・評価・タグ付けが行えます。':
-      'Style 2 (Leave Original Files at Home, Carry Only the USB Catalog): Leave large RAW libraries on your home HDD and carry only the USB drive containing Photo Manager. Even while original files are disconnected, you can browse all thumbnails, rate, and tag.',
+    'スタイル1（写真もアプリもUSBに入れる）：Tetheract フォルダと写真（または storage）をUSBドライブに入れておけば、別のPCに挿して Tetheract.exe を開くだけで同じ環境で使えます。':
+      'Style 1 (App + Photos on USB): Keep both the Tetheract folder and your photos (or storage/) on a USB drive so you can plug it into any PC and run Tetheract.exe with the exact same environment.',
+    'スタイル2（元写真は自宅に置きカタログだけ持ち歩く）：大容量の元写真は自宅のHDDに置いたまま、Tetheract が入ったUSBメモリだけを持ち歩けます。元写真が未接続でも、全写真のサムネイル閲覧・評価・タグ付けが行えます。':
+      'Style 2 (Leave Original Files at Home, Carry Only the USB Catalog): Leave large RAW libraries on your home HDD and carry only the USB drive containing Tetheract. Even while original files are disconnected, you can browse all thumbnails, rate, and tag.',
     'スタイル3（ドライブ文字が変わっても自動追従）：別のPCに繋いでドライブ文字（D: → E: 等）が変わっても、ドライブ固有の識別番号を認識してリンク切れを防ぎます。':
-      'Style 3 (Automatic Drive-Letter Tracking): Even if Windows assigns a different drive letter (e.g. D: → E:) on another PC, Photo Manager tracks the drive\'s Volume Serial Number automatically.',
+      'Style 3 (Automatic Drive-Letter Tracking): Even if Windows assigns a different drive letter (e.g. D: → E:) on another PC, Tetheract tracks the drive\'s Volume Serial Number automatically.',
     '2. スマートフォンで写真を選別する（2つの方法）':
       '2. Two Ways to Cull Photos on a Smartphone',
     'スマートフォンの画面と親指のタップ操作で、写真の4段階評価（優・良・可・棄）とタグ付けが行えます。':
@@ -1279,10 +1279,10 @@
       'Ratings and tags applied on your phone are reflected on the PC screen in real time (for security, the mobile listener stops automatically after 30 minutes of inactivity).',
     '方法B：外出先・ネット圏外でUSBメモリを直接スマートフォンに挿す（完全オフライン）':
       'Method B: Plug the USB Drive Directly into Your Smartphone (100% Offline)',
-    'PCの電源が切れているときやネット圏外でも使えます。Photo Manager が入ったUSBメモリをAndroidスマートフォン等に挿します。':
-      'Works even when your PC is off or without internet access. Connect the USB drive containing Photo Manager to an Android smartphone.',
-    'スマートフォンのファイルアプリでUSB内の PhotoManager_Mobile.html をタップしてブラウザで開きます（USBから直接開けない機種では、このHTMLファイル1つだけをスマートフォン本体のダウンロードフォルダ等にコピーして開いてください）。':
-      'Open PhotoManager_Mobile.html from the USB drive in your phone\'s browser via the Files app (if your device restricts opening HTML directly from USB, copy that single HTML file to your phone\'s Downloads folder and open it there).',
+    'PCの電源が切れているときやネット圏外でも使えます。Tetheract が入ったUSBメモリをAndroidスマートフォン等に挿します。':
+      'Works even when your PC is off or without internet access. Connect the USB drive containing Tetheract to an Android smartphone.',
+    'スマートフォンのファイルアプリでUSB内の Tetheract_Mobile.html をタップしてブラウザで開きます（USBから直接開けない機種では、このHTMLファイル1つだけをスマートフォン本体のダウンロードフォルダ等にコピーして開いてください）。':
+      'Open Tetheract_Mobile.html from the USB drive in your phone\'s browser via the Files app (if your device restricts opening HTML directly from USB, copy that single HTML file to your phone\'s Downloads folder and open it there).',
     '画面の「DB読込」をタップし、USBメモリ内の cache フォルダにある library.db を選ぶと、全写真のカタログが読み込まれます。':
       'Tap "Load DB" on screen and select cache/library.db on the USB drive to load the entire photo catalog into memory.',
     '3. スマートフォンでの操作と、PCへの同期手順（USBオフライン時）':
@@ -1295,8 +1295,8 @@
       'When finished, tap "Save Changes" on your smartphone and save mobile_sync.json to the root folder of the USB drive.',
     '保存完了メッセージから数秒待ち、スマートフォンの通知欄から「USBドライブを取り外す（マウント解除）」を実行してからUSBを抜きます。':
       'Wait a few seconds after the completion message, then select "Eject / Unmount USB drive" from your phone\'s notification bar before unplugging the USB drive.',
-    'USBメモリをPCに挿して PhotoManager.exe を起動すると、自動的に選別結果が取り込まれて反映されます。':
-      'Plug the USB drive into your PC and launch PhotoManager.exe; the saved changes are automatically detected and imported.',
+    'USBメモリをPCに挿して Tetheract.exe を起動すると、自動的に選別結果が取り込まれて反映されます。':
+      'Plug the USB drive into your PC and launch Tetheract.exe; the saved changes are automatically detected and imported.',
     '4. USBメモリを安全に取り外すための手順':
       '4. Safely Removing Your USB Drive',
     'PCから抜く前：画面右上の「終了」＞「サーバーを停止して終了」でアプリを完全に停止させてから、Windowsの「ハードウェアの安全な取り外し」を行ってください。':
@@ -1371,16 +1371,16 @@
       'A. All adjustments inside the app are non-destructive. To export new image files with your adjustments applied, select "Takeout" > "Smart Takeout..." from the right-click menu.',
     'Q. 初回起動時に「Windows によって PC が保護されました」と表示されました。':
       'Q. Windows displayed "Windows protected your PC" (SmartScreen) on first launch.',
-    'A. 商用のコード署名証明書を付与していない個人開発ソフトのため表示される確認画面です。「詳細情報」→「実行」で起動するか、同梱の Build.bat をダブルクリックしてPC上で PhotoManager.exe を生成してください。':
-      'A. This confirmation screen appears because this personal project does not have a commercial code-signing certificate. Click "More info" → "Run anyway", or double-click the included Build.bat to compile PhotoManager.exe locally on your PC.',
+    'A. 商用のコード署名証明書を付与していない個人開発ソフトのため表示される確認画面です。「詳細情報」→「実行」で起動するか、同梱の Build.bat をダブルクリックしてPC上で Tetheract.exe を生成してください。':
+      'A. This confirmation screen appears because this personal project does not have a commercial code-signing certificate. Click "More info" → "Run anyway", or double-click the included Build.bat to compile Tetheract.exe locally on your PC.',
     'さらに詳しい解説はプロジェクトフォルダ内の MANUAL.md をご覧ください。':
       'For more details, please refer to MANUAL.md in the project folder.',
 
     // XMP サイドカー & storage 機能 (UIツールチップ・モーダル用)
     'XMPサイドカーファイルが検出されました': 'XMP sidecar file detected',
     'XMPプレビュー': 'XMP Preview',
-    '押している間だけPhotoManagerの調整をオフにし、XMPの調整データを反映して表示します':
-      'Hold to temporarily bypass Photo Manager edits and preview XMP adjustments',
+    '押している間だけTetheractの調整をオフにし、XMPの調整データを反映して表示します':
+      'Hold to temporarily bypass Tetheract edits and preview XMP adjustments',
     '評価・タグ取込': 'Import Rating & Tags',
     'XMPサイドカーの評価（4段階変換）やタグ（XMP/ルート配下）を取り込みます':
       'Import XMP rating (converted to 4-stage) and hierarchical tags (under XMP/ root)',
@@ -1510,9 +1510,9 @@
       ' (Public profile blocks incoming connections from other devices).',
     '【確認2】Windows Defender ファイアウォールの通信許可（TCP 8088 / python.exe）':
       '[Check 2] Allow in Windows Defender Firewall (TCP 8088 / python.exe)',
-    '初回接続時のWindowsセキュリティ警告でブロックされた場合は、「Windows セキュリティ」＞「ファイアウォールとネットワーク保護」＞「ファイアウォールによるアプリケーションの許可」から、Photo Manager 内の':
+    '初回接続時のWindowsセキュリティ警告でブロックされた場合は、「Windows セキュリティ」＞「ファイアウォールとネットワーク保護」＞「ファイアウォールによるアプリケーションの許可」から、Tetheract 内の':
       'If blocked by the Windows Security prompt on first connection, open "Windows Security" > "Firewall & network protection" > "Allow an app through firewall" and allow',
-    '（または詳細設定の「受信の規則」で': 'inside Photo Manager (or inbound rule for',
+    '（または詳細設定の「受信の規則」で': 'inside Tetheract (or inbound rule for',
     'TCP ポート': 'TCP port',
     '）の「プライベート」にチェックを入れて許可してください。': ') on "Private" networks.',
     '許可コマンドをコピー': 'Copy Firewall Command',

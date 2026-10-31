@@ -127,6 +127,7 @@ def _find_photo_manager_hwnds(port: int = 8088) -> list:
     WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
 
     target_keywords = (
+        "Tetheract Photo Manager",
         "Photo Manager - Tiat & Picasa Inspired",
         f"127.0.0.1:{port}",
         f"localhost:{port}",

@@ -103,14 +103,14 @@ body.theme-washi .inspector-histogram-drawer {
 }
 
 .adjust-hist-toggle-btn.active {
-  background: rgba(225, 77, 42, 0.2);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.2);
   border-color: var(--accent-primary, #e14d2a);
   color: #ffffff;
 }
 
 /* ライトボックスヘッダーのアイコンボタン点灯状態 */
 #toggleLightboxHistogramBtn.active {
-  background: rgba(225, 77, 42, 0.22);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.22);
   border-color: var(--accent-primary, #e14d2a);
   color: var(--accent-primary, #e14d2a);
 }
@@ -161,8 +161,8 @@ body.theme-washi .inspector-histogram-drawer {
 }
 
 .hist-scope-pill.is-crop {
-  background: rgba(225, 77, 42, 0.24);
-  border-color: rgba(225, 77, 42, 0.55);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.24);
+  border-color: rgba(var(--accent-rgb, 225, 77, 42), 0.55);
   color: #ffb4a2;
 }
 
@@ -327,7 +327,7 @@ body.theme-washi .inspector-histogram-drawer {
 }
 
 .meta-hist-trigger-btn.active {
-  background: rgba(225, 77, 42, 0.16);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.16);
   border-color: var(--accent-primary, #e14d2a);
   color: var(--accent-primary, #e14d2a);
 }

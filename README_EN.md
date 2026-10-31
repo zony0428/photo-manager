@@ -1,11 +1,11 @@
-# Photo Manager
+# Tetheract Photo Manager
 
 [日本語](README.md) | English
 
 A local, non-destructive photo viewer and culling tool for Windows, inspired by Picasa and Tiat.  
 Browse, compare, and organize large collections of photos (JPEG, PNG, WebP, HEIC, and RAW files from major camera brands) smoothly, without modifying a single byte of your original files or folder structure.
 
-To try it right away, download the latest ZIP from [GitHub Releases](../../releases), extract it to any folder, and run `PhotoManager.exe` (no installation required).
+To try it right away, download the latest ZIP from [GitHub Releases](../../releases), extract it to any folder, and run `Tetheract.exe` (no installation required).
 
 ![Workflow Demo (One-handed rating, layout & theme toggle, RAW Lightbox, burst frame flip, and 2-Up Duel comparison)](docs/images/demo_workflow.webp)
 
@@ -25,14 +25,14 @@ To try it right away, download the latest ZIP from [GitHub Releases](../../relea
 > - Real-Time `JP` / `EN` UI Toggle Included (Though My English Skill is Zero):  
 >   I am a Japanese developer with zero English skills. If you talk to me in English, I will rely 100% on machine translation and might sound a bit odd. However, clicking the `JP` / `EN` button in the top header switches the entire UI, tooltips, and the built-in Help Manual into English in real time (also 100% AI-generated lol).
 > - Your Original Photo Files & Folders Are Never Modified (100% Non-Destructive & Read-Only):  
->   Although the code is written by AI, one strict rule is enforced throughout: your original photo files in your folders are never modified, moved, or deleted by even a single byte. If you decide the app isn't for you, simply delete the Photo Manager folder and your PC environment and photo folders remain completely untouched.
+>   Although the code is written by AI, one strict rule is enforced throughout: your original photo files in your folders are never modified, moved, or deleted by even a single byte. If you decide the app isn't for you, simply delete the Tetheract Photo Manager folder and your PC environment and photo folders remain completely untouched.
 
 ---
 
 ## Features & Design Philosophy
 
 ### 1. Flexible Classification and Search, Independent of Where Photos Are Stored.
-Over the years, photos naturally spread across internal drives and external SSDs, and reorganizing folders or importing everything into a proprietary library just to suit a management app is a burden. Photo Manager is designed so you can keep your existing folders and storage locations as they are, while freely grouping, combining, and subtracting photos across drives using tags and shooting metadata.
+Over the years, photos naturally spread across internal drives and external SSDs, and reorganizing folders or importing everything into a proprietary library just to suit a management app is a burden. Tetheract Photo Manager is designed so you can keep your existing folders and storage locations as they are, while freely grouping, combining, and subtracting photos across drives using tags and shooting metadata.
 
 - Cross-Drive Browsing Without Moving Folders: Browse and search across internal drives and multiple external drives while keeping your existing directory structure intact.
 - Hierarchical Tag & Gear Include `[+]` / Exclude `[-]` Search: Combine include `[+]` and exclude `[-]` conditions across hierarchical tags and the "Camera > Lens" tree. Sibling tags under the same top-level parent combine with `OR`, while different top-level groups combine with `AND`, making it easy to subtract unwanted sub-tags or spot untagged photos.
@@ -41,7 +41,7 @@ Over the years, photos naturally spread across internal drives and external SSDs
 - Photography Lab & Map Insights: Explore your 47-prefecture footprint map, density heatmaps, chronological walk trajectories, "Winning Lens & Sweet-Spot Chart" based on high-rated keeper rates, solar-angle Golden/Blue Hour extraction, "On This Day", and random unrated folder Gacha.
 
 ### 2. Never Touch or Break Original Files — Yet Go Beyond Just Viewing.
-No one wants an application to silently alter original RAW/JPEG files or scatter hidden management and sidecar files inside photo folders. At the same time, a viewer that only displays images forces you to open another editor just to fix a tilted horizon, crop, shift a camera clock, or export. Photo Manager strictly preserves your original files and folders untouched while handling culling, non-destructive adjustments, export, and optional file organization in one continuous workflow.
+No one wants an application to silently alter original RAW/JPEG files or scatter hidden management and sidecar files inside photo folders. At the same time, a viewer that only displays images forces you to open another editor just to fix a tilted horizon, crop, shift a camera clock, or export. Tetheract Photo Manager strictly preserves your original files and folders untouched while handling culling, non-destructive adjustments, export, and optional file organization in one continuous workflow.
 
 - Zero Writes to Original Files or Photo Folders: Rotating, adjusting, tagging, shifting timestamps, or marking photos as "Rj (Reject)" never modifies or deletes your original files. All records are stored solely inside a single database (`cache/library.db`) within the app folder.
 - Non-Destructive Rotate, Straighten, Crop & Tone: Apply 90° rotations, fine horizon leveling (±45°), aspect-ratio cropping, and brightness/contrast/saturation adjustments (linked with a live RGB & Luminance histogram), complete with instant before/after comparison and batch copy/paste.
@@ -61,12 +61,12 @@ When comparing and culling hundreds or thousands of frames, colorful icons, heav
 - Separation of Daily Tagging and Tree Editing: Daily tag assignment is limited to the right Inspector and context menu, while moving, renaming, and deleting tag hierarchies are isolated inside a dedicated Settings editor to prevent accidental edits. Left and right tag lists also support independent Name (natural order) vs. Count sorting.
 
 ### 4. No Reliance on the Cloud — Yet Fully Portable.
-Photo Manager was built from the desire not to leave personal photo libraries locked in external cloud services or struggle with environment setup and database migration every time you replace a PC. Every feature runs locally without an internet connection, and placing the folder on an external SSD or USB flash drive lets you carry your entire environment across different PCs and even onto your smartphone.
+Tetheract Photo Manager was built from the desire not to leave personal photo libraries locked in external cloud services or struggle with environment setup and database migration every time you replace a PC. Every feature runs locally without an internet connection, and placing the folder on an external SSD or USB flash drive lets you carry your entire environment across different PCs and even onto your smartphone.
 
 - 100% Local Execution with Zero Uploads: Never sends photos to external servers or loads external CDNs (only viewing map background tiles connects to OpenStreetMap). Local AI auto-tagging (CLIP) and offline GPS reverse geocoding (Country, State/Prefecture, and City) run entirely on your PC.
 - No Installation Required — Run Directly from USB: The portable Python runtime and SQLite database (`cache/library.db`) live inside a single folder, launching directly from an external SSD or USB drive even on a PC without Python installed. Updates require only overwriting with a lightweight diff ZIP.
 - Drive-Letter Tracking & Unplugged Browsing: Tracks drives by Volume Serial Number (VSN) so links never break when drive letters change (`E:\` to `F:\`) across PCs. Even when external drives are unplugged, you can continue browsing thumbnails, searching, tagging, and rating.
-- Smartphone Wi-Fi & Offline USB Culling: Cull on your smartphone over home Wi-Fi (QR one-time token authentication, auto-stops after 30 min idle) or completely offline on the go by opening `PhotoManager_Mobile.html` and `cache/library.db` directly in your phone's browser via WebAssembly, then sync changes back to your PC.
+- Smartphone Wi-Fi & Offline USB Culling: Cull on your smartphone over home Wi-Fi (QR one-time token authentication, auto-stops after 30 min idle) or completely offline on the go by opening `Tetheract_Mobile.html` and `cache/library.db` directly in your phone's browser via WebAssembly, then sync changes back to your PC.
 
 ---
 
@@ -91,10 +91,16 @@ Photo Manager was built from the desire not to leave personal photo libraries lo
 
 Because the portable Python runtime and all required libraries are bundled, no prior setup or installation is needed on your PC.
 
-1. First-Time Setup (Full Package `PhotoManager_vX.X.X.zip`):  
-   Download the full package ZIP from [GitHub Releases](../../releases), extract it to any folder or USB drive, and double-click `PhotoManager.exe` to launch in a dedicated application window.
-2. Updating an Existing Setup (Lightweight Diff `PhotoManager_vX.X.Xdiff.zip`):  
+1. First-Time Setup (Full Package `Tetheract_vX.X.X.zip`):  
+   Download the full package ZIP from [GitHub Releases](../../releases), extract it to any folder or USB drive, and double-click `Tetheract.exe` to launch in a dedicated application window.
+2. Updating an Existing Setup (Lightweight Diff `Tetheract_vX.X.Xdiff.zip`):  
    If you already have a full package running, you do not need to re-download `python/` or `models/`. Extract the lightweight diff ZIP and overwrite your existing folder to update while keeping your `cache/` database and `storage/` intact.
+
+> [!NOTE]
+> Upgrading from Photo Manager v3.x & Downgrade Compatibility
+>
+> - Automatic Launcher Cleanup: When you overwrite an existing `PhotoManager` folder and launch `Tetheract.exe`, legacy `PhotoManager.exe` and `PhotoManager_Mobile.html` files in the root folder are automatically cleaned up and unified into `Tetheract.exe` and `Tetheract_Mobile.html`.
+> - Automatic DB Snapshot & Backward Compatibility: Immediately before running the `tag_keys_v1` schema migration on first startup, a full snapshot of your database is automatically backed up to `cache/backups/library_pre_tag_keys_v1_YYYYMMDD_HHMMSS.db`. Furthermore, because the migrated `cache/library.db` retains the legacy table and column structure in a hybrid layout, it remains compatible even if you revert the program files to v3.x (or you can restore the pre-migration snapshot from `cache/backups/`).
 
 > [!IMPORTANT]
 > If Microsoft Defender SmartScreen Appears on First Launch
@@ -102,7 +108,7 @@ Because the portable Python runtime and all required libraries are bundled, no p
 > This application operates locally with no photo uploads or registry changes (only map tiles connect to OpenStreetMap). Because it is an independent personal project without a commercial code-signing certificate, Windows Defender SmartScreen may show a confirmation dialog when launching a downloaded `.exe` for the first time. You can start the app in either of two ways:
 >
 > 1. Run directly: Click "More info" on the SmartScreen dialog and select "Run anyway" (this prompt will not appear on subsequent launches).
-> 2. Build locally with `Build.bat`: Double-click `Build.bat` in the folder. It uses the standard C# compiler (`csc.exe`) included with Windows to compile `PhotoManager.exe` directly on your PC from the plain-text source code ([`launcher/Launcher.cs`](launcher/Launcher.cs)) and launches the app without download-related blocks.
+> 2. Build locally with `Build.bat`: Double-click `Build.bat` in the folder. It uses the standard C# compiler (`csc.exe`) included with Windows to compile `Tetheract.exe` directly on your PC from the plain-text source code ([`launcher/Launcher.cs`](launcher/Launcher.cs)) and launches the app without download-related blocks.
 
 ### Option B: Cloning from the GitHub Repository
 
@@ -111,7 +117,7 @@ The Git repository does not include the large portable Python directory (`python
 1. Run `setup_portable_python.bat` (requires internet connection on first run):  
    Automatically downloads and sets up Embeddable Python 3.11 and required packages into the `python/` folder.
 2. Run `Build.bat`:  
-   Compiles `PhotoManager.exe` and starts the application.
+   Compiles `Tetheract.exe` and starts the application.
 
 ---
 
@@ -145,7 +151,7 @@ Because this software is developed as a personal hobby through Vibe Coding, ther
 
 ## License
 
-The original source code of Photo Manager is released under the [MIT License](LICENSE). Feel free to use and modify it on an "AS IS" basis without warranty.
+The original source code of Tetheract Photo Manager is released under the [MIT License](LICENSE). Feel free to use and modify it on an "AS IS" basis without warranty.
 
 > [!WARNING]
 > Compliance with Bundled Third-Party Licenses

@@ -641,7 +641,7 @@ def run_contact_sheet_export(req: Dict[str, Any]) -> Dict[str, Any]:
     if not photo_ids:
         return {"status": "error", "message": "コンタクトシートに出力する写真が選択されていません"}
 
-    title_raw = (req.get("title") or "").strip() or "Photo Manager Contact Sheet"
+    title_raw = (req.get("title") or "").strip() or "Tetheract Contact Sheet"
     theme = (req.get("theme") or "darkroom").strip().lower()
     if theme not in ("darkroom", "washi"):
         theme = "darkroom"
@@ -1188,7 +1188,7 @@ body.theme-washi .frame-stage {{
     <main class="sheet-container">
         <div class="print-sheet-banner">
             <strong id="printBannerTitle" style="font-size:1.2rem;">{esc_title}</strong>
-            <span style="font-size:0.82rem;">{esc_date_range} / 全{len(photos)}コマ (Photo Manager Contact Sheet)</span>
+            <span style="font-size:0.82rem;">{esc_date_range} / 全{len(photos)}コマ (Tetheract Contact Sheet)</span>
         </div>
         <section class="contact-grid" id="contactGrid">
             {"".join(cards_html_list)}

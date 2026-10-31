@@ -7,7 +7,7 @@
    ブロックされる問題を100%解消する。
 2. 非HTTPSのローカルIP (http://192.168.x.x:8088/m) では Service Worker (PWAオフラインキャッシュ) が
    機能しないブラウザ仕様に対し、USBルートまたはスマホ本体に保存した単一HTMLファイル
-   (PhotoManager_Mobile.html) だけで完全オフライン起動・library.db 読込・選別を可能にする。
+   (Tetheract_Mobile.html) だけで完全オフライン起動・library.db 読込・選別を可能にする。
 3. セキュリティ配慮:
    - ユーザーデータ（写真・DB中身・PCのIPアドレス・ローカルフォルダパス等）は一切埋め込まず、
      純粋な静的UIプログラムとWebAssembly SQLiteエンジンのみを格納する。
@@ -24,7 +24,7 @@ logger = logging.getLogger("photo_manager.mobile_bundle")
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 FRONTEND_DIR = BASE_DIR / "frontend"
-STANDALONE_HTML_FILENAME = "PhotoManager_Mobile.html"
+STANDALONE_HTML_FILENAME = "Tetheract_Mobile.html"
 STANDALONE_HTML_PATH = BASE_DIR / STANDALONE_HTML_FILENAME
 
 # 厳格なCSP設定（インラインCSS/JS・WASMメモリ実行・Blob/Data URL画像のみ許可、外部オブジェクトやbaseタグ乗っ取りを禁止）
@@ -140,9 +140,10 @@ def build_standalone_mobile_html() -> str:
 def ensure_standalone_mobile_html(force: bool = False) -> Optional[Path]:
     """
     ソースファイル群 (mobile.html, mobile.css, mobile.js, sql-wasm.*) の更新日時を確認し、
-    必要であればプロジェクトルート直下の PhotoManager_Mobile.html を最新化する。
+    必要であればプロジェクトルート直下の Tetheract_Mobile.html を最新化する。
     """
     try:
+        legacy_html = BASE_DIR / "PhotoManager_Mobile.html"
         source_files = [
             FRONTEND_DIR / "mobile.html",
             FRONTEND_DIR / "css" / "mobile.css",
@@ -160,11 +161,22 @@ def ensure_standalone_mobile_html(force: bool = False) -> Optional[Path]:
             target_mtime = STANDALONE_HTML_PATH.stat().st_mtime
             latest_src_mtime = max(s.stat().st_mtime for s in source_files)
             if target_mtime >= latest_src_mtime:
+                if legacy_html.exists():
+                    try:
+                        legacy_html.unlink()
+                    except Exception:
+                        pass
                 return STANDALONE_HTML_PATH
 
         bundled_html = build_standalone_mobile_html()
         with open(STANDALONE_HTML_PATH, "w", encoding="utf-8", newline="\n") as f:
             f.write(bundled_html)
+
+        if legacy_html.exists():
+            try:
+                legacy_html.unlink()
+            except Exception:
+                pass
 
         logger.info(
             f"単体完結型モバイルHTMLを生成しました: {STANDALONE_HTML_PATH.name} "

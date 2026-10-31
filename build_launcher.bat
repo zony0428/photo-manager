@@ -14,7 +14,7 @@ if not exist "%CSC%" (
 )
 
 echo [INFO] Compiling launcher using %CSC%...
-"%CSC%" /target:winexe /optimize+ /win32icon:frontend\favicon.ico /out:PhotoManager.exe launcher\Launcher.cs
+"%CSC%" /target:winexe /optimize+ /win32icon:frontend\favicon.ico /out:Tetheract.exe launcher\Launcher.cs
 
 if errorlevel 1 (
     echo [ERROR] Build failed.
@@ -22,4 +22,4 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo [SUCCESS] PhotoManager.exe created successfully.
+echo [SUCCESS] Tetheract.exe created successfully.

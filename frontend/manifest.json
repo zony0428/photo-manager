@@ -1,6 +1,6 @@
 {
-  "name": "Photo Manager",
-  "short_name": "Photo Manager",
+  "name": "Tetheract Photo Manager",
+  "short_name": "Tetheract pm",
   "description": "Hinomaru Ink & Picasa Inspired Photo Organizer",
   "start_url": "/",
   "display": "standalone",

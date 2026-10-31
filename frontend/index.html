@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Photo Manager - Tiat & Picasa Inspired</title>
+  <title>Tetheract Photo Manager</title>
   <link rel="icon" type="image/x-icon" href="/favicon.ico?v=2">
   <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32.png?v=2">
   <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png?v=2">
@@ -11,15 +11,15 @@
   <link rel="manifest" href="/manifest.json?v=2">
   <meta name="theme-color" content="#191816">
   <link rel="stylesheet" href="/vendor/fonts/fonts.css">
-  <link rel="stylesheet" href="/css/style.css?v=3.2.1">
-  <link rel="stylesheet" href="/css/grid-lightbox.css?v=3.2.1">
-  <link rel="stylesheet" href="/css/selection-menu.css?v=3.2.1">
-  <link rel="stylesheet" href="/css/inspector.css?v=3.2.1">
-  <link rel="stylesheet" href="/css/modals-features.css?v=3.2.1">
-  <link rel="stylesheet" href="/css/lab-map.css?v=3.2.1">
-  <link rel="stylesheet" href="/css/histogram.css?v=3.2.1">
-  <link rel="stylesheet" href="/css/compare.css?v=3.2.1">
-  <link rel="stylesheet" href="/css/ui-unify.css?v=3.2.1">
+  <link rel="stylesheet" href="/css/style.css?v=1.0.0">
+  <link rel="stylesheet" href="/css/grid-lightbox.css?v=1.0.0">
+  <link rel="stylesheet" href="/css/selection-menu.css?v=1.0.0">
+  <link rel="stylesheet" href="/css/inspector.css?v=1.0.0">
+  <link rel="stylesheet" href="/css/modals-features.css?v=1.0.0">
+  <link rel="stylesheet" href="/css/lab-map.css?v=1.0.0">
+  <link rel="stylesheet" href="/css/histogram.css?v=1.0.0">
+  <link rel="stylesheet" href="/css/compare.css?v=1.0.0">
+  <link rel="stylesheet" href="/css/ui-unify.css?v=1.0.0">
   <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
   <script src="/vendor/leaflet/leaflet.js"></script>
   <script>
@@ -61,17 +61,19 @@
 
         <div class="toolbar-divider" title="セパレータ"></div>
 
-        <div class="logo">
-          <span class="hinomaru-disc" title="Hinomaru Ink"></span>
-          <span class="logo-text">PHOTO<span>MANAGER</span></span>
-          <span class="app-version" id="appVersion" title="v3.2.1 (最終更新: 2026-10-30 18:56)">v3.2.1</span>
+        <div class="logo" title="Tetheract Photo Manager">
+          <svg class="logo-lockup-svg" viewBox="8 8 292 48" height="26" fill="none" role="img" aria-label="TETHERACT pm">
+            <line x1="11.5" y1="11.5" x2="27.18" y2="27.18" stroke="var(--logo-tether)" stroke-width="2.6" stroke-linecap="round"/>
+            <line x1="52.5" y1="11.5" x2="45.41" y2="27.18" stroke="var(--logo-tether)" stroke-width="2.6" stroke-linecap="round"/>
+            <line x1="52.5" y1="52.5" x2="45.41" y2="45.41" stroke="var(--logo-tether)" stroke-width="2.6" stroke-linecap="round"/>
+            <line x1="11.5" y1="52.5" x2="27.18" y2="45.41" stroke="var(--logo-tether)" stroke-width="2.6" stroke-linecap="round"/>
+            <rect x="10" y="10" width="44" height="44" rx="5.0" stroke="var(--logo-outer)" stroke-width="2.8"/>
+            <rect x="27.18" y="27.18" width="18.23" height="18.23" stroke="var(--logo-inner)" stroke-width="2.6"/>
+            <text x="0" y="45.41" fill="var(--logo-text)" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif" font-size="44.38" font-weight="700" letter-spacing="2.8" textLength="269.4" lengthAdjust="spacingAndGlyphs" transform="translate(66, 0) scale(0.7071, 1)">TETHERACT</text>
+            <text x="0" y="45.41" fill="var(--logo-pm)" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif" font-size="35.60" font-weight="600" letter-spacing="1.0" transform="translate(263, 0) scale(0.75, 1)">pm</text>
+          </svg>
+          <span class="app-version" id="appVersion" title="v1.0.0 (最終更新: 2026-10-31 23:15)">v1.0.0</span>
         </div>
-
-        <!-- テーマ切替（和紙 ⇄ 夜墨） -->
-        <button id="themeToggleBtn" class="btn btn-theme-toggle" title="テーマ切り替え (和紙 ⇄ 夜墨)">
-          <span class="theme-icon" id="themeToggleIcon" style="display: none;"></span>
-          <span id="themeToggleLabel">和紙</span>
-        </button>
 
         <!-- UI言語切替（日本語 JP ⇄ English EN） -->
         <button id="langToggleBtn" class="btn btn-lang-toggle" title="UI言語切り替え (日本語 ⇄ English)">
@@ -171,7 +173,7 @@
           <span class="btn-label">ヘルプ</span>
         </button>
 
-        <button id="openShutdownModalBtn" class="btn btn-secondary btn-shutdown header-compact-btn" title="Photo Manager を終了する">
+        <button id="openShutdownModalBtn" class="btn btn-secondary btn-shutdown header-compact-btn" title="Tetheract Photo Manager を終了する">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
           <span class="btn-label">終了</span>
         </button>
@@ -205,11 +207,11 @@
             <span class="rail-tab-label">フォルダ</span>
           </button>
           <button type="button" class="rail-tab-btn" data-section="tags" title="タグ (アルバム)・カラー">
-            <span class="rail-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg></span>
+            <span class="rail-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="10" y="10" width="7.5" height="7.5"/><line x1="3.6" y1="3.6" x2="10" y2="10"/><line x1="20.4" y1="3.6" x2="17.5" y2="10"/><line x1="20.4" y1="20.4" x2="17.5" y2="17.5"/><line x1="3.6" y1="20.4" x2="10" y2="17.5"/></svg></span>
             <span class="rail-tab-label">タグ</span>
           </button>
           <button type="button" class="rail-tab-btn" data-section="location" title="ジオタグ・制覇マップ">
-            <span class="rail-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg></span>
+            <span class="rail-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M19.5 9.5c0 5.5-7.5 10.5-7.5 10.5S4.5 15 4.5 9.5a7.5 7.5 0 0 1 15 0z"/><circle cx="12" cy="9.5" r="2.6"/><path d="M17.9 19a7.5 2 0 1 1-11.8 0"/></svg></span>
             <span class="rail-tab-label">ジオタグ</span>
           </button>
           <button type="button" class="rail-tab-btn" data-section="timeline" title="タイムライン (撮影年月)">
@@ -230,6 +232,7 @@
             <span class="rail-tab-label">検索</span>
           </button>
         </nav>
+        <div class="sidebar-rail-resizer" id="sidebarRailResizer" title="ドラッグでアイコンバーを拡大・縮小（ダブルクリックで標準サイズに戻す）"></div>
 
         <!-- 第2段階: 右側 メニュー・ツリー表示エリア -->
         <div class="sidebar-stage" id="sidebarStage">
@@ -285,7 +288,7 @@
                   <span class="nav-count" id="totalPhotosCount">0</span>
                 </li>
                 <li class="nav-item" data-filter-type="untagged" id="untaggedNavItem">
-                  <span class="nav-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg></span>
+                  <span class="nav-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="10" y="10" width="7.5" height="7.5"/><line x1="3.6" y1="3.6" x2="10" y2="10"/><line x1="20.4" y1="3.6" x2="17.5" y2="10"/><line x1="20.4" y1="20.4" x2="17.5" y2="17.5"/><line x1="3.6" y1="20.4" x2="10" y2="17.5"/></svg></span>
                   <span class="nav-text">未分類の写真</span>
                   <span class="nav-count" id="untaggedPhotosCount">0</span>
                 </li>
@@ -402,7 +405,7 @@
           <div class="accordion-item" data-section="tags" id="accordionItem-tags">
             <div class="accordion-header" data-section="tags">
               <span class="accordion-arrow">▶</span>
-              <span class="accordion-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg></span>
+              <span class="accordion-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="10" y="10" width="7.5" height="7.5"/><line x1="3.6" y1="3.6" x2="10" y2="10"/><line x1="20.4" y1="3.6" x2="17.5" y2="10"/><line x1="20.4" y1="20.4" x2="17.5" y2="17.5"/><line x1="3.6" y1="20.4" x2="10" y2="17.5"/></svg></span>
               <span class="accordion-title">タグ (アルバム)</span>
             </div>
             <div class="accordion-body">
@@ -457,7 +460,7 @@
           <div class="accordion-item" data-section="location" id="accordionItem-location">
             <div class="accordion-header" data-section="location">
               <span class="accordion-arrow">▶</span>
-              <span class="accordion-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg></span>
+              <span class="accordion-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M19.5 9.5c0 5.5-7.5 10.5-7.5 10.5S4.5 15 4.5 9.5a7.5 7.5 0 0 1 15 0z"/><circle cx="12" cy="9.5" r="2.6"/><path d="M17.9 19a7.5 2 0 1 1-11.8 0"/></svg></span>
               <span class="accordion-title">ジオタグ</span>
             </div>
             <div class="accordion-body">
@@ -715,7 +718,7 @@
           <!-- XMPサイドカー検出・プレビュー・取込バー -->
           <div class="inspector-xmp-bar" id="inspectorXmpBar" style="display: none;">
             <span class="xmp-sidecar-badge" id="inspectorXmpBadge" title="XMPサイドカーファイルが検出されました">XMP</span>
-            <button type="button" class="btn-xmp-hold-preview" id="inspectorXmpPreviewBtn" style="display: none;" title="押している間だけPhotoManagerの調整をオフにし、XMPの調整データを反映して表示します">XMPプレビュー</button>
+            <button type="button" class="btn-xmp-hold-preview" id="inspectorXmpPreviewBtn" style="display: none;" title="押している間だけTetheractの調整をオフにし、XMPの調整データを反映して表示します">XMPプレビュー</button>
             <button type="button" class="btn-xmp-import-meta" id="inspectorXmpImportMetaBtn" style="display: none;" title="XMPサイドカーの評価（4段階変換）やタグ（XMP/ルート配下）を取り込みます">評価・タグ取込</button>
           </div>
         </div>
@@ -1035,7 +1038,7 @@
     <div class="modal-card modal-card-lg help-modal-card">
       <div class="modal-header">
         <div class="modal-header-title">
-          <h2>Photo Manager 操作マニュアル &amp; ヘルプ</h2>
+          <h2>Tetheract Photo Manager 操作マニュアル &amp; ヘルプ</h2>
           <span class="modal-subtitle">基本操作から応用整理、スマホ・USB運用までをまとめた操作ガイド</span>
         </div>
         <button class="modal-close-btn" id="closeHelpModalBtn">&times;</button>
@@ -1055,7 +1058,7 @@
         <div class="help-tab-content active" id="helpTab-overview">
           <div class="help-hero-banner">
             <div class="help-hero-title">
-              <span>Photo Manager — 非破壊・ローカル完結の写真閲覧・選別ツール</span>
+              <span>Tetheract Photo Manager — 非破壊・ローカル完結の写真閲覧・選別ツール</span>
             </div>
             <p class="help-hero-desc">大量の写真（JPEG / PNG / WebP / HEIC および各社カメラの RAW データ）を、元のファイルを変更することなく軽快に閲覧・選別・整理できるビューアです。</p>
             <p class="help-hero-desc" style="margin-top: 4px;">目的に合わせて上部の「Basic編」「Advance編」「Mobile &amp; USB編」「ショートカット &amp; FAQ」タブを切り替えてご覧ください。</p>
@@ -1108,7 +1111,7 @@
               <div class="help-feature-header">
                 <h4 class="help-feature-title">用途に合わせて選べる3つの表示レイアウト</h4>
               </div>
-              <p class="help-feature-text">画面上部のスリムヘッダーから、3つの表示モードを切り替えられます。右側の「和紙 / 夜墨」ボタンで明暗テーマの切り替え、「JP / EN」ボタンで日本語・英語表示の切り替えも行えます。</p>
+              <p class="help-feature-text">画面上部のスリムヘッダーから、3つの表示モードや「JP / EN」言語表示を切り替えられます。カラーテーマ（Tetheract D / Tetheract L / 夜墨 / 和紙）は「設定」モーダルから切り替えられます。</p>
               <div class="help-mode-grid">
                 <div class="help-mode-card">
                   <div class="help-mode-card-header">グリッド (標準)</div>
@@ -1159,8 +1162,8 @@
         <div class="help-tab-content" id="helpTab-basic">
           <div class="help-card">
             <h4>1. 起動と終了のしかた（2つの閉じかた）</h4>
-            <p>起動：フォルダ内の PhotoManager.exe をダブルクリックすると専用ウィンドウが開きます。</p>
-            <p class="help-tip">※初回起動時に SmartScreen の確認画面が出た場合や PhotoManager.exe が見当たらない場合は、フォルダ内の Build.bat をダブルクリックすると、お使いのPC上でソースコードから PhotoManager.exe が生成されてそのまま起動します。</p>
+            <p>起動：フォルダ内の Tetheract.exe をダブルクリックすると専用ウィンドウが開きます。</p>
+            <p class="help-tip">※初回起動時に SmartScreen の確認画面が出た場合や Tetheract.exe が見当たらない場合は、フォルダ内の Build.bat をダブルクリックすると、お使いのPC上でソースコードから Tetheract.exe が生成されてそのまま起動します。</p>
             <p>完全終了（USBを抜く前など）：画面右上の「終了」ボタン →「サーバーを停止して終了」を選びます。</p>
             <p>ウィンドウだけ閉じる（待機状態）：ウィンドウ右上の「×」で閉じるとタスクトレイに待機し、次回起動時に素早く画面が復元します（タスクトレイのアイコンを右クリックして完全終了することもできます）。</p>
           </div>
@@ -1277,8 +1280,8 @@
           <div class="help-card">
             <h4>1. USBメモリ・外付けSSDでの3つの持ち歩きスタイル</h4>
             <ul>
-              <li>スタイル1（写真もアプリもUSBに入れる）：Photo Manager フォルダと写真（または storage）をUSBドライブに入れておけば、別のPCに挿して PhotoManager.exe を開くだけで同じ環境で使えます。</li>
-              <li>スタイル2（元写真は自宅に置きカタログだけ持ち歩く）：大容量の元写真は自宅のHDDに置いたまま、Photo Manager が入ったUSBメモリだけを持ち歩けます。元写真が未接続でも、全写真のサムネイル閲覧・評価・タグ付けが行えます。</li>
+              <li>スタイル1（写真もアプリもUSBに入れる）：Tetheract フォルダと写真（または storage）をUSBドライブに入れておけば、別のPCに挿して Tetheract.exe を開くだけで同じ環境で使えます。</li>
+              <li>スタイル2（元写真は自宅に置きカタログだけ持ち歩く）：大容量の元写真は自宅のHDDに置いたまま、Tetheract が入ったUSBメモリだけを持ち歩けます。元写真が未接続でも、全写真のサムネイル閲覧・評価・タグ付けが行えます。</li>
               <li>スタイル3（ドライブ文字が変わっても自動追従）：別のPCに繋いでドライブ文字（D: → E: 等）が変わっても、ドライブ固有の識別番号を認識してリンク切れを防ぎます。</li>
             </ul>
           </div>
@@ -1295,8 +1298,8 @@
             <p class="help-tip" style="margin-top: 6px;">※QRコードを読み取ってもスマホから繋がらない場合は、(1) Windowsの「設定 ＞ ネットワークとインターネット ＞ Wi-Fi（またはイーサネット）」でネットワークプロファイルを「パブリック」から「プライベート」に変更する、(2)「Windows Defender ファイアウォール」で <code>python\python.exe</code>（または TCP ポート <code>8088</code>）のプライベート通信を許可する、(3) ゲスト用SSIDやプライバシーセパレーター（端末間分離）でない同じWi-Fiルーターに接続しているかを確認してください（スマホ連携画面内にも詳しい手順と許可コマンドがあります）。</p>
             <p style="margin-top: 8px;">方法B：外出先・ネット圏外でUSBメモリを直接スマートフォンに挿す（完全オフライン）</p>
             <ol>
-              <li>PCの電源が切れているときやネット圏外でも使えます。Photo Manager が入ったUSBメモリをAndroidスマートフォン等に挿します。</li>
-              <li>スマートフォンのファイルアプリでUSB内の PhotoManager_Mobile.html をタップしてブラウザで開きます（USBから直接開けない機種では、このHTMLファイル1つだけをスマートフォン本体のダウンロードフォルダ等にコピーして開いてください）。</li>
+              <li>PCの電源が切れているときやネット圏外でも使えます。Tetheract が入ったUSBメモリをAndroidスマートフォン等に挿します。</li>
+              <li>スマートフォンのファイルアプリでUSB内の Tetheract_Mobile.html をタップしてブラウザで開きます（USBから直接開けない機種では、このHTMLファイル1つだけをスマートフォン本体のダウンロードフォルダ等にコピーして開いてください）。</li>
               <li>画面の「DB読込」をタップし、USBメモリ内の cache フォルダにある library.db を選ぶと、全写真のカタログが読み込まれます。</li>
             </ol>
           </div>
@@ -1308,7 +1311,7 @@
             <ol>
               <li>選別が終わったらスマートフォン画面の「変更を保存」を押し、USBメモリの先頭（ルート）フォルダに mobile_sync.json を保存します。</li>
               <li>保存完了メッセージから数秒待ち、スマートフォンの通知欄から「USBドライブを取り外す（マウント解除）」を実行してからUSBを抜きます。</li>
-              <li>USBメモリをPCに挿して PhotoManager.exe を起動すると、自動的に選別結果が取り込まれて反映されます。</li>
+              <li>USBメモリをPCに挿して Tetheract.exe を起動すると、自動的に選別結果が取り込まれて反映されます。</li>
             </ol>
           </div>
 
@@ -1382,7 +1385,7 @@
             <p style="margin-top: 8px;">Q. 回転や明るさ調整をした写真を、実際の画像ファイルとして保存したいときは？</p>
             <p>A. アプリ内の調整は元ファイルを書き換えない非破壊方式です。調整結果を反映した画像ファイルを作るには、右クリックメニューの「テイクアウト」＞「スマート・テイクアウト...」から別フォルダへ書き出してください。</p>
             <p style="margin-top: 8px;">Q. 初回起動時に「Windows によって PC が保護されました」と表示されました。</p>
-            <p>A. 商用のコード署名証明書を付与していない個人開発ソフトのため表示される確認画面です。「詳細情報」→「実行」で起動するか、同梱の Build.bat をダブルクリックしてPC上で PhotoManager.exe を生成してください。</p>
+            <p>A. 商用のコード署名証明書を付与していない個人開発ソフトのため表示される確認画面です。「詳細情報」→「実行」で起動するか、同梱の Build.bat をダブルクリックしてPC上で Tetheract.exe を生成してください。</p>
           </div>
         </div>
       </div>
@@ -1399,7 +1402,7 @@
     <div class="modal-card shutdown-modal-card">
       <div class="modal-header">
         <div class="modal-header-title">
-          <h2>Photo Manager の終了</h2>
+          <h2>Tetheract Photo Manager の終了</h2>
           <span class="modal-subtitle">サーバー停止の確認</span>
         </div>
         <button class="modal-close-btn" id="closeShutdownModalBtn">&times;</button>
@@ -1463,7 +1466,7 @@
             <div style="font-weight: 700; font-size: 0.92rem; color: var(--text-main, #eceae4);">① 自宅Wi-Fi: QRコードでスマホ版 (<code>/m</code>) に入る</div>
             <div style="display: flex; gap: 6px;">
               <button class="btn btn-secondary btn-xs" id="openMobilePreviewWindowBtn" title="PC上でスマホ画面 (/m) を別ウィンドウで開いて試す">PCでスマホ画面を試す</button>
-              <a href="/api/mobile/standalone" download="PhotoManager_Mobile.html" class="btn btn-secondary btn-xs" style="text-decoration: none;" title="単体HTMLを別フォルダやスマホ転送用に保存">単体HTMLを保存</a>
+              <a href="/api/mobile/standalone" download="Tetheract_Mobile.html" class="btn btn-secondary btn-xs" style="text-decoration: none;" title="単体HTMLを別フォルダやスマホ転送用に保存">単体HTMLを保存</a>
             </div>
           </div>
           <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
@@ -1495,9 +1498,9 @@
 
               <div style="background: var(--bg-primary, rgba(0,0,0,0.12)); border: 1px solid var(--border-soft, rgba(128,128,128,0.18)); border-left: 3px solid #3b82f6; border-radius: 4px; padding: 8px 10px;">
                 <strong>【確認2】Windows Defender ファイアウォールの通信許可（TCP 8088 / python.exe）</strong><br>
-                <span style="color: var(--text-muted, #94a3b8);">初回接続時のWindowsセキュリティ警告でブロックされた場合は、「Windows セキュリティ」＞「ファイアウォールとネットワーク保護」＞「ファイアウォールによるアプリケーションの許可」から、Photo Manager 内の <code>python\python.exe</code>（または詳細設定の「受信の規則」で <strong>TCP ポート <code>8088</code></strong>）の「プライベート」にチェックを入れて許可してください。</span>
+                <span style="color: var(--text-muted, #94a3b8);">初回接続時のWindowsセキュリティ警告でブロックされた場合は、「Windows セキュリティ」＞「ファイアウォールとネットワーク保護」＞「ファイアウォールによるアプリケーションの許可」から、Tetheract 内の <code>python\python.exe</code>（または詳細設定の「受信の規則」で <strong>TCP ポート <code>8088</code></strong>）の「プライベート」にチェックを入れて許可してください。</span>
                 <div style="margin-top: 6px; display: flex; align-items: center; justify-content: space-between; gap: 8px; background: var(--bg-secondary, rgba(128,128,128,0.08)); border: 1px solid var(--border-soft, rgba(128,128,128,0.2)); border-radius: 4px; padding: 5px 8px; flex-wrap: wrap;">
-                  <code id="mobileFirewallCmdCode" style="font-size: 0.72rem; color: var(--text-main, #eceae4); word-break: break-all; flex: 1;">netsh advfirewall firewall add rule name="Photo Manager Mobile (TCP 8088)" dir=in action=allow protocol=TCP localport=8088 profile=private</code>
+                  <code id="mobileFirewallCmdCode" style="font-size: 0.72rem; color: var(--text-main, #eceae4); word-break: break-all; flex: 1;">netsh advfirewall firewall add rule name="Tetheract Mobile (TCP 8088)" dir=in action=allow protocol=TCP localport=8088 profile=private</code>
                   <button type="button" class="btn btn-secondary btn-xs" id="copyFirewallCmdBtn" title="管理者として開いたPowerShellまたはコマンドプロンプトに貼り付けて実行すると、ファイアウォールのポート8088受信許可を追加できます" style="white-space: nowrap;">許可コマンドをコピー</button>
                 </div>
                 <div style="font-size: 0.71rem; color: var(--text-dim, #64748b); margin-top: 3px;">※スタートボタンを右クリック ＞「ターミナル (管理者)」または「PowerShell (管理者)」を開き、上記コマンドを貼り付けて Enter を押すと一発で許可登録できます。</div>
@@ -1525,7 +1528,7 @@
 
             <div style="background: var(--bg-primary, rgba(0,0,0,0.12)); border: 1px solid var(--border-soft, rgba(128,128,128,0.18)); border-left: 3px solid #3b82f6; border-radius: 4px; padding: 8px 10px;">
               <strong>【Step 2】スマホにUSBを挿して写真を読み込む</strong><br>
-              <span style="color: var(--text-muted, #94a3b8);">スマホにUSBを挿し、「ファイル」アプリでUSB内の <code>PhotoManager_Mobile.html</code> を開きます。続けて <strong>「library.db を読み込む」</strong> から <code>cache/library.db</code>（現在 <strong id="mobileDbSizeLabel">- MB</strong>）を選ぶと全写真が表示され、親指で高速選別できます（選別中はUSBを挿したままでOKです）。</span>
+              <span style="color: var(--text-muted, #94a3b8);">スマホにUSBを挿し、「ファイル」アプリでUSB内の <code>Tetheract_Mobile.html</code> を開きます。続けて <strong>「library.db を読み込む」</strong> から <code>cache/library.db</code>（現在 <strong id="mobileDbSizeLabel">- MB</strong>）を選ぶと全写真が表示され、親指で高速選別できます（選別中はUSBを挿したままでOKです）。</span>
             </div>
 
             <div style="background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.25); border-left: 3px solid #f59e0b; border-radius: 4px; padding: 8px 10px;">
@@ -1536,7 +1539,7 @@
 
             <div style="background: rgba(22, 163, 74, 0.08); border: 1px solid rgba(34, 197, 94, 0.25); border-left: 3px solid #22c55e; border-radius: 4px; padding: 8px 10px;">
               <strong>【Step 4】PCにUSBを挿して起動すると自動反映＆通知！</strong><br>
-              <span style="color: var(--text-muted, #94a3b8);">USBをPCに挿して <code>PhotoManager.exe</code> を起動すると、自動的に <code>mobile_sync.json</code> が取り込まれ、画面中央に<strong>「スマホ選別データの取り込み完了」通知ウィンドウ</strong>が表示されます。</span>
+              <span style="color: var(--text-muted, #94a3b8);">USBをPCに挿して <code>Tetheract.exe</code> を起動すると、自動的に <code>mobile_sync.json</code> が取り込まれ、画面中央に<strong>「スマホ選別データの取り込み完了」通知ウィンドウ</strong>が表示されます。</span>
             </div>
           </div>
 
@@ -1676,6 +1679,20 @@
       <div class="modal-body settings-two-pane-body" style="padding: 16px; font-size: 0.88rem;">
         <!-- 左ペイン: 設定 ＆ データベース管理 -->
         <div class="settings-left-pane">
+          <!-- カラーテーマ（外観）設定 -->
+          <div style="background: var(--bg-secondary, rgba(255,255,255,0.04)); border: 1px solid var(--border-soft, rgba(255,255,255,0.1)); border-radius: var(--radius-sm, 4px); padding: 12px; display: flex; flex-direction: column; gap: 8px;">
+            <div>
+              <div style="font-weight: 600; color: var(--text-main, #eceae4);">カラーテーマ（外観）</div>
+              <div style="font-size: 0.76rem; color: var(--text-dim, #64748b); margin-top: 2px;">画面全体の配色テーマを切り替えます（選択すると即座に反映されます）</div>
+            </div>
+            <select id="settingThemeSelect" class="styled-select" style="width: 100%;">
+              <option value="tetheract-d">Tetheract D（ダーク：シャンパン＆モノトーン）</option>
+              <option value="tetheract-l">Tetheract L（ライト：アンバー＆ソフトモノトーン）</option>
+              <option value="sumi">夜墨 / Sumi（ダーク：銀墨 × 朱色）</option>
+              <option value="paper">和紙 / Paper（ライト：生成り和紙 × 朱色）</option>
+            </select>
+          </div>
+
           <!-- 起動時のウィンドウサイズ設定 -->
           <div style="background: var(--bg-secondary, rgba(255,255,255,0.04)); border: 1px solid var(--border-soft, rgba(255,255,255,0.1)); border-radius: var(--radius-sm, 4px); padding: 12px; display: flex; flex-direction: column; gap: 8px;">
             <div>
@@ -2725,23 +2742,23 @@
     </div>
   </div>
 
-  <script src="/js/common.js?v=3.2.1"></script>
-  <script src="/js/selection.js?v=3.2.1"></script>
-  <script src="/js/inspector.js?v=3.2.1"></script>
-  <script src="/js/lightbox.js?v=3.2.1"></script>
-  <script src="/js/adjust.js?v=3.2.1"></script>
-  <script src="/js/histogram.js?v=3.2.1"></script>
-  <script src="/js/compare.js?v=3.2.1"></script>
-  <script src="/js/takeout.js?v=3.2.1"></script>
-  <script src="/js/presets.js?v=3.2.1"></script>
-  <script src="/js/slideshow.js?v=3.2.1"></script>
-  <script src="/js/location_tree.js?v=3.2.1"></script>
-  <script src="/js/folder_tree.js?v=3.2.1"></script>
-  <script src="/js/location_map.js?v=3.2.1"></script>
-  <script src="/js/lab.js?v=3.2.1"></script>
-  <script src="/js/sidebar_filters.js?v=3.2.1"></script>
-  <script src="/js/storage.js?v=3.2.1"></script>
-  <script src="/js/app.js?v=3.2.1"></script>
-  <script src="/js/i18n.js?v=3.2.1"></script>
+  <script src="/js/common.js?v=1.0.0"></script>
+  <script src="/js/selection.js?v=1.0.0"></script>
+  <script src="/js/inspector.js?v=1.0.0"></script>
+  <script src="/js/lightbox.js?v=1.0.0"></script>
+  <script src="/js/adjust.js?v=1.0.0"></script>
+  <script src="/js/histogram.js?v=1.0.0"></script>
+  <script src="/js/compare.js?v=1.0.0"></script>
+  <script src="/js/takeout.js?v=1.0.0"></script>
+  <script src="/js/presets.js?v=1.0.0"></script>
+  <script src="/js/slideshow.js?v=1.0.0"></script>
+  <script src="/js/location_tree.js?v=1.0.0"></script>
+  <script src="/js/folder_tree.js?v=1.0.0"></script>
+  <script src="/js/location_map.js?v=1.0.0"></script>
+  <script src="/js/lab.js?v=1.0.0"></script>
+  <script src="/js/sidebar_filters.js?v=1.0.0"></script>
+  <script src="/js/storage.js?v=1.0.0"></script>
+  <script src="/js/app.js?v=1.0.0"></script>
+  <script src="/js/i18n.js?v=1.0.0"></script>
 </body>
 </html>

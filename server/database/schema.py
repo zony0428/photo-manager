@@ -3,13 +3,27 @@
 テーブル作成、インデックス構築、カラム追加、データ移行を管理する。
 """
 
+import json
 import logging
 import os
+import sqlite3
+from datetime import datetime
+from pathlib import Path
+from . import connection as _conn_mod
 from .connection import get_connection
 from .thumbnails import compute_thumbnail_hash
 from .fingerprint import extract_folder_fingerprint
+from .tags import (
+    _ensure_tag_definitions_table,
+    _ensure_tag_keys_registered,
+    _expand_ancestor_tags,
+    _generate_unique_tag_key,
+    is_color_tag,
+)
 
 logger = logging.getLogger(__name__)
+
+
 def initialize_database() -> None:
     """データベースの初期テーブル構造を作成する"""
     with get_connection() as conn:
@@ -127,15 +141,8 @@ def initialize_database() -> None:
         if "confidence" not in existing_tag_cols:
             cursor.execute("ALTER TABLE photo_tags ADD COLUMN confidence REAL DEFAULT 1.0")
 
-        # タグ定義テーブル（写真にまだ1枚も付与されていない空の親タグ・新規タグをツリー保持するため）
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS tag_definitions (
-                tag TEXT PRIMARY KEY,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-            """
-        )
+        # タグ定義テーブル（写真にまだ1枚も付与されていない空の親タグ・新規タグをツリー保持し、固有キー・ショート名・ピン留めを管理）
+        _ensure_tag_definitions_table(cursor)
 
         # 検索・ソート・重複集計用インデックス（date_taken 単一インデックスを包含し、重複集計を Covering Index 化する複合インデックスに統合）
         cursor.execute("DROP INDEX IF EXISTS idx_photos_date_taken")
@@ -213,7 +220,6 @@ def initialize_database() -> None:
         )
 
         # フィルタプリセット（条件保存）テーブル
-
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS filter_presets (
@@ -277,6 +283,22 @@ def initialize_database() -> None:
             cursor.execute("INSERT INTO migrations (name) VALUES ('rating_to_4tier_v1')")
             conn.commit()
 
+        # --- マイグレーション: 全既存タグへの固有キー(tag_key)付与・プリセット引き継ぎ ---
+        cursor.execute("SELECT 1 FROM migrations WHERE name = 'tag_keys_v1'")
+        if not cursor.fetchone():
+            _migrate_tag_keys_v1(cursor, conn)
+            cursor.execute("INSERT INTO migrations (name) VALUES ('tag_keys_v1')")
+            conn.commit()
+        else:
+            # マイグレーション適用済みでも、外部からの投入等で tag_key が欠落している行があれば常時修復する
+            cursor.execute(
+                "SELECT tag FROM tag_definitions WHERE tag_key IS NULL OR tag_key = ''"
+            )
+            missing_key_rows = [r["tag"] for r in cursor.fetchall()]
+            if missing_key_rows:
+                _ensure_tag_keys_registered(cursor, missing_key_rows)
+                conn.commit()
+
         # 起動時の常時安全パージ: photosテーブルに存在しない孤立サムネイルを確実に削除
         cursor.execute("DELETE FROM thumbnails WHERE photo_id NOT IN (SELECT id FROM photos)")
         conn.commit()
@@ -307,6 +329,199 @@ def initialize_database() -> None:
         # クエリオプティマイザのインデックス統計を最新化
         cursor.execute("PRAGMA optimize")
         conn.commit()
+
+
+def _create_pre_migration_backup(cursor, conn, migration_name: str) -> str:
+    """
+    既存ユーザーデータが存在するDBに対してマイグレーションを実行する前に、
+    SQLite Online Backup API を用いて整合性の取れた事前バックアップを自動作成する。
+    戻り値: 作成したバックアップファイルパス（空DB等でスキップした場合は空文字列）
+    """
+    try:
+        cursor.execute("SELECT COUNT(*) as cnt FROM photos")
+        photo_cnt = cursor.fetchone()["cnt"]
+        cursor.execute("SELECT COUNT(*) as cnt FROM photo_tags")
+        ptag_cnt = cursor.fetchone()["cnt"]
+        cursor.execute("SELECT COUNT(*) as cnt FROM tag_definitions")
+        tdef_cnt = cursor.fetchone()["cnt"]
+        cursor.execute("SELECT COUNT(*) as cnt FROM filter_presets")
+        preset_cnt = cursor.fetchone()["cnt"]
+        if (photo_cnt + ptag_cnt + tdef_cnt + preset_cnt) == 0:
+            return ""
+
+        db_file = ""
+        cursor.execute("PRAGMA database_list")
+        for row in cursor.fetchall():
+            if row["name"] == "main" and row["file"]:
+                db_file = row["file"]
+                break
+        if not db_file:
+            db_file = str(_conn_mod.DB_PATH)
+        if not db_file or not os.path.isfile(db_file):
+            return ""
+
+        db_path_obj = Path(db_file)
+        backup_dir = db_path_obj.parent / "backups"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        ts_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_path = backup_dir / f"library_pre_{migration_name}_{ts_str}.db"
+
+        # 現在のトランザクションを確定してからオンラインバックアップを実行
+        conn.commit()
+        bck_conn = sqlite3.connect(str(backup_path))
+        try:
+            conn.backup(bck_conn)
+        finally:
+            bck_conn.close()
+
+        # 同種バックアップが増えすぎないよう最新5世代を残して古いものを整理
+        existing_backups = sorted(
+            backup_dir.glob(f"library_pre_{migration_name}_*.db"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        for old_bck in existing_backups[5:]:
+            try:
+                old_bck.unlink()
+            except Exception as unlink_err:
+                logger.debug(f"古いバックアップ削除スキップ ({old_bck}): {unlink_err}")
+
+        print(f"[MIGRATE] {migration_name}: 事前安全バックアップを作成しました -> {backup_path}")
+        return str(backup_path)
+    except Exception as e:
+        logger.warning(f"[MIGRATE] {migration_name}: 事前バックアップ作成中に警告が発生しました: {e}")
+        return ""
+
+
+def _migrate_tag_keys_v1(cursor, conn) -> None:
+    """
+    既存環境向けに以下のマイグレーションを安全かつ冪等に実行する:
+    1. 既存データがある場合は SQLite Online Backup API で事前バックアップを自動生成
+    2. photo_tags, tag_definitions, filter_presets に登場する全一般タグ（祖先パス含む）を
+       tag_definitions に登録し、重複のない不変キー(tag_key: tk_<12hex>)を採番
+    3. filter_presets の JSON 内に tagFilterKeys ({tag_key: mode}) をバックフィル保存
+    4. マイグレーション後の整合性（NULL/空文字/重複キーゼロ）を検証
+    """
+    _create_pre_migration_backup(cursor, conn, "tag_keys_v1")
+    _ensure_tag_definitions_table(cursor)
+
+    # 1. 全テーブルから既存タグ名を収集（カラーラベルは除外、階層タグは全祖先ノードを展開）
+    all_tags = set()
+
+    cursor.execute("SELECT DISTINCT tag FROM photo_tags WHERE tag IS NOT NULL AND COALESCE(source, 'manual') != 'ai'")
+    for r in cursor.fetchall():
+        t = (r["tag"] or "").strip()
+        if t and not is_color_tag(t):
+            for anc in _expand_ancestor_tags(t):
+                if not is_color_tag(anc):
+                    all_tags.add(anc)
+
+    cursor.execute("SELECT tag FROM tag_definitions WHERE tag IS NOT NULL")
+    for r in cursor.fetchall():
+        t = (r["tag"] or "").strip()
+        if t and not is_color_tag(t):
+            for anc in _expand_ancestor_tags(t):
+                if not is_color_tag(anc):
+                    all_tags.add(anc)
+
+    cursor.execute("SELECT id, filters FROM filter_presets")
+    preset_rows = cursor.fetchall()
+    for pr in preset_rows:
+        raw_filters = pr["filters"]
+        if not raw_filters:
+            continue
+        try:
+            f_obj = json.loads(raw_filters) if isinstance(raw_filters, str) else raw_filters
+        except Exception as e:
+            logger.warning(f"[MIGRATE] filter_presets(id={pr['id']}) JSON解析スキップ: {e}")
+            continue
+        if isinstance(f_obj, dict):
+            tf = f_obj.get("tagFilters")
+            if isinstance(tf, dict):
+                for t_name in tf.keys():
+                    t_clean = (t_name or "").strip()
+                    if t_clean and not is_color_tag(t_clean):
+                        for anc in _expand_ancestor_tags(t_clean):
+                            if not is_color_tag(anc):
+                                all_tags.add(anc)
+
+    # 2. 全タグを tag_definitions に登録し、未付与のものに固有キー(tag_key)を発行
+    if all_tags:
+        _ensure_tag_keys_registered(cursor, sorted(all_tags))
+
+    # 念のため tag_definitions 内で tag_key が NULL または空文字のレコードを全て解消
+    cursor.execute("SELECT tag FROM tag_definitions WHERE tag_key IS NULL OR tag_key = ''")
+    remaining = [r["tag"] for r in cursor.fetchall()]
+    if remaining:
+        _ensure_tag_keys_registered(cursor, remaining)
+
+    # 万が一 tag_key の重複が存在した場合の自己修復
+    cursor.execute(
+        """
+        SELECT tag_key FROM tag_definitions
+        WHERE tag_key IS NOT NULL AND tag_key != ''
+        GROUP BY tag_key HAVING COUNT(*) > 1
+        """
+    )
+    dup_keys = [r["tag_key"] for r in cursor.fetchall()]
+    for d_key in dup_keys:
+        cursor.execute(
+            "SELECT tag FROM tag_definitions WHERE tag_key = ? ORDER BY created_at ASC, tag ASC",
+            (d_key,),
+        )
+        dup_tags = [r["tag"] for r in cursor.fetchall()]
+        # 先頭1件以外の重複レコードに新しいユニークキーを再採番
+        for dup_tag in dup_tags[1:]:
+            new_key = _generate_unique_tag_key(cursor)
+            cursor.execute(
+                "UPDATE tag_definitions SET tag_key = ? WHERE tag = ?",
+                (new_key, dup_tag),
+            )
+
+    # 3. filter_presets の JSON に tagFilterKeys をバックフィル
+    cursor.execute("SELECT tag, tag_key FROM tag_definitions WHERE tag_key IS NOT NULL AND tag_key != ''")
+    tag_to_key = {r["tag"]: r["tag_key"] for r in cursor.fetchall()}
+
+    updated_presets = 0
+    for pr in preset_rows:
+        preset_id = pr["id"]
+        raw_filters = pr["filters"]
+        if not raw_filters:
+            continue
+        try:
+            f_obj = json.loads(raw_filters) if isinstance(raw_filters, str) else dict(raw_filters)
+        except Exception:
+            continue
+        if not isinstance(f_obj, dict):
+            continue
+        tf = f_obj.get("tagFilters")
+        if not isinstance(tf, dict) or not tf:
+            continue
+
+        existing_tf_keys = f_obj.get("tagFilterKeys")
+        new_tf_keys = dict(existing_tf_keys) if isinstance(existing_tf_keys, dict) else {}
+        changed = False
+        for t_name, mode in tf.items():
+            if is_color_tag(t_name):
+                continue
+            t_key = tag_to_key.get(t_name)
+            if t_key and new_tf_keys.get(t_key) != mode:
+                new_tf_keys[t_key] = mode
+                changed = True
+        if changed:
+            f_obj["tagFilterKeys"] = new_tf_keys
+            cursor.execute(
+                "UPDATE filter_presets SET filters = ? WHERE id = ?",
+                (json.dumps(f_obj, ensure_ascii=False), preset_id),
+            )
+            updated_presets += 1
+
+    cursor.execute("SELECT COUNT(*) as cnt FROM tag_definitions WHERE tag_key IS NOT NULL AND tag_key != ''")
+    total_keyed = cursor.fetchone()["cnt"]
+    print(
+        f"[MIGRATE] tag_keys_v1: タグ定義 {total_keyed} 件に固有キー(tag_key)を付与・検証し、"
+        f"プリセット {updated_presets} 件を更新しました"
+    )
 
 
 def _migrate_fix_mismatched_thumbnails(cursor) -> None:
@@ -381,7 +596,6 @@ def _migrate_sanitize_camera_models(cursor) -> None:
         print(f"[MIGRATE] sanitize_camera_models: {cleaned_count} 件のカメラ機種名からNUL文字を除去しました")
 
 
-
 def _migrate_rating_to_4tier(cursor) -> None:
     """
     5段階星評価（0～5）を4段階評価（棄/可/良/優）に変換するマイグレーション。
@@ -405,4 +619,3 @@ def _migrate_rating_to_4tier(cursor) -> None:
     normal_count = cursor.rowcount
 
     print(f"[MIGRATE] rating_to_4tier: 優={excellent_count}, 良={good_count}, 可(1,2→0)={normal_count} 件を変換しました")
-

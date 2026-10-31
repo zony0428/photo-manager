@@ -903,7 +903,7 @@
 .card-rating-bar-btn[data-rating="1"].active,
 [data-theme="paper"] .card-rating-bar-btn[data-rating="1"]:hover,
 [data-theme="paper"] .card-rating-bar-btn[data-rating="1"].active {
-  background: rgba(225, 77, 42, 0.2);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.2);
   border-color: #e14d2a;
   color: #9a3412;
 }
@@ -946,7 +946,7 @@
 
 [data-theme="sumi"] .card-rating-bar-btn[data-rating="1"]:hover,
 [data-theme="sumi"] .card-rating-bar-btn[data-rating="1"].active {
-  background: rgba(225, 77, 42, 0.25);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.25);
   border-color: #ff6b4a;
   color: #ff8566;
 }
@@ -1976,7 +1976,7 @@
 
 .rating-btn-good:hover,
 .rating-btn-good.active {
-  background: rgba(225, 77, 42, 0.2);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.2);
   border-color: var(--rating-good);
 }
 

@@ -37,13 +37,14 @@ from .database import (
     remove_ignored_folder,
     get_ignored_folders,
     add_tag_to_photo,
-
     remove_tag_from_photo,
     get_all_tags_summary,
     get_untagged_count,
     get_total_photos_count,
     delete_tag,
     rename_tag,
+    resolve_tag_by_key_or_name,
+    update_tag_metadata,
     batch_add_tag,
     batch_remove_tag,
     batch_update_rating,
@@ -229,7 +230,7 @@ def _fast_json(obj: Any) -> Response:
 
 
 # アプリ初期化
-app = FastAPI(title="Photo Manager (Hinomaru Ink)", version=__version__, lifespan=lifespan)
+app = FastAPI(title="Tetheract Photo Manager", version=__version__, lifespan=lifespan)
 
 # ローカル・プライベートLANオリジン判定用正規表現
 _ALLOWED_ORIGIN_RE = re.compile(
@@ -415,6 +416,16 @@ class RefreshThumbnailsRequest(BaseModel):
 
 class TagRequest(BaseModel):
     tag: str
+    tag_key: Optional[str] = None
+    short_name: Optional[str] = None
+    is_pinned: Optional[bool] = None
+
+
+class UpdateTagMetaRequest(BaseModel):
+    tag: Optional[str] = None
+    tag_key: Optional[str] = None
+    short_name: Optional[str] = None
+    is_pinned: Optional[bool] = None
 
 
 class CreateImportFolderRequest(BaseModel):
@@ -918,12 +929,37 @@ class RenameTagRequest(BaseModel):
 def api_create_tag_definition(req: TagRequest):
     """写真未付与のまま新規タグ（親フォルダタグ等）をタグツリー定義に登録する"""
     from .database import create_tag_definition
-    success = create_tag_definition(req.tag)
+    success = create_tag_definition(
+        req.tag,
+        short_name=req.short_name,
+        is_pinned=bool(req.is_pinned),
+    )
     if not success:
         raise HTTPException(status_code=400, detail="タグ名が空です")
     return _fast_json({
         "status": "ok",
         "tag": req.tag.strip().strip("/"),
+        "tags": get_all_tags_summary(),
+        "untagged_count": get_untagged_count(),
+        "total_count": get_total_photos_count(),
+    })
+
+
+@app.put("/api/tags-meta")
+def api_update_tag_meta(req: UpdateTagMetaRequest):
+    """タグのメタデータ（スマホ用ショート名 short_name・ピン留め is_pinned）を更新する"""
+    try:
+        updated = update_tag_metadata(
+            tag=req.tag or "",
+            tag_key=req.tag_key,
+            short_name=req.short_name,
+            is_pinned=req.is_pinned,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return _fast_json({
+        "status": "ok",
+        "tag_meta": updated,
         "tags": get_all_tags_summary(),
         "untagged_count": get_untagged_count(),
         "total_count": get_total_photos_count(),
@@ -950,9 +986,16 @@ def api_rename_tag(tag: str, req: RenameTagRequest):
 
 @app.post("/api/photo/{photo_id}/tags")
 def api_add_tag(photo_id: int, req: TagRequest):
-    """写真にタグを追加する"""
-    success = add_tag_to_photo(photo_id, req.tag)
-    return {"status": "ok", "photo_id": photo_id, "tag": req.tag, "success": success}
+    """写真にタグを追加する（tag_key が指定されている場合は最新パスへ解決）"""
+    target_tag = req.tag
+    if req.tag_key:
+        from .database.connection import get_connection
+        with get_connection() as conn:
+            resolved = resolve_tag_by_key_or_name(conn.cursor(), req.tag_key, req.tag)
+            if resolved:
+                target_tag = resolved
+    success = add_tag_to_photo(photo_id, target_tag)
+    return {"status": "ok", "photo_id": photo_id, "tag": target_tag, "success": success}
 
 
 @app.delete("/api/photo/{photo_id}/tags/{tag:path}")
@@ -965,6 +1008,7 @@ def api_remove_tag(photo_id: int, tag: str):
 class BatchTagRequest(BaseModel):
     photo_ids: List[int]
     tag: str
+    tag_key: Optional[str] = None
     action: str = "add"  # "add" または "remove"
 
 
@@ -976,11 +1020,18 @@ class BatchRateRequest(BaseModel):
 @app.post("/api/photos/batch-tags")
 def api_batch_tags(req: BatchTagRequest):
     """複数の写真に一括でタグを追加または削除する（マルチ選択用）"""
+    target_tag = req.tag
+    if req.tag_key:
+        from .database.connection import get_connection
+        with get_connection() as conn:
+            resolved = resolve_tag_by_key_or_name(conn.cursor(), req.tag_key, req.tag)
+            if resolved:
+                target_tag = resolved
     if req.action == "remove":
-        affected = batch_remove_tag(req.photo_ids, req.tag)
+        affected = batch_remove_tag(req.photo_ids, target_tag)
     else:
-        affected = batch_add_tag(req.photo_ids, req.tag)
-    return {"status": "ok", "affected": affected, "tag": req.tag, "action": req.action}
+        affected = batch_add_tag(req.photo_ids, target_tag)
+    return {"status": "ok", "affected": affected, "tag": target_tag, "action": req.action}
 
 
 @app.post("/api/photos/batch-rate")
@@ -2806,6 +2857,8 @@ class MobileSyncChangeItem(BaseModel):
     rating: Optional[int] = None
     add_tags: Optional[List[str]] = None
     remove_tags: Optional[List[str]] = None
+    add_tag_keys: Optional[Any] = None
+    remove_tag_keys: Optional[Any] = None
 
 
 class MobileSyncImportRequest(BaseModel):
@@ -3057,21 +3110,79 @@ def _apply_mobile_sync_changes(
                 update_rating(target_id, r_int)
                 applied_rating = r_int
 
-            # タグ削除（最大50件まで、サニタイズ済み文字列のみ）
-            removed_tags: List[str] = []
-            for r_tag in (item.get("remove_tags") or [])[:50]:
-                clean_r_tag = _sanitize_mobile_tag(r_tag)
-                if clean_r_tag:
-                    remove_tag_from_photo(target_id, clean_r_tag)
-                    removed_tags.append(clean_r_tag)
+            def _resolve_mobile_tags_list(raw_tags_val: Any, raw_keys_val: Any) -> List[str]:
+                resolved_list: List[str] = []
+                seen = set()
 
-            # タグ追加（最大50件まで、サニタイズ済み文字列のみ）
-            added_tags: List[str] = []
-            for a_tag in (item.get("add_tags") or [])[:50]:
-                clean_a_tag = _sanitize_mobile_tag(a_tag)
-                if clean_a_tag:
-                    add_tag_to_photo(target_id, clean_a_tag)
-                    added_tags.append(clean_a_tag)
+                def _push(t_str: str) -> None:
+                    c = _sanitize_mobile_tag(t_str)
+                    if c and c not in seen:
+                        seen.add(c)
+                        resolved_list.append(c)
+
+                raw_tags_seq = list(raw_tags_val)[:50] if isinstance(raw_tags_val, list) else []
+                if isinstance(raw_keys_val, dict):
+                    # {"tk_xxx": "旧タグ名", ...} 形式
+                    covered_fallbacks = set()
+                    for k_str, fb_name in list(raw_keys_val.items())[:50]:
+                        clean_k = _sanitize_mobile_tag(k_str)
+                        clean_fb = _sanitize_mobile_tag(fb_name)
+                        if clean_fb:
+                            covered_fallbacks.add(clean_fb)
+                        resolved_name = resolve_tag_by_key_or_name(cursor, clean_k, clean_fb)
+                        if resolved_name:
+                            _push(resolved_name)
+                    for rt in raw_tags_seq:
+                        clean_rt = _sanitize_mobile_tag(rt)
+                        if clean_rt and clean_rt not in covered_fallbacks:
+                            resolved_name = resolve_tag_by_key_or_name(
+                                cursor,
+                                clean_rt if clean_rt.startswith("tk_") else None,
+                                clean_rt,
+                            )
+                            _push(resolved_name)
+                elif isinstance(raw_keys_val, list) and raw_keys_val:
+                    keys_seq = list(raw_keys_val)[:50]
+                    max_len = max(len(raw_tags_seq), len(keys_seq))
+                    for idx in range(max_len):
+                        k_item = keys_seq[idx] if idx < len(keys_seq) else None
+                        t_item = raw_tags_seq[idx] if idx < len(raw_tags_seq) else None
+                        if isinstance(k_item, dict):
+                            clean_k = _sanitize_mobile_tag(k_item.get("tag_key") or k_item.get("key"))
+                            clean_fb = _sanitize_mobile_tag(k_item.get("tag") or t_item)
+                        else:
+                            clean_k = _sanitize_mobile_tag(k_item)
+                            clean_fb = _sanitize_mobile_tag(t_item)
+                        resolved_name = resolve_tag_by_key_or_name(cursor, clean_k, clean_fb)
+                        if resolved_name:
+                            _push(resolved_name)
+                else:
+                    for rt in raw_tags_seq:
+                        clean_rt = _sanitize_mobile_tag(rt)
+                        if clean_rt:
+                            resolved_name = resolve_tag_by_key_or_name(
+                                cursor,
+                                clean_rt if clean_rt.startswith("tk_") else None,
+                                clean_rt,
+                            )
+                            _push(resolved_name)
+                return resolved_list
+
+            # タグ削除（tag_key があればPC側の最新リネーム後パスへ解決して削除）
+            removed_tags: List[str] = _resolve_mobile_tags_list(
+                item.get("remove_tags"),
+                item.get("remove_tag_keys"),
+            )
+            for clean_r_tag in removed_tags:
+                remove_tag_from_photo(target_id, clean_r_tag)
+
+            # タグ追加（tag_key があればPC側の最新リネーム後パスへ解決して追加）
+            added_tags: List[str] = _resolve_mobile_tags_list(
+                item.get("add_tags"),
+                item.get("add_tag_keys"),
+            )
+            for clean_a_tag in added_tags:
+                add_tag_to_photo(target_id, clean_a_tag)
 
             applied_count += 1
             if len(applied_items) < 50:

@@ -16,6 +16,11 @@
   --text-dim: #7a766e;
 
   --accent-primary: #e14d2a;
+  --logo-outer: #2a2926;
+  --logo-inner: #2a2926;
+  --logo-tether: #b46e28;
+  --logo-text: #2a2926;
+  --logo-pm: #a55f1e;
   --accent-subtle: rgba(225, 77, 42, 0.14);
 
   --rating-excellent: #c9930a;
@@ -29,6 +34,11 @@
 
 [data-theme="sumi"] {
   --bg-primary: #16181b;
+  --logo-outer: #f2d5b2;
+  --logo-inner: #f0f2f5;
+  --logo-tether: #b48a5c;
+  --logo-text: #f0f2f5;
+  --logo-pm: #d4a373;
   --bg-secondary: #1e2126;
   --bg-tertiary: #262a31;
   --bg-card: #1b1e23;
@@ -131,6 +141,19 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.m-logo-icon {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  display: block;
+}
+
+.m-brand-wordmark {
+  height: 15px;
+  width: auto;
+  display: block;
 }
 
 .m-hinomaru-disc {

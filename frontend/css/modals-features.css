@@ -1469,7 +1469,7 @@ body.theme-dark .multi-meta-item:hover {
 
 .multi-meta-item.active {
   border-left: 3px solid var(--accent-primary, #e14d2a);
-  background: rgba(225, 77, 42, 0.08);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.08);
   font-weight: 600;
   cursor: default;
 }
@@ -1771,7 +1771,7 @@ body.theme-dark .card-thumb-wrapper .thumb-corner-cut {
   font-weight: 700;
   line-height: 1.2;
   color: #ffffff;
-  background: rgba(225, 77, 42, 0.9);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.9);
   border: 1px solid rgba(255, 255, 255, 0.35);
   border-radius: 999px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
@@ -1943,7 +1943,7 @@ body.theme-dark .card-thumb-wrapper .thumb-corner-cut {
 }
 
 .adjust-step-btn:hover {
-  background: rgba(225, 77, 42, 0.22);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.22);
   border-color: var(--accent-primary, #e14d2a);
   color: #ffffff;
 }
@@ -1959,7 +1959,7 @@ body.theme-dark .card-thumb-wrapper .thumb-corner-cut {
 }
 
 [data-theme="paper"] .adjust-step-btn:hover {
-  background: rgba(225, 77, 42, 0.15);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.15);
   border-color: var(--accent-primary, #e14d2a);
   color: var(--accent-primary, #e14d2a);
 }
@@ -2116,8 +2116,8 @@ body.theme-dark .card-thumb-wrapper .thumb-corner-cut {
   align-items: center;
   gap: 14px;
   padding: 10px 16px;
-  background: var(--accent-subtle, rgba(225, 77, 42, 0.08));
-  border: 1px solid rgba(225, 77, 42, 0.3);
+  background: var(--accent-subtle, rgba(var(--accent-rgb, 225, 77, 42), 0.08));
+  border: 1px solid rgba(var(--accent-rgb, 225, 77, 42), 0.3);
   border-radius: var(--radius-md, 4px);
 }
 
@@ -2296,7 +2296,7 @@ body.theme-dark .card-thumb-wrapper .thumb-corner-cut {
 
 /* Exif消去セクション */
 .takeout-exif-section {
-  border-color: rgba(225, 77, 42, 0.25);
+  border-color: rgba(var(--accent-rgb, 225, 77, 42), 0.25);
 }
 
 .takeout-divider-sub {
@@ -2364,7 +2364,7 @@ body.theme-dark .card-thumb-wrapper .thumb-corner-cut {
 }
 
 .smart-takeout-trigger-action:hover {
-  background: rgba(225, 77, 42, 0.22) !important;
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.22) !important;
   border-color: var(--accent-primary, #e14d2a) !important;
   transform: translateY(-1px);
 }
@@ -2375,8 +2375,8 @@ body.theme-dark .card-thumb-wrapper .thumb-corner-cut {
   flex-direction: column;
   gap: 6px;
   padding: 10px 14px;
-  background: var(--accent-subtle, rgba(225, 77, 42, 0.08));
-  border: 1px solid rgba(225, 77, 42, 0.25);
+  background: var(--accent-subtle, rgba(var(--accent-rgb, 225, 77, 42), 0.08));
+  border: 1px solid rgba(var(--accent-rgb, 225, 77, 42), 0.25);
   border-radius: var(--radius-md, 4px);
 }
 
@@ -2445,10 +2445,10 @@ body.theme-dark .card-thumb-wrapper .thumb-corner-cut {
 }
 
 .folder-tree-item.is-storage-folder.drag-over-storage {
-  background: rgba(225, 77, 42, 0.22) !important;
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.22) !important;
   outline: 1.5px dashed var(--accent-primary, #e14d2a);
   outline-offset: -1px;
-  box-shadow: 0 0 0 2px rgba(225, 77, 42, 0.18);
+  box-shadow: 0 0 0 2px rgba(var(--accent-rgb, 225, 77, 42), 0.18);
 }
 
 /* ドラッグ中の写真カード */
@@ -2479,7 +2479,7 @@ body.theme-dark .card-thumb-wrapper .thumb-corner-cut {
 }
 
 .btn-inline-rename:hover {
-  background: rgba(225, 77, 42, 0.16);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.16);
   border-color: var(--accent-primary, #e14d2a);
 }
 
@@ -2533,7 +2533,7 @@ body.theme-dark .card-thumb-wrapper .thumb-corner-cut {
 
 .storage-rename-stem-input:focus {
   border-color: var(--accent-primary, #e14d2a);
-  box-shadow: 0 0 0 2px rgba(225, 77, 42, 0.2);
+  box-shadow: 0 0 0 2px rgba(var(--accent-rgb, 225, 77, 42), 0.2);
 }
 
 .storage-rename-ext-badge {
@@ -2571,8 +2571,8 @@ body.theme-dark .card-thumb-wrapper .thumb-corner-cut {
 }
 
 .storage-rename-rule-option:hover {
-  border-color: rgba(225, 77, 42, 0.45);
-  background: rgba(225, 77, 42, 0.06);
+  border-color: rgba(var(--accent-rgb, 225, 77, 42), 0.45);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.06);
 }
 
 .storage-rename-rule-option input[type="radio"] {
@@ -2867,12 +2867,12 @@ body.theme-dark .card-thumb-wrapper .thumb-corner-cut {
 .settings-tag-root-dropzone.drop-eligible {
   border-color: var(--accent-primary, #e14d2a);
   color: var(--text-main, #eceae4);
-  background: rgba(225, 77, 42, 0.08);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.08);
 }
 
 .settings-tag-root-dropzone.drag-over {
   border-color: var(--accent-primary, #e14d2a);
-  background: rgba(225, 77, 42, 0.22);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.22);
   color: #ffffff;
   transform: scale(1.01);
 }
@@ -2905,7 +2905,7 @@ body.theme-dark .card-thumb-wrapper .thumb-corner-cut {
 }
 
 .settings-tag-tree-item.drag-over {
-  background: rgba(225, 77, 42, 0.18) !important;
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.18) !important;
   border-color: var(--accent-primary, #e14d2a) !important;
 }
 
@@ -3025,7 +3025,7 @@ body.theme-dark .card-thumb-wrapper .thumb-corner-cut {
 .date-shift-preset-btn:hover {
   border-color: var(--accent-primary, #e14d2a);
   color: var(--accent-primary, #e14d2a);
-  background: var(--accent-subtle, rgba(225, 77, 42, 0.12));
+  background: var(--accent-subtle, rgba(var(--accent-rgb, 225, 77, 42), 0.12));
 }
 
 .date-shift-preset-btn.active {
