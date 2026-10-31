@@ -13,8 +13,8 @@
 ## v1.0.0 (2026-10-31)
 
 ### ブランド刷新・新機能・UI / UX 改善 (Rebrand, Features & UI/UX Improvements)
-- **ブランド刷新：`Tetheract Photo Manager`（`回TETHERACT pm`）＆ `v1.0.0` リリース**:
-  正式名称を `Tetheract Photo Manager` へ刷新し、白銀比（シルバーレシオ）を取り入れた4次元超立方体（テサラクト）アイコン＆ロゴロックアップを採用。ランチャーを `Tetheract.exe`、単体モバイルHTMLを `Tetheract_Mobile.html` に変更し、上書きアップデート時に旧ファイルを自動整理する処理を実装。
+- **ブランド刷新：`Tetheract Photo Manager`（テザラクト / `回TETHERACT pm`）＆ `v1.0.0` リリース**:
+  映画『インターステラー』に登場する4次元超立方体「テサラクト（Tesseract）」にインスパイアされ、時間や場所を超えて写真の記憶を繋ぎ止める（Tether）という意味を込めて「テサラクト ⇒ **テザラクト（Tetheract）**」と命名し、正式名称を `Tetheract Photo Manager` へ刷新。白銀比（シルバーレシオ）を取り入れたアイコン＆ロゴロックアップを採用し、ランチャーを `Tetheract.exe`、単体モバイルHTMLを `Tetheract_Mobile.html` に変更（上書きアップデート時に旧ファイルを自動整理）。
 - **新カラースキーム `Tetheract D` / `Tetheract L` を含む4プリセットテーマ切替**:
   目に優しいウォームモノトーン×シャンパンブロンズの `Tetheract D`（ダーク）と、その反転パターンであるシルキーストーン×アンバーブロンズの `Tetheract L`（ライト）を新設。従来の `夜墨`・`和紙` とあわせて設定モーダルから4種類を即時切り替え可能。
 - **タグ内部キー化（`tag_key`）＆ 省略名（`short_name`）・お気に入りピン留め（`is_pinned`）**:

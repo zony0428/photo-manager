@@ -18,10 +18,11 @@
 
 ## 日本語 (Japanese)
 
-### 1. ブランド刷新：`Tetheract Photo Manager`（`回TETHERACT pm`）＆ `v1.0.0` リリース
-- **新ブランド＆白銀比（シルバーレシオ）テサラクトロゴ・アイコン**:
-  - 正式名称を **`Tetheract Photo Manager`**（ロゴ表記：`回TETHERACT pm`）へ刷新し、バージョンを **`v1.0.0`** として再出発しました。
-  - 外枠と内枠の比率・文字高・配置すべてに白銀比（$1:\sqrt{2}$ / $1:1+\sqrt{2}$）を取り入れた4次元超立方体（テサラクト）アイコン＆ロゴロックアップを採用。
+### 1. ブランド刷新：`Tetheract Photo Manager`（テザラクト / `回TETHERACT pm`）＆ `v1.0.0` リリース
+- **新ブランド「テザラクト（Tetheract）」の由来と白銀比（シルバーレシオ）ロゴ・アイコン**:
+  - 旧称「Photo Manager」（〜v3.x）から、正式名称を **`Tetheract Photo Manager`（テザラクト・フォトマネージャー / ロゴ表記：`回TETHERACT pm`）** へ刷新し、バージョンを **`v1.0.0`** として再出発しました。
+  - 映画『インターステラー』に登場する4次元超立方体「テサラクト（Tesseract）」にインスパイアされ、時間や保存場所を超えて写真の記憶を繋ぎ止める（Tether）という意味を込めて **「テサラクト ⇒ テザラクト（Tetheract）」** と命名しています。
+  - 外枠と内枠の比率・文字高・配置すべてに日本人の美意識に馴染む白銀比（$1:\sqrt{2}$ / $1:1+\sqrt{2}$）を取り入れた「テザラクト」アイコン＆ロゴロックアップを採用。
   - ランチャーを **`Tetheract.exe`**、単体モバイルHTMLを **`Tetheract_Mobile.html`** に変更し、上書きアップデート時に旧ファイルを自動整理するマイグレーション処理を搭載。
 
 ### 2. 新カラースキーム `Tetheract D` / `Tetheract L` ＆ 4プリセット切替
@@ -49,8 +50,8 @@
 ## English
 
 ### 1. Rebrand to `Tetheract Photo Manager` (`回TETHERACT pm`) & `v1.0.0` Release
-- **Silver-Ratio Tesseract Icon & Logo Lockup**:
-  - Rebranded as **`Tetheract Photo Manager`** (`v1.0.0`) with a new 4D hypercube (Tesseract) icon and condensed logo lockup designed around the Japanese Silver Ratio ($1:\sqrt{2}$ and $1:1+\sqrt{2}$).
+- **Origin of "Tetheract" & Silver-Ratio Icon / Logo Lockup**:
+  - Rebranded from *Photo Manager* (up to v3.x) to **`Tetheract Photo Manager`** (`v1.0.0`). Inspired by the 4D hypercube (**Tesseract**) in *Interstellar* combined with **Tether** (linking memories across time and storage: **Tesseract ⇒ Tetheract**), featuring a new icon and condensed logo lockup designed around the Silver Ratio ($1:\sqrt{2}$ and $1:1+\sqrt{2}$).
   - Renamed the native launcher to **`Tetheract.exe`** and standalone mobile viewer to **`Tetheract_Mobile.html`**, with automatic cleanup of legacy `PhotoManager.exe` / `PhotoManager_Mobile.html` on startup.
 
 ### 2. New `Tetheract D` & `Tetheract L` Champagne Monotone Themes (4 Presets)

@@ -1,6 +1,10 @@
-# Tetheract Photo Manager
+# Tetheract Photo Manager（テザラクト・フォトマネージャー）
 
 日本語 | [English](README_EN.md)
+
+> **📢 名称変更のお知らせ（旧称：Photo Manager）**  
+> 本ソフトウェアは v3.x までの **「Photo Manager」** から、正式名称 **「Tetheract Photo Manager（テザラクト・フォトマネージャー）」**（v1.0.0〜）へ名称を改めました。  
+> 映画『インターステラー』に登場する4次元超立方体「テサラクト（Tesseract）」にインスパイアされ、時間や場所を超えて写真の記憶を繋ぎ止める（Tether）という意味を込めて **「テサラクト ⇒ テザラクト（Tetheract）」** と名付けています。既存のデータベース（`cache/`）や写真は上書きアップデートでそのまま引き継げます。
 
 Picasa や Tiat に着想を得た、Windows 向けのローカル写真ビューア・選別（セレクト）ツールです。  
 JPEG / PNG / WebP / HEIC や各社カメラの RAW データを、元のファイルやフォルダ構造を1バイトも変更することなく、軽快に閲覧・比較・整理できます。

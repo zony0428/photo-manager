@@ -2,6 +2,10 @@
 
 [日本語](README.md) | English
 
+> **📢 Rebranding Notice (Formerly: Photo Manager)**  
+> Starting with `v1.0.0`, **Photo Manager** (up to v3.x) has been officially renamed to **Tetheract Photo Manager**.  
+> Inspired by the 4D hypercube (**Tesseract**) in the film *Interstellar*—where moments across time and space are connected—combined with **Tether** (to link and preserve your memories across drives and locations): **Tesseract ⇒ Tetheract**. Existing databases (`cache/`) and photos carry over seamlessly when updating.
+
 A local, non-destructive photo viewer and culling tool for Windows, inspired by Picasa and Tiat.  
 Browse, compare, and organize large collections of photos (JPEG, PNG, WebP, HEIC, and RAW files from major camera brands) smoothly, without modifying a single byte of your original files or folder structure.
 
