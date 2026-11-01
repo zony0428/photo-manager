@@ -10,7 +10,7 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
@@ -32,14 +32,35 @@ logger = logging.getLogger("preload_thumbnails")
 _preload_lock = threading.Lock()
 
 
-def _process_single_thumbnail(photo_id: int, file_path_str: str) -> Optional[Tuple[int, bytes, int, int, str]]:
-    """単一の写真のパス解決・サムネイル生成・ハッシュ計算を行う（ワーカースレッド用）"""
+def _process_single_thumbnail(row: Dict[str, Any]) -> Optional[Tuple[int, bytes, int, int, str]]:
+    """単一の写真のパス解決・サムネイル生成（非破壊調整反映）・ハッシュ計算を行う（ワーカースレッド用）"""
+    photo_id = row["id"]
+    file_path_str = row["file_path"]
     try:
         target_path, is_online = resolve_portable_path(file_path_str)
         if not is_online or not target_path.exists():
             return None
 
-        res = render_thumbnail_webp(target_path, max_size=360, allow_cloud_download=False)
+        crop_box = None
+        if row.get("crop_w") and row.get("crop_h"):
+            crop_box = (
+                row.get("crop_x") or 0.0,
+                row.get("crop_y") or 0.0,
+                row["crop_w"],
+                row["crop_h"],
+            )
+
+        res = render_thumbnail_webp(
+            target_path,
+            max_size=360,
+            allow_cloud_download=False,
+            rotation=row.get("rotation") or 0,
+            fine_angle=row.get("fine_angle") or 0.0,
+            crop_box=crop_box,
+            brightness=row.get("brightness") or 0,
+            contrast=row.get("contrast") or 0,
+            saturation=row.get("saturation") or 0,
+        )
         if res is None:
             return None
 
@@ -66,9 +87,11 @@ def preload_all_thumbnails(batch_size: int = 50):
         start_time = time.time()
         with get_connection() as conn:
             cursor = conn.cursor()
-            # 未生成の写真を抽出
+            # 未生成の写真を抽出（非破壊調整値も含める）
             cursor.execute("""
-                SELECT p.id, p.file_path, p.file_name, p.file_size, p.date_taken, p.is_raw
+                SELECT p.id, p.file_path, p.file_name, p.file_size, p.date_taken, p.original_date_taken, p.is_raw,
+                       p.rotation, p.fine_angle, p.crop_x, p.crop_y, p.crop_w, p.crop_h,
+                       p.brightness, p.contrast, p.saturation
                 FROM photos p
                 LEFT JOIN thumbnails t ON p.id = t.photo_id
                 WHERE t.photo_id IS NULL
@@ -112,11 +135,12 @@ def preload_all_thumbnails(batch_size: int = 50):
             print("未生成のサムネイルはすべて重複再利用で完了しました。", flush=True)
             return
 
+        batch: List[Tuple[int, bytes, int, int, str]] = []
         max_workers = min(4, os.cpu_count() or 2)
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             # 処理済み future を都度破棄し、生成済みWebPバイナリを保持し続けないようにする（メモリ肥大防止）
             futures = {
-                executor.submit(_process_single_thumbnail, row["id"], row["file_path"])
+                executor.submit(_process_single_thumbnail, row)
                 for row in pending
             }
 

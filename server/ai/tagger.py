@@ -58,19 +58,27 @@ class AITagger:
 
     @staticmethod
     def _resolve_embeddings_path() -> Optional[Path]:
-        """タグ埋め込みJSONファイルのパスを解決し、必要に応じてmodels側に復元する"""
+        """タグ埋め込みJSONファイルのパスを解決し、必要に応じてmodels側に復元・最新同期する"""
+        if TAG_EMBEDDINGS_FALLBACK_PATH.exists():
+            need_sync = not TAG_EMBEDDINGS_PATH.exists()
+            if not need_sync:
+                try:
+                    if TAG_EMBEDDINGS_PATH.stat().st_size != TAG_EMBEDDINGS_FALLBACK_PATH.stat().st_size:
+                        need_sync = True
+                except Exception as e:
+                    logger.warning(f"Failed to compare embeddings file sizes: {e}")
+            if need_sync:
+                try:
+                    MODEL_DIR.mkdir(parents=True, exist_ok=True)
+                    import shutil
+                    shutil.copyfile(TAG_EMBEDDINGS_FALLBACK_PATH, TAG_EMBEDDINGS_PATH)
+                    logger.info(f"Synced tags_embeddings.json to {TAG_EMBEDDINGS_PATH}")
+                    return TAG_EMBEDDINGS_PATH
+                except Exception as e:
+                    logger.warning(f"Could not sync embeddings file to models dir: {e}")
+                    return TAG_EMBEDDINGS_FALLBACK_PATH
         if TAG_EMBEDDINGS_PATH.exists():
             return TAG_EMBEDDINGS_PATH
-        if TAG_EMBEDDINGS_FALLBACK_PATH.exists():
-            try:
-                MODEL_DIR.mkdir(parents=True, exist_ok=True)
-                import shutil
-                shutil.copyfile(TAG_EMBEDDINGS_FALLBACK_PATH, TAG_EMBEDDINGS_PATH)
-                logger.info(f"Restored tags_embeddings.json to {TAG_EMBEDDINGS_PATH}")
-                return TAG_EMBEDDINGS_PATH
-            except Exception as e:
-                logger.warning(f"Could not copy embeddings file to models dir: {e}")
-                return TAG_EMBEDDINGS_FALLBACK_PATH
         return None
 
     def is_available(self) -> bool:
@@ -161,8 +169,9 @@ class AITagger:
         top_k: int = 3,
         threshold: float = 0.255,
         color_threshold: float = 0.240,
+        color_only: bool = False,
     ) -> List[Dict[str, Any]]:
-        """サムネイル画像バイナリ (WebP/JPEG等) からタグ（被写体＋主要色）を推論する"""
+        """サムネイル画像バイナリ (WebP/JPEG等) からタグ（被写体＋主要色、または主要色のみ）を推論する"""
         if not self.is_loaded:
             if not self.load():
                 return []
@@ -182,21 +191,24 @@ class AITagger:
             # コサイン類似度
             similarities = np.dot(self.embeddings, image_embeds)  # (N,)
 
-            # 1. 被写体・シーン系タグ (category != 'color')
-            valid_content_indices = np.where(self.content_mask & (similarities >= threshold))[0]
             results = []
-            if len(valid_content_indices) > 0:
-                sorted_order = np.argsort(-similarities[valid_content_indices], kind="stable")
-                top_indices = valid_content_indices[sorted_order[:top_k]]
-                for idx in top_indices:
-                    results.append({
-                        "tag": self.tags[idx],
-                        "confidence": round(float(similarities[idx]), 3),
-                        "category": self.categories[idx],
-                    })
+            # 1. 被写体・シーン系タグ (category != 'color')
+            if not color_only:
+                valid_content_indices = np.where(self.content_mask & (similarities >= threshold))[0]
+                if len(valid_content_indices) > 0:
+                    sorted_order = np.argsort(-similarities[valid_content_indices], kind="stable")
+                    top_indices = valid_content_indices[sorted_order[:top_k]]
+                    for idx in top_indices:
+                        results.append({
+                            "tag": self.tags[idx],
+                            "confidence": round(float(similarities[idx]), 3),
+                            "category": self.categories[idx],
+                        })
 
             # 2. 主要色合いタグ (category == 'color')
-            # 12色の中で最も際立っている色を最大1個付与
+            # 12色の中で最も際立っている色を最大1個付与（color_only明示実行時は必ず最上位の主要色を選択）
+            eff_color_threshold = 0.185 if color_only else min(color_threshold, 0.220)
+            eff_color_margin = 0.0 if color_only else 0.004
             color_indices = np.where(self.color_mask)[0]
             if len(color_indices) > 0:
                 sorted_color_order = np.argsort(-similarities[color_indices], kind="stable")
@@ -208,7 +220,7 @@ class AITagger:
                     else 0.0
                 )
                 # 閾値以上かつ2位とのマージンが一定以上（色が明確）な場合に付与
-                if top_color_score >= color_threshold and (top_color_score - second_color_score) >= 0.008:
+                if top_color_score >= eff_color_threshold and (top_color_score - second_color_score) >= eff_color_margin:
                     results.append({
                         "tag": self.tags[top_color_idx],
                         "confidence": round(top_color_score, 3),

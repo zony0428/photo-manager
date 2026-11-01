@@ -62,6 +62,9 @@ from .database import (
     get_thumbnails_batch,
     save_thumbnail,
     get_all_volumes,
+    get_volume_by_serial,
+    remove_volume_by_serial,
+    update_volume_custom_name,
     update_photo_gps,
     update_photo_adjustments,
     batch_update_photo_tone,
@@ -349,6 +352,12 @@ class ScanRequest(BaseModel):
 class AITagFolderRequest(BaseModel):
     folder_path: Optional[str] = None
     force_retag: bool = False
+    color_only: bool = False
+    photo_ids: Optional[List[int]] = None
+
+
+class AITagColorBatchRequest(BaseModel):
+    photo_ids: List[int]
 
 
 class AIPromoteTagRequest(BaseModel):
@@ -364,6 +373,7 @@ class AIClearTagsRequest(BaseModel):
 class DeleteFolderRequest(BaseModel):
     folder_path: str
     recursive: bool = True
+    volume_serial: Optional[str] = None
 
 
 class RotateRequest(BaseModel):
@@ -451,11 +461,11 @@ class WindowSettingsRequest(BaseModel):
 
 
 def _resolve_paired_raw_path(photo: Dict[str, Any]) -> Optional[str]:
-    """ペアRAWパスをポータブル解決し（ドライブレター変動対応）、XMP探索に渡せる文字列を返す"""
+    """ペアRAWパスをポータブル解決し（ドライブレター変動・VSN対応）、XMP探索に渡せる文字列を返す"""
     raw_path_str = photo.get("paired_raw_path")
     if not raw_path_str:
         return None
-    resolved, _ = resolve_portable_path(raw_path_str)
+    resolved, _ = resolve_portable_path(raw_path_str, expected_serial=photo.get("volume_serial"))
     return str(resolved)
 
 
@@ -544,6 +554,8 @@ def api_get_duplicates_count():
 @app.get("/api/photos")
 def api_get_photos(
     folder: Optional[str] = None,
+    volume_serial: Optional[str] = None,
+    serial_mode: Optional[str] = None,
     year_month: Optional[str] = None,
     year_months: Optional[str] = None,
     dates: Optional[str] = None,
@@ -576,7 +588,7 @@ def api_get_photos(
     tag_and_roots: Optional[str] = None,
     tag_group_op: str = "and",
 ):
-    """写真一覧を取得する（タグの含む/除外排他検索、同グループ内AND/異グループ間OR切替、年月OR条件、カメラ・レンズ含む/除外条件、場所階層絞り込み、ラボ分析フィルタ、ブラケットスタック表示、重複抽出、属性フィルタ対応）"""
+    """写真一覧を取得する（タグの含む/除外排他検索、同グループ内AND/異グループ間OR切替、年月OR条件、カメラ・レンズ含む/除外条件、場所階層絞り込み、ラボ分析フィルタ、ブラケットスタック表示、重複抽出、属性フィルタ、VSNメディア識別対応）"""
     if missing_only:
         photos = get_missing_photos()
         for p in photos:
@@ -598,6 +610,8 @@ def api_get_photos(
 
     photos = get_photos(
         folder=folder,
+        volume_serial=volume_serial,
+        serial_mode=serial_mode,
         year_month=year_month,
         year_months=ym_list,
         dates=dates_list,
@@ -628,18 +642,23 @@ def api_get_photos(
         tag_group_op=tag_group_op,
     )
 
-    # ポータブル運用・オフライン状態判定および実体消失判定
+    # ポータブル運用・オフライン状態判定および実体消失判定（VSNごとにディレクトリキャッシュを分離）
     # ディレクトリ単位の並列 os.scandir ＋ TTLキャッシュにより 16,000枚超でもミリ秒単位で完了させる
     now_ts = time.monotonic()
-    unique_dirs = {p.get("directory_path") for p in photos if p.get("directory_path")}
-    uncached_dirs = [
-        d for d in unique_dirs
-        if d not in _PHOTO_DIR_SCAN_CACHE or (now_ts - _PHOTO_DIR_SCAN_CACHE[d][0]) > _PHOTO_DIR_SCAN_TTL
+    unique_dir_keys = {
+        (p.get("directory_path"), p.get("volume_serial") or None)
+        for p in photos
+        if p.get("directory_path")
+    }
+    uncached_dir_keys = [
+        dk for dk in unique_dir_keys
+        if dk not in _PHOTO_DIR_SCAN_CACHE or (now_ts - _PHOTO_DIR_SCAN_CACHE[dk][0]) > _PHOTO_DIR_SCAN_TTL
     ]
 
-    if uncached_dirs:
-        def _scan_one_dir(d_path: str):
-            resolved_dir, is_dir_online = resolve_portable_path(d_path)
+    if uncached_dir_keys:
+        def _scan_one_dir(dk: Tuple[str, Optional[str]]):
+            d_path, v_ser = dk
+            resolved_dir, is_dir_online = resolve_portable_path(d_path, expected_serial=v_ser)
             is_dir_storage = is_path_in_storage(d_path)
             f_set = None
             if is_dir_online and resolved_dir:
@@ -648,21 +667,22 @@ def api_get_photos(
                         f_set = {entry.name.lower() for entry in it}
                 except Exception as e:
                     logger.warning(f"ディレクトリスキャンキャッシュ取得失敗 ({resolved_dir}): {e}")
-            return d_path, (now_ts, resolved_dir, is_dir_online, is_dir_storage, f_set)
+            return dk, (now_ts, resolved_dir, is_dir_online, is_dir_storage, f_set)
 
-        if len(uncached_dirs) > 4:
+        if len(uncached_dir_keys) > 4:
             from concurrent.futures import ThreadPoolExecutor
             with ThreadPoolExecutor(max_workers=8) as pool:
-                for d_path, entry_val in pool.map(_scan_one_dir, uncached_dirs):
-                    _PHOTO_DIR_SCAN_CACHE[d_path] = entry_val
+                for dk, entry_val in pool.map(_scan_one_dir, uncached_dir_keys):
+                    _PHOTO_DIR_SCAN_CACHE[dk] = entry_val
         else:
-            for d_path in uncached_dirs:
-                _, entry_val = _scan_one_dir(d_path)
-                _PHOTO_DIR_SCAN_CACHE[d_path] = entry_val
+            for dk in uncached_dir_keys:
+                _, entry_val = _scan_one_dir(dk)
+                _PHOTO_DIR_SCAN_CACHE[dk] = entry_val
 
     for p in photos:
         dir_path = p.get("directory_path")
-        cached = _PHOTO_DIR_SCAN_CACHE.get(dir_path) if dir_path else None
+        dir_key = (dir_path, p.get("volume_serial") or None) if dir_path else None
+        cached = _PHOTO_DIR_SCAN_CACHE.get(dir_key) if dir_key else None
         if cached:
             _, _, is_dir_online, is_dir_storage, file_set = cached
         else:
@@ -678,8 +698,11 @@ def api_get_photos(
             if file_set is not None and fname and fname.lower() in file_set:
                 p["is_missing"] = False
             else:
-                f_path, _ = resolve_portable_path(p.get("file_path", ""))
-                p["is_missing"] = not os.path.exists(str(f_path))
+                f_path, is_f_online = resolve_portable_path(
+                    p.get("file_path", ""),
+                    expected_serial=p.get("volume_serial"),
+                )
+                p["is_missing"] = not (is_f_online and os.path.exists(str(f_path)))
         else:
             p["is_missing"] = False
 
@@ -692,17 +715,18 @@ def api_get_photo_detail(photo_id: int):
     photo = get_photo_by_id(photo_id)
     if not photo:
         raise HTTPException(status_code=404, detail="写真が見つかりません")
-    # ポータブルパス・オフライン状態解決
+    # ポータブルパス・オフライン状態解決（VSN対応）
+    vol_serial = photo.get("volume_serial")
     dir_path = photo.get("directory_path")
     if dir_path:
-        _, is_dir_online = resolve_portable_path(dir_path)
+        _, is_dir_online = resolve_portable_path(dir_path, expected_serial=vol_serial)
         photo["is_offline"] = not is_dir_online
     photo["is_storage"] = is_photo_in_storage(photo)
 
     # XMPサイドカー情報の付与
     file_path_str = photo.get("file_path")
     if file_path_str:
-        real_path, is_online = resolve_portable_path(file_path_str)
+        real_path, is_online = resolve_portable_path(file_path_str, expected_serial=vol_serial)
         if is_online and real_path.exists():
             photo["xmp_info"] = parse_xmp_for_photo(real_path, _resolve_paired_raw_path(photo))
         else:
@@ -736,7 +760,8 @@ def api_get_photo_xmp_preview(photo_id: int, mode: str = Query(default="thumb"))
     if not file_path_str:
         raise HTTPException(status_code=404, detail="ファイルパスが記録されていません")
 
-    real_path, is_online = resolve_portable_path(file_path_str)
+    vol_serial = photo.get("volume_serial")
+    real_path, is_online = resolve_portable_path(file_path_str, expected_serial=vol_serial)
     if not is_online or not real_path.exists():
         raise HTTPException(status_code=404, detail="元写真ファイルが未接続です")
 
@@ -786,7 +811,7 @@ def api_get_photo_xmp_preview(photo_id: int, mode: str = Query(default="thumb"))
                 img_bytes, _, _, _ = preview_res
                 pil_img = _Image.open(_io.BytesIO(img_bytes))
             elif photo.get("paired_raw_path"):
-                p_pair, is_pair_online = resolve_portable_path(photo["paired_raw_path"])
+                p_pair, is_pair_online = resolve_portable_path(photo["paired_raw_path"], expected_serial=vol_serial)
                 if is_pair_online and p_pair.exists():
                     pil_img = _Image.open(p_pair)
                     pil_img = _ImageOps.exif_transpose(pil_img)
@@ -844,7 +869,7 @@ def api_import_xmp_metadata(
     if not file_path_str:
         raise HTTPException(status_code=404, detail="ファイルパスが記録されていません")
 
-    real_path, is_online = resolve_portable_path(file_path_str)
+    real_path, is_online = resolve_portable_path(file_path_str, expected_serial=photo.get("volume_serial"))
     if not is_online or not real_path.exists():
         raise HTTPException(status_code=404, detail="元写真ファイルが未接続です")
 
@@ -1077,7 +1102,12 @@ def api_ai_tag_folder(req: AITagFolderRequest):
     """指定フォルダ（または全未処理写真）のAI自動タグ付けジョブを開始する"""
     from .ai import get_ai_worker
     worker = get_ai_worker()
-    success = worker.start_tagging(folder_path=req.folder_path, force_retag=req.force_retag)
+    success = worker.start_tagging(
+        folder_path=req.folder_path,
+        photo_ids=req.photo_ids,
+        force_retag=req.force_retag,
+        color_only=req.color_only,
+    )
     if not success:
         return {"status": "busy", "message": "他のAIタグ付けジョブが実行中です"}
     return {"status": "ok", "message": "AIタグ付けジョブを開始しました"}
@@ -1093,7 +1123,7 @@ def api_ai_cancel():
 
 
 @app.post("/api/ai/tag-photo/{photo_id}")
-def api_ai_tag_single_photo(photo_id: int):
+def api_ai_tag_single_photo(photo_id: int, color_only: bool = False):
     """指定写真1枚に対して即座にAI推論を実行しタグを付与する"""
     photo = get_photo_by_id(photo_id)
     if not photo:
@@ -1112,14 +1142,72 @@ def api_ai_tag_single_photo(photo_id: int):
         raise HTTPException(status_code=500, detail="サムネイルの読み込みに失敗しました")
 
     from .ai import get_ai_tagger
-    from .database import add_ai_tags_to_photo, get_photo_tags_details
+    from .database import add_ai_tags_to_photo, replace_ai_color_tags_for_photo, get_photo_tags_details
     tagger = get_ai_tagger()
-    matches = tagger.predict_from_bytes(thumb_bytes, top_k=3)
-    if matches:
+    matches = tagger.predict_from_bytes(thumb_bytes, top_k=3, color_only=color_only)
+    if color_only:
+        replace_ai_color_tags_for_photo(photo_id, matches)
+    elif matches:
         add_ai_tags_to_photo(photo_id, matches)
 
     updated_tags = get_photo_tags_details(photo_id)
     return {"status": "ok", "photo_id": photo_id, "predicted": matches, "tags": updated_tags}
+
+
+@app.post("/api/ai/tag-color-photos")
+def api_ai_tag_color_photos(req: AITagColorBatchRequest):
+    """選択中の複数写真に対してAIカラータグ（12色）のみを再判定する"""
+    if not req.photo_ids:
+        raise HTTPException(status_code=400, detail="対象の写真が指定されていません")
+
+    # 32枚を超える大量選択時はバックグラウンドワーカーで処理
+    if len(req.photo_ids) > 32:
+        from .ai import get_ai_worker
+        worker = get_ai_worker()
+        success = worker.start_tagging(
+            photo_ids=req.photo_ids,
+            force_retag=True,
+            color_only=True,
+        )
+        if not success:
+            return {"status": "busy", "message": "他のAIタグ付けジョブが実行中です"}
+        return {"status": "background", "total": len(req.photo_ids)}
+
+    from .ai import get_ai_tagger
+    from .database import replace_ai_color_tags_for_photo, get_photo_tags_details
+    tagger = get_ai_tagger()
+    results: Dict[int, List[Dict[str, Any]]] = {}
+    predicted_colors: Dict[int, List[str]] = {}
+    tagged_count = 0
+
+    for pid in req.photo_ids:
+        photo = get_photo_by_id(pid)
+        if not photo:
+            continue
+        thumb = db_get_thumbnail(pid)
+        thumb_bytes = thumb["data"] if thumb else None
+        if not thumb_bytes:
+            try:
+                thumb_bytes = ensure_thumbnail(photo["id"], photo["file_path"])
+            except Exception as e:
+                logger.warning(f"Could not generate thumbnail for AI color tagging ({pid}): {e}")
+        if not thumb_bytes:
+            continue
+
+        matches = tagger.predict_from_bytes(thumb_bytes, top_k=3, color_only=True)
+        replace_ai_color_tags_for_photo(pid, matches)
+        if matches:
+            tagged_count += 1
+            predicted_colors[pid] = [m["tag"] for m in matches]
+        results[pid] = get_photo_tags_details(pid)
+
+    return {
+        "status": "ok",
+        "tagged_count": tagged_count,
+        "total": len(req.photo_ids),
+        "predicted_colors": predicted_colors,
+        "results": results,
+    }
 
 
 @app.post("/api/ai/promote-tag")
@@ -1390,7 +1478,7 @@ def api_get_photo_view(photo_id: int, request: Request, raw: int = Query(default
             },
         )
 
-    target_path, is_online = resolve_portable_path(photo["file_path"])
+    target_path, is_online = resolve_portable_path(photo["file_path"], expected_serial=photo.get("volume_serial"))
     if is_online and target_path.exists():
         # 非破壊調整（クロップ・水平出し・トーン微調整）が有効かつ raw=0 の場合はPillowで適用して返却
         if has_baked_adjustments:
@@ -1536,7 +1624,10 @@ def api_refresh_thumbnails(req: RefreshThumbnailsRequest):
         pid = photo_brief["id"]
         file_path_str = photo_brief.get("file_path", "")
         try:
-            target_path, is_online = resolve_portable_path(file_path_str)
+            target_path, is_online = resolve_portable_path(
+                file_path_str,
+                expected_serial=photo_brief.get("volume_serial"),
+            )
             if not is_online or not target_path.exists():
                 logger.warning(f"サムネイル再生成スキップ（ファイル未接続） (ID: {pid}): {file_path_str}")
                 return pid, False
@@ -1639,7 +1730,7 @@ def api_open_raw(photo_id: int):
     if not raw_path_str:
         raise HTTPException(status_code=404, detail="この写真にはRAWペアが存在しません")
 
-    raw_path, is_online = resolve_portable_path(raw_path_str)
+    raw_path, is_online = resolve_portable_path(raw_path_str, expected_serial=photo.get("volume_serial"))
     if not is_online:
         raise HTTPException(status_code=404, detail="RAWファイルの保存先ドライブが未接続です（オフライン）")
     _validate_safe_media_file(raw_path)
@@ -1666,7 +1757,7 @@ def api_open_photo_folder(photo_id: int):
     if not file_path_str:
         raise HTTPException(status_code=404, detail="ファイルパスが記録されていません")
 
-    target_path, is_online = resolve_portable_path(file_path_str)
+    target_path, is_online = resolve_portable_path(file_path_str, expected_serial=photo.get("volume_serial"))
     if not is_online:
         raise HTTPException(status_code=404, detail="写真の保存先ドライブが未接続です（オフライン）")
 
@@ -1713,7 +1804,7 @@ def api_open_photo_file(photo_id: int):
     if not file_path_str:
         raise HTTPException(status_code=404, detail="ファイルパスが記録されていません")
 
-    target_path, is_online = resolve_portable_path(file_path_str)
+    target_path, is_online = resolve_portable_path(file_path_str, expected_serial=photo.get("volume_serial"))
     if not is_online:
         raise HTTPException(status_code=404, detail="写真の保存先ドライブが未接続です（オフライン）")
 
@@ -1915,9 +2006,13 @@ def api_open_folder(req: OpenFolderRequest):
 
 @app.delete("/api/folders")
 def api_delete_folder(req: DeleteFolderRequest):
-    """指定したフォルダの写真登録をDBから解除する（実ファイルは削除しない）"""
+    """指定したフォルダの写真登録をDBから解除する（実ファイルは削除しない。volume_serial指定時は該当メディアのみ解除）"""
     try:
-        result = remove_folder_photos(req.folder_path, recursive=req.recursive)
+        result = remove_folder_photos(
+            req.folder_path,
+            recursive=req.recursive,
+            volume_serial=req.volume_serial,
+        )
         return {
             "status": "ok",
             "folder_path": req.folder_path,
@@ -1964,16 +2059,17 @@ def api_get_ignored_folders():
 
 class FolderDiffRequest(BaseModel):
     folder_path: str
+    volume_serial: Optional[str] = None
 
 
 @app.post("/api/folders/check-diff")
 def api_check_folder_diff(req: FolderDiffRequest):
     """フォルダ直下の実ファイルとDBレコードの高速差分（追加・削除・変更）を判定する"""
     try:
-        target_path, is_online = resolve_portable_path(req.folder_path)
+        target_path, is_online = resolve_portable_path(req.folder_path, expected_serial=req.volume_serial)
         if not is_online:
             return {"status": "ok", "has_changes": False, "is_offline": True, "added": 0, "deleted": 0, "modified": 0}
-        diff = check_folder_diff(str(target_path))
+        diff = check_folder_diff(str(target_path), volume_serial=req.volume_serial)
         return {"status": "ok", **diff}
     except Exception as e:
         return {"status": "error", "has_changes": False, "detail": str(e), "added": 0, "deleted": 0, "modified": 0}
@@ -1982,13 +2078,18 @@ def api_check_folder_diff(req: FolderDiffRequest):
 class FolderCleanupMissingRequest(BaseModel):
     folder_path: str
     recursive: bool = False
+    volume_serial: Optional[str] = None
 
 
 @app.post("/api/folders/cleanup-missing")
 def api_cleanup_missing_folder_photos(req: FolderCleanupMissingRequest):
     """指定フォルダ配下の実ファイル消失写真をDBからクリーンアップ（登録解除）する"""
     try:
-        cleaned = cleanup_missing_photos_in_folder(req.folder_path, recursive=req.recursive)
+        cleaned = cleanup_missing_photos_in_folder(
+            req.folder_path,
+            recursive=req.recursive,
+            volume_serial=req.volume_serial,
+        )
         return {"status": "ok", "cleaned": cleaned, "folder_path": req.folder_path}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -1997,6 +2098,7 @@ def api_cleanup_missing_folder_photos(req: FolderCleanupMissingRequest):
 class FolderUnlinkMissingRequest(BaseModel):
     folder_path: str
     recursive: bool = False
+    volume_serial: Optional[str] = None
 
 
 @app.post("/api/folders/unlink-missing")
@@ -2006,7 +2108,11 @@ def api_unlink_missing_folder_photos(req: FolderUnlinkMissingRequest):
     DBレコード（サムネイル・タグ含む）は保持したまま、実体パスとの紐付けを解除（リンク消失）する
     """
     try:
-        unlinked = unlink_missing_photos_in_folder(req.folder_path, recursive=req.recursive)
+        unlinked = unlink_missing_photos_in_folder(
+            req.folder_path,
+            recursive=req.recursive,
+            volume_serial=req.volume_serial,
+        )
         return {"status": "ok", "unlinked": unlinked, "folder_path": req.folder_path}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -2156,11 +2262,143 @@ def api_get_cameras():
     return _fast_json({"cameras": cameras})
 
 
+# ボリュームラベル物理書き込み承認用の一時PIN管理（serial -> (pin, issued_monotonic)）
+_VOLUME_LABEL_PINS: Dict[str, Tuple[str, float]] = {}
+
+
+def issue_volume_label_pin(volume_serial: str) -> str:
+    """指定VSNに対する物理ボリュームラベル書き込み承認用のランダム4桁PINを発行する"""
+    import secrets
+
+    serial_clean = (volume_serial or "").strip().upper()
+    pin = f"{secrets.randbelow(9000) + 1000:04d}"
+    _VOLUME_LABEL_PINS[serial_clean] = (pin, time.monotonic())
+    return pin
+
+
+def verify_volume_label_pin(volume_serial: str, pin: Optional[str]) -> bool:
+    """発行済みの4桁承認PINを検証する（有効期限10分・使い捨て）"""
+    serial_clean = (volume_serial or "").strip().upper()
+    if not serial_clean or not pin:
+        return False
+    entry = _VOLUME_LABEL_PINS.get(serial_clean)
+    if not entry:
+        return False
+    expected_pin, issued_at = entry
+    if time.monotonic() - issued_at > 600.0:
+        _VOLUME_LABEL_PINS.pop(serial_clean, None)
+        return False
+    if str(pin).strip() != expected_pin:
+        return False
+    _VOLUME_LABEL_PINS.pop(serial_clean, None)
+    return True
+
+
+class UpdateVolumeNameRequest(BaseModel):
+    custom_name: str = ""
+    volume_label: Optional[str] = None
+    drive_letter: Optional[str] = None
+    write_volume_label: bool = False
+    new_volume_label: Optional[str] = None
+    approval_pin: Optional[str] = None
+
+
 @app.get("/api/volumes")
 def api_get_volumes():
-    """登録済みのボリューム一覧を取得する"""
+    """登録済みの全メディア（ボリューム）一覧と各メディアの写真枚数・撮影期間・カメラ機種・接続状態を取得する"""
     volumes = get_all_volumes()
     return {"volumes": volumes}
+
+
+@app.delete("/api/volumes/{volume_serial}")
+def api_delete_volume(volume_serial: str):
+    """指定されたボリューム（SDカード・外部メディア）の写真登録と管理情報をDBから一括解除する（実ファイルは削除しない）"""
+    serial_clean = (volume_serial or "").strip().upper()
+    if not serial_clean:
+        raise HTTPException(status_code=400, detail="ボリュームシリアル番号が指定されていません")
+    res = remove_volume_by_serial(serial_clean)
+    return {"status": "ok", **res}
+
+
+@app.get("/api/volumes/{volume_serial}/status")
+def api_get_volume_status(volume_serial: str):
+    """指定されたボリュームの接続状態・ファイルシステム種別・承認用ランダム4桁PINを取得する"""
+    from .volume_info import find_online_drive_for_serial
+
+    serial_clean = (volume_serial or "").strip().upper()
+    if not serial_clean:
+        raise HTTPException(status_code=400, detail="ボリュームシリアル番号が指定されていません")
+
+    db_vol = get_volume_by_serial(serial_clean) or {}
+    online_info = find_online_drive_for_serial(serial_clean)
+    approval_pin = issue_volume_label_pin(serial_clean)
+
+    return {
+        "status": "ok",
+        "volume_serial": serial_clean,
+        "custom_name": db_vol.get("custom_name") or "",
+        "volume_label": (online_info.get("label") if online_info else db_vol.get("volume_label")) or "",
+        "drive_letter": (online_info.get("drive") if online_info else db_vol.get("drive_letter")) or "",
+        "filesystem": (online_info.get("filesystem") if online_info else "") or "",
+        "is_online": bool(online_info),
+        "approval_pin": approval_pin,
+    }
+
+
+@app.put("/api/volumes/{volume_serial}")
+def api_update_volume_name(volume_serial: str, req: UpdateVolumeNameRequest):
+    """
+    指定されたボリューム（SDカード・外付けメディア等）のカスタム識別名（ニックネーム）を設定・更新する。
+    write_volume_label=True の場合は、2バイト文字禁止チェックおよびランダム4桁PIN承認を検証した上で
+    メディア本体の物理ボリュームラベルも書き換える（未承認時は一切触らない）。
+    """
+    from .volume_info import set_physical_volume_label, validate_ascii_volume_label
+
+    serial_clean = (volume_serial or "").strip().upper()
+    if not serial_clean:
+        raise HTTPException(status_code=400, detail="ボリュームシリアル番号が指定されていません")
+
+    try:
+        updated_phys_label: Optional[str] = req.volume_label
+        updated_drive: Optional[str] = req.drive_letter
+        wrote_physical = False
+
+        if req.write_volume_label:
+            # 1. まず文字種（2バイト文字禁止・11文字以内）を検証
+            clean_phys_label = validate_ascii_volume_label(req.new_volume_label or "")
+            # 2. ランダム4桁PINによる承認チェック
+            if not verify_volume_label_pin(serial_clean, req.approval_pin):
+                raise ValueError("承認用の4桁PIN番号が一致しないため、メディアのボリュームラベル書き込みを中止しました。")
+            # 3. 物理ボリュームラベルの書き込み
+            phys_res = set_physical_volume_label(serial_clean, clean_phys_label)
+            updated_phys_label = phys_res.get("volume_label", clean_phys_label)
+            updated_drive = phys_res.get("drive") or updated_drive
+            wrote_physical = True
+            # フォルダ・ドライブのファイルシステムキャッシュを即時クリア
+            from .database.folders import clear_folders_fs_cache
+            clear_folders_fs_cache()
+
+        vol = update_volume_custom_name(
+            volume_serial=serial_clean,
+            custom_name=req.custom_name,
+            volume_label=updated_phys_label,
+            drive_letter=updated_drive,
+        )
+        return {
+            "status": "ok",
+            "volume": vol,
+            "custom_name": vol.get("custom_name", ""),
+            "volume_label": vol.get("volume_label", ""),
+            "wrote_physical_label": wrote_physical,
+        }
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 def _get_windows_quick_access() -> list:
@@ -2406,9 +2644,10 @@ def api_copy_to_import(req: CopyToImportRequest):
         # JPG/JPEG ファイルの特定（RAW限定ファイルはスキップ、RAW+JPGペアはJPG側）
         src_path = None
 
+        vol_serial = photo.get("volume_serial")
         main_raw = photo.get("file_path")
         if main_raw:
-            p_main, is_main_online = resolve_portable_path(main_raw)
+            p_main, is_main_online = resolve_portable_path(main_raw, expected_serial=vol_serial)
             if is_main_online and p_main.suffix.lower() in (".jpg", ".jpeg"):
                 src_path = p_main
 
@@ -2416,7 +2655,7 @@ def api_copy_to_import(req: CopyToImportRequest):
             # RAW+JPG ペアの場合、ペアのJPG側を探す
             paired_raw = photo.get("paired_raw_path")
             if paired_raw:
-                p_paired, is_paired_online = resolve_portable_path(paired_raw)
+                p_paired, is_paired_online = resolve_portable_path(paired_raw, expected_serial=vol_serial)
                 if is_paired_online and p_paired.suffix.lower() in (".jpg", ".jpeg"):
                     src_path = p_paired
 

@@ -91,9 +91,11 @@ from .tags import (
     rename_tag,
     get_untagged_count,
     add_ai_tags_to_photo,
+    replace_ai_color_tags_for_photo,
     promote_ai_tag,
     remove_ai_tags,
     get_photo_tags_details,
+    repair_missing_ancestor_tags,
 )
 
 # サムネイル BLOB 管理
@@ -125,8 +127,10 @@ from .stacks import recalculate_stacks, recalculate_duplicate_stacks, set_stack_
 # フォルダ・タイムライン・カメラ集計・スキャンルート・ボリューム・除外フォルダ
 from .folders import (
     upsert_volume,
+    update_volume_custom_name,
     get_volume_by_serial,
     get_all_volumes,
+    remove_volume_by_serial,
     get_timeline_summary,
     get_calendar_summary,
     get_folders_summary,

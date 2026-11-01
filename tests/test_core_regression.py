@@ -1010,6 +1010,647 @@ class TestCoreRegression(unittest.TestCase):
         combined = get_photos(year_months=["2024-05"], dates=["2025-10-15"], stacked=False)
         self.assertEqual(sorted([p["id"] for p in combined]), sorted([p1, p2, p3]))
 
+    def test_13_full_metadata_inheritance_on_duplicate_or_move(self):
+        """SDカード等で付与した全メタデータ（評価・タグ・非破壊調整・後付けGPS・日時シフト・サムネイル・RAWペア）が別フォルダへの移動/コピー時に完全引き継ぎされることを検証"""
+        from server.database import (
+            add_ai_tags_to_photo,
+            batch_shift_photo_dates,
+            copy_metadata_to_duplicate,
+            find_duplicate_photo_match,
+            get_photo_by_id,
+             get_thumbnail,
+            save_thumbnail,
+            update_photo_gps,
+        )
+        from server.scanner import smart_sync_photo
+
+        # 1. SDカード上の写真レコードを作成（元EXIF日時: 2026-09-01 10:00:00）
+        sd_id = upsert_photo({
+            "file_path": r"E:\DCIM\100MSDCF\DSC00001.JPG",
+            "directory_path": r"E:\DCIM\100MSDCF",
+            "file_name": "DSC00001.JPG",
+            "file_size": 8765432,
+            "date_taken": "2026-09-01 10:00:00",
+            "width": 6000,
+            "height": 4000,
+            "camera_model": "ILCE-7M4",
+            "volume_serial": "A1B2C3D4",
+        })
+
+        # 評価（優=2）、手動階層タグ、カラータグ、AIタグを付与
+        update_rating(sd_id, 2)
+        add_tag_to_photo(sd_id, "旅行/北海道/美瑛")
+        add_tag_to_photo(sd_id, "青")
+        add_ai_tags_to_photo(sd_id, [{"tag": "風景/山", "confidence": 0.91}])
+
+        # 非破壊画像調整を適用
+        update_photo_adjustments(
+            sd_id,
+            rotation=90,
+            fine_angle=-2.25,
+            crop_x=0.05,
+            crop_y=0.10,
+            crop_w=0.80,
+            crop_h=0.75,
+            crop_aspect="16:9",
+            brightness=12,
+            contrast=-8,
+            saturation=18,
+        )
+
+        # 後付けGPSを付与
+        update_photo_gps(sd_id, 43.5906, 142.4686, source="copied")
+
+        # 撮影日時を +1時間（+3600秒）シフト補正（original_date_taken に '2026-09-01 10:00:00' が退避される）
+        shift_res = batch_shift_photo_dates([sd_id], offset_seconds=3600)
+        self.assertEqual(shift_res["updated_count"], 1)
+
+        # 調整済みサムネイルBLOBを保存
+        dummy_webp = b"RIFF_ADJUSTED_THUMB_WEBP"
+        save_thumbnail(sd_id, dummy_webp, 270, 360, "hash_sd_1")
+
+        # 2. PC側フォルダへファイルを移動・コピーしてスキャン（実ファイルのEXIF日時はシフト前の '2026-09-01 10:00:00' のまま）
+        pc_meta = {
+            "file_path": r"C:\Photos\2026_Hokkaido\DSC00001.JPG",
+            "directory_path": r"C:\Photos\2026_Hokkaido",
+            "file_name": "DSC00001.JPG",
+            "file_size": 8765432,
+            "date_taken": "2026-09-01 10:00:00",
+            "width": 6000,
+            "height": 4000,
+            "camera_model": "ILCE-7M4",
+            "volume_serial": "11223344",
+        }
+        action = smart_sync_photo(pc_meta, existing_record=None, do_upsert=True)
+        self.assertEqual(action, "added")
+
+        pc_photos = get_photos(folder=r"C:\Photos\2026_Hokkaido", stacked=False)
+        self.assertEqual(len(pc_photos), 1)
+        pc_id = pc_photos[0]["id"]
+        pc_detail = get_photo_by_id(pc_id)
+
+        # すべてのメタデータが漏れなく引き継がれていることを検証
+        self.assertEqual(pc_detail["rating"], 2)
+        self.assertEqual(pc_detail["date_taken"], "2026-09-01 11:00:00", "シフト後の撮影日時が引き継がれること")
+        self.assertEqual(pc_detail["year_month"], "2026-09")
+        self.assertEqual(pc_detail["original_date_taken"], "2026-09-01 10:00:00", "元EXIF日時も引き継がれること")
+        self.assertEqual(pc_detail["rotation"], 90)
+        self.assertAlmostEqual(pc_detail["fine_angle"], -2.25)
+        self.assertAlmostEqual(pc_detail["crop_x"], 0.05)
+        self.assertAlmostEqual(pc_detail["crop_y"], 0.10)
+        self.assertAlmostEqual(pc_detail["crop_w"], 0.80)
+        self.assertAlmostEqual(pc_detail["crop_h"], 0.75)
+        self.assertEqual(pc_detail["crop_aspect"], "16:9")
+        self.assertEqual(pc_detail["brightness"], 12)
+        self.assertEqual(pc_detail["contrast"], -8)
+        self.assertEqual(pc_detail["saturation"], 18)
+        self.assertAlmostEqual(pc_detail["latitude"], 43.5906, places=4)
+        self.assertAlmostEqual(pc_detail["longitude"], 142.4686, places=4)
+        self.assertEqual(pc_detail["gps_source"], "copied")
+        self.assertIn("旅行/北海道/美瑛", pc_detail["tags"])
+        self.assertIn("青", pc_detail["tags"])
+        self.assertIn("風景/山", pc_detail["tags"])
+
+        # 調整済みサムネイルも即座に引き継がれていること
+        pc_thumb = get_thumbnail(pc_id)
+        self.assertIsNotNone(pc_thumb)
+        self.assertEqual(pc_thumb["data"], dummy_webp)
+
+        # 3. RAW+JPEGペアで代表JPEGにメタデータを付与後、RAW単体のみをPCへ移動したケースの検証
+        raw_sd_id = upsert_photo({
+            "file_path": r"E:\DCIM\100MSDCF\DSC00002.ARW",
+            "directory_path": r"E:\DCIM\100MSDCF",
+            "file_name": "DSC00002.ARW",
+            "file_size": 25000000,
+            "date_taken": "2026-09-01 12:00:00",
+            "camera_model": "ILCE-7M4",
+            "is_raw": 1,
+            "raw_format": ".arw",
+            "paired_raw_path": r"E:\DCIM\100MSDCF\DSC00002.JPG",
+        })
+        jpg_sd_id = upsert_photo({
+            "file_path": r"E:\DCIM\100MSDCF\DSC00002.JPG",
+            "directory_path": r"E:\DCIM\100MSDCF",
+            "file_name": "DSC00002.JPG",
+            "file_size": 7000000,
+            "date_taken": "2026-09-01 12:00:00",
+            "camera_model": "ILCE-7M4",
+            "is_raw": 0,
+            "paired_raw_path": r"E:\DCIM\100MSDCF\DSC00002.ARW",
+        })
+        update_rating(jpg_sd_id, -1)  # 「棄(-1)」評価も正しく引き継がれるか検証
+        add_tag_to_photo(jpg_sd_id, "テスト/RAWペア引き継ぎ")
+
+        pc_raw_meta = {
+            "file_path": r"C:\Photos\2026_Hokkaido\DSC00002.ARW",
+            "directory_path": r"C:\Photos\2026_Hokkaido",
+            "file_name": "DSC00002.ARW",
+            "file_size": 25000000,
+            "date_taken": "2026-09-01 12:00:00",
+            "camera_model": "ILCE-7M4",
+            "is_raw": 1,
+            "raw_format": ".arw",
+        }
+        smart_sync_photo(pc_raw_meta, existing_record=None, do_upsert=True)
+        pc_raw_list = get_photos(folder=r"C:\Photos\2026_Hokkaido", ratings=[-1, 0, 1, 2], stacked=False)
+        pc_raw = [p for p in pc_raw_list if p["file_name"] == "DSC00002.ARW"][0]
+        self.assertEqual(pc_raw["rating"], -1, "ペアJPEGに付けた棄(-1)評価もRAW単体移動時に引き継がれること")
+        self.assertIn("テスト/RAWペア引き継ぎ", pc_raw["tags"])
+
+    def test_14_vsn_multi_sdcard_isolation_and_path_resolution(self):
+        """複数SDカードが同一ドライブレター・同一パス・ラベルなしで競合せず独立管理でき、カスタム識別名・VSN絞り込み・クラウドパス解決が機能することを検証"""
+        from server.database import (
+            get_drive_photo_counts,
+            get_existing_photos_map,
+            get_photo_by_id,
+            remove_folder_photos,
+            update_volume_custom_name,
+            upsert_photos_batch,
+            upsert_volume,
+        )
+        from server.scanner import _resolve_cloud_drive_path, strip_vsn_prefix
+
+        upsert_volume("1111AAAA", "", "E:")
+        upsert_volume("2222BBBB", "", "E:")
+
+        # 1. SDカード① (VSN: 1111AAAA) の DSC00001.JPG と DSC00002.JPG を登録
+        sd1_p1 = upsert_photo({
+            "file_path": r"E:\DCIM\100MSDCF\DSC00001.JPG",
+            "directory_path": r"E:\DCIM\100MSDCF",
+            "file_name": "DSC00001.JPG",
+            "file_size": 5000111,
+            "date_taken": "2026-10-01 10:00:00",
+            "camera_model": "ILCE-7M4",
+            "volume_serial": "1111AAAA",
+        })
+        add_tag_to_photo(sd1_p1, "SDカード1の写真")
+
+        # 2. SDカード② (VSN: 2222BBBB) を同じ E:\DCIM\100MSDCF\DSC00001.JPG で登録（UNIQUE衝突せず別レコードとして共存すること）
+        sd2_p1 = upsert_photo({
+            "file_path": r"E:\DCIM\100MSDCF\DSC00001.JPG",
+            "directory_path": r"E:\DCIM\100MSDCF",
+            "file_name": "DSC00001.JPG",
+            "file_size": 6000222,
+            "date_taken": "2026-10-02 14:00:00",
+            "camera_model": "RICOH GR IIIx",
+            "volume_serial": "2222BBBB",
+        })
+        add_tag_to_photo(sd2_p1, "SDカード2の写真")
+        self.assertNotEqual(sd1_p1, sd2_p1, "異なるVSNの同一パス写真は別レコードとして共存すること")
+
+        # バッチ登録でも同様にVSN退避が機能すること
+        upsert_photos_batch([
+            {
+                "file_path": r"E:\DCIM\100MSDCF\DSC00002.JPG",
+                "directory_path": r"E:\DCIM\100MSDCF",
+                "file_name": "DSC00002.JPG",
+                "file_size": 5000333,
+                "date_taken": "2026-10-01 10:05:00",
+                "volume_serial": "1111AAAA",
+            },
+            {
+                "file_path": r"E:\DCIM\100MSDCF\DSC00002.JPG",
+                "directory_path": r"E:\DCIM\100MSDCF",
+                "file_name": "DSC00002.JPG",
+                "file_size": 6000444,
+                "date_taken": "2026-10-02 14:05:00",
+                "volume_serial": "2222BBBB",
+            },
+        ])
+
+        # 3. カスタム識別名（ニックネーム）の設定と取得
+        update_volume_custom_name("1111AAAA", "α7IV メインSD①")
+        update_volume_custom_name("2222BBBB", "GRIIIx サブSD②")
+
+        d1 = get_photo_by_id(sd1_p1)
+        d2 = get_photo_by_id(sd2_p1)
+        self.assertEqual(d1["file_path"], r"E:\DCIM\100MSDCF\DSC00001.JPG", "vsn://プレフィックスが除去されたクリーンなパスが返ること")
+        self.assertEqual(d2["file_path"], r"E:\DCIM\100MSDCF\DSC00001.JPG")
+        self.assertEqual(d1["volume_custom_name"], "α7IV メインSD①")
+        self.assertEqual(d2["volume_custom_name"], "GRIIIx サブSD②")
+        self.assertIn("SDカード1の写真", d1["tags"])
+        self.assertIn("SDカード2の写真", d2["tags"])
+
+        # 4. VSN指定によるメディア別フィルタリング（どのSDカードに何が入っているか）
+        sd1_photos = get_photos(folder=r"E:\DCIM", volume_serial="1111AAAA", serial_mode="match", stacked=False)
+        sd2_photos = get_photos(folder=r"E:\DCIM", volume_serial="2222BBBB", serial_mode="match", stacked=False)
+        self.assertEqual(len(sd1_photos), 2)
+        self.assertEqual(len(sd2_photos), 2)
+        self.assertTrue(all(p["volume_serial"] == "1111AAAA" for p in sd1_photos))
+        self.assertTrue(all(p["volume_serial"] == "2222BBBB" for p in sd2_photos))
+        self.assertTrue(all(not p["file_path"].startswith("vsn://") for p in sd1_photos))
+
+        # get_existing_photos_map でも VSN ごとに正しいレコード辞書が返ること
+        map_sd1 = get_existing_photos_map(r"E:\DCIM", recursive=True, volume_serial="1111AAAA")
+        map_sd2 = get_existing_photos_map(r"E:\DCIM", recursive=True, volume_serial="2222BBBB")
+        self.assertEqual(map_sd1[r"E:\DCIM\100MSDCF\DSC00001.JPG"][0], sd1_p1)
+        self.assertEqual(map_sd2[r"E:\DCIM\100MSDCF\DSC00001.JPG"][0], sd2_p1)
+
+        # 5. VSN指定でのフォルダ登録解除で、他方のSDカードの写真が巻き添え削除されないこと
+        rem_res = remove_folder_photos(r"E:\DCIM", recursive=True, volume_serial="1111AAAA")
+        self.assertEqual(rem_res["deleted_count"], 2)
+        remaining_sd2 = get_photos(folder=r"E:\DCIM", volume_serial="2222BBBB", serial_mode="match", stacked=False)
+        self.assertEqual(len(remaining_sd2), 2, "SDカード②の2枚は無傷で残っていること")
+
+        # 6. クラウドドライブ相対パスフォールバック (_resolve_cloud_drive_path) の検証
+        fake_home = Path(self._temp_dir.name) / "FakeUserHome"
+        fake_gdrive = fake_home / "Google Drive" / "マイドライブ" / "CameraUploads"
+        fake_gdrive.mkdir(parents=True, exist_ok=True)
+        cloud_file = fake_gdrive / "CLOUD_001.JPG"
+        cloud_file.write_bytes(b"FAKE_JPEG_DATA")
+
+        import unittest.mock as _mock
+        with _mock.patch("server.scanner.Path.home", return_value=fake_home):
+            # 別PCで G:\マイドライブ\CameraUploads\CLOUD_001.JPG として登録されていたパスが、
+            # 現PCの ~/Google Drive/マイドライブ/CameraUploads/CLOUD_001.JPG へ自動解決されること
+            resolved_cloud = _resolve_cloud_drive_path(r"G:\マイドライブ\CameraUploads\CLOUD_001.JPG")
+            self.assertIsNotNone(resolved_cloud)
+            self.assertEqual(resolved_cloud, cloud_file)
+
+    def test_15_ai_color_tag_only_reexecution(self) -> None:
+        """コンテキストメニューからのAIカラータグ（12色）単独再判定・既存タグ保護の検証"""
+        from server.database import (
+            add_tag_to_photo,
+            add_ai_tags_to_photo,
+            replace_ai_color_tags_for_photo,
+            get_photo_tags_details,
+        )
+
+        pid = upsert_photo({
+            "file_path": r"D:\Photos\ColorRetag\IMG_COLOR_01.JPG",
+            "directory_path": r"D:\Photos\ColorRetag",
+            "file_name": "IMG_COLOR_01.JPG",
+            "file_size": 1200000,
+            "date_taken": "2026:07:20 15:00:00",
+        })
+
+        # 初期状態: 手動タグ（「お気に入り」＋手動カラータグ「赤」）と、AIタグ（「風景」＋旧AIカラータグ「青」）を付与
+        add_tag_to_photo(pid, "お気に入り")
+        add_tag_to_photo(pid, "赤")
+        add_ai_tags_to_photo(pid, [
+            {"tag": "風景", "confidence": 0.295, "category": "scene"},
+            {"tag": "青", "confidence": 0.252, "category": "color"},
+        ])
+
+        before_tags = {t["tag"]: t["source"] for t in get_photo_tags_details(pid)}
+        self.assertEqual(before_tags.get("お気に入り"), "manual")
+        self.assertEqual(before_tags.get("赤"), "manual")
+        self.assertEqual(before_tags.get("風景"), "ai")
+        self.assertEqual(before_tags.get("青"), "ai")
+
+        # AIカラータグのみ再判定（「オレンジ」に変化したケース）
+        replace_ai_color_tags_for_photo(pid, [
+            {"tag": "オレンジ", "confidence": 0.268, "category": "color"},
+        ])
+
+        after_tags = {t["tag"]: t["source"] for t in get_photo_tags_details(pid)}
+        self.assertNotIn("青", after_tags, "旧AIカラータグ『青』が置換削除されていること")
+        self.assertEqual(after_tags.get("オレンジ"), "ai", "新AIカラータグ『オレンジ』が付与されていること")
+        self.assertEqual(after_tags.get("赤"), "manual", "手動で付与したカラータグ『赤』は削除されず保護されること")
+        self.assertEqual(after_tags.get("風景"), "ai", "AI被写体・シーンタグ『風景』は削除されず保護されること")
+        self.assertEqual(after_tags.get("お気に入り"), "manual", "手動タグ『お気に入り』は保護されること")
+
+    def test_16_volume_label_ascii_validation_and_pin_approval(self) -> None:
+        """ボリュームラベル物理書き込みの2バイト文字禁止・11文字制限・ランダムPIN承認ガードの検証"""
+        import unittest.mock as _mock
+        from fastapi import HTTPException
+        from server.volume_info import validate_ascii_volume_label
+        from server.app import (
+            UpdateVolumeNameRequest,
+            api_get_volume_status,
+            api_update_volume_name,
+        )
+
+        # 1. 半角ASCII 11文字以内は許可
+        self.assertEqual(validate_ascii_volume_label("SD_A7M4_01"), "SD_A7M4_01")
+        self.assertEqual(validate_ascii_volume_label(""), "")
+
+        # 2. 2バイト文字（日本語・全角英数・環境依存文字）は厳格に拒否されること
+        for bad_two_byte in ["メインSD", "SD_①", "ＳＤカード", "α7IV_SD"]:
+            with self.assertRaises(ValueError):
+                validate_ascii_volume_label(bad_two_byte)
+
+        # 3. 12文字超過および禁止記号は拒否されること
+        with self.assertRaises(ValueError):
+            validate_ascii_volume_label("SD_CARD_1234")  # 12文字
+        with self.assertRaises(ValueError):
+            validate_ascii_volume_label("SD*CARD?")  # 禁止記号
+
+        # 4. write_volume_label=False（未チェック）の場合は物理書き込み関数が一切呼ばれないこと
+        with _mock.patch("server.volume_info.set_physical_volume_label") as mock_set_label:
+            res_db_only = api_update_volume_name(
+                "3333CCCC",
+                UpdateVolumeNameRequest(
+                    custom_name="α7IV メインSD③（日本語ニックネーム）",
+                    write_volume_label=False,
+                ),
+            )
+            self.assertEqual(res_db_only["custom_name"], "α7IV メインSD③（日本語ニックネーム）")
+            self.assertFalse(res_db_only["wrote_physical_label"])
+            mock_set_label.assert_not_called()
+
+            # 5. PIN不一致時は 400 でブロックされ、物理書き込み関数が一切呼ばれないこと
+            with _mock.patch(
+                "server.volume_info.find_online_drive_for_serial",
+                return_value={"serial": "3333CCCC", "label": "NO NAME", "drive": "E:", "filesystem": "exFAT"},
+            ):
+                status_info = api_get_volume_status("3333CCCC")
+                issued_pin = status_info["approval_pin"]
+                self.assertEqual(len(issued_pin), 4)
+                self.assertTrue(issued_pin.isdigit())
+
+                wrong_pin = "0000" if issued_pin != "0000" else "9999"
+                with self.assertRaises(HTTPException) as ctx_wrong:
+                    api_update_volume_name(
+                        "3333CCCC",
+                        UpdateVolumeNameRequest(
+                            custom_name="α7IV メインSD③",
+                            write_volume_label=True,
+                            new_volume_label="SD_A7M4_03",
+                            approval_pin=wrong_pin,
+                        ),
+                    )
+                self.assertEqual(ctx_wrong.exception.status_code, 400)
+                mock_set_label.assert_not_called()
+
+                # 6. 正しいPINでも2バイト文字が指定された場合は 400 でブロックされ、物理書き込みされないこと
+                with self.assertRaises(HTTPException) as ctx_mb:
+                    api_update_volume_name(
+                        "3333CCCC",
+                        UpdateVolumeNameRequest(
+                            custom_name="α7IV メインSD③",
+                            write_volume_label=True,
+                            new_volume_label="日本語ラベル",
+                            approval_pin=issued_pin,
+                        ),
+                    )
+                self.assertEqual(ctx_mb.exception.status_code, 400)
+                mock_set_label.assert_not_called()
+
+                # 7. 正しい4桁PIN かつ 半角ASCII 11文字以内の場合のみ物理書き込みが実行されること
+                mock_set_label.return_value = {
+                    "serial": "3333CCCC",
+                    "drive": "E:",
+                    "volume_label": "SD_A7M4_03",
+                    "filesystem": "exFAT",
+                }
+                res_approved = api_update_volume_name(
+                    "3333CCCC",
+                    UpdateVolumeNameRequest(
+                        custom_name="α7IV メインSD③",
+                        write_volume_label=True,
+                        new_volume_label="SD_A7M4_03",
+                        approval_pin=issued_pin,
+                    ),
+                )
+                self.assertTrue(res_approved["wrote_physical_label"])
+                self.assertEqual(res_approved["volume_label"], "SD_A7M4_03")
+                self.assertEqual(res_approved["custom_name"], "α7IV メインSD③")
+                mock_set_label.assert_called_once_with("3333CCCC", "SD_A7M4_03")
+
+    def test_17_managed_volumes_list_and_unmanage(self):
+        """管理対象メディア一覧 get_all_volumes() の集計情報（枚数・撮影期間・カメラ機種・識別名）と remove_volume_by_serial() の検証"""
+        from server.database import (
+            get_all_volumes,
+            get_photos,
+            remove_volume_by_serial,
+            update_rating,
+            update_volume_custom_name,
+            upsert_photo,
+            upsert_volume,
+        )
+
+        # SDカードA (VSN: AAAA1111) に写真2枚を登録
+        upsert_volume("AAAA1111", "EOS", "E:")
+        update_volume_custom_name("AAAA1111", "Canon メインSD①")
+        p_a1 = upsert_photo({
+            "file_path": r"E:\DCIM\100CANON\IMG_0001.JPG",
+            "directory_path": r"E:\DCIM\100CANON",
+            "file_name": "IMG_0001.JPG",
+            "file_size": 4100000,
+            "date_taken": "2026:07:10 09:00:00",
+            "camera_model": "Canon EOS R6m2",
+            "volume_serial": "AAAA1111",
+            "volume_label": "EOS",
+        })
+        p_a2 = upsert_photo({
+            "file_path": r"E:\DCIM\100CANON\IMG_0002.JPG",
+            "directory_path": r"E:\DCIM\100CANON",
+            "file_name": "IMG_0002.JPG",
+            "file_size": 4200000,
+            "date_taken": "2026:07:12 18:30:00",
+            "camera_model": "Canon EOS R6m2",
+            "volume_serial": "AAAA1111",
+            "volume_label": "EOS",
+        })
+        update_rating(p_a1, 2)  # 優
+
+        # SDカードB (VSN: BBBB2222) に写真1枚を登録（同じE:ドライブ文字）
+        upsert_volume("BBBB2222", "", "E:")
+        p_b1 = upsert_photo({
+            "file_path": r"E:\DCIM\100MSDCF\DSC01001.JPG",
+            "directory_path": r"E:\DCIM\100MSDCF",
+            "file_name": "DSC01001.JPG",
+            "file_size": 5300000,
+            "date_taken": "2026:09:05 14:15:00",
+            "camera_model": "ILCE-7CM2",
+            "volume_serial": "BBBB2222",
+            "volume_label": "",
+        })
+
+        vols = get_all_volumes()
+        by_vsn = {v["volume_serial"]: v for v in vols}
+        self.assertIn("AAAA1111", by_vsn)
+        self.assertIn("BBBB2222", by_vsn)
+
+        va = by_vsn["AAAA1111"]
+        self.assertEqual(va["custom_name"], "Canon メインSD①")
+        self.assertEqual(va["volume_label"], "EOS")
+        self.assertEqual(va["short_serial"], "AAAA-1111")
+        self.assertEqual(va["photo_count"], 2)
+        self.assertEqual(va["excellent_count"], 1)
+        self.assertEqual(va["min_date"], "2026-07-10")
+        self.assertEqual(va["max_date"], "2026-07-12")
+        self.assertIn("Canon EOS R6m2", va["cameras"])
+
+        vb = by_vsn["BBBB2222"]
+        self.assertEqual(vb["photo_count"], 1)
+        self.assertEqual(vb["min_date"], "2026-09-05")
+        self.assertEqual(vb["max_date"], "2026-09-05")
+        self.assertIn("ILCE-7CM2", vb["cameras"])
+
+        # SDカードA (AAAA1111) の管理登録を解除 → Aの写真2枚とボリューム情報が消え、SDカードB (BBBB2222) は無傷で残ること
+        res_del = remove_volume_by_serial("AAAA1111")
+        self.assertEqual(res_del["removed_count"], 2)
+
+        vols_after = {v["volume_serial"]: v for v in get_all_volumes()}
+        self.assertNotIn("AAAA1111", vols_after)
+        self.assertIn("BBBB2222", vols_after)
+        remaining_photos = get_photos(stacked=False)
+        self.assertEqual([p["id"] for p in remaining_photos], [p_b1])
+
+    def test_18_hierarchical_tag_ancestor_integrity_and_exclude_filter(self) -> None:
+        """階層タグの親・祖先レコード整合性保証、リネーム時の自動補完・相関マージ、除外フィルタの回帰テスト"""
+        from server.database import (
+            add_ai_tags_to_photo,
+            add_tag_to_photo,
+            get_all_tags_summary,
+            get_connection,
+            get_photo_tags_details,
+            get_photos,
+            initialize_database,
+            promote_ai_tag,
+            rename_tag,
+            upsert_photo,
+        )
+
+        p1 = upsert_photo({
+            "file_path": r"C:\Photos\Bento\PXL_20260831_030140793.jpg",
+            "directory_path": r"C:\Photos\Bento",
+            "file_name": "PXL_20260831_030140793.jpg",
+            "file_size": 1200000,
+            "date_taken": "2026-08-31 12:00:00",
+        })
+        p2 = upsert_photo({
+            "file_path": r"C:\Photos\Bento\PXL_20260901_030137140.jpg",
+            "directory_path": r"C:\Photos\Bento",
+            "file_name": "PXL_20260901_030137140.jpg",
+            "file_size": 1250000,
+            "date_taken": "2026-09-01 12:00:00",
+        })
+        p3 = upsert_photo({
+            "file_path": r"C:\Photos\Books\PXL_20260901_144942491.jpg",
+            "directory_path": r"C:\Photos\Books",
+            "file_name": "PXL_20260901_144942491.jpg",
+            "file_size": 1400000,
+            "date_taken": "2026-09-01 14:49:42",
+        })
+
+        # 1. 旧バージョン等で「子孫タグのみが存在し、親タグ行が欠落している」状態をシミュレートして rename_tag を実行
+        with get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "INSERT INTO photo_tags (photo_id, tag, source, confidence) VALUES (?, ?, 'manual', 1.0)",
+                (p1, "20. 食べ物・飲み物/樹里さん弁当/2026"),
+            )
+            conn.commit()
+
+        # ルートタグ名をリネームした際、new_tag 自身 ("食事・飲み物") と中間親 ("食事・飲み物/樹里さん弁当") も補完されること
+        rename_tag("20. 食べ物・飲み物", "食事・飲み物")
+        p1_tags = {d["tag"] for d in get_photo_tags_details(p1)}
+        self.assertEqual(
+            p1_tags,
+            {"食事・飲み物", "食事・飲み物/樹里さん弁当", "食事・飲み物/樹里さん弁当/2026"},
+        )
+
+        # 2. DBに直接「末端タグのみ（親欠落）」が存在していた場合でも、initialize_database() の高速修復で自己修復されること
+        with get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "INSERT INTO photo_tags (photo_id, tag, source, confidence) VALUES (?, ?, 'manual', 1.0)",
+                (p2, "食事・飲み物/樹里さん弁当/2026"),
+            )
+            conn.commit()
+
+        initialize_database()
+        p2_tags = {d["tag"] for d in get_photo_tags_details(p2)}
+        self.assertEqual(
+            p2_tags,
+            {"食事・飲み物", "食事・飲み物/樹里さん弁当", "食事・飲み物/樹里さん弁当/2026"},
+        )
+
+        # 親タグ「食事・飲み物」を除外（-）にしたとき、子孫タグを持つ p1, p2 が確実に除外され p3 のみ残ること
+        remaining = get_photos(excluded_tags=["食事・飲み物"])
+        self.assertEqual([r["id"] for r in remaining], [p3])
+
+        # 親タグ「食事・飲み物」を含む（+）にしたとき、p1, p2 の両方がヒットし、集計枚数も 2 枚で一致すること
+        included = get_photos(included_tags=["食事・飲み物"])
+        self.assertEqual({r["id"] for r in included}, {p1, p2})
+        summary_map = {item["tag"]: item["count"] for item in get_all_tags_summary()}
+        self.assertEqual(summary_map.get("食事・飲み物"), 2)
+        self.assertEqual(summary_map.get("食事・飲み物/樹里さん弁当"), 2)
+        self.assertEqual(summary_map.get("食事・飲み物/樹里さん弁当/2026"), 2)
+
+        # 3. rename_tag の子孫重複マージ時に、別写真の無関係な既存タグを誤削除しないこと（相関サブクエリ検証）
+        add_tag_to_photo(p1, "旧カテゴリ/サブA")
+        add_tag_to_photo(p1, "新カテゴリ/サブB")
+        add_tag_to_photo(p2, "旧カテゴリ/サブB")
+        rename_tag("旧カテゴリ", "新カテゴリ")
+
+        p1_after = {d["tag"] for d in get_photo_tags_details(p1)}
+        p2_after = {d["tag"] for d in get_photo_tags_details(p2)}
+        self.assertIn("新カテゴリ/サブA", p1_after)
+        self.assertIn("新カテゴリ/サブB", p1_after)  # p1 が元々持っていた「新カテゴリ/サブB」が消えていないこと
+        self.assertIn("新カテゴリ/サブB", p2_after)
+
+        # 4. promote_ai_tag で階層タグを昇格した際、全祖先パスも manual として保証されること
+        add_ai_tags_to_photo(p3, [{"tag": "被写体/動物/猫", "confidence": 0.85}])
+        self.assertTrue(promote_ai_tag(p3, "被写体/動物/猫"))
+        p3_details = {d["tag"]: d["source"] for d in get_photo_tags_details(p3)}
+        self.assertEqual(p3_details.get("被写体"), "manual")
+        self.assertEqual(p3_details.get("被写体/動物"), "manual")
+        self.assertEqual(p3_details.get("被写体/動物/猫"), "manual")
+
+    def test_19_ai_color_tag_re_evaluation(self) -> None:
+        """AIカラータグのみ再判定（predict_from_bytes(color_only=True) および /api/ai/tag-color-photos）の検証"""
+        import asyncio
+        import io
+        from PIL import Image
+        import server.app as app_module
+        from server.ai.tagger import get_ai_tagger
+        from server.database import (
+            add_ai_tags_to_photo,
+            add_tag_to_photo,
+            get_photo_tags_details,
+            save_thumbnail,
+            upsert_photo,
+        )
+
+        # 鮮やかな赤色テスト画像のWebPサムネイルを生成
+        img = Image.new("RGB", (224, 224), (225, 25, 25))
+        buf = io.BytesIO()
+        img.save(buf, format="WEBP", quality=90)
+        red_webp = buf.getvalue()
+
+        p_red = upsert_photo({
+            "file_path": r"C:\Photos\Cars\RED_ROADSTER.JPG",
+            "directory_path": r"C:\Photos\Cars",
+            "file_name": "RED_ROADSTER.JPG",
+            "file_size": 2500000,
+            "date_taken": "2026-08-14 10:00:00",
+        })
+        save_thumbnail(p_red, red_webp, 224, 224)
+
+        # 手動タグ（通常タグ + 手動カラータグ「黒」）と、既存のAIタグ（被写体「車・ドライブ」 + 旧AIカラータグ「青」）を付与
+        add_tag_to_photo(p_red, "愛車/ロードスター")
+        add_tag_to_photo(p_red, "黒")
+        add_ai_tags_to_photo(
+            p_red,
+            [
+                {"tag": "車・ドライブ", "confidence": 0.28},
+                {"tag": "青", "confidence": 0.22},
+            ],
+        )
+
+        tagger = get_ai_tagger()
+        if tagger.is_available():
+            res = app_module.api_ai_tag_color_photos(
+                app_module.AITagColorBatchRequest(photo_ids=[p_red])
+            )
+            self.assertEqual(res["status"], "ok")
+            self.assertEqual(res["tagged_count"], 1)
+            pred_list = res["predicted_colors"].get(p_red) or res["predicted_colors"].get(str(p_red)) or []
+            self.assertIn("赤", pred_list)
+
+            details_map = {d["tag"]: d["source"] for d in get_photo_tags_details(p_red)}
+            # 旧AIカラータグ「青」が消え、新AIカラータグ「赤」が付与されていること
+            self.assertNotIn("青", details_map)
+            self.assertEqual(details_map.get("赤"), "ai")
+            # AI被写体タグ「車・ドライブ」および手動タグ「愛車/ロードスター」「黒」は無傷で保持されていること
+            self.assertEqual(details_map.get("車・ドライブ"), "ai")
+            self.assertEqual(details_map.get("愛車/ロードスター"), "manual")
+            self.assertEqual(details_map.get("黒"), "manual")
+
 
 if __name__ == "__main__":
     unittest.main()

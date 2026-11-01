@@ -52,12 +52,119 @@ def _generate_unique_tag_key(cursor, existing_keys: Optional[set] = None) -> str
     return f"tk_{uuid.uuid4().hex}"
 
 
+def _normalize_tag_path(tag: str) -> str:
+    """タグパスの各階層セグメントの前後空白および空セグメントを正規化する"""
+    if not tag:
+        return ""
+    parts = [p.strip() for p in str(tag).split("/") if p.strip()]
+    return "/".join(parts)
+
+
 def _expand_ancestor_tags(tag: str) -> List[str]:
     """タグパスからすべての祖先パスを含むリストを生成する。
     例: 'A/B/C' → ['A', 'A/B', 'A/B/C']
     """
-    parts = tag.split("/")
+    parts = [p.strip() for p in str(tag or "").split("/") if p.strip()]
     return ["/".join(parts[: i + 1]) for i in range(len(parts))]
+
+
+def repair_missing_ancestor_tags(
+    cursor,
+    photo_ids: Optional[Iterable[int]] = None,
+) -> int:
+    """
+    階層タグ（'A/B/C' 等）を持つ写真において、親・祖先ノード（'A', 'A/B' 等）の
+    photo_tags レコードが欠落している場合に自動補完し、tag_definitions にも登録を保証する。
+    - photo_ids 指定時: 対象写真のみをピンポイント検査・補完（リネーム時など）
+    - photo_ids 未指定時: カバリングインデックス (idx_photo_tags_tag_photo) を使った
+      高速差集合検査により、DB全体の欠落祖先タグを数ミリ秒で検出・修復する
+    """
+    missing_rows: List[tuple] = []
+    ancestor_names: set = set()
+
+    if photo_ids is not None:
+        id_list = [int(pid) for pid in dict.fromkeys(photo_ids) if pid is not None]
+        if not id_list:
+            return 0
+        chunk_size = 500
+        existing_by_photo: Dict[int, set] = {}
+        hier_rows: List[tuple] = []
+        for i in range(0, len(id_list), chunk_size):
+            chunk = id_list[i : i + chunk_size]
+            placeholders = ",".join(["?"] * len(chunk))
+            cursor.execute(
+                f"SELECT photo_id, tag, COALESCE(source, 'manual') AS source FROM photo_tags WHERE photo_id IN ({placeholders})",
+                chunk,
+            )
+            for r in cursor.fetchall():
+                pid = int(r["photo_id"])
+                t_val = str(r["tag"] or "")
+                src = str(r["source"] or "manual")
+                if not t_val:
+                    continue
+                existing_by_photo.setdefault(pid, set()).add((t_val, src))
+                if "/" in t_val:
+                    hier_rows.append((pid, t_val, src))
+
+        seen_inserts = set()
+        for pid, t_val, src in hier_rows:
+            existing_set = existing_by_photo.get(pid, set())
+            existing_tags = {et for et, _ in existing_set}
+            for anc in _expand_ancestor_tags(t_val)[:-1]:
+                if anc not in existing_tags or (src == "manual" and (anc, "manual") not in existing_set):
+                    key = (pid, anc)
+                    if key not in seen_inserts:
+                        seen_inserts.add(key)
+                        missing_rows.append((pid, anc, "manual" if src == "manual" else src))
+                        ancestor_names.add(anc)
+    else:
+        cursor.execute("SELECT DISTINCT tag FROM photo_tags WHERE instr(tag, '/') > 0")
+        hier_tags = [str(r["tag"]) for r in cursor.fetchall() if r["tag"]]
+        if not hier_tags:
+            return 0
+
+        checked_pairs = set()
+        seen_inserts = set()
+        for t_val in hier_tags:
+            ancestors = _expand_ancestor_tags(t_val)[:-1]
+            for anc in ancestors:
+                pair = (t_val, anc)
+                if pair in checked_pairs:
+                    continue
+                checked_pairs.add(pair)
+                cursor.execute(
+                    """
+                    SELECT photo_id FROM photo_tags WHERE tag = ?
+                    EXCEPT
+                    SELECT photo_id FROM photo_tags WHERE tag = ?
+                    """,
+                    (t_val, anc),
+                )
+                for row in cursor.fetchall():
+                    pid = int(row["photo_id"])
+                    ins_key = (pid, anc)
+                    if ins_key not in seen_inserts:
+                        seen_inserts.add(ins_key)
+                        missing_rows.append((pid, anc, "manual"))
+                        ancestor_names.add(anc)
+
+    if not missing_rows:
+        return 0
+
+    if ancestor_names:
+        _ensure_tag_keys_registered(cursor, sorted(ancestor_names))
+
+    cursor.executemany(
+        """
+        INSERT INTO photo_tags (photo_id, tag, source, confidence)
+        VALUES (?, ?, ?, 1.0)
+        ON CONFLICT(photo_id, tag) DO UPDATE SET
+            source = CASE WHEN excluded.source = 'manual' THEN 'manual' ELSE photo_tags.source END,
+            confidence = CASE WHEN excluded.source = 'manual' THEN 1.0 ELSE photo_tags.confidence END
+        """,
+        missing_rows,
+    )
+    return len(missing_rows)
 
 
 def _expand_stack_and_pair_photo_ids(conn, photo_ids: List[int]) -> List[int]:
@@ -135,7 +242,7 @@ def _expand_stack_and_pair_photo_ids(conn, photo_ids: List[int]) -> List[int]:
 
 def add_tag_to_photo(photo_id: int, tag: str) -> bool:
     """写真にタグを追加する（スタック・ペア全体にも自動連動、祖先パス自動追加・AIタグは手動昇格）"""
-    cleaned_tag = tag.strip().strip("/")
+    cleaned_tag = _normalize_tag_path(tag)
     if not cleaned_tag:
         return False
     all_tags = _expand_ancestor_tags(cleaned_tag)
@@ -183,7 +290,7 @@ def remove_tag_from_photo(photo_id: int, tag: str) -> bool:
 
 def batch_add_tag(photo_ids: List[int], tag: str) -> int:
     """複数の写真に一括でタグを追加する（スタック・ペア全体にも自動連動、祖先パス自動追加・手動昇格）"""
-    cleaned_tag = tag.strip().strip("/")
+    cleaned_tag = _normalize_tag_path(tag)
     if not cleaned_tag or not photo_ids:
         return 0
     all_tags = _expand_ancestor_tags(cleaned_tag)
@@ -210,11 +317,14 @@ def add_ai_tags_to_photo(photo_id: int, tag_items: List[Dict[str, Any]]) -> int:
     if not tag_items:
         return 0
     params = []
+    has_color = False
     for item in tag_items:
         tag = item.get("tag", "").strip()
         confidence = float(item.get("confidence", 0.0))
         if not tag:
             continue
+        if is_color_tag(tag):
+            has_color = True
         all_tags = _expand_ancestor_tags(tag)
         for t in all_tags:
             params.append((photo_id, t, confidence))
@@ -222,6 +332,64 @@ def add_ai_tags_to_photo(photo_id: int, tag_items: List[Dict[str, Any]]) -> int:
         return 0
     with get_connection() as conn:
         cursor = conn.cursor()
+        if has_color:
+            color_list = sorted(COLOR_TAG_NAMES)
+            color_placeholders = ",".join(["?"] * len(color_list))
+            cursor.execute(
+                f"DELETE FROM photo_tags WHERE photo_id = ? AND source = 'ai' AND tag IN ({color_placeholders})",
+                [photo_id, *color_list],
+            )
+        cursor.executemany(
+            """
+            INSERT INTO photo_tags (photo_id, tag, source, confidence)
+            VALUES (?, ?, 'ai', ?)
+            ON CONFLICT(photo_id, tag) DO UPDATE SET
+                confidence = excluded.confidence
+            WHERE photo_tags.source = 'ai'
+            """,
+            params,
+        )
+        conn.commit()
+        return cursor.rowcount
+
+
+def replace_ai_color_tags_for_photo(photo_id: int, tag_items: List[Dict[str, Any]]) -> int:
+    """写真（および同一スタック・RAWペア）のAIカラータグのみを再設定する（手動タグおよび被写体AIタグは完全保護）"""
+    color_items = [
+        item for item in (tag_items or [])
+        if is_color_tag(str(item.get("tag", "")).strip())
+    ]
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        target_ids = _expand_stack_and_pair_photo_ids(conn, [photo_id])
+        if not target_ids:
+            target_ids = [photo_id]
+        id_placeholders = ",".join(["?"] * len(target_ids))
+        color_list = sorted(COLOR_TAG_NAMES)
+        color_placeholders = ",".join(["?"] * len(color_list))
+        # 既存のAI由来カラータグのみを削除（手動カラータグや被写体タグは保護）
+        cursor.execute(
+            f"""
+            DELETE FROM photo_tags
+            WHERE photo_id IN ({id_placeholders})
+              AND source = 'ai'
+              AND tag IN ({color_placeholders})
+            """,
+            [*target_ids, *color_list],
+        )
+        if not color_items:
+            conn.commit()
+            return 0
+        params = []
+        for pid in target_ids:
+            for item in color_items:
+                t = str(item.get("tag", "")).strip()
+                conf = float(item.get("confidence", 0.0))
+                if t:
+                    params.append((pid, t, conf))
+        if not params:
+            conn.commit()
+            return 0
         cursor.executemany(
             """
             INSERT INTO photo_tags (photo_id, tag, source, confidence)
@@ -237,28 +405,29 @@ def add_ai_tags_to_photo(photo_id: int, tag_items: List[Dict[str, Any]]) -> int:
 
 
 def promote_ai_tag(photo_id: int, tag: str) -> bool:
-    """AIタグを手動タグに昇格（確定）する（スタック・ペア全体にも自動連動）"""
-    cleaned_tag = tag.strip().strip("/")
+    """AIタグを手動タグに昇格（確定）する（スタック・ペア全体にも自動連動・祖先パスも手動保証）"""
+    cleaned_tag = _normalize_tag_path(tag)
     if not cleaned_tag:
         return False
+    all_tags = _expand_ancestor_tags(cleaned_tag)
     with get_connection() as conn:
         cursor = conn.cursor()
-        _ensure_tag_keys_registered(cursor, _expand_ancestor_tags(cleaned_tag))
+        _ensure_tag_keys_registered(cursor, all_tags)
         target_ids = _expand_stack_and_pair_photo_ids(conn, [photo_id])
         if not target_ids:
             return False
-        total_updated = 0
-        chunk_size = 500
-        for i in range(0, len(target_ids), chunk_size):
-            chunk = target_ids[i : i + chunk_size]
-            placeholders = ",".join(["?"] * len(chunk))
-            cursor.execute(
-                f"UPDATE photo_tags SET source = 'manual', confidence = 1.0 WHERE photo_id IN ({placeholders}) AND tag = ?",
-                chunk + [cleaned_tag],
-            )
-            total_updated += cursor.rowcount
+        cursor.executemany(
+            """
+            INSERT INTO photo_tags (photo_id, tag, source, confidence)
+            VALUES (?, ?, 'manual', 1.0)
+            ON CONFLICT(photo_id, tag) DO UPDATE SET
+                source = 'manual',
+                confidence = 1.0
+            """,
+            [(pid, t) for pid in target_ids for t in all_tags],
+        )
         conn.commit()
-        return total_updated > 0
+        return cursor.rowcount > 0
 
 
 def remove_ai_tags(photo_id: Optional[int] = None, folder_path: Optional[str] = None) -> int:
@@ -550,7 +719,7 @@ def update_tag_metadata(
 
 def create_tag_definition(tag: str, short_name: str = "", is_pinned: bool = False) -> bool:
     """写真未付与のまま新規タグ（およびその祖先階層）をタグツリー定義に登録する（固有 tag_key 自動採番）"""
-    cleaned_tag = tag.strip().strip("/")
+    cleaned_tag = _normalize_tag_path(tag)
     if not cleaned_tag:
         return False
     all_tags = _expand_ancestor_tags(cleaned_tag)
@@ -768,7 +937,7 @@ def rename_tag(old_tag: str, new_tag: str) -> int:
         他で "A/*" を持たない写真からは旧親 "A" を自動除去（「A/C」を併せ持つ写真の「A」は維持）
     """
     old_tag = old_tag.strip().strip("/")
-    new_tag = new_tag.strip().strip("/")
+    new_tag = _normalize_tag_path(new_tag)
     if not old_tag or not new_tag or old_tag == new_tag:
         return 0
     if new_tag.startswith(old_tag + "/"):
@@ -793,8 +962,8 @@ def rename_tag(old_tag: str, new_tag: str) -> int:
         )
         affected_photo_ids = [r["photo_id"] for r in cursor.fetchall()]
 
-        # UNIQUE制約 (photo_id, tag) 違反を防ぐため、リネーム先タグが既に付いている
-        # レコードを事前に削除する（重複マージ）
+        # UNIQUE制約 (photo_id, tag) 違反を防ぐため、同一写真上にリネーム先タグが既に付いている
+        # 旧レコードを事前に削除する（重複マージ）
         cursor.execute(
             """DELETE FROM photo_tags
                WHERE tag = ? AND photo_id IN (SELECT photo_id FROM photo_tags WHERE tag = ?)""",
@@ -808,11 +977,16 @@ def rename_tag(old_tag: str, new_tag: str) -> int:
         count = cursor.rowcount
 
         # 子孫タグのプレフィックス置換 (例: "A/1/い" → "A/猫/い")
+        # 同一 photo_id 上に変換後の子孫タグが既に存在する旧レコードのみを相関サブクエリで除去
         cursor.execute(
             """DELETE FROM photo_tags
-               WHERE photo_id IN (SELECT photo_id FROM photo_tags WHERE tag LIKE ?)
-                 AND tag IN (SELECT ? || SUBSTR(tag, ?) FROM photo_tags WHERE tag LIKE ?)""",
-            (f"{old_tag}/%", new_tag, len(old_tag) + 1, f"{old_tag}/%"),
+               WHERE tag LIKE ?
+                 AND EXISTS (
+                     SELECT 1 FROM photo_tags pt2
+                     WHERE pt2.photo_id = photo_tags.photo_id
+                       AND pt2.tag = ? || SUBSTR(photo_tags.tag, ?)
+                 )""",
+            (f"{old_tag}/%", new_tag, len(old_tag) + 1),
         )
         cursor.execute(
             "UPDATE photo_tags SET tag = ? || SUBSTR(tag, ?) WHERE tag LIKE ?",
@@ -820,17 +994,22 @@ def rename_tag(old_tag: str, new_tag: str) -> int:
         )
         count += cursor.rowcount
 
-        # 1. 新しい親（祖先）タグの自動補完（例: "B" → "D/E/B" なら "D", "D/E" を対象写真に追加）
-        new_ancestors = _expand_ancestor_tags(new_tag)[:-1]
-        if new_ancestors and affected_photo_ids:
+        # 1. 新しい親（祖先）タグおよび移動先タグ自身の自動補完
+        #    （子孫タグ old_tag/sub のみを持っていた写真でも、new_tag 自身を含む全祖先パスが確実に揃うようにする）
+        new_chain = _expand_ancestor_tags(new_tag)
+        if new_chain and affected_photo_ids:
             cursor.executemany(
                 """
                 INSERT INTO photo_tags (photo_id, tag, source, confidence)
                 VALUES (?, ?, 'manual', 1.0)
-                ON CONFLICT(photo_id, tag) DO NOTHING
+                ON CONFLICT(photo_id, tag) DO UPDATE SET
+                    source = 'manual',
+                    confidence = 1.0
                 """,
-                [(pid, anc) for pid in affected_photo_ids for anc in new_ancestors],
+                [(pid, anc) for pid in affected_photo_ids for anc in new_chain],
             )
+        if affected_photo_ids:
+            repair_missing_ancestor_tags(cursor, affected_photo_ids)
 
         # 2. 旧親（祖先）タグの整理（例: "A/B" → "D/B" のとき、同じ写真に "A/C" 等が無ければ "A" を外す）
         old_ancestors = _expand_ancestor_tags(old_tag)[:-1]

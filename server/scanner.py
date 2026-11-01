@@ -6,7 +6,9 @@
 import os
 import re
 import io
+import sys
 import math
+import string
 import hashlib
 import logging
 import threading
@@ -20,6 +22,7 @@ logger = logging.getLogger("scanner")
 
 from .database import (
     CACHE_DIR,
+    get_connection,
     upsert_photo,
     upsert_photos_batch,
     get_existing_photos_map,
@@ -56,7 +59,7 @@ from .raw_loader import (
     is_valid_lens_name,
     SUPPORTED_RAW_EXTENSIONS,
 )
-from .volume_info import get_volume_info
+from .volume_info import get_volume_info, get_volume_info_for_drive
 from .shell_thumbnail import get_shell_thumbnail, is_cloud_or_ondemand_path
 
 
@@ -72,6 +75,29 @@ EXIF_TAG_DICT = {ExifTags.TAGS[k]: k for k in ExifTags.TAGS}
 
 # オンデマンド未ダウンロード用プレースホルダーWebPのメモリキャッシュ
 _ONDEMAND_PLACEHOLDER_CACHE: Optional[bytes] = None
+
+
+def strip_vsn_prefix(path_str: str) -> str:
+    """
+    DB内部のUNIQUE制約衝突回避用プレフィックス 'vsn://<SERIAL>/' を除去して実ファイルパスを返す。
+    プレフィックスが付いていない通常のパスはそのまま返す。
+    """
+    if path_str and path_str.startswith("vsn://"):
+        rest = path_str[6:]
+        idx = rest.find("/")
+        if idx != -1:
+            return rest[idx + 1:]
+    return path_str
+
+
+def _extract_vsn_prefix(path_str: str) -> Tuple[Optional[str], str]:
+    """'vsn://<SERIAL>/<PATH>' から (SERIAL, PATH) を抽出する。プレフィックスが無ければ (None, path_str)"""
+    if path_str and path_str.startswith("vsn://"):
+        rest = path_str[6:]
+        idx = rest.find("/")
+        if idx != -1:
+            return (rest[:idx] or None), rest[idx + 1:]
+    return None, path_str
 
 
 def sanitize_camera_model(model: Optional[str]) -> str:
@@ -127,7 +153,7 @@ def parse_filename_datetime(filename: str) -> Optional[str]:
         yy, mo, d, h, mi, s = m.groups()
         yy_int = int(yy)
         yyyy = f"19{yy_int:02d}" if yy_int >= 70 else f"20{yy_int:02d}"
-        if 1 <= int(mo) <= 12 and 1 <= int(d) <= 31 and 0 <= int(h) <= 23 and 0 <= int(mi) <= 59 and 0 <= int(s) <= 59:
+        if 1 <= int(mo) <= 12 and 1 <= int(d) <= 31 and 0 <= h_int <= 23 and 0 <= int(mi) <= 59 and 0 <= int(s) <= 59:
             return f"{yyyy}-{mo}-{d} {h}:{mi}:{s}"
 
     # パターン4: YYMMDD_HHMM (例: 071126_0325~0002.jpg)
@@ -179,49 +205,170 @@ def get_ondemand_placeholder_webp() -> bytes:
 _online_cache_lock = threading.Lock()
 _directory_online_cache: Dict[str, Tuple[bool, float]] = {}
 
+# 接続中ドライブのVSNマッピングTTLキャッシュ（2秒TTL）
+_drive_serial_cache_time: float = 0.0
+_serial_to_drive_cache: Dict[str, str] = {}
+_drive_to_serial_cache: Dict[str, str] = {}
+
 
 def clear_online_cache() -> None:
-    """ディレクトリオンライン判定キャッシュをクリアする"""
+    """ディレクトリオンライン判定キャッシュおよびドライブVSNキャッシュをクリアする"""
+    global _drive_serial_cache_time
     with _online_cache_lock:
         _directory_online_cache.clear()
+        _drive_serial_cache_time = 0.0
+        _serial_to_drive_cache.clear()
+        _drive_to_serial_cache.clear()
 
 
-def resolve_portable_path(stored_path: str) -> Tuple[Path, bool]:
+def _get_connected_drive_serial_map() -> Tuple[Dict[str, str], Dict[str, str]]:
     """
-    USBポータブル運用やPC間移動によるドライブレター変更に対応し、
-    実写真ファイルの現在位置を動的に解決する。
+    現在接続中の全ローカルドライブについて、
+    (serial_to_drive: {VSN大文字: 'E:'}, drive_to_serial: {'E:': VSN大文字}) を返す（2秒TTLキャッシュ）。
+    ネットワークドライブやメディア未挿入ドライブはブロック防止のためスキップする。
+    """
+    global _drive_serial_cache_time, _serial_to_drive_cache, _drive_to_serial_cache
+    now = time.time()
+    with _online_cache_lock:
+        if now < _drive_serial_cache_time and (_serial_to_drive_cache or _drive_to_serial_cache):
+            return dict(_serial_to_drive_cache), dict(_drive_to_serial_cache)
+
+    serial_to_drive: Dict[str, str] = {}
+    drive_to_serial: Dict[str, str] = {}
+
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            kernel32 = ctypes.windll.kernel32
+            old_mode = ctypes.c_uint(0)
+            try:
+                kernel32.SetThreadErrorMode(0x0001 | 0x8000, ctypes.byref(old_mode))
+            except Exception as e:
+                logger.debug(f"SetThreadErrorMode 失敗: {e}")
+            try:
+                mask = kernel32.GetLogicalDrives()
+                for i, letter in enumerate(string.ascii_uppercase):
+                    if not (mask & (1 << i)):
+                        continue
+                    root = f"{letter}:\\"
+                    drive_type = kernel32.GetDriveTypeW(ctypes.c_wchar_p(root))
+                    # 1=NO_ROOT_DIR, 4=REMOTE(ネットワークドライブはブロック回避のためスキップ)
+                    if drive_type <= 1 or drive_type == 4:
+                        continue
+                    info = get_volume_info_for_drive(letter)
+                    if info and info.get("serial"):
+                        s_upper = str(info["serial"]).upper()
+                        d_upper = f"{letter}:"
+                        serial_to_drive[s_upper] = d_upper
+                        drive_to_serial[d_upper] = s_upper
+            finally:
+                try:
+                    kernel32.SetThreadErrorMode(old_mode.value, None)
+                except Exception as e:
+                    logger.debug(f"SetThreadErrorMode 復元失敗: {e}")
+        except Exception as e:
+            logger.debug(f"接続ドライブVSNマップ取得失敗: {e}")
+
+    with _online_cache_lock:
+        _serial_to_drive_cache = serial_to_drive
+        _drive_to_serial_cache = drive_to_serial
+        _drive_serial_cache_time = time.time() + 2.0
+
+    return dict(serial_to_drive), dict(drive_to_serial)
+
+
+def _resolve_cloud_drive_path(clean_path: str) -> Optional[Path]:
+    """
+    クラウドドライブ（OneDrive / Google Drive / Dropbox / iCloud Drive）上のパスについて、
+    PC間移動（ユーザー名変更・CドライブVSN変化・Google Drive仮想ドライブ文字変化）を吸収して実在パスを解決する。
+    クラウドパスでない場合や実在しない場合は None を返す。
+    """
+    if not clean_path:
+        return None
+    norm = clean_path.replace("/", "\\")
+    lower = norm.lower()
+    home = Path.home()
+
+    # 1. OneDrive (\OneDrive\ または \OneDrive - xxx\)
+    m_od = re.search(r"\\onedrive(?:\s*-\s*[^\\]+)?(?:\\|$)", lower)
+    if m_od:
+        rel = norm[m_od.end():].lstrip("\\")
+        od_roots: List[Path] = []
+        for env_key in ("OneDrive", "OneDriveConsumer", "OneDriveCommercial"):
+            env_val = os.environ.get(env_key)
+            if env_val:
+                od_roots.append(Path(env_val))
+        od_roots.append(home / "OneDrive")
+        for root in od_roots:
+            cand = (root / rel) if rel else root
+            if cand.exists():
+                return cand
+
+    # 2. Google Drive / Dropbox / iCloudDrive (ユーザープロファイル配下)
+    user_cloud_markers = [
+        ("\\google drive\\", home / "Google Drive"),
+        ("\\dropbox\\", home / "Dropbox"),
+        ("\\iclouddrive\\", home / "iCloudDrive"),
+    ]
+    for marker, target_root in user_cloud_markers:
+        idx = lower.find(marker)
+        if idx != -1:
+            rel = norm[idx + len(marker):].lstrip("\\")
+            cand = (target_root / rel) if rel else target_root
+            if cand.exists():
+                return cand
+        elif lower.endswith(marker.rstrip("\\")):
+            if target_root.exists():
+                return target_root
+
+    # 3. Google Drive 仮想ドライブ / ストリームマウント (\マイドライブ, \My Drive, \共有ドライブ, \Shared drives)
+    gdrive_markers = ("\\マイドライブ", "\\my drive", "\\共有ドライブ", "\\shared drives")
+    for gm in gdrive_markers:
+        idx = lower.find(gm)
+        if idx != -1:
+            after_idx = idx + len(gm)
+            if after_idx == len(lower) or lower[after_idx] == "\\":
+                orig_p = Path(norm)
+                if orig_p.exists():
+                    return orig_p
+                # ドライブレターが G: -> H: 等に変わった場合、接続中ドライブの同相対パスを照合
+                if orig_p.drive:
+                    tail = norm[len(orig_p.drive):].lstrip("\\")
+                    _, drive_to_serial = _get_connected_drive_serial_map()
+                    for drv in drive_to_serial.keys():
+                        cand = Path(f"{drv}\\{tail}")
+                        if cand.exists():
+                            return cand
+                # Google Drive フォルダモードへのフォールバック
+                rel_with_marker = norm[idx:].lstrip("\\")
+                rel_after = norm[after_idx:].lstrip("\\")
+                for rel_cand in (rel_with_marker, rel_after):
+                    cand_home = (home / "Google Drive" / rel_cand) if rel_cand else (home / "Google Drive")
+                    if cand_home.exists():
+                        return cand_home
+
+    return None
+
+
+def resolve_portable_path(stored_path: str, expected_serial: Optional[str] = None) -> Tuple[Path, bool]:
+    """
+    USBポータブル運用・SDカード複数枚差し替え・PC間移動・クラウドドライブに対応し、
+    実写真ファイル（またはフォルダ）の現在位置を動的に解決する。
+    - expected_serial (または 'vsn://<SERIAL>/' プレフィックス) が指定されている場合:
+      * アプリ内部の storage / photos フォルダ内のファイルであれば最優先で解決する。
+      * 対象 VSN を持つドライブが現在接続中であれば、そのドライブ文字（E: -> G: 等の変動含む）上で存在確認する。
+      * 対象 VSN を持つドライブが未接続であれば、別メディアが同じドライブ文字（E: 等）に挿さっていても
+        誤ってオンライン判定せず、クラウドドライブ照合のみ試みてオフライン (False) を返す。
     戻り値: (解決されたPath, ファイルが存在するかどうかのbool)
     """
-    orig_path = Path(stored_path)
-    parent_str = str(orig_path.parent)
+    prefix_serial, clean_path = _extract_vsn_prefix(stored_path)
+    effective_serial = (expected_serial or prefix_serial or "").strip().upper() or None
 
-    # 親ディレクトリのオンライン判定キャッシュを確認
-    now = time.time()
-    parent_known_offline = False
-    with _online_cache_lock:
-        cached = _directory_online_cache.get(parent_str)
-        if cached is not None:
-            is_online, expire_time = cached
-            if now < expire_time and not is_online:
-                parent_known_offline = True
-
-    # 親ディレクトリがキャッシュ上オフラインなら、切断ドライブで数秒ブロックし得る元パスの確認だけを省く。
-    # （手順1・2のローカル代替照合は常に行う。省くと同階層の別ファイル/フォルダが誤ってオフライン判定される）
-    if not parent_known_offline and orig_path.exists():
-        with _online_cache_lock:
-            _directory_online_cache[parent_str] = (True, now + 5.0)
-        return orig_path, True
-
-    # 1. カレントドライブ（USBドライブ）上での相対パス照合
+    orig_path = Path(clean_path)
     base_dir = Path(__file__).resolve().parent.parent
-    current_drive = base_dir.drive
-    if current_drive and orig_path.drive and current_drive.lower() != orig_path.drive.lower():
-        path_without_drive = str(orig_path)[len(orig_path.drive):].lstrip("\\/")
-        candidate_same_drive = Path(f"{current_drive}\\{path_without_drive}")
-        if candidate_same_drive.exists():
-            return candidate_same_drive, True
 
-    # 2. プロジェクト直下の "storage" ディレクトリ（サブフォルダ階層含む）を照合
+    # 1. プロジェクト直下の "storage" ディレクトリ（アプリ内ポータブルストレージ）を最優先で照合
+    #    ※ アプリごと別ドライブ・別PCへ移動した場合でもホストドライブのVSN変化に影響されず解決する
     app_storage_dir = base_dir / "storage"
     if app_storage_dir.exists():
         norm_stored = str(orig_path).replace("/", "\\").rstrip("\\")
@@ -237,7 +384,69 @@ def resolve_portable_path(stored_path: str) -> Tuple[Path, bool]:
         elif lower_stored.endswith("\\storage"):
             return app_storage_dir, True
 
-    # 3. プロジェクト直下の "photos" ディレクトリ内を照合
+    # 2. VSN（ボリュームシリアル番号）が指定されている場合の厳密メディア照合
+    if effective_serial:
+        serial_to_drive, _ = _get_connected_drive_serial_map()
+        mounted_drive = serial_to_drive.get(effective_serial)
+        if mounted_drive:
+            # 該当VSNのメディアが現在接続されている場合（ドライブ文字が E: -> G: に変わった場合も自動追従）
+            if orig_path.drive:
+                if orig_path.drive.upper() == mounted_drive.upper():
+                    target_candidate = orig_path
+                else:
+                    path_without_drive = str(orig_path)[len(orig_path.drive):].lstrip("\\/")
+                    target_candidate = Path(f"{mounted_drive}\\{path_without_drive}")
+            else:
+                target_candidate = orig_path
+
+            if target_candidate.exists():
+                return target_candidate, True
+
+            # 該当VSNドライブ上に無い場合、クラウドドライブパスであればクラウド解決を試行
+            cloud_cand = _resolve_cloud_drive_path(clean_path)
+            if cloud_cand is not None:
+                return cloud_cand, True
+
+            return target_candidate, False
+        else:
+            # 該当VSNのメディアが現在接続されていない場合:
+            # クラウドドライブ（OneDrive/Google Drive等）のPC間移動のみフォールバック照合し、
+            # それ以外（別SDカードが同じドライブ文字 E: に挿さっているケース等）は絶対に誤一致させない
+            cloud_cand = _resolve_cloud_drive_path(clean_path)
+            if cloud_cand is not None:
+                return cloud_cand, True
+            return orig_path, False
+
+    # 3. VSN未指定（レガシーレコード・ネットワークドライブ等）の従来ポータブル解決
+    parent_str = str(orig_path.parent)
+    now = time.time()
+    parent_known_offline = False
+    with _online_cache_lock:
+        cached = _directory_online_cache.get(parent_str)
+        if cached is not None:
+            is_online, expire_time = cached
+            if now < expire_time and not is_online:
+                parent_known_offline = True
+
+    if not parent_known_offline and orig_path.exists():
+        with _online_cache_lock:
+            _directory_online_cache[parent_str] = (True, now + 5.0)
+        return orig_path, True
+
+    # 3-a. クラウドドライブのパス照合
+    cloud_cand = _resolve_cloud_drive_path(clean_path)
+    if cloud_cand is not None:
+        return cloud_cand, True
+
+    # 3-b. カレントドライブ（USBドライブ）上での相対パス照合
+    current_drive = base_dir.drive
+    if current_drive and orig_path.drive and current_drive.lower() != orig_path.drive.lower():
+        path_without_drive = str(orig_path)[len(orig_path.drive):].lstrip("\\/")
+        candidate_same_drive = Path(f"{current_drive}\\{path_without_drive}")
+        if candidate_same_drive.exists():
+            return candidate_same_drive, True
+
+    # 3-c. プロジェクト直下の "photos" ディレクトリ内を照合
     app_photos_dir = base_dir / "photos"
     if app_photos_dir.exists():
         candidate_app_sub = app_photos_dir / orig_path.name
@@ -249,8 +458,6 @@ def resolve_portable_path(stored_path: str) -> Tuple[Path, bool]:
                 return candidate_parent_sub, True
 
     # 4. 見つからない場合はオフライン
-    # 元パスの親ディレクトリの存在状態（ドライブ切断等の判定）をキャッシュ
-    # （キャッシュは「元パスの親が実在するか」のみを表す。代替照合の成功では書き込まない）
     if not parent_known_offline:
         parent_online = orig_path.parent.exists()
         with _online_cache_lock:
@@ -542,7 +749,6 @@ def extract_metadata(file_path: Path) -> Dict[str, Any]:
     return _apply_xmp_hardware_fallback(meta, file_path, fallback_dt.strftime("%Y-%m-%d %H:%M:%S"))
 
 
-
 def get_thumbnail_path(photo_id: int) -> Path:
     """写真IDに対応するWebPサムネイルの旧ファイルパスを返す（移行互換用）"""
     return THUMBNAIL_DIR / f"{photo_id}.webp"
@@ -761,12 +967,13 @@ def ensure_thumbnail(photo_id: int, file_path_str: str, max_size: int = 360, all
             exclude_photo_id=photo_id,
         )
         if dup_thumb:
-            file_hash = compute_thumbnail_hash(str(file_path_str))
+            file_hash = compute_thumbnail_hash(strip_vsn_prefix(str(file_path_str)))
             save_thumbnail(photo_id, dup_thumb["data"], dup_thumb["width"], dup_thumb["height"], file_hash)
             return dup_thumb["data"]
 
-    # サムネイル生成
-    target_path, is_online = resolve_portable_path(file_path_str)
+    # サムネイル生成（VSNを考慮して正しいメディア上のファイルのみを参照）
+    expected_serial = photo_meta.get("volume_serial") if photo_meta else None
+    target_path, is_online = resolve_portable_path(file_path_str, expected_serial=expected_serial)
     if not is_online:
         raise FileNotFoundError(f"画像ファイルが未接続です: {file_path_str}")
 
@@ -837,7 +1044,7 @@ def refresh_photo_thumbnail_transform(photo_id: int, delta_degrees: int = 0) -> 
 
     # 1. 元画像から再生成を試行
     if file_path:
-        target_path, is_online = resolve_portable_path(file_path)
+        target_path, is_online = resolve_portable_path(file_path, expected_serial=photo.get("volume_serial"))
         if is_online and target_path and target_path.exists():
             try:
                 res = render_thumbnail_webp(
@@ -883,16 +1090,16 @@ def refresh_photo_thumbnail_transform(photo_id: int, delta_degrees: int = 0) -> 
 def smart_sync_photo(meta: Dict[str, Any], existing_record: Optional[Any] = None, do_upsert: bool = True) -> str:
     """
     写真メタデータを同期する。
-    1. 同一ファイルパスが既に存在する場合: 通常更新 ('updated')
-    2. 新規ファイルパスの場合: 安全のため独立した写真として新規追加 ('added')
-       ※外付けドライブ切断時（オフライン時）の誤判定やバックアップコピー時のデータ乗っ取りを防ぐため、
-         自動付け替え（relink）は行わず、ファイルパスごとに独立したレコードとして登録する。
+    1. 同一ボリューム（VSN）・同一ファイルパスが既に存在する場合: 通常更新 ('updated')
+    2. 新規ファイルパス（または別VSNのSDカード）の場合: 独立した写真として新規追加 ('added')
+       ※同一画像（SDカードからPCへの移動・コピー等）が既存にあれば、評価・タグ・調整値・サムネイルを完全継承する。
     戻り値: 'added', 'updated'
     """
+    vol_serial = meta.get("volume_serial")
     if existing_record is not None:
         existing_by_path = True
     else:
-        existing_by_path = bool(get_photo_by_path(meta["file_path"]))
+        existing_by_path = bool(get_photo_by_path(meta["file_path"], volume_serial=vol_serial))
 
     if existing_by_path:
         if do_upsert:
@@ -900,11 +1107,12 @@ def smart_sync_photo(meta: Dict[str, Any], existing_record: Optional[Any] = None
         return "updated"
 
     # 新規パスの場合は独立した写真として新規追加
-    # 同一画像（他フォルダの重複コピー）が既存にあれば、評価やタグを初期値として連携
+    # 同一画像（他フォルダやSDカード上の重複・移動元）が既存にあれば、評価やタグ・調整値を初期値として連携
     dup = find_duplicate_photo_match(
         file_size=meta.get("file_size", 0),
         date_taken=meta.get("date_taken"),
         camera_model=meta.get("camera_model"),
+        file_name=meta.get("file_name"),
     )
     if dup:
         if dup.get("rating") and not meta.get("rating"):
@@ -915,6 +1123,9 @@ def smart_sync_photo(meta: Dict[str, Any], existing_record: Optional[Any] = None
 
     if do_upsert:
         new_id = upsert_photo(meta)
+        if not new_id and meta.get("file_path"):
+            inserted = get_photo_by_path(meta["file_path"], volume_serial=vol_serial)
+            new_id = inserted["id"] if inserted else 0
         if dup and new_id:
             copy_metadata_to_duplicate(dup["id"], new_id)
 
@@ -1019,7 +1230,7 @@ scan_tracker = ScanTracker()
 
 def scan_directory(target_dir_str: str, cleanup_orphans: bool = False, recursive: bool = True) -> Dict[str, Any]:
     """
-    指定されたディレクトリを走査し、スマート同期（移動の自動再紐付け含む）を行う。
+    指定されたディレクトリを走査し、スマート同期を行う。
     recursive=False の場合は指定ディレクトリ直下のみをスキャンする。
     進捗状況は scan_tracker にリアルタイムに反映される。
     """
@@ -1107,12 +1318,11 @@ def scan_directory(target_dir_str: str, cleanup_orphans: bool = False, recursive
                     if ext in SUPPORTED_EXTENSIONS:
                         image_files.append((str(target_dir), file))
 
-
         total_files = len(image_files)
         scan_tracker.set_phase("scanning", total_files=total_files)
 
-        # 既存レコード {file_path: (id, file_size, file_mtime)} を先読み
-        existing_map = get_existing_photos_map(target_dir_str, recursive=recursive)
+        # 既存レコード {file_path: (id, file_size, file_mtime)} を先読み（VSN単位で分離）
+        existing_map = get_existing_photos_map(target_dir_str, recursive=recursive, volume_serial=volume_serial)
 
         # スタック再計算用の列挙済み絶対パス集合
         existing_paths_set = {os.path.abspath(os.path.join(root, file)) for root, file in image_files}
@@ -1133,7 +1343,7 @@ def scan_directory(target_dir_str: str, cleanup_orphans: bool = False, recursive
             upsert_photos_batch(batch_meta)
             if dup_tag_pairs:
                 for src_id, fpath_str in dup_tag_pairs:
-                    p = get_photo_by_path(fpath_str)
+                    p = get_photo_by_path(fpath_str, volume_serial=volume_serial)
                     if p:
                         copy_metadata_to_duplicate(src_id, p["id"])
                 dup_tag_pairs.clear()
@@ -1206,7 +1416,11 @@ def scan_directory(target_dir_str: str, cleanup_orphans: bool = False, recursive
 
         cleaned_count = 0
         if cleanup_orphans:
-            cleaned_count = cleanup_missing_photos_in_folder(target_dir_str, recursive=recursive)
+            cleaned_count = cleanup_missing_photos_in_folder(
+                target_dir_str,
+                recursive=recursive,
+                volume_serial=volume_serial,
+            )
 
         # 3. スキャン完了後にブラケット・連写スタックを自動再計算（列挙済みパス集合を渡してos.path.existsを回避）
         scan_tracker.set_phase("stacks")
@@ -1260,15 +1474,22 @@ def scan_directory(target_dir_str: str, cleanup_orphans: bool = False, recursive
         raise
 
 
-def check_folder_diff(target_dir_str: str) -> Dict[str, Any]:
+def check_folder_diff(target_dir_str: str, volume_serial: Optional[str] = None) -> Dict[str, Any]:
     """
     指定ディレクトリ直下の実ファイルとDBレコードを高速に照合し、
     追加・削除・変更の差分件数をミリ秒単位で集計して返却する。
     画像デコードやEXIF解析は行わず、os.scandir のメタデータ（size, mtime）のみを使用するため極めて高速。
+    VSN（volume_serial）を考慮し、別SDカードの同名フォルダ（E:\\DCIM等）のレコードと混同しない。
     """
     target_path = Path(target_dir_str)
     if not target_path.exists() or not target_path.is_dir():
         return {"has_changes": False, "added": 0, "deleted": 0, "modified": 0, "is_valid": False}
+
+    eff_serial = volume_serial
+    if not eff_serial:
+        vol_info = get_volume_info(str(target_path))
+        if vol_info and vol_info.get("serial"):
+            eff_serial = vol_info["serial"]
 
     # 1. 実ファイル一覧の取得 (直下のみ)
     disk_files: Dict[str, Tuple[int, float]] = {}
@@ -1288,23 +1509,28 @@ def check_folder_diff(target_dir_str: str) -> Dict[str, Any]:
         return {"has_changes": False, "added": 0, "deleted": 0, "modified": 0, "is_valid": False}
 
     # 2. DBレコード一覧・管理状態の取得
-    from .database.connection import get_connection
     norm_win = os.path.normpath(target_dir_str).rstrip("\\/")
     db_files: Dict[str, Tuple[int, float]] = {}
     is_managed = False
 
     with get_connection() as conn:
         cursor = conn.cursor()
-        # scan_roots に登録されているか確認
-        cursor.execute("SELECT id FROM scan_roots WHERE folder_path = ? COLLATE NOCASE", (norm_win,))
-        if cursor.fetchone():
-            is_managed = True
-
-        # 直下の photos レコードを取得
-        cursor.execute(
-            "SELECT file_name, file_size, file_mtime FROM photos WHERE directory_path = ? COLLATE NOCASE",
-            (norm_win,),
-        )
+        # 直下の photos レコードを取得（VSNが判明している場合はそのメディアのレコードに限定）
+        if eff_serial:
+            cursor.execute(
+                """
+                SELECT file_name, file_size, file_mtime
+                FROM photos
+                WHERE directory_path = ? COLLATE NOCASE
+                  AND (volume_serial = ? OR volume_serial IS NULL)
+                """,
+                (norm_win, eff_serial),
+            )
+        else:
+            cursor.execute(
+                "SELECT file_name, file_size, file_mtime FROM photos WHERE directory_path = ? COLLATE NOCASE",
+                (norm_win,),
+            )
         for r in cursor.fetchall():
             fn = r["file_name"].lower()
             sz = r["file_size"] or 0
@@ -1313,12 +1539,31 @@ def check_folder_diff(target_dir_str: str) -> Dict[str, Any]:
 
         if len(db_files) > 0:
             is_managed = True
-        elif not is_managed:
-            # 配下（サブフォルダ）に管理写真が存在するか確認
+        else:
+            # 配下（サブフォルダ）に同一メディアの管理写真が存在するか確認
             sub_prefix = norm_win + "\\%"
-            cursor.execute("SELECT id FROM photos WHERE directory_path LIKE ? LIMIT 1", (sub_prefix,))
+            if eff_serial:
+                cursor.execute(
+                    "SELECT id FROM photos WHERE directory_path LIKE ? AND (volume_serial = ? OR volume_serial IS NULL) LIMIT 1",
+                    (sub_prefix, eff_serial),
+                )
+            else:
+                cursor.execute("SELECT id FROM photos WHERE directory_path LIKE ? LIMIT 1", (sub_prefix,))
             if cursor.fetchone():
                 is_managed = True
+            else:
+                # scan_roots に登録されているか確認（ただし別VSN専用フォルダでない場合のみ）
+                cursor.execute("SELECT id FROM scan_roots WHERE folder_path = ? COLLATE NOCASE", (norm_win,))
+                if cursor.fetchone():
+                    if eff_serial:
+                        cursor.execute(
+                            "SELECT id FROM photos WHERE directory_path = ? COLLATE NOCASE AND volume_serial IS NOT NULL AND volume_serial != ? LIMIT 1",
+                            (norm_win, eff_serial),
+                        )
+                        if not cursor.fetchone():
+                            is_managed = True
+                    else:
+                        is_managed = True
 
     disk_keys = set(disk_files.keys())
     db_keys = set(db_files.keys())
@@ -1347,6 +1592,3 @@ def check_folder_diff(target_dir_str: str) -> Dict[str, Any]:
         "total_disk": len(disk_files),
         "total_db": len(db_files),
     }
-
-
-

@@ -33,7 +33,7 @@ SYSTEM_IGNORE_NAMES = {
 
 
 def upsert_volume(volume_serial: str, volume_label: str, drive_letter: Optional[str] = None) -> None:
-    """ボリューム情報をUPSERTする（スキャン時にラベルを自動更新）"""
+    """ボリューム情報をUPSERTする（スキャン時にラベルを自動更新、custom_nameは維持）"""
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -50,6 +50,49 @@ def upsert_volume(volume_serial: str, volume_label: str, drive_letter: Optional[
         conn.commit()
 
 
+def update_volume_custom_name(
+    volume_serial: str,
+    custom_name: str,
+    volume_label: Optional[str] = None,
+    drive_letter: Optional[str] = None,
+) -> Dict[str, Any]:
+    """指定VSNのメディア識別名（ニックネーム: custom_name）を設定・更新する"""
+    serial_clean = (volume_serial or "").strip().upper()
+    name_clean = (custom_name or "").strip()
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM volumes WHERE volume_serial = ?", (serial_clean,))
+        existing = cursor.fetchone()
+        if existing:
+            cursor.execute(
+                """
+                UPDATE volumes
+                SET custom_name = ?,
+                    volume_label = COALESCE(?, volume_label),
+                    drive_letter = COALESCE(?, drive_letter)
+                WHERE volume_serial = ?
+                """,
+                (name_clean, volume_label, drive_letter, serial_clean),
+            )
+        else:
+            cursor.execute(
+                """
+                INSERT INTO volumes (volume_serial, volume_label, custom_name, drive_letter, last_seen_at)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """,
+                (serial_clean, volume_label or "", name_clean, drive_letter),
+            )
+        conn.commit()
+        cursor.execute("SELECT * FROM volumes WHERE volume_serial = ?", (serial_clean,))
+        row = cursor.fetchone()
+        return dict(row) if row else {
+            "volume_serial": serial_clean,
+            "volume_label": volume_label or "",
+            "custom_name": name_clean,
+            "drive_letter": drive_letter,
+        }
+
+
 def get_volume_by_serial(volume_serial: str) -> Optional[Dict[str, Any]]:
     """ボリュームシリアル番号からボリューム情報を取得する"""
     with get_connection() as conn:
@@ -60,11 +103,162 @@ def get_volume_by_serial(volume_serial: str) -> Optional[Dict[str, Any]]:
 
 
 def get_all_volumes() -> List[Dict[str, Any]]:
-    """登録済みの全ボリューム一覧を取得する"""
+    """
+    登録済みの全メディア（ボリューム）一覧を、収録写真枚数・撮影期間・カメラ機種・接続状態付きで取得する。
+    """
+    import string
+    from ..volume_info import get_volume_info_for_drive
+
+    # 1. 現在PCに接続されているドライブのボリューム情報を収集 (VSN -> info)
+    online_map: Dict[str, Dict[str, Any]] = {}
+    try:
+        for letter in string.ascii_uppercase:
+            info = get_volume_info_for_drive(letter)
+            if info and info.get("serial"):
+                online_map[info["serial"].upper()] = info
+    except Exception as e:
+        logger.debug(f"オンラインボリューム走査スキップ: {e}")
+
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM volumes ORDER BY last_seen_at DESC")
-        return [dict(row) for row in cursor.fetchall()]
+        vol_rows = {str(r["volume_serial"]).upper(): dict(r) for r in cursor.fetchall() if r["volume_serial"]}
+
+        cursor.execute(
+            """
+            SELECT
+                UPPER(p.volume_serial) as volume_serial,
+                COUNT(*) as photo_count,
+                SUM(CASE WHEN p.rating = 2 THEN 1 ELSE 0 END) as excellent_count,
+                SUM(CASE WHEN p.rating = 1 THEN 1 ELSE 0 END) as good_count,
+                MIN(p.date_taken) as min_date,
+                MAX(p.date_taken) as max_date,
+                GROUP_CONCAT(DISTINCT p.camera_model) as cameras_csv,
+                MIN(p.directory_path) as sample_dir
+            FROM photos p
+            WHERE p.volume_serial IS NOT NULL
+              AND p.volume_serial != ''
+              AND COALESCE(p.is_unlinked, 0) = 0
+            GROUP BY UPPER(p.volume_serial)
+            """
+        )
+        stat_rows = {str(r["volume_serial"]).upper(): dict(r) for r in cursor.fetchall() if r["volume_serial"]}
+
+    all_serials = set(vol_rows.keys()) | set(stat_rows.keys())
+    results: List[Dict[str, Any]] = []
+
+    for serial in all_serials:
+        v_rec = vol_rows.get(serial, {})
+        s_rec = stat_rows.get(serial, {})
+        online = online_map.get(serial)
+
+        photo_count = int(s_rec.get("photo_count") or 0)
+        custom_name = (v_rec.get("custom_name") or "").strip()
+        # 写真が0枚でニックネームも設定されていない空のドライブ記録は一覧から除外
+        if photo_count == 0 and not custom_name:
+            continue
+
+        vol_label = (
+            (online.get("label") if online and online.get("label") else v_rec.get("volume_label"))
+            or ""
+        ).strip()
+        drive_letter = (
+            (online.get("drive") if online and online.get("drive") else v_rec.get("drive_letter"))
+            or ""
+        ).strip()
+        if not drive_letter and s_rec.get("sample_dir"):
+            raw_dir = str(s_rec["sample_dir"])
+            if raw_dir.startswith("vsn://"):
+                idx = raw_dir.find("/", 6)
+                if idx != -1:
+                    raw_dir = raw_dir[idx + 1:]
+            if len(raw_dir) >= 2 and raw_dir[1] == ":":
+                drive_letter = raw_dir[:2].upper()
+
+        short_serial = f"{serial[:4]}-{serial[4:]}" if len(serial) == 8 else serial
+        if custom_name and vol_label and custom_name != vol_label:
+            display_name = f"{custom_name} ({vol_label})"
+        elif custom_name:
+            display_name = custom_name
+        elif vol_label:
+            display_name = vol_label
+        else:
+            display_name = f"メディア [ID:{short_serial}]"
+
+        raw_cams = [
+            c.strip()
+            for c in str(s_rec.get("cameras_csv") or "").split(",")
+            if c.strip() and c.strip() != "不明"
+        ]
+        min_d = str(s_rec.get("min_date") or "")[:10].replace(":", "-")
+        max_d = str(s_rec.get("max_date") or "")[:10].replace(":", "-")
+
+        results.append({
+            "volume_serial": serial,
+            "short_serial": short_serial,
+            "custom_name": custom_name,
+            "volume_label": vol_label,
+            "display_name": display_name,
+            "drive_letter": drive_letter,
+            "filesystem": (online.get("filesystem") if online else "") or "",
+            "is_online": bool(online),
+            "photo_count": photo_count,
+            "excellent_count": int(s_rec.get("excellent_count") or 0),
+            "good_count": int(s_rec.get("good_count") or 0),
+            "min_date": min_d,
+            "max_date": max_d,
+            "cameras": raw_cams[:4],
+            "last_seen_at": v_rec.get("last_seen_at") or "",
+        })
+
+    # 接続中を優先、次に写真枚数の多い順・最終認識日時の新しい順でソート
+    results.sort(
+        key=lambda x: (
+            0 if x["is_online"] else 1,
+            -x["photo_count"],
+            x["display_name"],
+        )
+    )
+    return results
+
+
+def remove_volume_by_serial(volume_serial: str) -> Dict[str, Any]:
+    """
+    指定VSNのメディアに属する写真登録をDBから一括解除し、volumes テーブルからも削除する（実ファイルは削除しない）。
+    """
+    from .photos import invalidate_fast_cache
+
+    serial_clean = (volume_serial or "").strip().upper()
+    if not serial_clean:
+        return {"deleted_photos": 0, "volume_serial": ""}
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id FROM photos WHERE UPPER(volume_serial) = ?",
+            (serial_clean,),
+        )
+        photo_ids = [row["id"] for row in cursor.fetchall()]
+        deleted_photos = 0
+        if photo_ids:
+            chunk_size = 500
+            for i in range(0, len(photo_ids), chunk_size):
+                chunk = photo_ids[i : i + chunk_size]
+                ph = ",".join(["?"] * len(chunk))
+                cursor.execute(f"DELETE FROM photo_tags WHERE photo_id IN ({ph})", chunk)
+                cursor.execute(f"DELETE FROM thumbnails WHERE photo_id IN ({ph})", chunk)
+                cursor.execute(f"DELETE FROM photos WHERE id IN ({ph})", chunk)
+                deleted_photos += cursor.rowcount
+        cursor.execute("DELETE FROM volumes WHERE UPPER(volume_serial) = ?", (serial_clean,))
+        conn.commit()
+
+    clear_folders_fs_cache()
+    invalidate_fast_cache()
+    return {
+        "volume_serial": serial_clean,
+        "deleted_photos": deleted_photos,
+        "removed_count": deleted_photos,
+    }
 
 
 
@@ -444,7 +638,7 @@ _scandir_cache: Dict[str, Tuple[List[Tuple[str, str]], float]] = {}
 
 
 # /api/photos のディレクトリ別ファイル一覧キャッシュ (45秒TTL)
-_PHOTO_DIR_SCAN_CACHE: Dict[str, Any] = {}
+_PHOTO_DIR_SCAN_CACHE: Dict[Any, Any] = {}
 _PHOTO_DIR_SCAN_TTL: float = 45.0
 
 
@@ -514,15 +708,16 @@ def get_folders_summary() -> List[Dict[str, Any]]:
     with get_connection() as conn:
         cursor = conn.cursor()
 
-        # 1. 実際に写真が登録されているディレクトリ一覧
+        # 1. 実際に写真が登録されているディレクトリ一覧（VSN別に集計し、同一パスの別SDカードも識別）
         cursor.execute(
             """
             SELECT p.directory_path,
+                   p.volume_serial,
                    COUNT(*) as count,
                    COUNT(t.photo_id) as cached_count
             FROM photos p
             LEFT JOIN thumbnails t ON p.id = t.photo_id
-            GROUP BY p.directory_path
+            GROUP BY p.directory_path, p.volume_serial
             ORDER BY p.directory_path ASC
             """
         )
@@ -533,23 +728,27 @@ def get_folders_summary() -> List[Dict[str, Any]]:
         for r in rows:
             d = dict(r)
             norm = normalize_folder_path(d["directory_path"])
+            vol_serial = d.get("volume_serial")
             d["directory_path"] = norm
             d["has_all_thumbnails"] = (d["cached_count"] >= d["count"]) if d["count"] > 0 else True
             d["status"] = "managed"
 
-            # 実フォルダの存在確認（オフライン/消失の検出）
-            is_present = _cached_isdir(norm)
-            if not is_present:
-                try:
-                    from ..scanner import resolve_portable_path
-                    _, is_online = resolve_portable_path(norm)
-                    is_present = is_online
-                except Exception as e:
-                    logger.debug(f"フォルダ存在確認でのポータブルパス解決スキップ ({norm}): {e}")
+            # 実フォルダの存在確認（VSN対応のオフライン/消失検出）
+            is_present = False
+            try:
+                from ..scanner import resolve_portable_path
+                _, is_online = resolve_portable_path(norm, expected_serial=vol_serial)
+                is_present = is_online
+            except Exception as e:
+                logger.debug(f"フォルダ存在確認でのポータブルパス解決スキップ ({norm}): {e}")
+                is_present = _cached_isdir(norm)
             d["is_missing"] = not is_present
 
             result.append(d)
-            managed_map[norm.lower()] = d
+            # 同一パスに複数VSNがある場合は接続中の方を managed_map の代表とする
+            norm_key = norm.lower()
+            if norm_key not in managed_map or is_present:
+                managed_map[norm_key] = d
 
         # 2. 除外フォルダ一覧
         cursor.execute("SELECT folder_path FROM ignored_folders ORDER BY folder_path ASC")
@@ -640,6 +839,7 @@ def get_drive_photo_counts() -> List[Dict[str, Any]]:
             SELECT UPPER(SUBSTR(p.directory_path, 1, 2)) AS drive,
                    p.volume_serial,
                    v.volume_label,
+                   COALESCE(v.custom_name, '') AS custom_name,
                    COUNT(*) AS count
             FROM photos p
             LEFT JOIN volumes v ON p.volume_serial = v.volume_serial
@@ -679,12 +879,15 @@ def get_directory_counts_under(
         return [dict(r) for r in cursor.fetchall()]
 
 
-
-
-def remove_folder_photos(directory_path: str, recursive: bool = True) -> Dict[str, Any]:
+def remove_folder_photos(
+    directory_path: str,
+    recursive: bool = True,
+    volume_serial: Optional[str] = None,
+) -> Dict[str, Any]:
     """
     指定したフォルダ内の写真情報をDBから削除する（実ファイルは削除しない）。
     recursive=True の場合、親フォルダ配下のすべてのサブフォルダの写真・サムネイル・タグも一括削除する。
+    volume_serial が指定されている場合は、そのメディアの写真のみを削除し、別メディアの写真は保持する。
     """
     norm_path = os.path.normpath(directory_path)
 
@@ -693,6 +896,10 @@ def remove_folder_photos(directory_path: str, recursive: bool = True) -> Dict[st
 
         # 指定フォルダ（および recursive=True なら配下サブフォルダ）の写真をすべて取得
         sql_frag, sql_params = _directory_filter_sql(norm_path, recursive=recursive, column_name="directory_path")
+        if volume_serial:
+            sql_frag = f"({sql_frag}) AND (volume_serial = ? OR volume_serial IS NULL)"
+            sql_params.append(volume_serial)
+
         cursor.execute(
             f"SELECT id, directory_path FROM photos WHERE {sql_frag}",
             sql_params,
@@ -712,10 +919,13 @@ def remove_folder_photos(directory_path: str, recursive: bool = True) -> Dict[st
                 cursor.execute(f"DELETE FROM thumbnails WHERE photo_id IN ({placeholders})", chunk)
                 cursor.execute(f"DELETE FROM photos WHERE id IN ({placeholders})", chunk)
 
-        # scan_roots からも該当フォルダ（および recursive=True なら配下）を確実に削除
-        # （LIKE の '_' ワイルドカード誤一致を避けるため範囲比較ヘルパーを使用）
-        root_frag, root_params = _directory_filter_sql(norm_path, recursive=recursive, column_name="folder_path")
-        cursor.execute(f"DELETE FROM scan_roots WHERE {root_frag}", root_params)
+        # scan_roots からも該当フォルダを削除（他メディアの写真がまだ残っている場合は維持）
+        rem_frag, rem_params = _directory_filter_sql(norm_path, recursive=recursive, column_name="directory_path")
+        cursor.execute(f"SELECT 1 FROM photos WHERE {rem_frag} LIMIT 1", rem_params)
+        has_remaining_photos = cursor.fetchone() is not None
+        if not has_remaining_photos:
+            root_frag, root_params = _directory_filter_sql(norm_path, recursive=recursive, column_name="folder_path")
+            cursor.execute(f"DELETE FROM scan_roots WHERE {root_frag}", root_params)
 
         # 万が一の孤立サムネイルをここで即座にパージ
         cursor.execute("DELETE FROM thumbnails WHERE photo_id NOT IN (SELECT id FROM photos)")
@@ -791,5 +1001,3 @@ def get_cameras_summary() -> List[Dict[str, Any]]:
             )
         result.sort(key=lambda x: (1 if x["camera_model"] in ("不明", "Unknown", "__NONE__") else 0, _natural_sort_key(x["camera_model"])))
         return result
-
-

@@ -2127,13 +2127,8 @@ function renderColorPalette() {
 
   const colorTagNames = Object.keys(COLOR_TAG_MAP);
 
-  // 現在のタグソースフィルタに応じたカウント集計
-  let available = state.availableTags || [];
-  if (state.tagSourceFilter === 'manual') {
-    available = available.filter(t => t.source === 'manual' || t.source === 'both');
-  } else if (state.tagSourceFilter === 'ai') {
-    available = available.filter(t => t.source === 'ai' || t.source === 'both');
-  }
+  // 12色カラーパレットは独立セクションのため、手動・AIタグ種別フィルタに関わらず全付与枚数を集計
+  const available = state.availableTags || [];
 
   const tagCountMap = new Map();
   available.forEach(t => {

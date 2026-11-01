@@ -665,7 +665,7 @@ def import_photos_to_storage(photo_ids: List[int], destination: Optional[str] = 
             skipped += 1
             continue
 
-        src_path, is_online = resolve_portable_path(src_path_str)
+        src_path, is_online = resolve_portable_path(src_path_str, expected_serial=photo.get("volume_serial"))
         if not is_online or not src_path.exists():
             skipped += 1
             continue
@@ -861,7 +861,7 @@ def move_photos_in_storage(photo_ids: List[int], destination: Optional[str] = ""
                 skipped += 1
                 continue
 
-            src_path, is_online = resolve_portable_path(src_path_str)
+            src_path, is_online = resolve_portable_path(src_path_str, expected_serial=photo.get("volume_serial"))
             if not is_online or not src_path.exists():
                 skipped += 1
                 continue

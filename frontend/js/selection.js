@@ -200,6 +200,10 @@ function openContextMenu(x, y) {
     const icon = '';
     elements.contextMenuRefreshThumbLabel.textContent = `${icon} ${actionText}${countText}`;
   }
+  if (elements.contextMenuAiColorTagLabel) {
+    const countText = count > 1 ? ` (${count}枚)` : '';
+    elements.contextMenuAiColorTagLabel.textContent = `AIカラータグを再判定${countText}`;
+  }
 
   // 単一選択専用の項目（クロップ画面・トーンコピー・画像コピー）の表示制御
   const ctxCropEl = document.getElementById('contextMenuCrop');
@@ -320,6 +324,7 @@ function openFolderContextMenu(x, y, node) {
     const hasPhotos = total > 0 || !!node.hasManaged;
     setVisible(elements.folderMenuRefresh, hasPhotos && !isOffline);
     setVisible(elements.folderMenuAiTag, hasPhotos);
+    setVisible(elements.folderMenuAiColorTag, hasPhotos);
     setVisible(elements.folderMenuUnmanage, hasPhotos);
     // ドライブ・ショートカット自体は「除外」できないので非表示
     setVisible(elements.folderMenuIgnoreFromManaged, !isRootKind);
@@ -357,6 +362,7 @@ function openFolderContextMenu(x, y, node) {
   }
 
   // エクスプローラーで開く
+  setVisible(elements.folderMenuRenameVolume, Boolean(node.volumeSerial && !isStorage));
   setVisible(elements.folderMenuOpenExplorer, true);
   setDisabled(elements.folderMenuOpenExplorer, isMissing || isOffline, '実フォルダが存在しないか、ドライブが未接続のため開けません');
 
@@ -565,6 +571,112 @@ function renderContextTagSubmenu() {
 /**
  * 選択中の写真に一括でタグを追加
  */
+/**
+ * 選択中の写真のAIカラータグ（12色）のみを再判定する
+ */
+async function batchRetagAiColorSelection() {
+  const photoIds = typeof getActionTargetIds === 'function'
+    ? getActionTargetIds()
+    : Array.from(state.selectedPhotoIds);
+  if (!photoIds || photoIds.length === 0) return;
+
+  try {
+    const res = await fetch('/api/ai/tag-color-photos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ photo_ids: photoIds }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.detail || 'AIカラータグの再判定に失敗しました');
+    }
+
+    if (data.status === 'busy') {
+      if (typeof showToast === 'function') {
+        showToast(data.message || '他のAIタグ付けジョブが実行中です', 'warning');
+      }
+      return;
+    }
+
+    if (data.status === 'background') {
+      if (typeof showToast === 'function') {
+        showToast(`${data.total}枚のAIカラータグ再判定をバックグラウンドで開始しました...`, 'info');
+      }
+      if (typeof window.startAiProgressPolling === 'function') {
+        window.startAiProgressPolling();
+      } else if (typeof startAiProgressPolling === 'function') {
+        startAiProgressPolling();
+      }
+      return;
+    }
+
+    const resultsMap = data.results || {};
+    for (const [pidStr, tagDetails] of Object.entries(resultsMap)) {
+      const pid = Number(pidStr);
+      if (!Array.isArray(tagDetails)) continue;
+      const newTags = tagDetails.map(t => t.tag);
+      const photo = state.photos.find(p => p.id === pid);
+      if (photo) {
+        photo.tag_details = tagDetails;
+        photo.tags = newTags;
+      }
+      state.photos.forEach(p => {
+        if (Array.isArray(p.stack_photos)) {
+          const sp = p.stack_photos.find(s => s.id === pid);
+          if (sp) {
+            sp.tag_details = tagDetails;
+            sp.tags = [...newTags];
+          }
+        }
+      });
+      if (Array.isArray(state.currentLightboxStackPhotos)) {
+        const lsp = state.currentLightboxStackPhotos.find(s => s.id === pid);
+        if (lsp) {
+          lsp.tag_details = tagDetails;
+          lsp.tags = [...newTags];
+        }
+      }
+    }
+
+    if (typeof fetchTags === 'function') {
+      await fetchTags();
+    }
+    if (typeof renderPhotoGrid === 'function') {
+      renderPhotoGrid();
+    }
+    if (state.currentPhotoIndex >= 0 && state.photos[state.currentPhotoIndex] && typeof renderLightboxTags === 'function') {
+      renderLightboxTags(state.photos[state.currentPhotoIndex]);
+    }
+    if (state.activeInspectorPhotoId && resultsMap[String(state.activeInspectorPhotoId)]) {
+      const activePhoto = state.photos.find(p => p.id === state.activeInspectorPhotoId);
+      if (activePhoto && typeof showSingleInspector === 'function') {
+        showSingleInspector(activePhoto);
+      }
+    } else if (typeof updateInspectorView === 'function') {
+      updateInspectorView();
+    }
+
+    if (typeof showToast === 'function') {
+      const predictedMap = data.predicted_colors || {};
+      if (photoIds.length === 1) {
+        const colors = predictedMap[String(photoIds[0])] || [];
+        if (colors.length > 0) {
+          showToast(`AIカラータグを再判定しました: ${colors.join(', ')}`, 'success', 2500);
+        } else {
+          showToast('AIカラータグを再判定しました（該当カラーなし）', 'info', 2500);
+        }
+      } else {
+        showToast(`${photoIds.length}枚のAIカラータグを再判定しました（${data.tagged_count || 0}枚に色タグ付与）`, 'success', 3000);
+      }
+    }
+  } catch (err) {
+    if (typeof showToast === 'function') {
+      showToast(`エラー: ${err.message}`, 'error');
+    }
+  }
+}
+window.batchRetagAiColorSelection = batchRetagAiColorSelection;
+
 async function batchAddTagToSelection(tagName) {
   if (state.selectedPhotoIds.size === 0 || !tagName.trim()) return;
 
@@ -854,6 +966,17 @@ function initSelectionEvents() {
       if (targetPhoto && typeof window.copyPhotoImageToClipboard === 'function') {
         window.copyPhotoImageToClipboard(targetPhoto);
       }
+    });
+  }
+
+  // コンテキストメニュー: AIカラータグのみ再判定
+  const ctxAiColorItem = elements.contextMenuAiColorTagItem || document.getElementById('contextMenuAiColorTagItem');
+  if (ctxAiColorItem && !ctxAiColorItem.dataset.boundAiColor) {
+    ctxAiColorItem.dataset.boundAiColor = '1';
+    ctxAiColorItem.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      closeContextMenu();
+      await batchRetagAiColorSelection();
     });
   }
 

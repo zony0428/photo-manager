@@ -271,7 +271,7 @@ def load_photo_pil_image(photo: dict) -> Tuple[Optional[Image.Image], Optional[b
     if not raw_path_str:
         return None, None
 
-    real_path, is_online = resolve_portable_path(raw_path_str)
+    real_path, is_online = resolve_portable_path(raw_path_str, expected_serial=photo.get("volume_serial"))
     if not is_online or not real_path.exists():
         return None, None
 
@@ -290,7 +290,7 @@ def load_photo_pil_image(photo: dict) -> Tuple[Optional[Image.Image], Optional[b
         # RAWペアがある場合はペア側のJPGを探索
         paired_path_str = photo.get("paired_raw_path")
         if paired_path_str:
-            p_pair, is_pair_online = resolve_portable_path(paired_path_str)
+            p_pair, is_pair_online = resolve_portable_path(paired_path_str, expected_serial=photo.get("volume_serial"))
             if is_pair_online and p_pair.exists() and p_pair.suffix.lower() in (".jpg", ".jpeg"):
                 img = Image.open(p_pair)
                 exif_bytes = img.info.get("exif")

@@ -19,6 +19,7 @@ from .tags import (
     _expand_ancestor_tags,
     _generate_unique_tag_key,
     is_color_tag,
+    repair_missing_ancestor_tags,
 )
 
 logger = logging.getLogger(__name__)
@@ -164,17 +165,22 @@ def initialize_database() -> None:
         cursor.execute("DROP INDEX IF EXISTS idx_photo_tags_photo")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_photo_tags_source ON photo_tags(source)")
 
-        # ボリューム情報管理テーブル（VSNをキーにラベルをスキャン時に自動更新）
+        # ボリューム情報管理テーブル（VSNをキーにラベル・ユーザー識別名を管理）
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS volumes (
                 volume_serial TEXT PRIMARY KEY,
                 volume_label  TEXT NOT NULL DEFAULT '',
+                custom_name   TEXT NOT NULL DEFAULT '',
                 drive_letter  TEXT,
                 last_seen_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """
         )
+        cursor.execute("PRAGMA table_info(volumes)")
+        existing_vol_cols = {row["name"] for row in cursor.fetchall()}
+        if "custom_name" not in existing_vol_cols:
+            cursor.execute("ALTER TABLE volumes ADD COLUMN custom_name TEXT NOT NULL DEFAULT ''")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_photos_volume_serial ON photos(volume_serial)")
 
         # サムネイル BLOB 格納テーブル（個別WebPファイル方式からの移行先）
@@ -299,6 +305,12 @@ def initialize_database() -> None:
                 _ensure_tag_keys_registered(cursor, missing_key_rows)
                 conn.commit()
 
+        # 起動時の高速整合性チェック: 階層タグの親・祖先レコード欠落があれば自動補完（カバリングインデックス使用）
+        repaired_anc_count = repair_missing_ancestor_tags(cursor)
+        if repaired_anc_count > 0:
+            conn.commit()
+            print(f"[MIGRATE] ancestor_tags_repair: {repaired_anc_count} 件の欠落していた親・祖先タグレコードを自動補完しました")
+
         # 起動時の常時安全パージ: photosテーブルに存在しない孤立サムネイルを確実に削除
         cursor.execute("DELETE FROM thumbnails WHERE photo_id NOT IN (SELECT id FROM photos)")
         conn.commit()
@@ -398,7 +410,7 @@ def _migrate_tag_keys_v1(cursor, conn) -> None:
     既存環境向けに以下のマイグレーションを安全かつ冪等に実行する:
     1. 既存データがある場合は SQLite Online Backup API で事前バックアップを自動生成
     2. photo_tags, tag_definitions, filter_presets に登場する全一般タグ（祖先パス含む）を
-       tag_definitions に登録し、重複のない不変キー(tag_key: tk_<12hex>)を採番
+      tag_definitions に登録し、重複のない不変キー(tag_key: tk_<12hex>)を採番
     3. filter_presets の JSON 内に tagFilterKeys ({tag_key: mode}) をバックフィル保存
     4. マイグレーション後の整合性（NULL/空文字/重複キーゼロ）を検証
     """

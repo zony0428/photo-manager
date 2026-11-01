@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional
 
 from ..database.connection import get_connection
 from ..database.photos import _directory_filter_sql
-from ..database.tags import add_ai_tags_to_photo
+from ..database.tags import add_ai_tags_to_photo, replace_ai_color_tags_for_photo
 from .tagger import get_ai_tagger
 
 logger = logging.getLogger("photo_manager.ai.worker")
@@ -31,6 +31,7 @@ class AITaggingWorker:
         # 進捗情報
         self.is_running = False
         self.folder_path: Optional[str] = None
+        self.color_only = False
         self.total_count = 0
         self.processed_count = 0
         self.tagged_count = 0
@@ -70,6 +71,7 @@ class AITaggingWorker:
                 "is_model_ready": tagger.is_loaded,
                 "model_available": tagger.is_available(),
                 "folder_path": self.folder_path,
+                "color_only": self.color_only,
                 "total_count": self.total_count,
                 "processed_count": self.processed_count,
                 "tagged_count": self.tagged_count,
@@ -86,6 +88,7 @@ class AITaggingWorker:
         folder_path: Optional[str] = None,
         photo_ids: Optional[List[int]] = None,
         force_retag: bool = False,
+        color_only: bool = False,
     ) -> bool:
         """AI自動タグ付けジョブを開始する"""
         with self._lock:
@@ -94,9 +97,21 @@ class AITaggingWorker:
                 return False
 
             self._cancel_flag.clear()
+            with self._state_lock:
+                self.is_running = True
+                self.folder_path = folder_path
+                self.color_only = bool(color_only)
+                self.total_count = len(photo_ids) if photo_ids else 0
+                self.processed_count = 0
+                self.tagged_count = 0
+                self.current_file = ""
+                self.error_count = 0
+                self.last_error = ""
+                self.start_time = time.time()
+
             self._thread = threading.Thread(
                 target=self._run_job,
-                args=(folder_path, photo_ids, force_retag),
+                args=(folder_path, photo_ids, force_retag, color_only),
                 daemon=True,
                 name="AITaggingWorkerThread",
             )
@@ -114,24 +129,16 @@ class AITaggingWorker:
         folder_path: Optional[str],
         photo_ids: Optional[List[int]],
         force_retag: bool,
+        color_only: bool = False,
     ):
         """ワーカースレッド本体"""
-        tagger = get_ai_tagger()
-        if not tagger.load():
-            with self._state_lock:
-                self.last_error = "AIモデルのロードに失敗しました"
-            return
-
-        with self._state_lock:
-            self.is_running = True
-            self.folder_path = folder_path
-            self.processed_count = 0
-            self.tagged_count = 0
-            self.error_count = 0
-            self.last_error = ""
-            self.start_time = time.time()
-
         try:
+            tagger = get_ai_tagger()
+            if not tagger.load():
+                with self._state_lock:
+                    self.last_error = "AIモデルのロードに失敗しました"
+                return
+
             # 対象写真のIDおよびファイル名のみ取得（メモリ節約のためサムネイルBLOBは後から64件ずつ取得）
             with get_connection() as conn:
                 cursor = conn.cursor()
@@ -144,6 +151,7 @@ class AITaggingWorker:
                 conditions = []
                 params = []
 
+                effective_force_retag = True if color_only else force_retag
                 if photo_ids:
                     targets = []
                     id_chunk_size = 500
@@ -151,7 +159,7 @@ class AITaggingWorker:
                         id_chunk = photo_ids[i : i + id_chunk_size]
                         placeholders = ",".join(["?"] * len(id_chunk))
                         chunk_conds = [f"p.id IN ({placeholders})"]
-                        if not force_retag:
+                        if not effective_force_retag:
                             chunk_conds.append("p.id NOT IN (SELECT photo_id FROM photo_tags WHERE source = 'ai')")
                         chunk_query = query + " WHERE " + " AND ".join(chunk_conds) + " ORDER BY p.id ASC"
                         cursor.execute(chunk_query, id_chunk)
@@ -162,7 +170,7 @@ class AITaggingWorker:
                         conditions.append(dir_sql)
                         params.extend(dir_params)
 
-                    if not force_retag:
+                    if not effective_force_retag:
                         # すでにAIタグが付与済みの写真はスキップ
                         conditions.append("p.id NOT IN (SELECT photo_id FROM photo_tags WHERE source = 'ai')")
 
@@ -176,7 +184,10 @@ class AITaggingWorker:
             with self._state_lock:
                 self.total_count = len(targets)
 
-            logger.info(f"Starting AI tagging for {self.total_count} photos (folder={folder_path})")
+            logger.info(
+                f"Starting AI tagging for {self.total_count} photos "
+                f"(folder={folder_path}, color_only={color_only})"
+            )
 
             # 64件ずつサムネイルBLOBを取得しながら推論＆保存
             chunk_size = 64
@@ -218,8 +229,14 @@ class AITaggingWorker:
                         predicted = tagger.predict_from_bytes(
                             thumb_bytes,
                             top_k=3,
+                            color_only=color_only,
                         )
-                        if predicted:
+                        if color_only:
+                            replace_ai_color_tags_for_photo(pid, predicted)
+                            if predicted:
+                                with self._state_lock:
+                                    self.tagged_count += 1
+                        elif predicted:
                             add_ai_tags_to_photo(pid, predicted)
                             with self._state_lock:
                                 self.tagged_count += 1

@@ -11,15 +11,15 @@
   <link rel="manifest" href="/manifest.json?v=2">
   <meta name="theme-color" content="#191816">
   <link rel="stylesheet" href="/vendor/fonts/fonts.css">
-  <link rel="stylesheet" href="/css/style.css?v=1.0.0">
-  <link rel="stylesheet" href="/css/grid-lightbox.css?v=1.0.0">
-  <link rel="stylesheet" href="/css/selection-menu.css?v=1.0.0">
-  <link rel="stylesheet" href="/css/inspector.css?v=1.0.0">
-  <link rel="stylesheet" href="/css/modals-features.css?v=1.0.0">
-  <link rel="stylesheet" href="/css/lab-map.css?v=1.0.0">
-  <link rel="stylesheet" href="/css/histogram.css?v=1.0.0">
-  <link rel="stylesheet" href="/css/compare.css?v=1.0.0">
-  <link rel="stylesheet" href="/css/ui-unify.css?v=1.0.0">
+  <link rel="stylesheet" href="/css/style.css?v=1.1.0">
+  <link rel="stylesheet" href="/css/grid-lightbox.css?v=1.1.0">
+  <link rel="stylesheet" href="/css/selection-menu.css?v=1.1.0">
+  <link rel="stylesheet" href="/css/inspector.css?v=1.1.0">
+  <link rel="stylesheet" href="/css/modals-features.css?v=1.1.0">
+  <link rel="stylesheet" href="/css/lab-map.css?v=1.1.0">
+  <link rel="stylesheet" href="/css/histogram.css?v=1.1.0">
+  <link rel="stylesheet" href="/css/compare.css?v=1.1.0">
+  <link rel="stylesheet" href="/css/ui-unify.css?v=1.1.0">
   <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
   <script src="/vendor/leaflet/leaflet.js"></script>
   <script>
@@ -72,7 +72,7 @@
             <text x="0" y="45.41" fill="var(--logo-text)" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif" font-size="44.38" font-weight="700" letter-spacing="2.8" textLength="269.4" lengthAdjust="spacingAndGlyphs" transform="translate(66, 0) scale(0.7071, 1)">TETHERACT</text>
             <text x="0" y="45.41" fill="var(--logo-pm)" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif" font-size="35.60" font-weight="600" letter-spacing="1.0" transform="translate(263, 0) scale(0.75, 1)">pm</text>
           </svg>
-          <span class="app-version" id="appVersion" title="v1.0.0 (最終更新: 2026-10-31 23:15)">v1.0.0</span>
+          <span class="app-version" id="appVersion" title="v1.1.0 (最終更新: 2026-11-02 00:05)">v1.1.0</span>
         </div>
 
         <!-- UI言語切替（日本語 JP ⇄ English EN） -->
@@ -355,12 +355,27 @@
                 <div class="folder-toolbar-group">
                   <button class="btn-mini-text" id="uploadFilesBtn" title="PCの写真ファイルを選んで storage（アプリ内ストレージ）へコピー＆取り込みます">取り込み</button>
                   <input type="file" id="fileUploadInput" multiple accept="image/*,.rw2,.arw,.cr2,.cr3,.nef,.nrw,.dng,.raf,.orf,.pef,.srw,.x3f,.heic,.heif,.avif,.xmp,.pp3,.arp,.dop,.on1,.cos,.nksc,.spd" style="display:none;">
+                  <button class="btn-mini-text" id="openManagedMediaModalBtn" title="管理対象として登録されているSDカード・外部メディアの一覧・収録枚数・識別名を管理します">メディア一覧</button>
                   <button class="btn-mini-text" id="folderAutoAiToggleBtn" title="スキャン完了後にAIタグを自動付与するかどうかを切り替えます">AI: OFF</button>
                   <button class="btn-mini-text" id="reloadFolderTreeBtn" title="ドライブ一覧とフォルダツリーを再読み込み"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
                 </div>
                 <div class="folder-toolbar-group">
                   <button class="btn-mini-text" id="expandAllFoldersBtn" title="管理中のフォルダまで展開">展開</button>
                   <button class="btn-mini-text" id="collapseAllFoldersBtn" title="すべてのフォルダを折りたたむ">閉じる</button>
+                </div>
+              </div>
+
+              <!-- 登録メディア（SDカード・ドライブ）クイック一覧エキスパンダ -->
+              <div class="color-palette-section color-palette-expander" id="sidebarMediaSection" style="display: none; margin: 4px 6px 6px;">
+                <div class="color-palette-header" id="sidebarMediaHeader" role="button" tabindex="0" title="登録済みメディア（SDカード・外部ドライブ）の一覧を開閉">
+                  <div class="color-palette-header-left">
+                    <span class="color-palette-arrow" id="sidebarMediaArrow">▶</span>
+                    <span class="color-palette-title">登録メディア</span>
+                  </div>
+                  <span class="color-palette-sub" id="sidebarMediaCountBadge">0件</span>
+                </div>
+                <div class="color-palette-body" id="sidebarMediaBody" style="display: none; padding: 4px 2px;">
+                  <div id="sidebarMediaList" style="display: flex; flex-direction: column; gap: 3px;"></div>
                 </div>
               </div>
 
@@ -855,11 +870,16 @@
                       </div>
                       <div class="color-palette-body" id="inspectorAiTagBody" style="display: none; padding: 10px 8px;">
                         <div style="font-size: 0.75rem; color: var(--text-dim); margin-bottom: 8px; line-height: 1.4;">
-                          ローカルAI (CLIP Vision) が写真の被写体・シーンを自動認識してタグ付けします。
+                          ローカルAI (CLIP Vision) が写真の被写体・シーン・主要色を自動認識してタグ付けします。
                         </div>
-                        <button type="button" class="btn btn-primary btn-sm btn-block" id="inspectorAiTagBtn" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px;">
-                          この写真をAIで自動タグ付け
-                        </button>
+                        <div style="display: flex; flex-direction: column; gap: 6px;">
+                          <button type="button" class="btn btn-primary btn-sm btn-block" id="inspectorAiTagBtn" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                            この写真をAIで自動タグ付け
+                          </button>
+                          <button type="button" class="btn btn-secondary btn-sm btn-block" id="inspectorAiColorTagBtn" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                            AIカラータグのみ再判定
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1251,7 +1271,7 @@
             <h4>2. 階層タグ・色ラベル・ローカルAI自動分類と排他検索</h4>
             <p>階層タグとタグツリーエディタ：タグ入力時に「旅行/2026北海道/小樽」のようにスラッシュ（/）で区切ると親子ツリーとして整理されます。左サイドバー「タグ」の「枚数順」ボタンで枚数順と名前順を切り替えられるほか、「設定」（または右インスペクタの「ツリー編集」）の「タグツリーエディタ」でドラッグ＆ドロップによる階層組み替え・名前変更・削除が行えます。</p>
             <p>色合い（12色パレット）：右インスペクタの「色合い」で写真にカラーラベルを登録し、左サイドバー「タグ」上部の「カラー」から色別に絞り込めます（右クリックでその色を除外）。</p>
-            <p>ローカルAI自動タグ付け：左サイドバーのフォルダを右クリックして「AIタグ付け」を選ぶと、ネット通信なしでPC内のAI（CLIP）が「青空」「海」「猫」「料理」「夜景」などのタグを自動付与します。</p>
+            <p>ローカルAI自動タグ付け：左サイドバーのフォルダを右クリックして「AIタグ付け」を選ぶと、ネット通信なしでPC内のAI（CLIP）が「青空」「海」「猫」「料理」「夜景」などのタグと主要カラーを自動付与します。写真の右クリック「AIカラータグを再判定」またはフォルダ右クリック「AIカラータグのみ再判定」から、手動タグや被写体タグを保護したまま12色のAIカラータグだけを再判定できます。</p>
             <p>タグ・機材の [+] 含む / [-] 除外検索と道標表示：タグツリーの一番上の親（1階層目）同士を [+] にすると既定で「かつ（AND）」で絞り込まれ、同じ親の下にある2階層目以降の子タグを複数 [+] にすると既定で「または（OR）」で候補が追加されます（画面下部フッターバーの「または」「かつ」をクリックすると、同グループ内のOR⇔ANDや異グループ間のAND⇔ORをその場で切り替えられます）。見たくない子タグは右クリックで [-]（除外）を明示して引き算できるため、「トヨタ [+]・プリウス [-]・ロードスター [+]」のように選べば「プリウス以外のトヨタ車とロードスター」を簡単に抽出できます。親階層を閉じていても、配下の子項目でフィルタが有効な場合は破線枠と件数バッジ（+1 / -1）の道標が表示されます。</p>
           </div>
 
@@ -1311,7 +1331,7 @@
             <ul>
               <li>スタイル1（写真もアプリもUSBに入れる）：Tetheract フォルダと写真（または storage）をUSBドライブに入れておけば、別のPCに挿して Tetheract.exe を開くだけで同じ環境で使えます。</li>
               <li>スタイル2（元写真は自宅に置きカタログだけ持ち歩く）：大容量の元写真は自宅のHDDに置いたまま、Tetheract が入ったUSBメモリだけを持ち歩けます。元写真が未接続でも、全写真のサムネイル閲覧・評価・タグ付けが行えます。</li>
-              <li>スタイル3（ドライブ文字が変わっても自動追従）：別のPCに繋いでドライブ文字（D: → E: 等）が変わっても、ドライブ固有の識別番号を認識してリンク切れを防ぎます。</li>
+              <li>スタイル3（ドライブ文字追従・複数SDカード識別・メタデータ引き継ぎ）：別のPCでドライブ文字（D: → E: 等）が変わっても固有のシリアル番号（VSN）で自動追従し、複数のSDカードを同じドライブ文字で差し替えても個別に管理されます。左サイドバー「フォルダ」上部の「登録メディア」や「メディア一覧」から接続状態・枚数・撮影期間・使用カメラの確認、絞り込み、登録解除、ニックネーム設定（または4桁PIN承認による半角11文字ラベル書き込み）が行えます。SDカード上で付けた評価・タグ・調整はPCへ移動した際にも自動で引き継がれます。</li>
             </ul>
           </div>
 
@@ -1690,6 +1710,109 @@
         <button class="btn btn-secondary" id="btnCancelRegisterFolder">キャンセル (Esc)</button>
         <button class="btn btn-secondary" id="btnDirectRegisterFolder">直下のみ</button>
         <button class="btn btn-primary" id="btnRecursiveRegisterFolder">子フォルダを含む</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- メディア識別名 ＆ ボリュームラベル設定モーダル (volumeIdentityModal) -->
+  <div class="modal-backdrop" id="volumeIdentityModal" style="display: none;">
+    <div class="modal-card" style="max-width: 520px; width: 94vw;">
+      <div class="modal-header">
+        <div class="modal-header-title">
+          <h2>メディア識別名 ＆ ボリュームラベル設定</h2>
+          <span class="modal-subtitle">複数のSDカード・外部メディアを見分けるための名前を設定します</span>
+        </div>
+        <button class="modal-close-btn" id="closeVolumeIdentityModalBtn">&times;</button>
+      </div>
+
+      <div class="modal-body" style="padding: 16px 20px; display: flex; flex-direction: column; gap: 14px; font-size: 0.86rem;">
+        <!-- 対象メディア状態バー -->
+        <div id="volModalStatusCard" style="background: var(--bg-secondary, rgba(255,255,255,0.04)); border: 1px solid var(--border-soft, rgba(255,255,255,0.12)); border-radius: 6px; padding: 10px 12px; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; font-size: 0.8rem; color: var(--text-muted, #94a3b8);">
+          <span>状態: <strong id="volModalOnlineBadge" style="color: var(--text-main, #eceae4);">-</strong></span>
+          <span>現在のOSラベル: <strong id="volModalCurrentLabel" style="color: var(--text-main, #eceae4);">-</strong></span>
+          <span style="margin-left: auto; font-family: monospace; font-size: 0.75rem; opacity: 0.8;">内部ID: <span id="volModalSerialText">-</span></span>
+        </div>
+
+        <!-- 1. アプリ内の識別名（ニックネーム） -->
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <label for="volModalCustomNameInput" style="font-weight: 700; color: var(--text-main, #eceae4);">
+            1. アプリ内の識別名（ニックネーム）<span style="font-weight: 400; font-size: 0.76rem; color: var(--text-dim, #64748b); margin-left: 6px;">※日本語・全角OK ／ メディア非破壊</span>
+          </label>
+          <input type="text" id="volModalCustomNameInput" class="styled-input" placeholder="例: α7IV メインSD①, GRIIIx サブSD②（空欄で解除）" autocomplete="off" style="width: 100%; padding: 8px 10px; border-radius: 4px; border: 1px solid var(--border-soft, rgba(255,255,255,0.18)); background: var(--bg-primary, #141413); color: var(--text-main, #eceae4);">
+          <div style="font-size: 0.75rem; color: var(--text-dim, #64748b); line-height: 1.4;">
+            Tetheract のデータベース内でのみ使われる表示名です。メディア本体には一切書き込まれません。
+          </div>
+        </div>
+
+        <!-- 2. メディア本体のボリュームラベル書き込み（オプション・PIN承認付き） -->
+        <div style="border-top: 1px solid var(--border-soft, rgba(255,255,255,0.1)); padding-top: 12px; display: flex; flex-direction: column; gap: 10px;">
+          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 600; color: var(--text-main, #eceae4); user-select: none;">
+            <input type="checkbox" id="volModalWriteLabelCheck" style="width: 16px; height: 16px; accent-color: var(--accent-primary, #e14d2a);">
+            <span>2. メディア本体のボリュームラベル（OS・エクスプローラー表示名）にも書き込む</span>
+          </label>
+          <div id="volModalOfflineHint" style="display: none; font-size: 0.76rem; color: var(--warning, #e67e22); padding-left: 24px;">
+            ※現在このメディアがPCに接続されていないため、ボリュームラベルの書き込みはできません（アプリ内の識別名のみ変更できます）。
+          </div>
+
+          <div id="volModalWriteLabelPanel" style="display: none; background: rgba(225, 77, 42, 0.07); border: 1px solid rgba(225, 77, 42, 0.35); border-radius: 6px; padding: 12px; flex-direction: column; gap: 10px;">
+            <div style="font-size: 0.78rem; color: var(--text-main, #eceae4); line-height: 1.5; background: rgba(0,0,0,0.2); padding: 8px 10px; border-radius: 4px; border-left: 3px solid var(--accent-primary, #e14d2a);">
+              <strong>⚠️ 注意（メディアへの書き込み確認）</strong><br>
+              ・SDカード／ドライブ本体のボリュームラベル領域を書き換えます（写真ファイル自体は変更されません）。<br>
+              ・カメラ本体や別環境での文字化け・認識不良を防ぐため、<strong>2バイト文字（日本語・全角文字）はお断り（使用不可）</strong>としています。<strong>半角英数字・ハイフン(<code>-</code>)・アンダースコア(<code>_</code>) のみ（最大11文字）</strong>で指定してください。<br>
+              ・下の確認用ランダムPIN番号を入力して承認した場合のみ書き込みます（未承認の場合は一切触りません）。
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <label for="volModalPhysicalLabelInput" style="font-weight: 600; font-size: 0.8rem; color: var(--text-main, #eceae4);">
+                  書き込むボリュームラベル（半角11文字以内・2バイト文字不可）
+                </label>
+                <span id="volModalLabelCharCount" style="font-family: monospace; font-size: 0.75rem; color: var(--text-dim, #64748b);">0 / 11</span>
+              </div>
+              <input type="text" id="volModalPhysicalLabelInput" placeholder="例: SD_A7M4_01" autocomplete="off" spellcheck="false" style="width: 100%; padding: 7px 10px; font-family: monospace; font-size: 0.9rem; border-radius: 4px; border: 1px solid var(--border-soft, rgba(255,255,255,0.22)); background: var(--bg-primary, #141413); color: var(--text-main, #eceae4);">
+              <div id="volModalLabelError" style="display: none; font-size: 0.76rem; color: #ef4444; font-weight: 600; line-height: 1.4;"></div>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--bg-secondary, rgba(255,255,255,0.04)); padding: 8px 10px; border-radius: 4px; border: 1px solid var(--border-soft, rgba(255,255,255,0.12));">
+              <div style="font-size: 0.78rem; color: var(--text-main, #eceae4); line-height: 1.4;">
+                書き込み承認PIN: <strong id="volModalTargetPin" style="font-family: monospace; font-size: 1.05rem; letter-spacing: 2px; color: var(--accent-primary, #e14d2a); background: rgba(225,77,42,0.15); padding: 2px 8px; border-radius: 4px;">----</strong>
+              </div>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <input type="text" id="volModalPinInput" maxlength="4" inputmode="numeric" placeholder="4桁PINを入力" autocomplete="off" style="width: 118px; padding: 6px 8px; text-align: center; font-family: monospace; font-size: 0.92rem; letter-spacing: 2px; border-radius: 4px; border: 1px solid var(--border-soft, rgba(255,255,255,0.22)); background: var(--bg-primary, #141413); color: var(--text-main, #eceae4);">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 8px; padding: 12px 20px;">
+        <button type="button" class="btn btn-secondary" id="btnCancelVolumeIdentityModal">キャンセル (Esc)</button>
+        <button type="button" class="btn btn-primary" id="btnSubmitVolumeIdentityModal">保存する</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 管理対象メディア一覧モーダル (managedMediaModal) -->
+  <div class="modal-backdrop" id="managedMediaModal" style="display: none;">
+    <div class="modal-card" style="max-width: 780px; width: 94vw;">
+      <div class="modal-header">
+        <div class="modal-header-title">
+          <h2>管理対象メディア一覧（SDカード・ドライブ）</h2>
+          <span class="modal-subtitle">登録済みのSDカードや外部ドライブごとの収録写真枚数・撮影期間・カメラ機種・識別名を一覧管理します</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <button type="button" class="btn btn-secondary btn-xs" id="refreshManagedMediaModalBtn" title="メディアの接続状態と集計を再読み込み">再読込</button>
+          <button class="modal-close-btn" id="closeManagedMediaModalBtn">&times;</button>
+        </div>
+      </div>
+
+      <div class="modal-body" style="padding: 16px 20px; max-height: 70vh; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;" id="managedMediaListContainer">
+        <!-- JSで動的生成 -->
+      </div>
+
+      <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 20px;">
+        <span style="font-size: 0.78rem; color: var(--text-dim, #64748b);">※SDカードを差し替えても同じドライブ文字のまま別メディアとして識別・絞り込みできます</span>
+        <button type="button" class="btn btn-secondary" id="closeManagedMediaModalFooterBtn">閉じる (Esc)</button>
       </div>
     </div>
   </div>
@@ -2517,6 +2640,11 @@
         </div>
       </div>
     </div>
+    <div class="context-menu-item" id="contextMenuAiColorTagItem" title="選択中の写真の主要カラー（12色）のみをAIで再判定します">
+      <div class="menu-item-content">
+        <span id="contextMenuAiColorTagLabel">AIカラータグを再判定</span>
+      </div>
+    </div>
     <div class="context-menu-item has-submenu" id="contextMenuImportItem">
       <div class="menu-item-content">
         <span title="選択した写真を加工・リサイズ出力、またはベタ焼きHTMLとして書き出します">テイクアウト</span>
@@ -2723,6 +2851,11 @@
           <span>AIタグ付け</span>
         </div>
       </div>
+      <div class="context-menu-item" id="folderMenuAiColorTag" title="このフォルダ配下の写真のAIカラータグ（12色）のみを再判定します">
+        <div class="menu-item-content">
+          <span>AIカラータグのみ再判定</span>
+        </div>
+      </div>
       <div class="context-menu-item" id="folderMenuUnmanage">
         <div class="menu-item-content">
           <span>管理から外す（DB登録解除）</span>
@@ -2764,6 +2897,11 @@
     </div>
 
     <div class="context-menu-divider"></div>
+    <div class="context-menu-item" id="folderMenuRenameVolume" style="display: none;">
+      <div class="menu-item-content">
+        <span>メディアの識別名（ニックネーム）を設定...</span>
+      </div>
+    </div>
     <div class="context-menu-item" id="folderMenuOpenExplorer">
       <div class="menu-item-content">
         <span>エクスプローラーで開く</span>
@@ -2771,23 +2909,23 @@
     </div>
   </div>
 
-  <script src="/js/common.js?v=1.0.0"></script>
-  <script src="/js/selection.js?v=1.0.0"></script>
-  <script src="/js/inspector.js?v=1.0.0"></script>
-  <script src="/js/lightbox.js?v=1.0.0"></script>
-  <script src="/js/adjust.js?v=1.0.0"></script>
-  <script src="/js/histogram.js?v=1.0.0"></script>
-  <script src="/js/compare.js?v=1.0.0"></script>
-  <script src="/js/takeout.js?v=1.0.0"></script>
-  <script src="/js/presets.js?v=1.0.0"></script>
-  <script src="/js/slideshow.js?v=1.0.0"></script>
-  <script src="/js/location_tree.js?v=1.0.0"></script>
-  <script src="/js/folder_tree.js?v=1.0.0"></script>
-  <script src="/js/location_map.js?v=1.0.0"></script>
-  <script src="/js/lab.js?v=1.0.0"></script>
-  <script src="/js/sidebar_filters.js?v=1.0.0"></script>
-  <script src="/js/storage.js?v=1.0.0"></script>
-  <script src="/js/app.js?v=1.0.0"></script>
-  <script src="/js/i18n.js?v=1.0.0"></script>
+  <script src="/js/common.js?v=1.1.0"></script>
+  <script src="/js/selection.js?v=1.1.0"></script>
+  <script src="/js/inspector.js?v=1.1.0"></script>
+  <script src="/js/lightbox.js?v=1.1.0"></script>
+  <script src="/js/adjust.js?v=1.1.0"></script>
+  <script src="/js/histogram.js?v=1.1.0"></script>
+  <script src="/js/compare.js?v=1.1.0"></script>
+  <script src="/js/takeout.js?v=1.1.0"></script>
+  <script src="/js/presets.js?v=1.1.0"></script>
+  <script src="/js/slideshow.js?v=1.1.0"></script>
+  <script src="/js/location_tree.js?v=1.1.0"></script>
+  <script src="/js/folder_tree.js?v=1.1.0"></script>
+  <script src="/js/location_map.js?v=1.1.0"></script>
+  <script src="/js/lab.js?v=1.1.0"></script>
+  <script src="/js/sidebar_filters.js?v=1.1.0"></script>
+  <script src="/js/storage.js?v=1.1.0"></script>
+  <script src="/js/app.js?v=1.1.0"></script>
+  <script src="/js/i18n.js?v=1.1.0"></script>
 </body>
 </html>

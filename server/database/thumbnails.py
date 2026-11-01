@@ -150,7 +150,7 @@ def find_existing_thumbnail_for_duplicate(
     exclude_photo_id: Optional[int] = None,
 ) -> Optional[Dict[str, Any]]:
     """
-    同一特徴量（撮影日時・ファイルサイズ）を持つ別の写真で、
+    同一特徴量（撮影日時またはシフト前元撮影日時・ファイルサイズ）を持つ別の写真で、
     既に生成済みのサムネイルBLOBが存在すれば取得する。
     画像デコードおよびWebP再圧縮を完全にスキップして高速再利用するために使用する。
     """
@@ -163,9 +163,10 @@ def find_existing_thumbnail_for_duplicate(
             SELECT t.data, t.width, t.height, p.id as source_photo_id
             FROM thumbnails t
             INNER JOIN photos p ON t.photo_id = p.id
-            WHERE p.date_taken = ? AND p.file_size = ?
+            WHERE p.file_size = ?
+              AND (p.date_taken = ? OR p.original_date_taken = ?)
         """
-        params: List[Any] = [date_taken, file_size]
+        params: List[Any] = [file_size, date_taken, date_taken]
         if exclude_photo_id:
             query += " AND p.id != ?"
             params.append(exclude_photo_id)

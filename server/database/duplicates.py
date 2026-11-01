@@ -1,7 +1,7 @@
 """
 重複写真スマート管理モジュール
 複数フォルダに存在する同一画像の高精度な検知、品質スコア（Quality Score）の算出、
-代表写真の選定、およびサムネイルやメタデータ（タグ・星評価）の共有を担う。
+代表写真の選定、およびサムネイルやメタデータ（タグ・星評価・非破壊調整・GPS・日時シフト）の共有を担う。
 """
 
 import os
@@ -9,6 +9,7 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple
 
 from .connection import get_connection
+from .thumbnails import compute_thumbnail_hash
 
 logger = logging.getLogger("duplicates")
 
@@ -75,39 +76,97 @@ def compute_photo_quality_score(photo: Dict[str, Any]) -> float:
     return score
 
 
+def _has_non_destructive_adjustments(photo: Dict[str, Any]) -> bool:
+    """写真レコードに非破壊画像調整（回転・傾き・トリミング・トーン補正）が設定されているか判定する"""
+    if int(photo.get("rotation") or 0) != 0:
+        return True
+    if abs(float(photo.get("fine_angle") or 0.0)) > 0.01:
+        return True
+    if photo.get("crop_w") is not None and photo.get("crop_h") is not None:
+        return True
+    if int(photo.get("brightness") or 0) != 0:
+        return True
+    if int(photo.get("contrast") or 0) != 0:
+        return True
+    if int(photo.get("saturation") or 0) != 0:
+        return True
+    return False
+
+
 def find_duplicate_photo_match(
     file_size: int,
     date_taken: Optional[str] = None,
     camera_model: Optional[str] = None,
     exclude_photo_id: Optional[int] = None,
+    file_name: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """
-    指定された特徴量（ファイルサイズ、撮影日時、カメラ機種等）と一致する
+    指定された特徴量（ファイルサイズ、撮影日時／シフト前元日時、カメラ機種、ファイル名）と一致する
     既存の写真レコードを高速に検索する。
-    サムネイルの共有やタグの初期連携で同一写真を特定するために使用する。
+    撮影日時シフト補正済みの写真（original_date_taken に元のEXIF日時を保持）にも確実にヒットさせ、
+    複数候補がある場合は評価・タグ・非破壊調整・後付けGPS等の編集情報を持つレコードを最優先で返す。
     """
+    if not file_size or file_size <= 0:
+        return None
+
+    # 編集済みレコードを優先するためのORDER BY句（評価・日時シフト・非破壊調整・後付けGPS・タグ有無）
+    priority_order_sql = """
+        ORDER BY
+            (CASE WHEN rating != 0 OR is_favorite != 0 THEN 1 ELSE 0 END) DESC,
+            (CASE WHEN original_date_taken IS NOT NULL AND original_date_taken != '' THEN 1 ELSE 0 END) DESC,
+            (CASE WHEN COALESCE(rotation, 0) != 0
+                    OR ABS(COALESCE(fine_angle, 0.0)) > 0.01
+                    OR crop_w IS NOT NULL
+                    OR COALESCE(brightness, 0) != 0
+                    OR COALESCE(contrast, 0) != 0
+                    OR COALESCE(saturation, 0) != 0 THEN 1 ELSE 0 END) DESC,
+            (CASE WHEN gps_source IN ('copied', 'manual', 'inferred') OR latitude IS NOT NULL THEN 1 ELSE 0 END) DESC,
+            (CASE WHEN EXISTS (SELECT 1 FROM photo_tags pt WHERE pt.photo_id = photos.id) THEN 1 ELSE 0 END) DESC,
+            id ASC
+        LIMIT 1
+    """
+
     with get_connection() as conn:
         cursor = conn.cursor()
 
-        # 1. 撮影日時 ＋ ファイルサイズ の一致（Exifがある画像での最高精度一致）
+        # 1. 撮影日時（またはシフト前の original_date_taken）＋ ファイルサイズ の一致
         if date_taken:
-            query = """
+            base_where = """
                 SELECT * FROM photos
-                WHERE date_taken = ? AND file_size = ?
+                WHERE file_size = ?
+                  AND (date_taken = ? OR original_date_taken = ?)
             """
-            params: List[Any] = [date_taken, file_size]
+            params: List[Any] = [file_size, date_taken, date_taken]
             if exclude_photo_id:
-                query += " AND id != ?"
+                base_where += " AND id != ?"
                 params.append(exclude_photo_id)
 
             if camera_model and camera_model != "不明":
                 # 同一カメラでの一致を優先
-                cursor.execute(query + " AND camera_model = ? LIMIT 1", params + [camera_model])
+                cursor.execute(
+                    base_where + " AND camera_model = ? " + priority_order_sql,
+                    params + [camera_model],
+                )
                 row = cursor.fetchone()
                 if row:
                     return dict(row)
 
-            cursor.execute(query + " LIMIT 1", params)
+            cursor.execute(base_where + priority_order_sql, params)
+            row = cursor.fetchone()
+            if row:
+                return dict(row)
+
+        # 2. EXIF日時がない画像の場合: ファイル名 ＋ ファイルサイズ の完全一致で照合
+        if not date_taken and file_name:
+            query_no_dt = """
+                SELECT * FROM photos
+                WHERE file_name = ? AND file_size = ?
+            """
+            params_no_dt: List[Any] = [file_name, file_size]
+            if exclude_photo_id:
+                query_no_dt += " AND id != ?"
+                params_no_dt.append(exclude_photo_id)
+            cursor.execute(query_no_dt + priority_order_sql, params_no_dt)
             row = cursor.fetchone()
             if row:
                 return dict(row)
@@ -150,6 +209,7 @@ def get_all_duplicate_groups(limit: int = 100) -> List[Dict[str, Any]]:
                 """
                 SELECT p.*,
                        v.volume_label,
+                       COALESCE(v.custom_name, '') as volume_custom_name,
                        (SELECT GROUP_CONCAT(tag, ', ') FROM photo_tags WHERE photo_id = p.id) as tags_str
                 FROM photos p
                 LEFT JOIN volumes v ON p.volume_serial = v.volume_serial
@@ -190,8 +250,16 @@ def get_all_duplicate_groups(limit: int = 100) -> List[Dict[str, Any]]:
 
 def copy_metadata_to_duplicate(source_photo_id: int, target_photo_id: int) -> bool:
     """
-    同一写真間でタグ、星評価、お気に入りを安全にコピーする。
-    source_photo_id のメタデータを target_photo_id へ反映（既存値がある場合はマージ）。
+    同一写真間でユーザー編集メタデータを安全・確実に引き継ぐ。
+    引き継ぎ対象:
+      1. 4段階評価 (rating) / お気に入り (is_favorite)
+      2. 撮影日時シフト補正 (date_taken, year_month, original_date_taken)
+      3. 非破壊画像調整 (rotation, fine_angle, crop_x/y/w/h/aspect, brightness, contrast, saturation)
+      4. GPS位置情報・撮影地名 (latitude, longitude, gps_source, country, state, city)
+      5. タグ一覧 (photo_tags: 手動タグ・階層タグ・カラータグ・AIタグ)
+      6. サムネイルBLOB (非破壊調整済みサムネイルの反映・高速複製)
+    ※ ターゲット側に既に設定値がある項目は上書きせず、未設定（初期値）の項目のみ安全にマージする。
+    ※ ソース写真がペア済みRAWで、ペア相手の代表JPEG側にメタデータがある場合はそちらも補完参照する。
     """
     if source_photo_id == target_photo_id:
         return False
@@ -199,35 +267,205 @@ def copy_metadata_to_duplicate(source_photo_id: int, target_photo_id: int) -> bo
     with get_connection() as conn:
         cursor = conn.cursor()
 
-        # ソース写真の評価とお気に入りを取得
-        cursor.execute("SELECT rating, is_favorite FROM photos WHERE id = ?", (source_photo_id,))
-        source = cursor.fetchone()
-        if not source:
+        cursor.execute("SELECT * FROM photos WHERE id = ?", (source_photo_id,))
+        src_row = cursor.fetchone()
+        if not src_row:
             return False
+        source = dict(src_row)
 
-        # ターゲット写真の評価とお気に入りを更新（ソース側が有効な値の場合）
-        if source["rating"] != 0 or source["is_favorite"] != 0:
-            cursor.execute(
-                """
-                UPDATE photos
-                SET rating = CASE WHEN rating = 0 THEN ? ELSE rating END,
-                    is_favorite = CASE WHEN is_favorite = 0 THEN ? ELSE is_favorite END,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-                """,
-                (source["rating"], source["is_favorite"], target_photo_id),
-            )
+        cursor.execute("SELECT * FROM photos WHERE id = ?", (target_photo_id,))
+        tgt_row = cursor.fetchone()
+        if not tgt_row:
+            return False
+        target = dict(tgt_row)
 
-        # ソース写真のタグをコピー（UNIQUE制約があるため INSERT OR IGNORE）
+        # ソースがペア済みRAW（またはペア相手が存在する写真）の場合、ペア相手レコードも補完候補として取得
+        pair_source: Optional[Dict[str, Any]] = None
+        paired_path = source.get("paired_raw_path")
+        if paired_path:
+            cursor.execute("SELECT * FROM photos WHERE file_path = ? AND id != ? LIMIT 1", (paired_path, source_photo_id))
+            p_row = cursor.fetchone()
+            if p_row:
+                pair_source = dict(p_row)
+
+        def _pick_source_field(field_check_fn) -> Dict[str, Any]:
+            """source 自身に該当編集があれば source を、なければ pair_source を返す"""
+            if field_check_fn(source):
+                return source
+            if pair_source and field_check_fn(pair_source):
+                return pair_source
+            return source
+
+        # 1. 評価 & お気に入り
+        r_src = _pick_source_field(lambda d: int(d.get("rating") or 0) != 0)
+        f_src = _pick_source_field(lambda d: int(d.get("is_favorite") or 0) != 0)
+        new_rating = int(target.get("rating") or 0)
+        if new_rating == 0 and int(r_src.get("rating") or 0) != 0:
+            new_rating = int(r_src["rating"])
+
+        new_favorite = int(target.get("is_favorite") or 0)
+        if new_favorite == 0 and int(f_src.get("is_favorite") or 0) != 0:
+            new_favorite = int(f_src["is_favorite"])
+
+        # 2. 撮影日時シフト補正（original_date_taken が記録されている場合）
+        dt_src = _pick_source_field(lambda d: bool(d.get("original_date_taken") and str(d["original_date_taken"]).strip()))
+        new_date_taken = target.get("date_taken")
+        new_year_month = target.get("year_month")
+        new_orig_dt = target.get("original_date_taken")
+        if (not new_orig_dt or not str(new_orig_dt).strip()) and dt_src.get("original_date_taken"):
+            new_date_taken = dt_src.get("date_taken") or new_date_taken
+            new_year_month = dt_src.get("year_month") or new_year_month
+            new_orig_dt = dt_src.get("original_date_taken")
+
+        # 3. 非破壊画像調整パラメータ
+        adj_src = _pick_source_field(_has_non_destructive_adjustments)
+        copied_adjustments = False
+        if not _has_non_destructive_adjustments(target) and _has_non_destructive_adjustments(adj_src):
+            new_rotation = int(adj_src.get("rotation") or 0)
+            new_fine_angle = float(adj_src.get("fine_angle") or 0.0)
+            new_crop_x = adj_src.get("crop_x")
+            new_crop_y = adj_src.get("crop_y")
+            new_crop_w = adj_src.get("crop_w")
+            new_crop_h = adj_src.get("crop_h")
+            new_crop_aspect = adj_src.get("crop_aspect")
+            new_brightness = int(adj_src.get("brightness") or 0)
+            new_contrast = int(adj_src.get("contrast") or 0)
+            new_saturation = int(adj_src.get("saturation") or 0)
+            copied_adjustments = True
+        else:
+            new_rotation = int(target.get("rotation") or 0)
+            new_fine_angle = float(target.get("fine_angle") or 0.0)
+            new_crop_x = target.get("crop_x")
+            new_crop_y = target.get("crop_y")
+            new_crop_w = target.get("crop_w")
+            new_crop_h = target.get("crop_h")
+            new_crop_aspect = target.get("crop_aspect")
+            new_brightness = int(target.get("brightness") or 0)
+            new_contrast = int(target.get("contrast") or 0)
+            new_saturation = int(target.get("saturation") or 0)
+
+        # 4. GPS・撮影地情報（後付けGPSやEXIF GPSの引き継ぎ）
+        gps_src = _pick_source_field(
+            lambda d: d.get("latitude") is not None and d.get("longitude") is not None
+        )
+        new_lat = target.get("latitude")
+        new_lon = target.get("longitude")
+        new_gps_source = target.get("gps_source")
+        new_country = target.get("country")
+        new_state = target.get("state")
+        new_city = target.get("city")
+
+        src_has_gps = gps_src.get("latitude") is not None and gps_src.get("longitude") is not None
+        tgt_has_gps = new_lat is not None and new_lon is not None
+        src_is_user_gps = gps_src.get("gps_source") in ("copied", "manual", "inferred")
+        tgt_is_user_gps = new_gps_source in ("copied", "manual", "inferred")
+
+        if src_has_gps and (not tgt_has_gps or (src_is_user_gps and not tgt_is_user_gps)):
+            new_lat = gps_src.get("latitude")
+            new_lon = gps_src.get("longitude")
+            new_gps_source = gps_src.get("gps_source")
+            new_country = gps_src.get("country")
+            new_state = gps_src.get("state")
+            new_city = gps_src.get("city")
+
         cursor.execute(
             """
-            INSERT OR IGNORE INTO photo_tags (photo_id, tag, source, confidence)
-            SELECT ?, tag, source, confidence
-            FROM photo_tags
-            WHERE photo_id = ?
+            UPDATE photos
+            SET rating = ?,
+                is_favorite = ?,
+                date_taken = ?,
+                year_month = ?,
+                original_date_taken = ?,
+                rotation = ?,
+                fine_angle = ?,
+                crop_x = ?,
+                crop_y = ?,
+                crop_w = ?,
+                crop_h = ?,
+                crop_aspect = ?,
+                brightness = ?,
+                contrast = ?,
+                saturation = ?,
+                latitude = ?,
+                longitude = ?,
+                gps_source = ?,
+                country = ?,
+                state = ?,
+                city = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
             """,
-            (target_photo_id, source_photo_id),
+            (
+                new_rating,
+                new_favorite,
+                new_date_taken,
+                new_year_month,
+                new_orig_dt,
+                new_rotation,
+                new_fine_angle,
+                new_crop_x,
+                new_crop_y,
+                new_crop_w,
+                new_crop_h,
+                new_crop_aspect,
+                new_brightness,
+                new_contrast,
+                new_saturation,
+                new_lat,
+                new_lon,
+                new_gps_source,
+                new_country,
+                new_state,
+                new_city,
+                target_photo_id,
+            ),
         )
+
+        # 5. ソース写真（およびペア相手があればその写真）のタグをコピー（UNIQUE制約があるため INSERT OR IGNORE）
+        tag_source_ids = [source_photo_id]
+        if pair_source and pair_source.get("id") and pair_source["id"] != target_photo_id:
+            tag_source_ids.append(pair_source["id"])
+
+        for tid_src in tag_source_ids:
+            cursor.execute(
+                """
+                INSERT OR IGNORE INTO photo_tags (photo_id, tag, source, confidence)
+                SELECT ?, tag, source, confidence
+                FROM photo_tags
+                WHERE photo_id = ?
+                """,
+                (target_photo_id, tid_src),
+            )
+
+        # 6. サムネイルBLOBの引き継ぎ（特に非破壊調整済みサムネイルの即時反映）
+        cursor.execute("SELECT 1 FROM thumbnails WHERE photo_id = ? LIMIT 1", (target_photo_id,))
+        tgt_has_thumb = cursor.fetchone() is not None
+        if not tgt_has_thumb or copied_adjustments:
+            thumb_donor_id = adj_src.get("id") if copied_adjustments else source_photo_id
+            cursor.execute(
+                "SELECT data, width, height FROM thumbnails WHERE photo_id = ? ORDER BY created_at DESC LIMIT 1",
+                (thumb_donor_id,),
+            )
+            donor_thumb = cursor.fetchone()
+            if not donor_thumb and thumb_donor_id != source_photo_id:
+                cursor.execute(
+                    "SELECT data, width, height FROM thumbnails WHERE photo_id = ? ORDER BY created_at DESC LIMIT 1",
+                    (source_photo_id,),
+                )
+                donor_thumb = cursor.fetchone()
+
+            if donor_thumb and donor_thumb["data"]:
+                tgt_fp = target.get("file_path") or str(target_photo_id)
+                tgt_mtime = target.get("file_mtime")
+                new_fh = compute_thumbnail_hash(tgt_fp, tgt_mtime)
+                cursor.execute("DELETE FROM thumbnails WHERE photo_id = ?", (target_photo_id,))
+                cursor.execute(
+                    """
+                    INSERT OR REPLACE INTO thumbnails (file_hash, photo_id, data, width, height)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (new_fh, target_photo_id, donor_thumb["data"], donor_thumb["width"], donor_thumb["height"]),
+                )
 
         conn.commit()
         return True
@@ -255,7 +493,9 @@ def get_duplicates_for_photo(photo_id: int) -> List[Dict[str, Any]]:
                    p.width, p.height, p.date_taken, p.camera_model, p.lens_model,
                    p.rating, p.is_favorite, p.is_raw, p.is_unlinked,
                    p.stack_id, p.is_stack_primary, p.stack_type,
-                   v.volume_label, v.volume_serial
+                   p.volume_serial,
+                   v.volume_label,
+                   COALESCE(v.custom_name, '') as volume_custom_name
             FROM photos p
             LEFT JOIN volumes v ON p.volume_serial = v.volume_serial
             WHERE p.date_taken = ? AND p.file_size = ?
@@ -268,14 +508,37 @@ def get_duplicates_for_photo(photo_id: int) -> List[Dict[str, Any]]:
         if len(rows) <= 1:
             return []
 
-        # 実ファイルの存在チェック（is_offline）およびドライブレター抽出
+        try:
+            from ..scanner import resolve_portable_path, strip_vsn_prefix
+        except Exception:
+            resolve_portable_path = None
+            strip_vsn_prefix = None
+
+        # 実ファイルの存在チェック（VSN対応 is_offline）およびドライブレター抽出
         for r in rows:
-            fp = r.get("file_path")
-            r["is_offline"] = not (fp and os.path.exists(fp))
-            if fp and len(fp) >= 2 and fp[1] == ":":
-                r["volume_drive"] = fp[:2].upper()
+            fp = r.get("file_path") or ""
+            vol_ser = r.get("volume_serial")
+            if strip_vsn_prefix:
+                clean_fp = strip_vsn_prefix(fp)
             else:
-                r["volume_drive"] = None
+                clean_fp = fp
+            r["file_path"] = clean_fp
+            if resolve_portable_path and fp:
+                resolved_p, is_online = resolve_portable_path(fp, expected_serial=vol_ser)
+                r["is_offline"] = not (is_online and resolved_p.exists())
+                resolved_str = str(resolved_p)
+                if is_online and len(resolved_str) >= 2 and resolved_str[1] == ":":
+                    r["volume_drive"] = resolved_str[:2].upper()
+                elif len(clean_fp) >= 2 and clean_fp[1] == ":":
+                    r["volume_drive"] = clean_fp[:2].upper()
+                else:
+                    r["volume_drive"] = None
+            else:
+                r["is_offline"] = not (clean_fp and os.path.exists(clean_fp))
+                if clean_fp and len(clean_fp) >= 2 and clean_fp[1] == ":":
+                    r["volume_drive"] = clean_fp[:2].upper()
+                else:
+                    r["volume_drive"] = None
 
         return rows
 

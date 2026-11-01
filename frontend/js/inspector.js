@@ -49,6 +49,75 @@ function updateInspectorView() {
 window.updateInspector = updateInspectorView;
 
 /**
+ * ボリューム・メディア（SDカード / 外部ドライブ）の表示用情報を整形するヘルパー
+ */
+function formatInspectorVolumeInfo(item) {
+  if (!item) return null;
+  const serial = String(item.volume_serial || '').trim();
+  const shortSerial = serial.length === 8 ? `${serial.slice(0, 4)}-${serial.slice(4)}` : serial;
+  const customName = String(item.volume_custom_name || '').trim();
+  const volLabel = String(item.volume_label || '').trim();
+  const drive = String(item.volume_drive || '').trim();
+  if (!serial && !customName && !volLabel && !drive) return null;
+
+  const isOffline = Boolean(item.is_offline);
+  const statusIcon = isOffline ? '○' : '●';
+  let mainName = '';
+  if (customName && volLabel && customName !== volLabel) {
+    mainName = `${customName} (${volLabel})`;
+  } else if (customName) {
+    mainName = customName;
+  } else if (volLabel) {
+    mainName = volLabel;
+  } else if (serial) {
+    mainName = `メディア [ID:${shortSerial}]`;
+  } else {
+    mainName = 'ラベルなし';
+  }
+
+  const idBadge = (serial && (customName || volLabel)) ? ` [ID:${shortSerial}]` : '';
+  const driveSuffix = drive ? ` (${drive})` : '';
+  const fullText = `${statusIcon} ${mainName}${idBadge}${driveSuffix}`;
+
+  let pillLabel = '';
+  if (customName) {
+    pillLabel = `${statusIcon} ${customName}${drive ? ` (${drive})` : ''}`;
+  } else if (volLabel) {
+    pillLabel = `${statusIcon} ${volLabel}${drive ? ` (${drive})` : ''}`;
+  } else if (serial) {
+    pillLabel = `${statusIcon} ${drive ? `${drive} ` : ''}ID:${shortSerial}`;
+  } else {
+    pillLabel = `${statusIcon} ${drive}`;
+  }
+
+  const filterTitle = `${isOffline ? '[未接続] ' : ''}${customName || volLabel || `メディア [ID:${shortSerial}]`}${driveSuffix}`;
+  const tooltipParts = [
+    `状態: ${isOffline ? '未接続 (キャッシュ表示)' : '接続中'}`,
+    customName ? `識別名: ${customName}` : '',
+    volLabel ? `OSボリュームラベル: ${volLabel}` : 'OSボリュームラベル: なし',
+    serial ? `ボリュームシリアル(VSN): ${shortSerial} (${serial})` : '',
+    drive ? `ドライブレター: ${drive}` : '',
+  ].filter(Boolean);
+
+  return {
+    serial,
+    shortSerial,
+    customName,
+    volLabel,
+    drive,
+    isOffline,
+    statusIcon,
+    mainName,
+    idBadge,
+    driveSuffix,
+    fullText,
+    pillLabel,
+    filterTitle,
+    tooltip: tooltipParts.join('\n'),
+  };
+}
+
+/**
  * ファーストビュー常時表示EXIFサマリ（#inspectorQuickExif）を更新する
  * 1行目: 撮影日時 ＆ 解像度
  * 2行目: カメラ機種名・レンズ名（1行省略表示、ホバー時に全文ツールチップ）
@@ -116,7 +185,32 @@ function updateQuickExifSummary(photo) {
       const biasVal = Math.round(photo.exposure_bias * 10) / 10;
       pills.push(`<span class="quick-exif-pill" title="露出補正">${sign}${biasVal}EV</span>`);
     }
+    const mediaInfo = formatInspectorVolumeInfo(photo);
+    if (mediaInfo && (mediaInfo.serial || mediaInfo.customName || mediaInfo.volLabel)) {
+      const pillTitle = `${mediaInfo.tooltip}\n左クリック: このメディアの写真のみ表示 ｜ 右クリック: メディアの識別名を設定`;
+      pills.push(`<span class="quick-exif-pill quick-exif-media-pill" data-volume-serial="${escapeHtml(mediaInfo.serial)}" style="cursor:pointer; border-color:var(--accent-primary, #e14d2a);" title="${escapeHtml(pillTitle)}">${escapeHtml(mediaInfo.pillLabel)}</span>`);
+    }
     pillsEl.innerHTML = pills.join('');
+    const mediaPillEl = pillsEl.querySelector('.quick-exif-media-pill');
+    if (mediaPillEl && mediaInfo) {
+      mediaPillEl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (mediaInfo.serial && typeof setFilter === 'function') {
+          setFilter('folder', '', mediaInfo.filterTitle, {
+            volumeSerial: mediaInfo.serial,
+            serialMode: 'match',
+            isOffline: mediaInfo.isOffline,
+          });
+        }
+      });
+      mediaPillEl.addEventListener('contextmenu', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (mediaInfo.serial && typeof window.promptRenameVolume === 'function') {
+          await window.promptRenameVolume(mediaInfo.serial, mediaInfo.customName, mediaInfo.volLabel, mediaInfo.drive);
+        }
+      });
+    }
     pillsEl.style.display = pills.length > 0 ? 'flex' : 'none';
   }
   } catch (err) {
@@ -942,6 +1036,14 @@ function showSingleInspector(photo) {
       await triggerAiTagForSinglePhoto(photo.id, aiBtn);
     };
   }
+  const aiColorBtn = document.getElementById('inspectorAiColorTagBtn');
+  if (aiColorBtn) {
+    aiColorBtn.onclick = async () => {
+      if (typeof batchRetagAiColorSelection === 'function') {
+        await batchRetagAiColorSelection();
+      }
+    };
+  }
 
   // クイック選択ツリーの描画 (AIタグおよびカラータグは除外)
   renderInspectorQuickTree(elements.inspectorQuickTree, async (chosenTag) => {
@@ -1091,10 +1193,13 @@ function showSingleInspector(photo) {
             const isCurrent = (dup.id === photo.id);
             const icon = dup.is_offline ? '○' : '●';
             const driveInfo = dup.volume_drive ? ` (${dup.volume_drive})` : '';
-            const label = dup.volume_label || 'ラベルなし';
+            const label = (formatInspectorVolumeInfo(dup) || {}).fullText || (dup.volume_label || 'ラベルなし');
+            const dupVol = formatInspectorVolumeInfo(dup);
+            const dupSerial = (dup.volume_serial || '').trim();
+            const actionsHtml = dupSerial ? `<span class="inspector-vol-actions" style="margin-left:auto; display:inline-flex; gap:4px;"><button type="button" class="btn-xs-action inspector-vol-filter-btn" data-volume-serial="${escapeHtml(dupSerial)}" data-filter-title="${escapeHtml(dupVol ? dupVol.filterTitle : dupSerial)}" data-is-offline="${dup.is_offline ? '1' : '0'}" title="このメディアの写真のみ表示">絞込</button><button type="button" class="btn-xs-action inspector-vol-rename-btn" data-volume-serial="${escapeHtml(dupSerial)}" data-custom-name="${escapeHtml(dup.volume_custom_name || '')}" data-vol-label="${escapeHtml(dup.volume_label || '')}" data-drive="${escapeHtml(dup.volume_drive || '')}" title="メディアの識別名（ニックネーム）を設定">識別名</button></span>` : '';
             return `
               <div class="multi-meta-item${isCurrent ? ' active' : ''}" data-photo-id="${dup.id}" title="クリックで写真切り替え">
-                <span class="multi-meta-text">${icon} ${escapeHtml(label)}${escapeHtml(driveInfo)}</span>
+                <span class="multi-meta-text" style="display:flex; align-items:center; justify-content:space-between; gap:6px; width:100%;"><span>${escapeHtml(label)}</span>${actionsHtml}</span>
               </div>
             `;
           }).join('')}
@@ -1106,12 +1211,14 @@ function showSingleInspector(photo) {
         elements.inspectorVolumeLabel.textContent = '保存ボリューム';
       }
       elements.inspectorVolumeRow.classList.remove('is-multi-row');
-      if (photo.volume_label !== undefined && photo.volume_label !== null) {
+      const singleVol = formatInspectorVolumeInfo(photo);
+      if (singleVol) {
         elements.inspectorVolumeRow.style.display = '';
         const driveInfo = photo.volume_drive ? ` (${photo.volume_drive})` : '';
         const icon = photo.is_offline ? '○' : '●';
-        elements.inspectorVolume.textContent = `${icon} ${photo.volume_label || 'ラベルなし'}${driveInfo}`;
-        elements.inspectorVolume.title = `ボリュームシリアル: ${photo.volume_serial || '不明'}`;
+        const actionsHtml = singleVol.serial ? `<span class="inspector-vol-actions" style="margin-left:6px; display:inline-flex; gap:4px;"><button type="button" class="btn-xs-action inspector-vol-filter-btn" data-volume-serial="${escapeHtml(singleVol.serial)}" data-filter-title="${escapeHtml(singleVol.filterTitle)}" data-is-offline="${singleVol.isOffline ? '1' : '0'}" title="このメディアの写真のみ表示">絞込</button><button type="button" class="btn-xs-action inspector-vol-rename-btn" data-volume-serial="${escapeHtml(singleVol.serial)}" data-custom-name="${escapeHtml(singleVol.customName)}" data-vol-label="${escapeHtml(singleVol.volLabel)}" data-drive="${escapeHtml(singleVol.drive)}" title="メディアの識別名（ニックネーム）を設定">識別名</button></span>` : '';
+        elements.inspectorVolume.innerHTML = `<span style="display:inline-flex; align-items:center; flex-wrap:wrap; gap:4px;"><span>${escapeHtml(singleVol.fullText)}</span>${actionsHtml}</span>`;
+        elements.inspectorVolume.title = singleVol.tooltip;
       } else {
         elements.inspectorVolumeRow.style.display = 'none';
       }
@@ -1520,8 +1627,8 @@ function renderInspectorTagChips(photo) {
   const tagListEl = elements.inspectorTagList || document.getElementById('inspectorTagList');
   if (!tagListEl || !photo) return;
   tagListEl.innerHTML = '';
-  // 色タグは独立したカラーパレットで表示・操作するため、通常タグ一覧からは除外
-  const leafTags = getLeafTags(photo.tags || []).filter(tag => !(tag in COLOR_TAG_MAP));
+  // 通常タグ・AIタグに加え、付与済みの色タグも色ドット・AIバッジ・昇格ボタン付きで一覧表示
+  const leafTags = getLeafTags(photo.tags || []);
   if (elements.inspectorTagCount) {
     elements.inspectorTagCount.textContent = `${leafTags.length}個`;
   }
@@ -2037,25 +2144,32 @@ async function addTagToPhoto(photoId, tag, photoObj = null) {
  */
 async function batchToggleTag(tagName, shouldAdd) {
   if (state.selectedPhotoIds.size === 0 || !tagName) return;
+  const cleanTagName = tagName.trim();
+  if (!cleanTagName) return;
+  const parts = cleanTagName.split('/').map(p => p.trim()).filter(Boolean);
+  const allExpandedTags = parts.map((_, idx) => parts.slice(0, idx + 1).join('/'));
+  const normalizedTag = parts.join('/');
   const photoIds = Array.from(state.selectedPhotoIds);
 
-  // Optimistic UI: キャッシュのタグを即時更新
+  // Optimistic UI: キャッシュのタグを即時更新（階層タグ時は祖先展開・削除時は子孫も除去）
   photoIds.forEach(id => {
     const photo = state.photos.find(p => p.id === id);
     if (photo) {
       if (shouldAdd) {
         if (!photo.tags) photo.tags = [];
-        if (!photo.tags.includes(tagName)) photo.tags.push(tagName);
         if (!photo.tag_details) photo.tag_details = [];
-        if (!photo.tag_details.some(d => d.tag === tagName)) {
-          photo.tag_details.push({ tag: tagName, source: 'manual', confidence: 1.0 });
-        }
+        allExpandedTags.forEach(tPath => {
+          if (!photo.tags.includes(tPath)) photo.tags.push(tPath);
+          if (!photo.tag_details.some(d => d.tag === tPath)) {
+            photo.tag_details.push({ tag: tPath, source: 'manual', confidence: 1.0 });
+          }
+        });
       } else {
         if (photo.tags) {
-          photo.tags = photo.tags.filter(t => t !== tagName);
+          photo.tags = photo.tags.filter(t => t !== normalizedTag && !t.startsWith(normalizedTag + '/'));
         }
         if (photo.tag_details) {
-          photo.tag_details = photo.tag_details.filter(d => d.tag !== tagName);
+          photo.tag_details = photo.tag_details.filter(d => d.tag !== normalizedTag && !d.tag.startsWith(normalizedTag + '/'));
         }
       }
       // スタックメンバーのキャッシュも同期
@@ -2063,9 +2177,11 @@ async function batchToggleTag(tagName, shouldAdd) {
         photo.stack_photos.forEach(sp => {
           if (shouldAdd) {
             if (!sp.tags) sp.tags = [];
-            if (!sp.tags.includes(tagName)) sp.tags.push(tagName);
+            allExpandedTags.forEach(tPath => {
+              if (!sp.tags.includes(tPath)) sp.tags.push(tPath);
+            });
           } else if (sp.tags) {
-            sp.tags = sp.tags.filter(t => t !== tagName);
+            sp.tags = sp.tags.filter(t => t !== normalizedTag && !t.startsWith(normalizedTag + '/'));
           }
         });
       }
@@ -2078,7 +2194,7 @@ async function batchToggleTag(tagName, shouldAdd) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         photo_ids: photoIds,
-        tag: tagName,
+        tag: normalizedTag,
         action: shouldAdd ? 'add' : 'remove',
       }),
     });
@@ -2383,7 +2499,38 @@ function initInspectorEvents() {
 
   // 詳細情報タブ: 重複写真の保存ボリュームクリックイベント（写真切り替え）
   if (elements.inspectorVolume) {
-    elements.inspectorVolume.addEventListener('click', (e) => {
+    elements.inspectorVolume.addEventListener('click', async (e) => {
+      const filterBtn = e.target.closest('.inspector-vol-filter-btn');
+      if (filterBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        const vSerial = filterBtn.dataset.volumeSerial || '';
+        const fTitle = filterBtn.dataset.filterTitle || `メディア [ID:${vSerial}]`;
+        const isOff = filterBtn.dataset.isOffline === '1';
+        if (vSerial && typeof setFilter === 'function') {
+          setFilter('folder', '', fTitle, {
+            volumeSerial: vSerial,
+            serialMode: 'match',
+            isOffline: isOff,
+          });
+        }
+        return;
+      }
+      const renameBtn = e.target.closest('.inspector-vol-rename-btn');
+      if (renameBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        const vSerial = renameBtn.dataset.volumeSerial || '';
+        if (vSerial && typeof window.promptRenameVolume === 'function') {
+          await window.promptRenameVolume(
+            vSerial,
+            renameBtn.dataset.customName || '',
+            renameBtn.dataset.volLabel || '',
+            renameBtn.dataset.drive || ''
+          );
+        }
+        return;
+      }
       const item = e.target.closest('.multi-meta-item');
       if (item && !item.classList.contains('active')) {
         const pid = parseInt(item.dataset.photoId, 10);

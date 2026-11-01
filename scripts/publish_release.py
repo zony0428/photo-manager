@@ -34,7 +34,7 @@ from server.version import get_version
 
 PUBLIC_REPO = "zony0428/photo-manager"
 PUBLIC_REMOTE = "public"
-DEFAULT_RELEASE_TITLE = "Tetheract Photo Manager v1.0.0 - Rebrand, Tag Keys & Champagne Monotone Themes"
+DEFAULT_RELEASE_TITLE = "TETHERACT pm v1.1.0 - Multi-SD Card VSN Management, Metadata Inheritance, Calendar & AI Color Re-Tagging"
 
 
 def _run_git(*args: str) -> str:
