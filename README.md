@@ -1,4 +1,4 @@
-# Tetheract Photo Manager（テザラクト・フォトマネージャー）
+# TETHERACT pm（テザラクト・フォトマネージャー）
 
 日本語 | [English](README_EN.md)
 
