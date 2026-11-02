@@ -105,13 +105,11 @@ def get_volume_by_serial(volume_serial: str) -> Optional[Dict[str, Any]]:
 def get_all_volumes() -> List[Dict[str, Any]]:
     """
     登録済みの全メディア（ボリューム）一覧を、収録写真枚数・撮影期間・カメラ機種・接続状態付きで取得する。
+    photo_links から集計することで、複数メディアに跨る重複写真も各メディアの枚数に正確に反映する。
     """
     from ..scanner import _get_connected_drive_serial_map
     from ..volume_info import get_volume_info_for_drive
 
-    # 1. 現在PCに接続されているローカルドライブのボリューム情報を収集 (VSN -> info)
-    #    ※ 26ドライブを直接照会すると切断済みネットワークドライブで長時間ブロックするため、
-    #      ネットワークドライブ除外・エラーダイアログ抑止・2秒キャッシュ済みの共通走査結果を使う
     online_map: Dict[str, Dict[str, Any]] = {}
     try:
         serial_to_drive, _ = _get_connected_drive_serial_map()
@@ -130,19 +128,20 @@ def get_all_volumes() -> List[Dict[str, Any]]:
         cursor.execute(
             """
             SELECT
-                UPPER(p.volume_serial) as volume_serial,
-                COUNT(*) as photo_count,
+                UPPER(pl.volume_serial) as volume_serial,
+                COUNT(DISTINCT pl.photo_id) as photo_count,
                 SUM(CASE WHEN p.rating = 2 THEN 1 ELSE 0 END) as excellent_count,
                 SUM(CASE WHEN p.rating = 1 THEN 1 ELSE 0 END) as good_count,
                 MIN(p.date_taken) as min_date,
                 MAX(p.date_taken) as max_date,
                 GROUP_CONCAT(DISTINCT p.camera_model) as cameras_csv,
-                MIN(p.directory_path) as sample_dir
-            FROM photos p
-            WHERE p.volume_serial IS NOT NULL
-              AND p.volume_serial != ''
+                MIN(pl.directory_path) as sample_dir
+            FROM photo_links pl
+            INNER JOIN photos p ON pl.photo_id = p.id
+            WHERE pl.volume_serial IS NOT NULL
+              AND pl.volume_serial != ''
               AND COALESCE(p.is_unlinked, 0) = 0
-            GROUP BY UPPER(p.volume_serial)
+            GROUP BY UPPER(pl.volume_serial)
             """
         )
         stat_rows = {str(r["volume_serial"]).upper(): dict(r) for r in cursor.fetchall() if r["volume_serial"]}
@@ -157,7 +156,6 @@ def get_all_volumes() -> List[Dict[str, Any]]:
 
         photo_count = int(s_rec.get("photo_count") or 0)
         custom_name = (v_rec.get("custom_name") or "").strip()
-        # 写真が0枚でニックネームも設定されていない空のドライブ記録は一覧から除外
         if photo_count == 0 and not custom_name:
             continue
 
@@ -214,7 +212,6 @@ def get_all_volumes() -> List[Dict[str, Any]]:
             "last_seen_at": v_rec.get("last_seen_at") or "",
         })
 
-    # 接続中を優先、次に写真枚数の多い順・最終認識日時の新しい順でソート
     results.sort(
         key=lambda x: (
             0 if x["is_online"] else 1,
@@ -227,9 +224,10 @@ def get_all_volumes() -> List[Dict[str, Any]]:
 
 def remove_volume_by_serial(volume_serial: str) -> Dict[str, Any]:
     """
-    指定VSNのメディアに属する写真登録をDBから一括解除し、volumes テーブルからも削除する（実ファイルは削除しない）。
+    指定VSNのメディアに属するリンク登録をDBから一括解除し、volumes テーブルからも削除する（実ファイルは削除しない）。
+    他メディアにもリンクを持つ写真は残存リンクを代表にして保護し、リンクが0本になった写真のみDBから削除する。
     """
-    from .photos import invalidate_fast_cache
+    from .photos import _sync_photo_links_state, invalidate_fast_cache
 
     serial_clean = (volume_serial or "").strip().upper()
     if not serial_clean:
@@ -238,31 +236,47 @@ def remove_volume_by_serial(volume_serial: str) -> Dict[str, Any]:
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT id FROM photos WHERE UPPER(volume_serial) = ?",
+            "SELECT DISTINCT photo_id FROM photo_links WHERE UPPER(volume_serial) = ?",
             (serial_clean,),
         )
-        photo_ids = [row["id"] for row in cursor.fetchall()]
-        deleted_photos = 0
-        if photo_ids:
+        affected_photo_ids = [row["photo_id"] for row in cursor.fetchall()]
+        cursor.execute("DELETE FROM photo_links WHERE UPPER(volume_serial) = ?", (serial_clean,))
+
+        zero_link_ids: List[int] = []
+        for pid in affected_photo_ids:
+            rem = _sync_photo_links_state(cursor, pid)
+            if rem == 0:
+                zero_link_ids.append(pid)
+
+        # リンク未経由の旧レコードがあれば合わせて回収
+        cursor.execute(
+            "SELECT id FROM photos WHERE UPPER(volume_serial) = ? AND id NOT IN (SELECT photo_id FROM photo_links)",
+            (serial_clean,),
+        )
+        for r in cursor.fetchall():
+            if r["id"] not in zero_link_ids:
+                zero_link_ids.append(r["id"])
+
+        if zero_link_ids:
             chunk_size = 500
-            for i in range(0, len(photo_ids), chunk_size):
-                chunk = photo_ids[i : i + chunk_size]
+            for i in range(0, len(zero_link_ids), chunk_size):
+                chunk = zero_link_ids[i : i + chunk_size]
                 ph = ",".join(["?"] * len(chunk))
                 cursor.execute(f"DELETE FROM photo_tags WHERE photo_id IN ({ph})", chunk)
                 cursor.execute(f"DELETE FROM thumbnails WHERE photo_id IN ({ph})", chunk)
                 cursor.execute(f"DELETE FROM photos WHERE id IN ({ph})", chunk)
-                deleted_photos += cursor.rowcount
+
         cursor.execute("DELETE FROM volumes WHERE UPPER(volume_serial) = ?", (serial_clean,))
         conn.commit()
 
+    removed_cnt = len(affected_photo_ids) or len(zero_link_ids)
     clear_folders_fs_cache()
     invalidate_fast_cache()
     return {
         "volume_serial": serial_clean,
-        "deleted_photos": deleted_photos,
-        "removed_count": deleted_photos,
+        "deleted_photos": removed_cnt,
+        "removed_count": removed_cnt,
     }
-
 
 
 def get_timeline_summary() -> List[Dict[str, Any]]:
@@ -424,16 +438,18 @@ def get_scan_roots_summary() -> List[Dict[str, Any]]:
         registered_roots = [r["folder_path"] for r in registered_root_rows]
         root_fp_map = {r["folder_path"]: bool(r["fingerprint"]) for r in registered_root_rows}
 
-        # 2. 実際に写真が存在する全ディレクトリの枚数およびサムネイル生成済み枚数を取得
+        # 2. 実際に写真リンクが存在する全ディレクトリの枚数およびサムネイル生成済み枚数を取得
         cursor.execute(
             """
-            SELECT p.directory_path,
-                   COUNT(*) as count,
-                   COUNT(t.photo_id) as cached_count
-            FROM photos p
+            SELECT pl.directory_path,
+                   COUNT(DISTINCT pl.photo_id) as count,
+                   COUNT(DISTINCT t.photo_id) as cached_count
+            FROM photo_links pl
+            INNER JOIN photos p ON pl.photo_id = p.id
             LEFT JOIN thumbnails t ON p.id = t.photo_id
-            GROUP BY p.directory_path
-            ORDER BY p.directory_path ASC
+            WHERE COALESCE(p.is_unlinked, 0) = 0
+            GROUP BY pl.directory_path
+            ORDER BY pl.directory_path ASC
             """
         )
         all_dirs = [dict(r) for r in cursor.fetchall()]
@@ -712,17 +728,19 @@ def get_folders_summary() -> List[Dict[str, Any]]:
     with get_connection() as conn:
         cursor = conn.cursor()
 
-        # 1. 実際に写真が登録されているディレクトリ一覧（VSN別に集計し、同一パスの別SDカードも識別）
+        # 1. 実際に写真リンクが登録されているディレクトリ一覧（VSN別に集計し、同一パスの別SDカードも識別）
         cursor.execute(
             """
-            SELECT p.directory_path,
-                   p.volume_serial,
-                   COUNT(*) as count,
-                   COUNT(t.photo_id) as cached_count
-            FROM photos p
+            SELECT pl.directory_path,
+                   NULLIF(pl.volume_serial, '') AS volume_serial,
+                   COUNT(DISTINCT pl.photo_id) as count,
+                   COUNT(DISTINCT t.photo_id) as cached_count
+            FROM photo_links pl
+            INNER JOIN photos p ON pl.photo_id = p.id
             LEFT JOIN thumbnails t ON p.id = t.photo_id
-            GROUP BY p.directory_path, p.volume_serial
-            ORDER BY p.directory_path ASC
+            WHERE COALESCE(p.is_unlinked, 0) = 0
+            GROUP BY pl.directory_path, pl.volume_serial
+            ORDER BY pl.directory_path ASC
             """
         )
         rows = cursor.fetchall()
@@ -842,17 +860,19 @@ def get_drive_photo_counts() -> List[Dict[str, Any]]:
         cursor = conn.cursor()
         cursor.execute(
             """
-            SELECT UPPER(SUBSTR(p.directory_path, 1, 2)) AS drive,
-                   p.volume_serial,
+            SELECT UPPER(SUBSTR(pl.directory_path, 1, 2)) AS drive,
+                   NULLIF(pl.volume_serial, '') AS volume_serial,
                    v.volume_label,
                    COALESCE(v.custom_name, '') AS custom_name,
-                   COUNT(*) AS count
-            FROM photos p
-            LEFT JOIN volumes v ON UPPER(p.volume_serial) = UPPER(v.volume_serial)
-            WHERE p.directory_path IS NOT NULL
-              AND p.directory_path != ''
-              AND p.directory_path LIKE '_:%'
-            GROUP BY drive, p.volume_serial
+                   COUNT(DISTINCT pl.photo_id) AS count
+            FROM photo_links pl
+            INNER JOIN photos p ON pl.photo_id = p.id
+            LEFT JOIN volumes v ON UPPER(pl.volume_serial) = UPPER(v.volume_serial)
+            WHERE COALESCE(p.is_unlinked, 0) = 0
+              AND pl.directory_path IS NOT NULL
+              AND pl.directory_path != ''
+              AND pl.directory_path LIKE '_:%'
+            GROUP BY drive, pl.volume_serial
             """
         )
         return [dict(r) for r in cursor.fetchall()]
@@ -864,27 +884,25 @@ def get_directory_counts_under(
     serial_mode: str = "any",
 ) -> List[Dict[str, Any]]:
     """
-    指定フォルダ配下（自身含む）のディレクトリごとの写真枚数を集計する。
-    serial_mode でボリュームを絞り込む（ドライブ文字が別ボリュームと衝突した場合に、
-    接続中/未接続の写真を取り違えないため）:
-      any: 絞り込みなし / match: volume_serial 一致のみ /
-      match_or_null: 一致またはシリアル未記録 / null: シリアル未記録のみ
-    ※ ドライブレターが変化した接続中メディア（例: 前回 E: → 今回 F:）でも、
-      volume_serial 一致レコードのドライブ相対パスを現在のドライブ文字に読み替えて集計する。
+    指定フォルダ配下（自身含む）のディレクトリごとの写真枚数を photo_links から集計する。
     """
     norm_folder = normalize_folder_path(folder_path).rstrip("\\/")
-    dir_sql, params = _directory_filter_sql(folder_path, recursive=True, column_name="directory_path")
-    query = f"SELECT directory_path, COUNT(*) AS count FROM photos WHERE {dir_sql}"
+    dir_sql, params = _directory_filter_sql(folder_path, recursive=True, column_name="pl.directory_path")
+    query = (
+        f"SELECT pl.directory_path, COUNT(DISTINCT pl.photo_id) AS count "
+        f"FROM photo_links pl INNER JOIN photos p ON pl.photo_id = p.id "
+        f"WHERE COALESCE(p.is_unlinked, 0) = 0 AND {dir_sql}"
+    )
     vs_upper = volume_serial.strip().upper() if volume_serial and volume_serial.strip() else ""
     if serial_mode == "match" and vs_upper:
-        query += " AND UPPER(volume_serial) = ?"
+        query += " AND UPPER(pl.volume_serial) = ?"
         params.append(vs_upper)
     elif serial_mode == "match_or_null" and vs_upper:
-        query += " AND (UPPER(volume_serial) = ? OR volume_serial IS NULL)"
+        query += " AND (UPPER(pl.volume_serial) = ? OR pl.volume_serial = '')"
         params.append(vs_upper)
     elif serial_mode == "null":
-        query += " AND volume_serial IS NULL"
-    query += " GROUP BY directory_path"
+        query += " AND pl.volume_serial = ''"
+    query += " GROUP BY pl.directory_path"
 
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -895,18 +913,20 @@ def get_directory_counts_under(
             merged_counts[d_norm] = merged_counts.get(d_norm, 0) + int(r["count"] or 0)
 
         # VSNが指定されておりドライブ文字パス（例: F: や F:\DCIM）の場合、
-        # 別ドライブ文字で登録された同一VSNの写真も現在のドライブ文字に読み替えて合算する
+        # 別ドライブ文字で登録された同一VSNのリンクも現在のドライブ文字に読み替えて合算する
         if vs_upper and serial_mode in ("match", "match_or_null") and len(norm_folder) >= 2 and norm_folder[1] == ":":
             target_drive = norm_folder[:2].upper()
-            target_tail = norm_folder[2:].lower()  # "" または "\dcim" など
+            target_tail = norm_folder[2:].lower()
             cursor.execute(
                 """
-                SELECT directory_path, COUNT(*) AS count
-                FROM photos
-                WHERE UPPER(volume_serial) = ?
-                  AND directory_path LIKE '_:%'
-                  AND UPPER(SUBSTR(directory_path, 1, 2)) != ?
-                GROUP BY directory_path
+                SELECT pl.directory_path, COUNT(DISTINCT pl.photo_id) AS count
+                FROM photo_links pl
+                INNER JOIN photos p ON pl.photo_id = p.id
+                WHERE COALESCE(p.is_unlinked, 0) = 0
+                  AND UPPER(pl.volume_serial) = ?
+                  AND pl.directory_path LIKE '_:%'
+                  AND UPPER(SUBSTR(pl.directory_path, 1, 2)) != ?
+                GROUP BY pl.directory_path
                 """,
                 (vs_upper, target_drive),
             )
@@ -929,57 +949,66 @@ def remove_folder_photos(
     volume_serial: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    指定したフォルダ内の写真情報をDBから削除する（実ファイルは削除しない）。
-    recursive=True の場合、親フォルダ配下のすべてのサブフォルダの写真・サムネイル・タグも一括削除する。
-    volume_serial が指定されている場合は、そのメディアの写真のみを削除し、別メディアの写真は保持する。
+    指定したフォルダ内の写真リンクをDBから削除する（実ファイルは削除しない）。
+    他フォルダ・他メディアにもリンクを持つ写真は残存リンクを代表にして保護し、
+    リンクが0本になった写真のみDB（photos・photo_tags・thumbnails）から一括削除する。
     """
+    from .photos import _sync_photo_links_state, _vsn_in_sql
     norm_path = os.path.normpath(directory_path)
 
     with get_connection() as conn:
         cursor = conn.cursor()
 
-        # 指定フォルダ（および recursive=True なら配下サブフォルダ）の写真をすべて取得
         sql_frag, sql_params = _directory_filter_sql(norm_path, recursive=recursive, column_name="directory_path")
-        if volume_serial:
-            sql_frag = f"({sql_frag}) AND (volume_serial = ? OR volume_serial IS NULL)"
-            sql_params.append(volume_serial)
+        if volume_serial and volume_serial.strip():
+            v_sql, v_params = _vsn_in_sql("volume_serial", volume_serial.strip())
+            sql_frag = f"({sql_frag}) AND ({v_sql} OR volume_serial = '')"
+            sql_params.extend(v_params)
 
         cursor.execute(
-            f"SELECT id, directory_path FROM photos WHERE {sql_frag}",
+            f"SELECT id, photo_id, directory_path FROM photo_links WHERE {sql_frag}",
             sql_params,
         )
+        link_rows = cursor.fetchall()
+        deleted_link_count = len(link_rows)
+        affected_subfolders = list({r["directory_path"] for r in link_rows if r["directory_path"]})
+        affected_photo_ids = list(dict.fromkeys(r["photo_id"] for r in link_rows))
 
-        rows = cursor.fetchall()
-        deleted_photo_count = len(rows)
-        affected_subfolders = list(set(r["directory_path"] for r in rows))
+        if link_rows:
+            link_ids = [r["id"] for r in link_rows]
+            for i in range(0, len(link_ids), 500):
+                chunk = link_ids[i:i + 500]
+                placeholders = ",".join(["?"] * len(chunk))
+                cursor.execute(f"DELETE FROM photo_links WHERE id IN ({placeholders})", chunk)
 
-        if deleted_photo_count > 0:
-            photo_ids = [r["id"] for r in rows]
-            # SQLiteの変数制限（999個）を回避するため500件ずつチャンク削除
-            for i in range(0, len(photo_ids), 500):
-                chunk = photo_ids[i:i + 500]
+        zero_link_photo_ids: List[int] = []
+        for pid in affected_photo_ids:
+            rem = _sync_photo_links_state(cursor, pid)
+            if rem == 0:
+                zero_link_photo_ids.append(pid)
+
+        if zero_link_photo_ids:
+            for i in range(0, len(zero_link_photo_ids), 500):
+                chunk = zero_link_photo_ids[i:i + 500]
                 placeholders = ",".join(["?"] * len(chunk))
                 cursor.execute(f"DELETE FROM photo_tags WHERE photo_id IN ({placeholders})", chunk)
                 cursor.execute(f"DELETE FROM thumbnails WHERE photo_id IN ({placeholders})", chunk)
                 cursor.execute(f"DELETE FROM photos WHERE id IN ({placeholders})", chunk)
 
-        # scan_roots からも該当フォルダを削除（他メディアの写真がまだ残っている場合は維持）
+        # scan_roots からも該当フォルダを削除（他メディアのリンクがまだ残っている場合は維持）
         rem_frag, rem_params = _directory_filter_sql(norm_path, recursive=recursive, column_name="directory_path")
-        cursor.execute(f"SELECT 1 FROM photos WHERE {rem_frag} LIMIT 1", rem_params)
+        cursor.execute(f"SELECT 1 FROM photo_links WHERE {rem_frag} LIMIT 1", rem_params)
         has_remaining_photos = cursor.fetchone() is not None
         if not has_remaining_photos:
             root_frag, root_params = _directory_filter_sql(norm_path, recursive=recursive, column_name="folder_path")
             cursor.execute(f"DELETE FROM scan_roots WHERE {root_frag}", root_params)
 
-        # 万が一の孤立サムネイルをここで即座にパージ
         cursor.execute("DELETE FROM thumbnails WHERE photo_id NOT IN (SELECT id FROM photos)")
         conn.commit()
 
-        # もしライブラリ内の全写真が0件になったかチェック
         cursor.execute("SELECT 1 FROM photos LIMIT 1")
         should_vacuum = (cursor.fetchone() is None)
 
-    # 接続コンテキストを抜けてコミット完了後にVACUUMを実行
     if should_vacuum:
         try:
             from .stats import vacuum_database
@@ -989,7 +1018,7 @@ def remove_folder_photos(
             print(f"[WARN] 自動VACUUM失敗: {e}")
 
     return {
-        "deleted_count": deleted_photo_count,
+        "deleted_count": len(affected_photo_ids),
         "affected_folders": len(affected_subfolders),
         "folder_path": norm_path,
     }

@@ -106,7 +106,8 @@ class TestCoreRegression(unittest.TestCase):
             self.assertIn("idx_photos_volume_name", plan_vsn)
 
     def test_02_unlinked_photos_excluded_from_duplicates(self):
-        """片方がリンク消失(is_unlinked=1)になったペアが重複として誤検知されないことを確認"""
+        """同一画像が1つのphotosエンティティ＋複数photo_linksに統合され、片方リンク削除時に重複解除されることを確認"""
+        from server.database import remove_folder_photos
         p1_id = upsert_photo({
             "file_path": r"C:\Photos\FolderA\IMG_0001.JPG",
             "directory_path": r"C:\Photos\FolderA",
@@ -130,22 +131,21 @@ class TestCoreRegression(unittest.TestCase):
             "rating": 0,
         })
 
-        # 両方とも有効な状態では重複としてカウントされる
-        self.assertEqual(get_duplicate_photos_count(), 2)
-        self.assertEqual(len(get_duplicate_photo_ids()), 2)
+        # 同一画像は同一の photo_id に統合され、photo_links が 2 件になること
+        self.assertEqual(p1_id, p2_id)
+        self.assertEqual(get_duplicate_photos_count(), 1)
+        self.assertEqual(len(get_duplicate_photo_ids()), 1)
         self.assertEqual(len(get_all_duplicate_groups()), 1)
         self.assertEqual(len(get_duplicates_for_photo(p1_id)), 2)
 
         photos_active = get_photos(stacked=False)
-        self.assertEqual(len(photos_active), 2)
+        self.assertEqual(len(photos_active), 1)
         self.assertEqual(photos_active[0]["duplicate_count"], 2)
 
-        # p2 をリンク消失(is_unlinked=1)に変更
-        with get_connection() as conn:
-            conn.execute("UPDATE photos SET is_unlinked = 1 WHERE id = ?", (p2_id,))
-            conn.commit()
+        # FolderB 側のリンクを削除（片方のフォルダから消えた状態）
+        remove_folder_photos(r"C:\Photos\FolderB")
 
-        # p1 単独になるため、重複件数は 0、p1 の duplicate_count は 1 になること
+        # FolderA のみ残るため、重複件数は 0、p1 の duplicate_count は 1 になること
         self.assertEqual(get_duplicate_photos_count(), 0)
         self.assertEqual(len(get_duplicate_photo_ids()), 0)
         self.assertEqual(len(get_all_duplicate_groups()), 0)
@@ -1299,24 +1299,20 @@ class TestCoreRegression(unittest.TestCase):
                 "file_size": 4000000, "date_taken": "2026-10-05 09:00:00"}
         # カードA（VSN: AAAA0001）の現行レコード
         cur_id = upsert_photo({**base, "volume_serial": "AAAA0001"})
-        # 同じ実ファイルを指す旧レコード（評価・タグあり）が退避先 vsn://AAAA0001/<PATH> に残っている状態を再現
+        # 同一画像の別パス登録は同じ photo_id (cur_id) に統合され、評価・タグが共有されること
         old_id = upsert_photo({**base, "file_path": path + ".old", "file_name": "DSC09999_old.JPG", "volume_serial": "AAAA0001"})
+        self.assertEqual(old_id, cur_id)
         update_rating(old_id, 3)
         add_tag_to_photo(old_id, "旅行/京都")
-        with get_connection() as conn:
-            conn.execute("UPDATE photos SET file_path = ? WHERE id = ?", (f"vsn://AAAA0001/{path}", old_id))
-            conn.commit()
-        self.assertNotEqual(old_id, cur_id)
 
-        # カードB（VSN: BBBB0002）が同じパスでスキャンされ、現行レコードが退避される
+        # カードB（VSN: BBBB0002）の別写真が同じパスでスキャンされても vsn:// 退避なしで共存すること
         new_id = upsert_photo({**base, "file_size": 4100000, "volume_serial": "bbbb0002"})
-        self.assertNotIn(new_id, (old_id, cur_id))
+        self.assertNotEqual(new_id, cur_id)
 
         merged = get_photo_by_id(cur_id)
-        self.assertIsNotNone(merged, "現行レコードは退避されて残ること")
-        self.assertEqual(merged["rating"], 3, "重複退避レコードの評価が統合されること")
-        self.assertIn("旅行/京都", merged["tags"], "重複退避レコードのタグが統合されること")
-        self.assertIsNone(get_photo_by_id(old_id), "統合後の重複レコードのみ削除されること")
+        self.assertIsNotNone(merged, "カードAのレコードは無傷で残ること")
+        self.assertEqual(merged["rating"], 3, "評価が維持されること")
+        self.assertIn("旅行/京都", merged["tags"], "タグが維持されること")
 
         # VSNの大文字小文字の表記揺れでは退避されないこと（同一メディア扱い）
         same_id = upsert_photo({**base, "file_size": 4100000, "volume_serial": "BBBB0002"})
@@ -1337,11 +1333,9 @@ class TestCoreRegression(unittest.TestCase):
         }
         cur_id2 = upsert_photo({**base2, "volume_serial": "AAAA0001"})
         old_id2 = upsert_photo({**base2, "file_path": path2 + ".old", "file_name": "DSC09998_old.JPG", "volume_serial": "AAAA0001"})
+        self.assertEqual(old_id2, cur_id2)
         update_rating(old_id2, 2)
         add_tag_to_photo(old_id2, "バッチ統合テスト")
-        with get_connection() as conn:
-            conn.execute("UPDATE photos SET file_path = ? WHERE id = ?", (f"vsn://AAAA0001/{path2}", old_id2))
-            conn.commit()
 
         upsert_photos_batch([
             {
@@ -1360,9 +1354,8 @@ class TestCoreRegression(unittest.TestCase):
         ])
         merged2 = get_photo_by_id(cur_id2)
         self.assertIsNotNone(merged2)
-        self.assertEqual(merged2["rating"], 2, "バッチスキャン中もデッドロックせず評価が統合されること")
+        self.assertEqual(merged2["rating"], 2, "バッチスキャン中もデッドロックせず評価が維持されること")
         self.assertIn("バッチ統合テスト", merged2["tags"])
-        self.assertIsNone(get_photo_by_id(old_id2))
 
     def test_21_ai_color_retag_keeps_existing_tags_on_empty_result(self) -> None:
         """AIカラー再判定の結果が空（推論失敗・モデル未ロード）の場合、既存のAIカラータグを消さないことを検証"""
@@ -2018,6 +2011,202 @@ class TestCoreRegression(unittest.TestCase):
         self.assertEqual(diff_changed["deleted_folders"], ["202602"], "OS側で削除された管理下子フォルダが検知されること")
         self.assertEqual(diff_changed["added"], 3, "202603の2枚 + 202601の1枚 = 計3枚の新規ファイルが検知されること")
         self.assertEqual(diff_changed["deleted"], 1, "消失した202602内の1枚が削除・消失として検知されること")
+
+    def test_25_cross_media_duplicate_unlink_and_re_promote_primary(self) -> None:
+        """
+        メディアAとメディアBの両方に登録された同一写真(001.jpg)が1つのphotosエンティティ＋2つのphoto_linksで管理され、
+        1. 片方（メディアB）から消えた時はメディアBのリンクのみ削除され、メディアAを代表として通常表示を維持（リンク消失送りにならない）
+        2. 両方（メディアA・Bとも）から消えた時は is_unlinked=1（リンク消失リスト送り）になり評価・タグ・サムネイルを保持
+        3. 後日メディアC（または再接続メディアB）で見つかった時は同一photo_idにリンクが張り直され自動復活することを検証
+        """
+        from server.database import (
+            add_tag_to_photo,
+            get_photo_by_id,
+            get_photos,
+            unlink_missing_photos_in_folder,
+            update_rating,
+            upsert_photo,
+        )
+
+        dir_a = Path(self._temp_dir.name) / "MediaA_DCIM"
+        dir_b = Path(self._temp_dir.name) / "MediaB_DCIM"
+        dir_c = Path(self._temp_dir.name) / "MediaC_Backup"
+        dir_a.mkdir(parents=True, exist_ok=True)
+        dir_b.mkdir(parents=True, exist_ok=True)
+        dir_c.mkdir(parents=True, exist_ok=True)
+
+        file_a = dir_a / "001.jpg"
+        file_b = dir_b / "001.jpg"
+        file_c = dir_c / "001_moved.jpg"
+        file_a.write_bytes(b"J" * 2048)
+        file_b.write_bytes(b"J" * 2048)
+
+        # メディアBとメディアAの両方を登録 → 同一の photo_id に統合され link_count=2 になること
+        id_b = upsert_photo({
+            "file_path": str(file_b),
+            "directory_path": str(dir_b),
+            "file_name": "001.jpg",
+            "file_size": 2048,
+            "date_taken": "2026-08-15 14:30:00",
+        })
+        id_a = upsert_photo({
+            "file_path": str(file_a),
+            "directory_path": str(dir_a),
+            "file_name": "001.jpg",
+            "file_size": 2048,
+            "date_taken": "2026-08-15 14:30:00",
+        })
+        self.assertEqual(id_a, id_b, "同一画像は1つのphotosエンティティに統合されること")
+        update_rating(id_a, 2)
+        add_tag_to_photo(id_a, "お気に入り/夏休み")
+
+        all_stacked = [p for p in get_photos(stacked=True) if p["id"] == id_a]
+        self.assertEqual(len(all_stacked), 1)
+        self.assertEqual(all_stacked[0]["duplicate_count"], 2)
+
+        # ステップ1: メディアBから 001.jpg が消失し、unlink_missing_photos_in_folder を実行
+        file_b.unlink()
+        unlinked_num_b = unlink_missing_photos_in_folder(str(dir_b), recursive=False)
+        self.assertEqual(unlinked_num_b, 1)
+
+        # まだメディアAに実ファイルが残っているため、リンク消失リストには送られず、メディアAを代表として通常表示されること
+        after_b_gone = [p for p in get_photos(stacked=True) if p["id"] == id_a]
+        self.assertEqual(len(after_b_gone), 1, "生きているメディアA側の001.jpgが全体一覧に表示されること")
+        self.assertEqual(after_b_gone[0]["duplicate_count"], 1, "B側リンクが消えて単独(duplicate_count=1)になること")
+        self.assertEqual(os.path.normcase(after_b_gone[0]["file_path"]), os.path.normcase(str(file_a)))
+        self.assertEqual(len([p for p in get_photos(unlinked_only=True) if p["id"] == id_a]), 0, "片方が生きている間はリンク消失リストに入らないこと")
+
+        # ステップ2: 後日メディアAからも 001.jpg が消失（残りリンク0本）
+        file_a.unlink()
+        unlinked_num_a = unlink_missing_photos_in_folder(str(dir_a), recursive=False)
+        self.assertEqual(unlinked_num_a, 1)
+
+        # すべてのリンクが失われたため、通常一覧から消え「リンク消失した画像」リストに送られること
+        self.assertEqual(len([p for p in get_photos(stacked=True) if p["id"] == id_a]), 0)
+        unlinked_list = [p for p in get_photos(unlinked_only=True) if p["id"] == id_a]
+        self.assertEqual(len(unlinked_list), 1, "全リンク消失時はリンク消失リストに保持されること")
+        self.assertEqual(unlinked_list[0]["rating"], 2, "評価が保持されていること")
+        self.assertIn("お気に入り/夏休み", unlinked_list[0]["tags"], "タグが保持されていること")
+
+        # ステップ3: 後日メディアCで同じ画像（リネーム済み 001_moved.jpg）が見つかりスキャンされた場合、自動的にリンクが張り直され復活すること
+        file_c.write_bytes(b"J" * 2048)
+        id_c = upsert_photo({
+            "file_path": str(file_c),
+            "directory_path": str(dir_c),
+            "file_name": "001_moved.jpg",
+            "file_size": 2048,
+            "date_taken": "2026-08-15 14:30:00",
+        })
+        self.assertEqual(id_c, id_a, "既存のphoto_idに再リンクされること")
+        self.assertEqual(len([p for p in get_photos(unlinked_only=True) if p["id"] == id_a]), 0, "リンク消失状態が自動解除されること")
+        restored = get_photo_by_id(id_a)
+        self.assertEqual(os.path.normcase(restored["file_path"]), os.path.normcase(str(file_c)))
+        self.assertEqual(restored["rating"], 2)
+        self.assertIn("お気に入り/夏休み", restored["tags"])
+
+    def test_26_legacy_duplicate_rows_migration_and_ideal_schema(self) -> None:
+        """
+        旧構造DB（重複写真が複数photos行として存在、vsn://退避パスあり、thumbnailsがfile_hash主キー、photo_tagsがid付き）から
+        initialize_database() を実行した際、理想の4点セット構造へ無損失で統合マイグレーションされることを検証
+        """
+        import sqlite3
+        from server.database import (
+            close_thread_connection,
+            get_connection,
+            get_photo_by_id,
+            get_photos,
+             get_thumbnail,
+            initialize_database,
+        )
+
+        close_thread_connection()
+        mig_db_path = Path(self._temp_dir.name) / "legacy_dup_migration.db"
+        raw_conn = sqlite3.connect(str(mig_db_path))
+        raw_cur = raw_conn.cursor()
+        raw_cur.execute(
+            """
+            CREATE TABLE photos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                file_path TEXT UNIQUE NOT NULL,
+                file_name TEXT NOT NULL,
+                directory_path TEXT NOT NULL,
+                file_size INTEGER NOT NULL,
+                date_taken TEXT,
+                rating INTEGER DEFAULT 0,
+                is_favorite INTEGER DEFAULT 0,
+                rotation INTEGER DEFAULT 0,
+                volume_serial TEXT,
+                is_unlinked INTEGER DEFAULT 0
+            )
+            """
+        )
+        raw_cur.execute(
+            """
+            CREATE TABLE photo_tags (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                photo_id INTEGER NOT NULL,
+                tag TEXT NOT NULL,
+                UNIQUE(photo_id, tag)
+            )
+            """
+        )
+        raw_cur.execute(
+            """
+            CREATE TABLE thumbnails (
+                file_hash TEXT PRIMARY KEY,
+                photo_id INTEGER NOT NULL,
+                data BLOB NOT NULL,
+                width INTEGER,
+                height INTEGER
+            )
+            """
+        )
+        # 同一画像がメディアA（vsn://退避中・評価2・タグA）とメディアB（回転90度・タグB・サムネイルあり）に分裂していた状態を再現
+        raw_cur.execute(
+            "INSERT INTO photos (id, file_path, file_name, directory_path, file_size, date_taken, rating, rotation, volume_serial) "
+            "VALUES (10, 'vsn://AAAA1111/E:\\DCIM\\001.JPG', '001.JPG', 'E:\\DCIM', 555555, '2026-07-01 10:00:00', 2, 0, 'AAAA1111')"
+        )
+        raw_cur.execute(
+            "INSERT INTO photos (id, file_path, file_name, directory_path, file_size, date_taken, rating, rotation, volume_serial) "
+            "VALUES (20, 'D:\\Backup\\001_copy.JPG', '001_copy.JPG', 'D:\\Backup', 555555, '2026-07-01 10:00:00', 0, 90, 'BBBB2222')"
+        )
+        raw_cur.execute("INSERT INTO photo_tags (photo_id, tag) VALUES (10, '家族')")
+        raw_cur.execute("INSERT INTO photo_tags (photo_id, tag) VALUES (20, '旅行')")
+        raw_cur.execute("INSERT INTO thumbnails (file_hash, photo_id, data, width, height) VALUES ('20', 20, X'89504E47', 300, 200)")
+        raw_cur.execute("CREATE TABLE migrations (name TEXT PRIMARY KEY)")
+        raw_cur.execute("INSERT INTO migrations (name) VALUES ('rating_to_4tier_v1'), ('fix_mismatched_thumbnails_v1')")
+        raw_conn.commit()
+        raw_conn.close()
+
+        prev_db = switch_database_path(mig_db_path)
+        try:
+            initialize_database()
+            with get_connection() as conn:
+                c = conn.cursor()
+                photo_cnt = c.execute("SELECT COUNT(*) FROM photos").fetchone()[0]
+                link_cnt = c.execute("SELECT COUNT(*) FROM photo_links").fetchone()[0]
+                pt_sql = c.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='photo_tags'").fetchone()[0]
+                th_pk = [r["name"] for r in c.execute("PRAGMA table_info(thumbnails)").fetchall() if r["pk"]]
+
+            self.assertEqual(photo_cnt, 1, "重複していた2行のphotosが1行（100万-重複分）に統合されること")
+            self.assertEqual(link_cnt, 2, "2つのメディアの所在はphoto_linksに2行保持されること")
+            self.assertIn("WITHOUT ROWID", pt_sql.upper())
+            self.assertEqual(th_pk, ["photo_id"], "thumbnailsのPRIMARY KEYがphoto_id直結になっていること")
+
+            all_p = get_photos(stacked=False)
+            self.assertEqual(len(all_p), 1)
+            master_id = all_p[0]["id"]
+            detail = get_photo_by_id(master_id)
+            self.assertEqual(detail["rating"], 2, "片方にあった評価が維持されること")
+            self.assertEqual(detail["rotation"], 90, "もう片方にあった回転調整も統合されること")
+            self.assertIn("家族", detail["tags"])
+            self.assertIn("旅行", detail["tags"])
+            self.assertEqual(detail["duplicate_count"], 2)
+            self.assertFalse(detail["file_path"].startswith("vsn://"), "vsn://退避プレフィックスが除去されていること")
+            thumb = get_thumbnail(master_id)
+            self.assertIsNotNone(thumb, "サムネイルも代表IDへ引き継がれること")
+        finally:
+            switch_database_path(prev_db)
 
 
 if __name__ == "__main__":

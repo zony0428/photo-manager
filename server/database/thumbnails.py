@@ -8,9 +8,10 @@ import hashlib
 from typing import Any, Dict, List, Optional, Tuple
 
 from .connection import get_connection
+
+
 def compute_thumbnail_hash(file_path: str, mtime: Optional[float] = None) -> str:
     """元画像の絶対パスと更新日時からサムネイルのハッシュキーを生成する"""
-    import hashlib
     if mtime is None:
         try:
             mtime = os.path.getmtime(file_path)
@@ -27,19 +28,17 @@ def save_thumbnail(
     height: int,
     file_hash: Optional[str] = None,
 ) -> None:
-    """サムネイルBLOBを1件保存する（同一photo_idの古いサムネイルを確実に置換）"""
+    """サムネイルBLOBを1件保存する（photo_id PRIMARY KEY により1発で置換）"""
     if file_hash is None:
         file_hash = str(photo_id)
     with get_connection() as conn:
         cursor = conn.cursor()
-        # 同一 photo_id の既存レコードがあれば事前に削除して重複や不整合を防止
-        cursor.execute("DELETE FROM thumbnails WHERE photo_id = ?", (photo_id,))
         cursor.execute(
             """
-            INSERT OR REPLACE INTO thumbnails (file_hash, photo_id, data, width, height)
+            INSERT OR REPLACE INTO thumbnails (photo_id, file_hash, data, width, height)
             VALUES (?, ?, ?, ?, ?)
             """,
-            (file_hash, photo_id, data, width, height),
+            (photo_id, file_hash, data, width, height),
         )
         conn.commit()
 
@@ -48,24 +47,19 @@ def save_thumbnails_batch(
     items: List[Tuple[int, bytes, int, int, str]],
 ) -> int:
     """
-    サムネイルBLOBを一括保存する（1トランザクション内でまとめてコミット）。
+    サムネイルBLOBを一括保存する（photo_id PRIMARY KEY により1トランザクションで一括置換）。
     items: [(photo_id, data, width, height, file_hash), ...]
     """
     if not items:
         return 0
     with get_connection() as conn:
         cursor = conn.cursor()
-        photo_ids = [pid for pid, _, _, _, _ in items]
-        for i in range(0, len(photo_ids), 500):
-            chunk = photo_ids[i:i + 500]
-            placeholders = ",".join(["?"] * len(chunk))
-            cursor.execute(f"DELETE FROM thumbnails WHERE photo_id IN ({placeholders})", chunk)
         cursor.executemany(
             """
-            INSERT OR REPLACE INTO thumbnails (file_hash, photo_id, data, width, height)
+            INSERT OR REPLACE INTO thumbnails (photo_id, file_hash, data, width, height)
             VALUES (?, ?, ?, ?, ?)
             """,
-            [(fh, pid, d, w, h) for pid, d, w, h, fh in items],
+            [(pid, fh or str(pid), d, w, h) for pid, d, w, h, fh in items],
         )
         conn.commit()
         return len(items)
@@ -81,7 +75,6 @@ def get_thumbnail(photo_id: int) -> Optional[Dict[str, Any]]:
             FROM thumbnails t
             INNER JOIN photos p ON t.photo_id = p.id
             WHERE t.photo_id = ?
-            ORDER BY t.created_at DESC
             LIMIT 1
             """,
             (photo_id,),
@@ -193,5 +186,3 @@ def clone_thumbnail(source_photo_id: int, target_photo_id: int, file_hash: Optio
         return False
     save_thumbnail(target_photo_id, thumb["data"], thumb["width"], thumb["height"], file_hash)
     return True
-
-

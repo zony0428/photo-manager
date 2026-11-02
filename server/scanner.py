@@ -1589,25 +1589,27 @@ def check_folder_diff(target_dir_str: str, volume_serial: Optional[str] = None) 
 
     with get_connection() as conn:
         cursor = conn.cursor()
-        # 直下の photos レコードを取得（リンク消失済みは除外、VSNが判明している場合はそのメディアのレコードに限定）
+        # 直下の photo_links / photos レコードを取得（リンク消失済みは除外、VSNが判明している場合はそのメディアのレコードに限定）
         if eff_serial:
             cursor.execute(
                 """
-                SELECT file_name, file_size, file_mtime
-                FROM photos
-                WHERE directory_path = ? COLLATE NOCASE
-                  AND IFNULL(is_unlinked, 0) = 0
-                  AND (volume_serial = ? OR volume_serial IS NULL)
+                SELECT pl.file_name, p.file_size, COALESCE(pl.file_mtime, p.file_mtime) AS file_mtime
+                FROM photo_links pl
+                INNER JOIN photos p ON pl.photo_id = p.id
+                WHERE pl.directory_path = ? COLLATE NOCASE
+                  AND IFNULL(p.is_unlinked, 0) = 0
+                  AND (pl.volume_serial = ? COLLATE NOCASE OR pl.volume_serial = '')
                 """,
                 (norm_win, eff_serial),
             )
         else:
             cursor.execute(
                 """
-                SELECT file_name, file_size, file_mtime
-                FROM photos
-                WHERE directory_path = ? COLLATE NOCASE
-                  AND IFNULL(is_unlinked, 0) = 0
+                SELECT pl.file_name, p.file_size, COALESCE(pl.file_mtime, p.file_mtime) AS file_mtime
+                FROM photo_links pl
+                INNER JOIN photos p ON pl.photo_id = p.id
+                WHERE pl.directory_path = ? COLLATE NOCASE
+                  AND IFNULL(p.is_unlinked, 0) = 0
                 """,
                 (norm_win,),
             )
@@ -1616,34 +1618,70 @@ def check_folder_diff(target_dir_str: str, volume_serial: Optional[str] = None) 
             sz = r["file_size"] or 0
             mt = r["file_mtime"] or 0.0
             db_files[fn] = (sz, mt)
+        if eff_serial and len(norm_win) >= 2 and norm_win[1] == ":":
+            rel_tail_dir = norm_win[2:]
+            cursor.execute(
+                """
+                SELECT pl.file_name, p.file_size, COALESCE(pl.file_mtime, p.file_mtime) AS file_mtime
+                FROM photo_links pl
+                INNER JOIN photos p ON pl.photo_id = p.id
+                WHERE pl.volume_serial = ? COLLATE NOCASE
+                  AND pl.rel_dir = ? COLLATE NOCASE
+                  AND IFNULL(p.is_unlinked, 0) = 0
+                """,
+                (eff_serial, rel_tail_dir),
+            )
+            for r in cursor.fetchall():
+                fn = r["file_name"].lower()
+                if fn not in db_files:
+                    db_files[fn] = (r["file_size"] or 0, r["file_mtime"] or 0.0)
 
-        # 配下（サブフォルダ）の photos レコードを取得（ドライブルート以外）
+        # 配下（サブフォルダ）の photo_links レコードを取得（ドライブルート以外）
         if not is_drive_root:
             escaped_prefix = norm_win.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "\\\\%"
             if eff_serial:
                 cursor.execute(
                     """
-                    SELECT directory_path, file_name, file_size, file_mtime
-                    FROM photos
-                    WHERE directory_path LIKE ? ESCAPE '\\'
-                      AND IFNULL(is_unlinked, 0) = 0
-                      AND (volume_serial = ? OR volume_serial IS NULL)
+                    SELECT pl.directory_path, pl.file_name, p.file_size, COALESCE(pl.file_mtime, p.file_mtime) AS file_mtime
+                    FROM photo_links pl
+                    INNER JOIN photos p ON pl.photo_id = p.id
+                    WHERE pl.directory_path LIKE ? ESCAPE '\\'
+                      AND IFNULL(p.is_unlinked, 0) = 0
+                      AND (pl.volume_serial = ? COLLATE NOCASE OR pl.volume_serial = '')
                     """,
                     (escaped_prefix, eff_serial),
                 )
             else:
                 cursor.execute(
                     """
-                    SELECT directory_path, file_name, file_size, file_mtime
-                    FROM photos
-                    WHERE directory_path LIKE ? ESCAPE '\\'
-                      AND IFNULL(is_unlinked, 0) = 0
+                    SELECT pl.directory_path, pl.file_name, p.file_size, COALESCE(pl.file_mtime, p.file_mtime) AS file_mtime
+                    FROM photo_links pl
+                    INNER JOIN photos p ON pl.photo_id = p.id
+                    WHERE pl.directory_path LIKE ? ESCAPE '\\'
+                      AND IFNULL(p.is_unlinked, 0) = 0
                     """,
                     (escaped_prefix,),
                 )
+            sub_rows = list(cursor.fetchall())
+            if eff_serial and len(norm_win) >= 2 and norm_win[1] == ":":
+                escaped_tail_prefix = norm_win[2:].replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "\\\\%"
+                cursor.execute(
+                    """
+                    SELECT pl.directory_path, pl.file_name, p.file_size, COALESCE(pl.file_mtime, p.file_mtime) AS file_mtime
+                    FROM photo_links pl
+                    INNER JOIN photos p ON pl.photo_id = p.id
+                    WHERE pl.volume_serial = ? COLLATE NOCASE
+                      AND pl.rel_dir LIKE ? ESCAPE '\\'
+                      AND IFNULL(p.is_unlinked, 0) = 0
+                    """,
+                    (eff_serial, escaped_tail_prefix),
+                )
+                sub_rows.extend(cursor.fetchall())
             prefix_len = len(norm_win) + 1
-            for r in cursor.fetchall():
+            for r in sub_rows:
                 d_norm = os.path.normpath(r["directory_path"]).rstrip("\\/")
+                if eff_serial and len(norm_win) >= 2 and norm_win[1] == ":" and len(d_norm) >= 2 and d_norm[1] == ":":
+                    d_norm = norm_win[:2] + d_norm[2:]
                 d_lower = d_norm.lower()
                 if not d_lower.startswith(norm_win_lower + "\\"):
                     continue
@@ -1663,7 +1701,7 @@ def check_folder_diff(target_dir_str: str, volume_serial: Optional[str] = None) 
             if sr_lower == norm_win_lower:
                 if eff_serial:
                     cursor.execute(
-                        "SELECT id FROM photos WHERE directory_path = ? COLLATE NOCASE AND volume_serial IS NOT NULL AND volume_serial != ? LIMIT 1",
+                        "SELECT id FROM photo_links WHERE directory_path = ? COLLATE NOCASE AND volume_serial != '' AND volume_serial != ? COLLATE NOCASE LIMIT 1",
                         (norm_win, eff_serial),
                     )
                     if not cursor.fetchone():

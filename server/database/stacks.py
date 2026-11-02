@@ -9,7 +9,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .connection import get_connection
-from .photos import _directory_filter_sql, _strip_vsn_prefix_raw
+from .photos import _build_folder_missing_filter, _directory_filter_sql, _strip_vsn_prefix_raw
+
+
 def recalculate_stacks(directory_path: Optional[str] = None, recursive: bool = True, existing_paths: Optional[set] = None) -> int:
     """
     同一ディレクトリ内の写真を走査し、
@@ -20,14 +22,25 @@ def recalculate_stacks(directory_path: Optional[str] = None, recursive: bool = T
     with get_connection() as conn:
         cursor = conn.cursor()
 
-        # 対象ディレクトリの抽出
+        # 対象ディレクトリの抽出（photos と photo_links の両方から収集）
         if directory_path:
-            sql_frag, sql_params = _directory_filter_sql(directory_path, recursive=recursive, column_name="directory_path")
-            cursor.execute(f"SELECT DISTINCT directory_path FROM photos WHERE {sql_frag}", sql_params)
-            dirs = [r["directory_path"] for r in cursor.fetchall()]
+            sql_frag_p, sql_params_p = _build_folder_missing_filter(directory_path, recursive=recursive)
+            cursor.execute(f"SELECT DISTINCT directory_path FROM photos WHERE {sql_frag_p}", sql_params_p)
+            dirs_set = {r["directory_path"] for r in cursor.fetchall() if r["directory_path"]}
+            sql_frag_pl, sql_params_pl = _build_folder_missing_filter(directory_path, recursive=recursive)
+            cursor.execute(f"SELECT DISTINCT directory_path FROM photo_links WHERE {sql_frag_pl}", sql_params_pl)
+            for r in cursor.fetchall():
+                if r["directory_path"]:
+                    dirs_set.add(r["directory_path"])
+            dirs = sorted(dirs_set)
         else:
-            cursor.execute("SELECT DISTINCT directory_path FROM photos")
-            dirs = [r["directory_path"] for r in cursor.fetchall()]
+            cursor.execute("SELECT DISTINCT directory_path FROM photos WHERE directory_path IS NOT NULL")
+            dirs_set = {r["directory_path"] for r in cursor.fetchall() if r["directory_path"]}
+            cursor.execute("SELECT DISTINCT directory_path FROM photo_links WHERE directory_path IS NOT NULL")
+            for r in cursor.fetchall():
+                if r["directory_path"]:
+                    dirs_set.add(r["directory_path"])
+            dirs = sorted(dirs_set)
 
         norm_existing_paths = None
         if existing_paths is not None:
@@ -38,15 +51,30 @@ def recalculate_stacks(directory_path: Optional[str] = None, recursive: bool = T
         for d in dirs:
             cursor.execute(
                 """
-                SELECT id, file_name, file_path, file_size, date_taken, subsec_time, exposure_bias,
-                       f_number, focal_length, shutter_speed, camera_model,
-                       stack_id, is_stack_primary, stack_type, paired_raw_path,
-                       is_raw, raw_format, volume_serial
-                FROM photos
-                WHERE directory_path = ?
+                SELECT p.id, pl.id AS link_id, pl.file_name, pl.file_path, p.file_size,
+                       p.date_taken, p.subsec_time, p.exposure_bias,
+                       p.f_number, p.focal_length, p.shutter_speed, p.camera_model,
+                       p.stack_id, p.is_stack_primary, p.stack_type,
+                       COALESCE(pl.paired_raw_path, p.paired_raw_path) AS paired_raw_path,
+                       p.is_raw, p.raw_format, pl.volume_serial
+                FROM photo_links pl
+                INNER JOIN photos p ON pl.photo_id = p.id
+                WHERE pl.directory_path = ? COLLATE NOCASE AND IFNULL(p.is_unlinked, 0) = 0
+                UNION ALL
+                SELECT p.id, NULL AS link_id, p.file_name, p.file_path, p.file_size,
+                       p.date_taken, p.subsec_time, p.exposure_bias,
+                       p.f_number, p.focal_length, p.shutter_speed, p.camera_model,
+                       p.stack_id, p.is_stack_primary, p.stack_type, p.paired_raw_path,
+                       p.is_raw, p.raw_format, p.volume_serial
+                FROM photos p
+                WHERE p.directory_path = ? COLLATE NOCASE AND IFNULL(p.is_unlinked, 0) = 0
+                  AND NOT EXISTS (
+                      SELECT 1 FROM photo_links pl2
+                      WHERE pl2.photo_id = p.id AND pl2.directory_path = ? COLLATE NOCASE
+                  )
                 ORDER BY date_taken ASC, subsec_time ASC, file_name ASC
                 """,
-                (d,),
+                (d, d, d),
             )
             all_dir_photos = [dict(r) for r in cursor.fetchall()]
             if not all_dir_photos:
@@ -60,13 +88,33 @@ def recalculate_stacks(directory_path: Optional[str] = None, recursive: bool = T
                 vsn_buckets.setdefault(vsn_key, []).append(p_row)
 
             pending_updates = []
+            pending_link_updates = []
+
+            # 同一ドライブレター・同一ディレクトリに複数VSNが存在する場合、同時にマウントできるのは1つのVSNのみ
+            active_vsn_at_dir = None
+            non_empty_vsns = [k for k in vsn_buckets.keys() if k]
+            if len(non_empty_vsns) > 1:
+                try:
+                    from ..volume_info import get_volume_info
+                    vi = get_volume_info(d)
+                    if vi and vi.get("serial") and str(vi["serial"]).strip().upper() in vsn_buckets:
+                        active_vsn_at_dir = str(vi["serial"]).strip().upper()
+                except Exception:
+                    pass
+                if not active_vsn_at_dir:
+                    active_vsn_at_dir = max(
+                        non_empty_vsns,
+                        key=lambda k: max(int(p.get("id") or 0) for p in vsn_buckets[k]),
+                    )
 
             for _vsn_key, photos in vsn_buckets.items():
+                is_unmounted_vsn = bool(active_vsn_at_dir and _vsn_key and _vsn_key != active_vsn_at_dir)
                 # 現在のDB値を保持し、変更が必要な行だけをバッチ更新するためのマップ
                 current_vals = {
                     p["id"]: (p.get("stack_id"), p.get("is_stack_primary"), p.get("stack_type"), p.get("paired_raw_path"))
                     for p in photos
                 }
+                link_id_map = {p["id"]: p.get("link_id") for p in photos}
 
                 # 旧実装との互換: paired_raw_path はステップ1で明示設定されたもの以外は None 扱いとする
                 # （DB値は差分判定用の current_vals と、非表示化時に値を維持するための db_paired にのみ保持）
@@ -79,12 +127,19 @@ def recalculate_stacks(directory_path: Optional[str] = None, recursive: bool = T
                     if cur != target:
                         pending_updates.append((new_stack_id, new_is_primary, new_stack_type, clean_paired, photo_id))
                         current_vals[photo_id] = target
+                    lid = link_id_map.get(photo_id)
+                    if lid is not None and db_paired.get(photo_id) != clean_paired:
+                        pending_link_updates.append((clean_paired, lid))
+                        db_paired[photo_id] = clean_paired
 
                 # 各写真の実ファイル存在チェック（オフライン/物理削除の判別、vsn:// 退避パス対応）
                 for p in photos:
                     p["_clean_file_path"] = _strip_vsn_prefix_raw(p["file_path"])
 
-                if norm_existing_paths is not None:
+                if is_unmounted_vsn:
+                    for p in photos:
+                        p["is_online"] = False
+                elif norm_existing_paths is not None:
                     for p in photos:
                         if str(p["file_path"]).startswith("vsn://"):
                             p["is_online"] = False
@@ -337,6 +392,15 @@ def recalculate_stacks(directory_path: Optional[str] = None, recursive: bool = T
                     """,
                     pending_updates,
                 )
+            if pending_link_updates:
+                cursor.executemany(
+                    """
+                    UPDATE photo_links
+                    SET paired_raw_path = ?
+                    WHERE id = ?
+                    """,
+                    pending_link_updates,
+                )
 
         # ============================================================
         # 第2パス: クロスフォルダ RAW+JPEG ペアリング
@@ -349,7 +413,7 @@ def recalculate_stacks(directory_path: Optional[str] = None, recursive: bool = T
             """
             SELECT id, file_name, file_path, date_taken, volume_serial
             FROM photos
-            WHERE is_raw = 1 AND paired_raw_path IS NULL
+            WHERE is_raw = 1 AND paired_raw_path IS NULL AND IFNULL(is_unlinked, 0) = 0
             """
         )
         unpaired_raws = [dict(r) for r in cursor.fetchall()]
@@ -360,7 +424,7 @@ def recalculate_stacks(directory_path: Optional[str] = None, recursive: bool = T
                 """
                 SELECT id, file_name, file_path, date_taken, volume_serial
                 FROM photos
-                WHERE is_raw = 0 AND paired_raw_path IS NULL
+                WHERE is_raw = 0 AND paired_raw_path IS NULL AND IFNULL(is_unlinked, 0) = 0
                 """
             )
             jpeg_stem_map: Dict[str, List[Dict[str, Any]]] = {}
@@ -416,6 +480,10 @@ def recalculate_stacks(directory_path: Optional[str] = None, recursive: bool = T
                     "UPDATE photos SET paired_raw_path = ? WHERE id = ?",
                     cross_pair_updates,
                 )
+                cursor.executemany(
+                    "UPDATE photo_links SET paired_raw_path = ? WHERE photo_id = ?",
+                    cross_pair_updates,
+                )
 
         conn.commit()
 
@@ -449,7 +517,7 @@ def recalculate_duplicate_stacks() -> int:
             """
             SELECT date_taken, file_size, COUNT(*) as cnt
             FROM photos
-            WHERE date_taken IS NOT NULL AND date_taken != '' AND file_size > 0
+            WHERE date_taken IS NOT NULL AND date_taken != '' AND file_size > 0 AND IFNULL(is_unlinked, 0) = 0
             GROUP BY date_taken, file_size
             HAVING cnt > 1
             """
@@ -475,7 +543,7 @@ def recalculate_duplicate_stacks() -> int:
                        exposure_bias, latitude, longitude, is_raw,
                        stack_id, is_stack_primary, stack_type
                 FROM photos
-                WHERE date_taken = ? AND file_size = ?
+                WHERE date_taken = ? AND file_size = ? AND IFNULL(is_unlinked, 0) = 0
                 ORDER BY id ASC
                 """,
                 (dt, sz),
@@ -567,8 +635,3 @@ def set_stack_primary(photo_id: int) -> bool:
         )
         conn.commit()
         return True
-
-
-# =============================================================================
-# サムネイル BLOB 管理 (SQLite 格納方式)
-# =============================================================================

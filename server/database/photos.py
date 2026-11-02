@@ -33,11 +33,127 @@ def _strip_vsn_prefix_raw(path_str: Optional[str]) -> str:
 
 
 def _drive_relative_tail(path_str: Optional[str]) -> str:
-    """ドライブレターを除いたドライブ内相対パス（例: \\DCIM\\100MSDCF\\DSC00001.JPG）を返す"""
+    """ドライブレターを除いたドライブ内相対パス（例: \DCIM\100MSDCF\DSC00001.JPG）を返す"""
     clean = _strip_vsn_prefix_raw(path_str).replace("/", "\\")
     if len(clean) >= 2 and clean[1] == ":":
         return clean[2:]
     return ""
+
+
+def _compute_content_key(meta: Dict[str, Any]) -> Optional[str]:
+    """写真メタデータから不変の同一画像識別キー (content_key) を生成する"""
+    fsize = int(meta.get("file_size") or 0)
+    if fsize <= 0:
+        return None
+    is_raw_flag = 1 if int(meta.get("is_raw") or 0) == 1 else 0
+    dt_raw = str(meta.get("original_date_taken") or meta.get("date_taken") or "").strip()
+    if dt_raw:
+        dt_norm = dt_raw.replace(":", "-", 2)[:19]
+        return f"dt:{dt_norm}|sz:{fsize}|raw:{is_raw_flag}"
+    fname = str(meta.get("file_name") or "").strip().lower()
+    if fname:
+        w = int(meta.get("width") or 0)
+        h = int(meta.get("height") or 0)
+        return f"fn:{fname}|sz:{fsize}|wh:{w}x{h}|raw:{is_raw_flag}"
+    return None
+
+
+def _split_link_path(
+    file_path: Optional[str],
+    directory_path: Optional[str] = None,
+    volume_serial: Optional[str] = None,
+) -> Tuple[str, str, str, str, str]:
+    """
+    ファイルパス・ディレクトリパス・VSNから photo_links テーブル用の
+    (vsn_norm, rel_path, rel_dir, clean_fp, clean_dir) を算出する。
+    """
+    clean_fp = _strip_vsn_prefix_raw(file_path).replace("/", "\\")
+    raw_dir = directory_path if directory_path is not None else os.path.dirname(clean_fp)
+    clean_dir = _strip_vsn_prefix_raw(raw_dir).rstrip("\\/").replace("/", "\\")
+    vsn_norm = (volume_serial or "").strip().upper()
+    if vsn_norm and len(clean_fp) >= 2 and clean_fp[1] == ":":
+        rel_path = clean_fp[2:]
+        rel_dir = clean_dir[2:] if (len(clean_dir) >= 2 and clean_dir[1] == ":") else clean_dir
+    else:
+        rel_path = clean_fp
+        rel_dir = clean_dir
+    return vsn_norm, rel_path, rel_dir, clean_fp, clean_dir
+
+
+def _sync_photo_links_state(
+    cursor: Any,
+    photo_id: int,
+    preferred_link_id: Optional[int] = None,
+) -> int:
+    """
+    指定 photo_id に紐づく photo_links を集計し、photos テーブルの代表パス・link_count・is_unlinked を同期する。
+    残りリンクが0本になった場合は最後のパス情報を維持したまま link_count=0, is_unlinked=1 に移行する。
+    """
+    cursor.execute(
+        "SELECT * FROM photo_links WHERE photo_id = ? ORDER BY is_primary DESC, id ASC",
+        (photo_id,),
+    )
+    links = cursor.fetchall()
+    if not links:
+        cursor.execute(
+            """
+            UPDATE photos
+            SET link_count = 0,
+                is_unlinked = 1,
+                stack_id = NULL,
+                is_stack_primary = 1,
+                stack_type = NULL,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (photo_id,),
+        )
+        return 0
+
+    link_count = len(links)
+    rep = None
+    if preferred_link_id is not None:
+        for lk in links:
+            if lk["id"] == preferred_link_id:
+                rep = lk
+                break
+    if rep is None:
+        rep = links[0]
+
+    rep_id = rep["id"]
+    cursor.execute(
+        "UPDATE photo_links SET is_primary = CASE WHEN id = ? THEN 1 ELSE 0 END WHERE photo_id = ?",
+        (rep_id, photo_id),
+    )
+
+    rep_vsn = rep["volume_serial"] or None
+    rep_paired = rep["paired_raw_path"]
+    cursor.execute(
+        """
+        UPDATE photos
+        SET file_path = ?,
+            directory_path = ?,
+            file_name = ?,
+            volume_serial = ?,
+            file_mtime = COALESCE(?, file_mtime),
+            paired_raw_path = ?,
+            link_count = ?,
+            is_unlinked = 0,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        """,
+        (
+            rep["file_path"],
+            rep["directory_path"],
+            rep["file_name"],
+            rep_vsn,
+            rep["file_mtime"],
+            rep_paired,
+            link_count,
+            photo_id,
+        ),
+    )
+    return link_count
 
 
 def _directory_filter_sql(folder: str, recursive: bool = True, column_name: str = "directory_path") -> Tuple[str, List[Any]]:
@@ -51,15 +167,12 @@ def _directory_filter_sql(folder: str, recursive: bool = True, column_name: str 
     norm_posix = norm.replace("\\", "/")
 
     if not recursive:
-        # 指定フォルダ直下のみ（完全一致。ドライブ直下 'C:\' のような末尾区切り付き表記も一致させる）
         sql = (
             f"({column_name} = ? COLLATE NOCASE OR {column_name} = ? COLLATE NOCASE"
             f" OR {column_name} = ? COLLATE NOCASE)"
         )
         return sql, [norm_win, norm_posix, norm_win + "\\"]
 
-    # 指定フォルダ自身、またはその配下サブフォルダ（Windows \ 区切りおよび POSIX / 区切り両対応）
-    # 下限は >= とし、ドライブ直下 'C:\' のような末尾区切り付き表記も範囲に含める
     sql = (
         f"({column_name} = ? COLLATE NOCASE"
         f" OR {column_name} = ? COLLATE NOCASE"
@@ -96,8 +209,8 @@ def _directory_filter_sql_with_vsn(
 ) -> Tuple[str, List[Any]]:
     """
     ディレクトリ絞り込みSQLを生成する。
-    volume_serial が指定されドライブ文字パス（例: F:\\DCIM）である場合、
-    前回別ドライブ文字（例: E:\\DCIM）でスキャンされた同一VSNの写真もドライブ相対パス一致でヒットさせる。
+    volume_serial が指定されドライブ文字パス（例: F:\DCIM）である場合、
+    前回別ドライブ文字（例: E:\DCIM）でスキャンされた同一VSNの写真もドライブ相対パス一致でヒットさせる。
     """
     base_sql, base_params = _directory_filter_sql(folder, recursive=recursive, column_name=column_name)
     vs = (volume_serial or "").strip()
@@ -105,12 +218,11 @@ def _directory_filter_sql_with_vsn(
     if not vs or len(norm) < 2 or norm[1] != ":":
         return base_sql, base_params
 
-    tail_win = norm[2:]  # "" (ドライブ直下) または "\\DCIM" など
+    tail_win = norm[2:]
     tail_posix = tail_win.replace("\\", "/")
     vsn_sql, vsn_params = _vsn_in_sql(vsn_column, vs)
 
     if not tail_win:
-        # ドライブ直下指定（例: "F:" / "F:\\"）なら、そのVSNを持つ全ドライブ文字のパスを許容
         sql = f"({base_sql} OR ({vsn_sql} AND {column_name} LIKE '_:%'))"
         return sql, base_params + vsn_params
 
@@ -136,6 +248,32 @@ def _directory_filter_sql_with_vsn(
 
     sql = f"({base_sql} OR ({vsn_sql} AND {column_name} LIKE '_:%' AND {rel_sql}))"
     return sql, base_params + vsn_params + rel_params
+
+
+def _build_folder_missing_filter(
+    directory_path: str,
+    recursive: bool = False,
+    volume_serial: Optional[str] = None,
+    column_name: str = "directory_path",
+    vsn_column: str = "volume_serial",
+) -> Tuple[str, List[Any]]:
+    """ドライブレター変動時にも同一VSN・相対パスのレコードを抽出できるフォルダ絞り込みSQLを返す"""
+    eff_serial = (volume_serial or "").strip()
+    if not eff_serial:
+        try:
+            from ..volume_info import get_volume_info
+            vi = get_volume_info(directory_path)
+            if vi and vi.get("serial"):
+                eff_serial = str(vi["serial"]).strip()
+        except Exception:
+            eff_serial = ""
+    return _directory_filter_sql_with_vsn(
+        directory_path,
+        eff_serial or None,
+        recursive=recursive,
+        column_name=column_name,
+        vsn_column=vsn_column,
+    )
 
 
 def _sanitize_photo_data(photo_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -180,8 +318,8 @@ def _sanitize_photo_data(photo_data: Dict[str, Any]) -> Dict[str, Any]:
     clean_data.setdefault("contrast", 0)
     clean_data.setdefault("saturation", 0)
     clean_data.setdefault("original_date_taken", None)
+    clean_data.setdefault("rating", 0)
 
-    # カメラ機種名およびレンズ名のサニタイズ（NUL文字などの除去）
     cam = clean_data.get("camera_model")
     if cam:
         cleaned_cam = str(cam).replace("\x00", "").strip()
@@ -199,141 +337,350 @@ def _sanitize_photo_data(photo_data: Dict[str, Any]) -> Dict[str, Any]:
     return clean_data
 
 
-_UPSERT_PHOTO_SQL = """
-INSERT INTO photos (
-    file_path, file_name, directory_path, file_size, file_mtime,
-    width, height, date_taken, year_month, camera_model,
-    exposure_bias, shutter_speed, f_number, iso, focal_length, lens_model, subsec_time,
-    is_raw, raw_format, paired_raw_path, volume_serial,
-    latitude, longitude, gps_source, country, state, city
-) VALUES (
-    :file_path, :file_name, :directory_path, :file_size, :file_mtime,
-    :width, :height, :date_taken, :year_month, :camera_model,
-    :exposure_bias, :shutter_speed, :f_number, :iso, :focal_length, :lens_model, :subsec_time,
-    :is_raw, :raw_format, :paired_raw_path, :volume_serial,
-    :latitude, :longitude, :gps_source, :country, :state, :city
-)
-ON CONFLICT(file_path) DO UPDATE SET
-    file_size = excluded.file_size,
-    file_mtime = excluded.file_mtime,
-    width = excluded.width,
-    height = excluded.height,
-    date_taken = CASE WHEN photos.original_date_taken IS NOT NULL AND photos.original_date_taken != '' THEN photos.date_taken ELSE excluded.date_taken END,
-    year_month = CASE WHEN photos.original_date_taken IS NOT NULL AND photos.original_date_taken != '' THEN photos.year_month ELSE excluded.year_month END,
-    camera_model = excluded.camera_model,
-    exposure_bias = excluded.exposure_bias,
-    shutter_speed = excluded.shutter_speed,
-    f_number = excluded.f_number,
-    iso = excluded.iso,
-    focal_length = excluded.focal_length,
-    lens_model = excluded.lens_model,
-    subsec_time = excluded.subsec_time,
-    is_raw = excluded.is_raw,
-    raw_format = excluded.raw_format,
-    paired_raw_path = COALESCE(excluded.paired_raw_path, photos.paired_raw_path),
-    volume_serial = COALESCE(excluded.volume_serial, photos.volume_serial),
-    latitude = CASE WHEN photos.gps_source IN ('copied', 'manual', 'inferred') THEN photos.latitude ELSE COALESCE(excluded.latitude, photos.latitude) END,
-    longitude = CASE WHEN photos.gps_source IN ('copied', 'manual', 'inferred') THEN photos.longitude ELSE COALESCE(excluded.longitude, photos.longitude) END,
-    gps_source = CASE WHEN photos.gps_source IN ('copied', 'manual', 'inferred') THEN photos.gps_source ELSE COALESCE(excluded.gps_source, photos.gps_source) END,
-    country = CASE WHEN photos.gps_source IN ('copied', 'manual', 'inferred') THEN photos.country ELSE COALESCE(excluded.country, photos.country) END,
-    state = CASE WHEN photos.gps_source IN ('copied', 'manual', 'inferred') THEN photos.state ELSE COALESCE(excluded.state, photos.state) END,
-    city = CASE WHEN photos.gps_source IN ('copied', 'manual', 'inferred') THEN photos.city ELSE COALESCE(excluded.city, photos.city) END,
-    updated_at = CURRENT_TIMESTAMP
-"""
-
-
-def _prepare_vsn_path_for_upsert(cursor, clean_data: Dict[str, Any]) -> None:
+def _upsert_single_photo_in_tx(cursor: Any, clean_data: Dict[str, Any]) -> int:
     """
-    複数SDカード間で同一ドライブレター・同一パス（例: E:\\DCIM\\100MSDCF\\DSC00001.JPG）が衝突した際、
-    別VSNの既存レコードを vsn://<OLD_VSN>/<PATH> に安全退避して上書き消失を防ぐ。
-    また、同一VSNで以前退避されていたレコードやドライブレターが変わったレコードがあれば現在のパスへ復帰させる。
+    1トランザクション内で写真エンティティ (photos) と所在リンク (photo_links) を挿入・更新する。
+    - 同一リンク (volume_serial, rel_path) が既にあれば更新
+    - 同一画像 (content_key 一致) の既存 photos があればその photo_id に新規リンクを追加（リンク消失状態からの自動復活・評価や調整値の100%共有）
+    - いずれも無ければ新規 photos と photo_links を作成
     """
-    fp = clean_data.get("file_path")
-    new_vsn = (clean_data.get("volume_serial") or "").strip()
-    if not fp or not new_vsn:
-        return
+    vsn_norm, rel_path, rel_dir, clean_fp, clean_dir = _split_link_path(
+        clean_data.get("file_path"),
+        clean_data.get("directory_path"),
+        clean_data.get("volume_serial"),
+    )
+    fname = clean_data.get("file_name") or os.path.basename(clean_fp)
+    clean_data["file_path"] = clean_fp
+    clean_data["directory_path"] = clean_dir
+    clean_data["file_name"] = fname
+    clean_data["volume_serial"] = vsn_norm or None
+    ckey = _compute_content_key(clean_data)
+    clean_data["content_key"] = ckey
 
-    # 1. 現在同じ file_path を占有しているレコードが「別のVSN」である場合、旧レコードを vsn://<OLD_VSN>/<PATH> へ退避
-    cursor.execute("SELECT id, volume_serial, file_path FROM photos WHERE file_path = ?", (fp,))
-    existing = cursor.fetchone()
-    if existing:
-        old_vsn = (existing["volume_serial"] or "").strip()
-        # VSN表記揺れ（大文字小文字）で同一メディアを別メディアと誤判定しないよう大文字で比較する
-        if old_vsn and old_vsn.upper() != new_vsn.upper():
-            stripped_existing = _strip_vsn_prefix_raw(existing["file_path"])
-            parked_fp = f"vsn://{old_vsn.upper()}/{stripped_existing}"
-            parked_candidates = list(dict.fromkeys([parked_fp, f"vsn://{old_vsn}/{stripped_existing}"]))
-            placeholders = ",".join(["?"] * len(parked_candidates))
-            cursor.execute(
-                f"SELECT id FROM photos WHERE file_path IN ({placeholders}) AND id != ?",
-                [*parked_candidates, existing["id"]],
-            )
-            dup_parked = cursor.fetchone()
-            if dup_parked:
-                # 同一VSN・同一パス（＝同じ実ファイル）の退避済みレコードが既にある場合は、
-                # 評価・タグ・非破壊調整等を現行レコードへ統合（未設定項目のみ補完）してから重複側を削除する。
-                # バッチスキャン中の自己デッドロックを防ぐため同一 cursor を引き継ぐ。
-                from .duplicates import copy_metadata_to_duplicate
+    # 1. 既存リンク (photo_links) の探索
+    cursor.execute(
+        "SELECT * FROM photo_links WHERE volume_serial = ? AND rel_path = ? COLLATE NOCASE",
+        (vsn_norm, rel_path),
+    )
+    link_row = cursor.fetchone()
+    if not link_row and vsn_norm != "":
+        cursor.execute(
+            "SELECT * FROM photo_links WHERE volume_serial = '' AND file_path = ? COLLATE NOCASE",
+            (clean_fp,),
+        )
+        link_row = cursor.fetchone()
+    elif not link_row and vsn_norm == "":
+        cursor.execute(
+            """
+            SELECT pl.*, p.content_key AS p_ckey
+            FROM photo_links pl
+            INNER JOIN photos p ON pl.photo_id = p.id
+            WHERE pl.file_path = ? COLLATE NOCASE
+            ORDER BY pl.is_primary DESC, pl.id ASC
+            """,
+            (clean_fp,),
+        )
+        for cand in cursor.fetchall():
+            if not ckey or not cand["p_ckey"] or cand["p_ckey"] == ckey:
+                link_row = cand
+                break
 
-                copy_metadata_to_duplicate(dup_parked["id"], existing["id"], cursor=cursor)
-                logger.warning(
-                    f"VSN退避先の重複レコードを統合して削除しました: id={dup_parked['id']} -> id={existing['id']} ({parked_fp})"
+    if link_row:
+        pid = int(link_row["photo_id"])
+        cursor.execute("SELECT * FROM photos WHERE id = ?", (pid,))
+        p_row = cursor.fetchone()
+        if p_row:
+            old_ckey = p_row["content_key"]
+            if old_ckey and ckey and old_ckey != ckey and int(p_row["link_count"] or 1) > 1:
+                # 他メディアに別リンクが残っている状態で、このパスだけ別画像に書き換わった場合は旧リンクを切り離す
+                cursor.execute("DELETE FROM photo_links WHERE id = ?", (link_row["id"],))
+                _sync_photo_links_state(cursor, pid)
+                link_row = None
+            else:
+                eff_vsn = vsn_norm or (link_row["volume_serial"] or "")
+                eff_vsn, eff_rel_path, eff_rel_dir, _, _ = _split_link_path(clean_fp, clean_dir, eff_vsn)
+                eff_paired = (
+                    clean_data.get("paired_raw_path")
+                    if clean_data.get("paired_raw_path") is not None
+                    else link_row["paired_raw_path"]
                 )
-                cursor.execute("DELETE FROM photos WHERE id = ?", (dup_parked["id"],))
-            cursor.execute("UPDATE photos SET file_path = ? WHERE id = ?", (parked_fp, existing["id"]))
-            existing = None
+                if eff_paired and len(clean_fp) >= 2 and clean_fp[1] == ":":
+                    p_tail = _drive_relative_tail(eff_paired)
+                    if p_tail:
+                        eff_paired = clean_fp[:2] + p_tail
 
-    # 2. 現在の file_path にまだレコードがない場合、同一VSN・同一ドライブ内相対パスの既存レコードを探して復帰・引き継ぐ
-    if not existing:
-        fname = clean_data.get("file_name") or os.path.basename(fp)
-        rel_tail = _drive_relative_tail(fp).lower()
-        if fname and rel_tail:
-            vsn_variants = list(dict.fromkeys([new_vsn, new_vsn.upper(), new_vsn.lower()]))
-            vsn_ph = ",".join(["?"] * len(vsn_variants))
-            cursor.execute(
-                f"SELECT id, file_path, directory_path, paired_raw_path FROM photos WHERE volume_serial IN ({vsn_ph}) AND file_name = ?",
-                [*vsn_variants, fname],
-            )
-            for cand in cursor.fetchall():
-                if _drive_relative_tail(cand["file_path"]).lower() == rel_tail:
-                    new_dir = clean_data.get("directory_path") or os.path.dirname(fp)
-                    new_paired = cand["paired_raw_path"]
-                    if new_paired and len(fp) >= 2 and fp[1] == ":":
-                        paired_tail = _drive_relative_tail(new_paired)
-                        if paired_tail:
-                            new_paired = fp[:2] + paired_tail
-                    cursor.execute(
-                        """
-                        UPDATE photos
-                        SET file_path = ?, directory_path = ?, paired_raw_path = ?
-                        WHERE id = ?
-                        """,
-                        (fp, new_dir, new_paired, cand["id"]),
-                    )
-                    break
+                cursor.execute(
+                    """
+                    UPDATE photo_links
+                    SET volume_serial = ?,
+                        rel_path = ?,
+                        rel_dir = ?,
+                        file_path = ?,
+                        directory_path = ?,
+                        file_name = ?,
+                        file_mtime = COALESCE(?, file_mtime),
+                        paired_raw_path = ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                    """,
+                    (
+                        eff_vsn,
+                        eff_rel_path,
+                        eff_rel_dir,
+                        clean_fp,
+                        clean_dir,
+                        fname,
+                        clean_data.get("file_mtime"),
+                        eff_paired,
+                        link_row["id"],
+                    ),
+                )
+                cursor.execute(
+                    """
+                    UPDATE photos
+                    SET file_size = :file_size,
+                        file_mtime = COALESCE(:file_mtime, photos.file_mtime),
+                        width = COALESCE(:width, photos.width),
+                        height = COALESCE(:height, photos.height),
+                        date_taken = CASE WHEN photos.original_date_taken IS NOT NULL AND photos.original_date_taken != '' THEN photos.date_taken ELSE COALESCE(:date_taken, photos.date_taken) END,
+                        year_month = CASE WHEN photos.original_date_taken IS NOT NULL AND photos.original_date_taken != '' THEN photos.year_month ELSE COALESCE(:year_month, photos.year_month) END,
+                        camera_model = CASE WHEN :camera_model != '不明' THEN :camera_model ELSE COALESCE(photos.camera_model, '不明') END,
+                        exposure_bias = COALESCE(:exposure_bias, photos.exposure_bias),
+                        shutter_speed = COALESCE(:shutter_speed, photos.shutter_speed),
+                        f_number = COALESCE(:f_number, photos.f_number),
+                        iso = COALESCE(:iso, photos.iso),
+                        focal_length = COALESCE(:focal_length, photos.focal_length),
+                        lens_model = COALESCE(:lens_model, photos.lens_model),
+                        subsec_time = COALESCE(:subsec_time, photos.subsec_time),
+                        is_raw = COALESCE(:is_raw, photos.is_raw),
+                        raw_format = COALESCE(:raw_format, photos.raw_format),
+                        latitude = CASE WHEN photos.gps_source IN ('copied', 'manual', 'inferred') THEN photos.latitude ELSE COALESCE(:latitude, photos.latitude) END,
+                        longitude = CASE WHEN photos.gps_source IN ('copied', 'manual', 'inferred') THEN photos.longitude ELSE COALESCE(:longitude, photos.longitude) END,
+                        gps_source = CASE WHEN photos.gps_source IN ('copied', 'manual', 'inferred') THEN photos.gps_source ELSE COALESCE(:gps_source, photos.gps_source) END,
+                        country = CASE WHEN photos.gps_source IN ('copied', 'manual', 'inferred') THEN photos.country ELSE COALESCE(:country, photos.country) END,
+                        state = CASE WHEN photos.gps_source IN ('copied', 'manual', 'inferred') THEN photos.state ELSE COALESCE(:state, photos.state) END,
+                        city = CASE WHEN photos.gps_source IN ('copied', 'manual', 'inferred') THEN photos.city ELSE COALESCE(:city, photos.city) END,
+                        content_key = COALESCE(photos.content_key, :content_key),
+                        is_unlinked = 0,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = :target_id
+                    """,
+                    {**clean_data, "target_id": pid},
+                )
+                _sync_photo_links_state(cursor, pid, preferred_link_id=link_row["id"])
+                return pid
+        else:
+            cursor.execute("DELETE FROM photo_links WHERE id = ?", (link_row["id"],))
+            link_row = None
+
+    # 2. 同一画像 (content_key 一致) の既存 photos エンティティを探索
+    target_photo = None
+    if ckey:
+        cursor.execute(
+            """
+            SELECT * FROM photos
+            WHERE content_key = ?
+            ORDER BY COALESCE(is_unlinked, 0) ASC,
+                     (CASE WHEN rating != 0 OR is_favorite != 0 THEN 1 ELSE 0 END) DESC,
+                     id ASC
+            LIMIT 1
+            """,
+            (ckey,),
+        )
+        target_photo = cursor.fetchone()
+
+    if not target_photo and clean_data.get("date_taken") and int(clean_data.get("file_size") or 0) > 0:
+        dt_val = clean_data["date_taken"]
+        fsize = int(clean_data["file_size"])
+        is_raw_val = 1 if int(clean_data.get("is_raw") or 0) == 1 else 0
+        cursor.execute(
+            """
+            SELECT * FROM photos
+            WHERE file_size = ? AND COALESCE(is_raw, 0) = ?
+              AND (date_taken = ? OR original_date_taken = ?)
+            ORDER BY COALESCE(is_unlinked, 0) ASC,
+                     (CASE WHEN rating != 0 OR is_favorite != 0 THEN 1 ELSE 0 END) DESC,
+                     id ASC
+            LIMIT 1
+            """,
+            (fsize, is_raw_val, dt_val, dt_val),
+        )
+        target_photo = cursor.fetchone()
+
+    if target_photo:
+        pid = int(target_photo["id"])
+        cursor.execute("SELECT id, directory_path, file_path, volume_serial FROM photo_links WHERE photo_id = ?", (pid,))
+        existing_links = cursor.fetchall()
+
+        # もし既存リンクの中に「オンラインドライブ上なのに実ファイルが既に消失している移動元リンク」があれば自動整理する
+        # （ただし実ファイルシステムに存在しないテスト用パス等はオンライン消失と誤判定されないよう実在確認）
+        dead_link_ids = []
+        if existing_links and os.path.exists(clean_fp):
+            try:
+                from ..scanner import resolve_portable_path
+                for ex_lk in existing_links:
+                    ex_dir = ex_lk["directory_path"]
+                    ex_vsn = ex_lk["volume_serial"] or None
+                    res_dir, is_dir_online = resolve_portable_path(ex_dir, expected_serial=ex_vsn)
+                    if is_dir_online and res_dir and os.path.isdir(str(res_dir)):
+                        res_fp, _ = resolve_portable_path(ex_lk["file_path"], expected_serial=ex_vsn)
+                        if not os.path.exists(str(res_fp)):
+                            dead_link_ids.append(ex_lk["id"])
+            except Exception:
+                pass
+        if dead_link_ids:
+            ph = ",".join(["?"] * len(dead_link_ids))
+            cursor.execute(f"DELETE FROM photo_links WHERE id IN ({ph})", dead_link_ids)
+            existing_links = [lk for lk in existing_links if lk["id"] not in dead_link_ids]
+
+        has_existing_links = len(existing_links) > 0
+        is_prim = 0 if has_existing_links else 1
+
+        cursor.execute(
+            """
+            INSERT INTO photo_links (
+                photo_id, volume_serial, rel_path, rel_dir,
+                file_path, directory_path, file_name, file_mtime, paired_raw_path, is_primary
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(volume_serial, rel_path) DO UPDATE SET
+                photo_id = excluded.photo_id,
+                rel_dir = excluded.rel_dir,
+                file_path = excluded.file_path,
+                directory_path = excluded.directory_path,
+                file_name = excluded.file_name,
+                file_mtime = COALESCE(excluded.file_mtime, photo_links.file_mtime),
+                paired_raw_path = COALESCE(excluded.paired_raw_path, photo_links.paired_raw_path),
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (
+                pid,
+                vsn_norm,
+                rel_path,
+                rel_dir,
+                clean_fp,
+                clean_dir,
+                fname,
+                clean_data.get("file_mtime"),
+                clean_data.get("paired_raw_path"),
+                is_prim,
+            ),
+        )
+        new_link_id = cursor.lastrowid
+
+        # 既存写真レコードの未設定EXIF・GPS等を非破壊で補完
+        cursor.execute(
+            """
+            UPDATE photos
+            SET width = COALESCE(photos.width, :width),
+                height = COALESCE(photos.height, :height),
+                camera_model = CASE WHEN photos.camera_model IS NULL OR photos.camera_model = '不明' THEN :camera_model ELSE photos.camera_model END,
+                exposure_bias = COALESCE(photos.exposure_bias, :exposure_bias),
+                shutter_speed = COALESCE(photos.shutter_speed, :shutter_speed),
+                f_number = COALESCE(photos.f_number, :f_number),
+                iso = COALESCE(photos.iso, :iso),
+                focal_length = COALESCE(photos.focal_length, :focal_length),
+                lens_model = COALESCE(photos.lens_model, :lens_model),
+                subsec_time = COALESCE(photos.subsec_time, :subsec_time),
+                raw_format = COALESCE(photos.raw_format, :raw_format),
+                latitude = COALESCE(photos.latitude, :latitude),
+                longitude = COALESCE(photos.longitude, :longitude),
+                gps_source = COALESCE(photos.gps_source, :gps_source),
+                country = COALESCE(photos.country, :country),
+                state = COALESCE(photos.state, :state),
+                city = COALESCE(photos.city, :city),
+                content_key = COALESCE(photos.content_key, :content_key),
+                is_unlinked = 0,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = :target_id
+            """,
+            {**clean_data, "target_id": pid},
+        )
+
+        # もし元レコードがRAW+JPEGペアの片割れ（paired_raw_path あり）で、ペア相手側に評価やタグがある場合は引き継ぐ
+        paired_p = target_photo["paired_raw_path"]
+        if paired_p:
+            cursor.execute("SELECT id FROM photos WHERE file_path = ? AND id != ? LIMIT 1", (paired_p, pid))
+            pair_row = cursor.fetchone()
+            if pair_row:
+                from .duplicates import copy_metadata_to_duplicate
+                copy_metadata_to_duplicate(pair_row["id"], pid, cursor=cursor)
+
+        _sync_photo_links_state(cursor, pid, preferred_link_id=(new_link_id if not has_existing_links else None))
+        return pid
+
+    # 3. 完全新規のユニーク写真として photos と photo_links に登録
+    cursor.execute(
+        """
+        INSERT INTO photos (
+            file_path, file_name, directory_path, file_size, file_mtime,
+            width, height, date_taken, year_month, camera_model, rating,
+            exposure_bias, shutter_speed, f_number, iso, focal_length, lens_model, subsec_time,
+            is_raw, raw_format, paired_raw_path, volume_serial,
+            latitude, longitude, gps_source, country, state, city,
+            content_key, link_count, is_unlinked
+        ) VALUES (
+            :file_path, :file_name, :directory_path, :file_size, :file_mtime,
+            :width, :height, :date_taken, :year_month, :camera_model, :rating,
+            :exposure_bias, :shutter_speed, :f_number, :iso, :focal_length, :lens_model, :subsec_time,
+            :is_raw, :raw_format, :paired_raw_path, :volume_serial,
+            :latitude, :longitude, :gps_source, :country, :state, :city,
+            :content_key, 1, 0
+        )
+        """,
+        clean_data,
+    )
+    pid = int(cursor.lastrowid or 0)
+    cursor.execute(
+        """
+        INSERT INTO photo_links (
+            photo_id, volume_serial, rel_path, rel_dir,
+            file_path, directory_path, file_name, file_mtime, paired_raw_path, is_primary
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+        ON CONFLICT(volume_serial, rel_path) DO UPDATE SET
+            photo_id = excluded.photo_id,
+            rel_dir = excluded.rel_dir,
+            file_path = excluded.file_path,
+            directory_path = excluded.directory_path,
+            file_name = excluded.file_name,
+            file_mtime = COALESCE(excluded.file_mtime, photo_links.file_mtime),
+            paired_raw_path = COALESCE(excluded.paired_raw_path, photo_links.paired_raw_path),
+            is_primary = 1,
+            updated_at = CURRENT_TIMESTAMP
+        """,
+        (
+            pid,
+            vsn_norm,
+            rel_path,
+            rel_dir,
+            clean_fp,
+            clean_dir,
+            fname,
+            clean_data.get("file_mtime"),
+            clean_data.get("paired_raw_path"),
+        ),
+    )
+    return pid
 
 
 def upsert_photo(photo_data: Dict[str, Any]) -> int:
-    """写真情報を挿入または更新する（VSN別パス衝突回避＆ドライブレター追従対応）"""
+    """写真情報を挿入または更新する（photo_links による複数メディア統合＆ドライブレター追従対応）"""
     clean_data = _sanitize_photo_data(photo_data)
     with get_connection() as conn:
         cursor = conn.cursor()
-        _prepare_vsn_path_for_upsert(cursor, clean_data)
-        cursor.execute(_UPSERT_PHOTO_SQL, clean_data)
+        pid = _upsert_single_photo_in_tx(cursor, clean_data)
         conn.commit()
-        return cursor.lastrowid or 0
+        return pid
 
 
 def upsert_photos_batch(list_of_meta: List[Dict[str, Any]]) -> None:
-    """複数の写真情報を1トランザクションで一括挿入または更新する（バッチコミット・VSN衝突回避対応）"""
+    """複数の写真情報を1トランザクションで一括挿入または更新する（photo_links 統合対応）"""
     if not list_of_meta:
         return
     cleaned_batch = [_sanitize_photo_data(m) for m in list_of_meta]
     with get_connection() as conn:
         cursor = conn.cursor()
         for item in cleaned_batch:
-            _prepare_vsn_path_for_upsert(cursor, item)
-            cursor.execute(_UPSERT_PHOTO_SQL, item)
+            _upsert_single_photo_in_tx(cursor, item)
         conn.commit()
 
 
@@ -435,8 +782,7 @@ def get_photos(
     volume_serial: Optional[str] = None,
     serial_mode: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    """条件に合致する写真一覧を取得する（VSN別メディア絞り込み、タグの含む/除外排他検索、同グループ内AND/異グループ間OR切替、複数年月OR条件、カメラ・レンズ含む/除外条件、場所階層絞り込み、ラボ分析フィルタ、ブラケットスタック表示、重複写真抽出に対応）"""
-    # デフォルト: 棄(-1)を除く全て (優・良・可: [0, 1, 2])
+    """条件に合致する写真一覧を取得する（photo_links 対応：複数メディア間でユニーク写真を1行管理しつつ、フォルダ/メディア指定時は該当リンクのパスを返却）"""
     if ratings is None:
         ratings = [0, 1, 2]
     query = """
@@ -447,31 +793,23 @@ def get_photos(
                COALESCE(v.custom_name, '') AS volume_custom_name,
                v.drive_letter AS volume_drive,
                CASE WHEN t.photo_id IS NOT NULL THEN 1 ELSE 0 END AS has_thumbnail,
-               COALESCE(dup.dup_cnt, 1) AS duplicate_count
+               CASE WHEN COALESCE(p.link_count, 1) > 1 THEN p.link_count ELSE 1 END AS duplicate_count
         FROM photos p
         LEFT JOIN volumes v ON p.volume_serial = v.volume_serial
         LEFT JOIN thumbnails t ON p.id = t.photo_id
-        LEFT JOIN (
-            SELECT date_taken, file_size, COUNT(*) as dup_cnt
-            FROM photos
-            WHERE date_taken IS NOT NULL AND date_taken != '' AND file_size > 0
-              AND IFNULL(is_unlinked, 0) = 0
-            GROUP BY date_taken, file_size
-            HAVING dup_cnt > 1
-        ) dup ON p.date_taken = dup.date_taken AND p.file_size = dup.file_size
         WHERE p.rating IN ({})
     """.format(','.join(['?'] * len(ratings)))
     params: List[Any] = list(ratings)
 
-    # リンク消失写真（実体パス未登録）の切り替え
+    # リンク消失写真（全メディアから実ファイルが消えた写真）の切り替え
     if unlinked_only:
         query += " AND p.is_unlinked = 1"
     else:
         query += " AND (p.is_unlinked IS NULL OR p.is_unlinked = 0)"
 
-    # 重複写真（他フォルダコピーあり）のみ
+    # 重複写真（複数メディア/複数フォルダにリンクを持つ写真）のみ
     if duplicates_only:
-        query += " AND dup.dup_cnt > 1"
+        query += " AND COALESCE(p.link_count, 1) > 1"
 
     # 場所（国・都道府県・市区町村）フィルタ
     if no_location_only:
@@ -496,47 +834,98 @@ def get_photos(
             query += " AND p.city = ?"
             params.append(city)
 
-    if folder:
-        dir_sql, dir_params = _directory_filter_sql_with_vsn(
-            folder,
-            volume_serial=volume_serial,
-            recursive=True,
-            column_name="p.directory_path",
-            vsn_column="p.volume_serial",
-        )
-        query += f" AND {dir_sql}"
-        params.extend(dir_params)
-
-    # VSN（ボリュームシリアル番号）によるメディア単位絞り込み
     s_mode = (serial_mode or "").strip().lower()
-    if volume_serial and volume_serial.strip():
-        vsn_sql, vsn_params = _vsn_in_sql("p.volume_serial", volume_serial.strip())
-        if s_mode == "match_or_null":
-            query += f" AND ({vsn_sql} OR p.volume_serial IS NULL)"
-            params.extend(vsn_params)
-        else:
-            query += f" AND {vsn_sql}"
-            params.extend(vsn_params)
-    elif s_mode == "null":
-        query += " AND p.volume_serial IS NULL"
+    has_link_filter = bool(folder or (volume_serial and volume_serial.strip()) or s_mode == "null")
+    pl_filter_clauses: List[str] = []
+    pl_filter_params: List[Any] = []
+
+    if has_link_filter and not unlinked_only:
+        if folder:
+            dir_sql, dir_params = _directory_filter_sql_with_vsn(
+                folder,
+                volume_serial=volume_serial,
+                recursive=True,
+                column_name="pl.directory_path",
+                vsn_column="pl.volume_serial",
+            )
+            pl_filter_clauses.append(dir_sql)
+            pl_filter_params.extend(dir_params)
+
+        if volume_serial and volume_serial.strip():
+            vsn_sql, vsn_params = _vsn_in_sql("pl.volume_serial", volume_serial.strip())
+            if s_mode == "match_or_null":
+                pl_filter_clauses.append(f"({vsn_sql} OR pl.volume_serial = '')")
+            else:
+                pl_filter_clauses.append(vsn_sql)
+            pl_filter_params.extend(vsn_params)
+        elif s_mode == "null":
+            pl_filter_clauses.append("pl.volume_serial = ''")
+
+        pl_where_str = " AND ".join(pl_filter_clauses) if pl_filter_clauses else "1=1"
+        query += (
+            f" AND EXISTS ("
+            f"SELECT 1 FROM photo_links pl "
+            f"WHERE pl.photo_id = p.id AND {pl_where_str} "
+            f"AND NOT (COALESCE(p.is_raw, 0) = 1 AND pl.paired_raw_path IS NOT NULL AND pl.paired_raw_path != '')"
+            f")"
+        )
+        params.extend(pl_filter_params)
+    else:
+        if folder:
+            dir_sql, dir_params = _directory_filter_sql_with_vsn(
+                folder,
+                volume_serial=volume_serial,
+                recursive=True,
+                column_name="p.directory_path",
+                vsn_column="p.volume_serial",
+            )
+            query += f" AND {dir_sql}"
+            params.extend(dir_params)
+
+        if volume_serial and volume_serial.strip():
+            vsn_sql, vsn_params = _vsn_in_sql("p.volume_serial", volume_serial.strip())
+            if s_mode == "match_or_null":
+                query += f" AND ({vsn_sql} OR p.volume_serial IS NULL)"
+                params.extend(vsn_params)
+            else:
+                query += f" AND {vsn_sql}"
+                params.extend(vsn_params)
+        elif s_mode == "null":
+            query += " AND p.volume_serial IS NULL"
+
+        # 全体表示時は代表レコードの paired_raw_path でペア済みRAWを除外
+        query += " AND NOT (p.is_raw = 1 AND p.paired_raw_path IS NOT NULL)"
 
     # フォルダ除外絞り込み（指定フォルダおよび配下を除外）
     if exclude_folder:
-        ex_sql, ex_params = _directory_filter_sql_with_vsn(
+        ex_sql_p, ex_params_p = _directory_filter_sql_with_vsn(
             exclude_folder,
             volume_serial=volume_serial,
             recursive=True,
             column_name="p.directory_path",
             vsn_column="p.volume_serial",
         )
+        ex_sql_pl, ex_params_pl = _directory_filter_sql_with_vsn(
+            exclude_folder,
+            volume_serial=volume_serial,
+            recursive=True,
+            column_name="pl_ex.directory_path",
+            vsn_column="pl_ex.volume_serial",
+        )
         if volume_serial and volume_serial.strip():
-            vsn_ex_sql, vsn_ex_params = _vsn_in_sql("p.volume_serial", volume_serial.strip())
-            query += f" AND NOT ({ex_sql} AND {vsn_ex_sql})"
-            params.extend(ex_params)
-            params.extend(vsn_ex_params)
+            vsn_ex_p, vsn_ex_params_p = _vsn_in_sql("p.volume_serial", volume_serial.strip())
+            vsn_ex_pl, vsn_ex_params_pl = _vsn_in_sql("pl_ex.volume_serial", volume_serial.strip())
+            query += (
+                f" AND NOT ({ex_sql_p} AND {vsn_ex_p})"
+                f" AND NOT EXISTS (SELECT 1 FROM photo_links pl_ex WHERE pl_ex.photo_id = p.id AND {ex_sql_pl} AND {vsn_ex_pl})"
+            )
+            params.extend(ex_params_p + vsn_ex_params_p + ex_params_pl + vsn_ex_params_pl)
         else:
-            query += f" AND NOT {ex_sql}"
-            params.extend(ex_params)
+            query += (
+                f" AND NOT {ex_sql_p}"
+                f" AND NOT EXISTS (SELECT 1 FROM photo_links pl_ex WHERE pl_ex.photo_id = p.id AND {ex_sql_pl})"
+            )
+            params.extend(ex_params_p + ex_params_pl)
 
     # タイムライン複数年月・複数日付フィルタ（同一タイムライン軸内でOR条件）
     target_yms = [ym.strip() for ym in (year_months or []) if ym and ym.strip()]
@@ -616,7 +1005,7 @@ def get_photos(
                     query += " AND (p.lens_model IS NULL OR TRIM(p.lens_model) != ?)"
                     params.append(ex_spec.strip())
 
-    # ラボ分析フィルタ（手ブレ警告・ゴールデンアワー・ブルーアワー・マジックアワー・夜景）
+    # ラボ分析フィルタ
     if lab_filter:
         lf = lab_filter.strip().lower()
         if lf == "shake_risk":
@@ -646,14 +1035,12 @@ def get_photos(
                 " AND solar_altitude(p.date_taken, p.latitude, p.longitude) < -8.0"
             )
 
-    # 過去の今日（MM-DD 形式）フィルタ（YYYY-MM-DD と YYYY:MM:DD の両方に対応）
     if on_this_day and len(on_this_day.strip()) == 5:
         otd_dash = on_this_day.strip().replace(":", "-")
         otd_colon = otd_dash.replace("-", ":")
         query += " AND p.date_taken IS NOT NULL AND SUBSTR(p.date_taken, 6, 5) IN (?, ?)"
         params.extend([otd_dash, otd_colon])
 
-    # 焦点距離レンジ（"min-max" 形式）フィルタ
     if focal_range and "-" in focal_range:
         try:
             f_min_s, f_max_s = focal_range.split("-", 1)
@@ -663,7 +1050,6 @@ def get_photos(
         except ValueError as e:
             logger.debug(f"焦点距離レンジのパースに失敗しました ({focal_range}): {e}")
 
-    # F値レンジ（"min-max" 形式）フィルタ
     if aperture_range and "-" in aperture_range:
         try:
             a_min_s, a_max_s = aperture_range.split("-", 1)
@@ -673,7 +1059,6 @@ def get_photos(
         except ValueError as e:
             logger.debug(f"F値レンジのパースに失敗しました ({aperture_range}): {e}")
 
-    # 属性フィルタ（RAW / JPEG / RAW+JPEGペア / XMPサイドカー / 非破壊調整済み）
     if attr_filter:
         af = attr_filter.strip().lower()
         if af == "raw":
@@ -693,58 +1078,14 @@ def get_photos(
                 " AND (p.crop_w < 0.999 OR p.crop_h < 0.999 OR COALESCE(p.crop_x, 0.0) > 0.001 OR COALESCE(p.crop_y, 0.0) > 0.001)))"
             )
 
-    # ファイル名検索（ユーザー要望によりファイル名限定）
     if search:
         query += " AND p.file_name LIKE ?"
         params.append(f"%{search}%")
 
-    # スタック表示モード時: スタックの代表写真(is_stack_primary=1)または単独写真(stack_id IS NULL)を表示
-    # ※特定フォルダや特定ボリューム絞り込み時: 重複スタック(stack_type='duplicate')の代表が他フォルダ・他メディアにある場合でも、
-    # 当該フォルダ・メディア配下に実在するメンバーを代表としてフォールバック表示する（写真の消失防止）
     if stacked:
-        if folder or (volume_serial and volume_serial.strip()):
-            sub_clauses = ["p_sub.stack_id = p.stack_id"]
-            sub_params: List[Any] = []
-            if folder:
-                sub_dir_sql, sub_dir_params = _directory_filter_sql_with_vsn(
-                    folder,
-                    volume_serial=volume_serial,
-                    recursive=True,
-                    column_name="p_sub.directory_path",
-                    vsn_column="p_sub.volume_serial",
-                )
-                sub_clauses.append(sub_dir_sql)
-                sub_params.extend(sub_dir_params)
-            if volume_serial and volume_serial.strip():
-                sub_vsn_sql, sub_vsn_params = _vsn_in_sql("p_sub.volume_serial", volume_serial.strip())
-                if s_mode == "match_or_null":
-                    sub_clauses.append(f"({sub_vsn_sql} OR p_sub.volume_serial IS NULL)")
-                else:
-                    sub_clauses.append(sub_vsn_sql)
-                sub_params.extend(sub_vsn_params)
-            query += f""" AND (
-                p.is_stack_primary = 1 
-                OR p.stack_id IS NULL
-                OR (
-                    p.stack_type = 'duplicate' 
-                    AND p.id = (
-                        SELECT p_sub.id 
-                        FROM photos p_sub 
-                        WHERE {' AND '.join(sub_clauses)}
-                        ORDER BY p_sub.is_stack_primary DESC, p_sub.id ASC 
-                        LIMIT 1
-                    )
-                )
-            )"""
-            params.extend(sub_params)
-        else:
-            query += " AND (p.is_stack_primary = 1 OR p.stack_id IS NULL)"
+        query += " AND (p.is_stack_primary = 1 OR p.stack_id IS NULL)"
 
-    # ペア済みRAW（JPEGペアが存在する）はグリッドから常に除外
-    # RAW単体（ペアなし）はそのまま表示される
-    query += " AND NOT (p.is_raw = 1 AND p.paired_raw_path IS NOT NULL)"
-
-    # カラータグ定義（独立した色フィルタ文節として常にグローバルAND適用、未分類判定からは除外）
+    # カラータグ定義
     _color_tag_tuple = (
         "赤", "青", "緑", "黄色", "黒", "白",
         "銀・シルバー", "金・ゴールド", "茶色", "紫", "オレンジ", "ピンク",
@@ -758,7 +1099,6 @@ def get_photos(
     color_exc = [t for t in clean_exc if t in _color_tag_names]
     general_exc = [t for t in clean_exc if t not in _color_tag_names]
 
-    # 1. カラータグ条件（含む / 除外）
     if color_inc:
         if len(color_inc) == 1:
             query += " AND p.id IN (SELECT photo_id FROM photo_tags WHERE tag = ?)"
@@ -771,7 +1111,6 @@ def get_photos(
         query += " AND p.id NOT IN (SELECT photo_id FROM photo_tags WHERE tag = ?)"
         params.append(c_tag)
 
-    # 未分類（AI自動タグ・カラータグ以外の手動一般タグなし）のみ
     if untagged_only:
         color_placeholders = ",".join(["?"] * len(_color_tag_tuple))
         query += f" AND p.id NOT IN (SELECT photo_id FROM photo_tags WHERE COALESCE(source, 'manual') != 'ai' AND tag NOT IN ({color_placeholders}))"
@@ -780,10 +1119,6 @@ def get_photos(
         and_roots_set = {r.strip() for r in (tag_and_roots or []) if r and r.strip()}
         inter_group_or = (tag_group_op or "and").strip().lower() == "or"
 
-        # 2. 階層タグ・一般タグ排他検索
-        # ・最上位の親（第1階層）が同じタグ同士は既定で OR 条件で結合（tag_and_roots に含まれるルートは AND 結合）
-        # ・最上位の親が異なるグループ間は既定で AND 条件で結合（tag_group_op='or' の場合は OR 結合）
-        # ・同一親子ラインで祖先タグと子孫タグが同時に選択されている場合は、より具体的な子孫タグを優先
         tag_groups: Dict[str, List[str]] = {}
         if general_inc:
             effective_inc = [
@@ -823,7 +1158,6 @@ def get_photos(
                     sub_parts.append(f"p.id IN (SELECT photo_id FROM photo_tags WHERE tag IN ({placeholders}))")
                     sub_params.extend(group_tags)
 
-                # 複数グループ間OR結合時、同じルートグループ内に除外タグがある場合（「車: Toyota（除く: − Prius）」）は当該文節内に束ねる
                 if inter_group_or and len(tag_groups) > 1 and root_parent in exc_by_root:
                     for ex_tag in exc_by_root[root_parent]:
                         sub_parts.append("p.id NOT IN (SELECT photo_id FROM photo_tags WHERE tag = ?)")
@@ -844,7 +1178,6 @@ def get_photos(
                     query += f" AND {c}"
                 params.extend(group_sql_params)
 
-        # 除外タグの適用（inter_group_or 時に含むグループ内で束ね済みのものは重複適用しない）
         for root_parent, ex_tags in exc_by_root.items():
             if inter_group_or and len(tag_groups) > 1 and root_parent in tag_groups:
                 continue
@@ -852,7 +1185,6 @@ def get_photos(
                 query += " AND p.id NOT IN (SELECT photo_id FROM photo_tags WHERE tag = ?)"
                 params.append(ex_tag)
 
-    # ソート条件の検証
     ss_sql = _shutter_speed_seconds_sql("p.shutter_speed")
     shutter_fast_sql = f"CASE WHEN ({ss_sql}) IS NULL OR ({ss_sql}) <= 0 THEN 1 ELSE 0 END ASC, ({ss_sql}) ASC, p.date_taken DESC, p.id DESC"
     shutter_slow_sql = f"CASE WHEN ({ss_sql}) IS NULL OR ({ss_sql}) <= 0 THEN 1 ELSE 0 END ASC, ({ss_sql}) DESC, p.date_taken DESC, p.id DESC"
@@ -878,7 +1210,6 @@ def get_photos(
     order_clause = valid_sorts.get(sort_by, "p.date_taken DESC, p.file_name ASC")
     query += f" ORDER BY {order_clause}"
 
-    # 大量写真時のメモリ・描画負荷を防止するための上限
     if limit and limit > 0:
         query += f" LIMIT {int(limit)}"
 
@@ -890,8 +1221,44 @@ def get_photos(
         rows = cursor.fetchall()
         photos = [dict(zip(col_names, row)) for row in rows]
 
+        # フォルダまたはボリューム指定時は、マッチした photo_links のパス・ボリューム情報を各写真オブジェクトに反映
+        if photos and has_link_filter and not unlinked_only and pl_filter_clauses:
+            pl_where_str = " AND ".join(pl_filter_clauses)
+            photo_id_set = {p["id"] for p in photos}
+            matched_link_map: Dict[int, Tuple[Any, ...]] = {}
+            cursor.execute(
+                f"""
+                SELECT pl.photo_id, pl.file_path, pl.directory_path, pl.file_name,
+                       pl.volume_serial, pl.file_mtime, pl.paired_raw_path,
+                       v.volume_label, COALESCE(v.custom_name, '') AS volume_custom_name,
+                       v.drive_letter AS volume_drive
+                FROM photo_links pl
+                LEFT JOIN volumes v ON pl.volume_serial = v.volume_serial
+                WHERE {pl_where_str}
+                ORDER BY pl.is_primary DESC, pl.id ASC
+                """,
+                pl_filter_params,
+            )
+            for lk_row in cursor.fetchall():
+                pid = lk_row[0]
+                if pid in photo_id_set and pid not in matched_link_map:
+                    matched_link_map[pid] = lk_row
+
+            for p in photos:
+                lk = matched_link_map.get(p["id"])
+                if lk:
+                    p["file_path"] = lk[1]
+                    p["directory_path"] = lk[2]
+                    p["file_name"] = lk[3]
+                    p["volume_serial"] = lk[4] or None
+                    if lk[5] is not None:
+                        p["file_mtime"] = lk[5]
+                    p["paired_raw_path"] = lk[6]
+                    p["volume_label"] = lk[7]
+                    p["volume_custom_name"] = lk[8]
+                    p["volume_drive"] = lk[9]
+
         if photos:
-            # ディレクトリ×VSN単位のファイル一覧を1回スキャンして XMP サイドカー有無を O(1) で判定
             dir_files_map: Dict[Tuple[str, str], Optional[set]] = {}
             try:
                 from ..scanner import resolve_portable_path
@@ -975,7 +1342,6 @@ def get_photos(
                 p["tags"] = tags_map.get(pid, [])
                 p["tag_details"] = tag_details_map.get(pid, [])
 
-            # スタックメンバー情報の付与
             active_stack_ids = list({p["stack_id"] for p in photos if p.get("stack_id")})
             if active_stack_ids:
                 active_stack_set = set(active_stack_ids)
@@ -992,7 +1358,7 @@ def get_photos(
                                date_taken, subsec_time, exposure_bias, shutter_speed, f_number, camera_model,
                                is_stack_primary, stack_id, rating, is_raw, raw_format
                         FROM photos
-                        WHERE stack_id IS NOT NULL
+                        WHERE stack_id IS NOT NULL AND IFNULL(is_unlinked, 0) = 0
                         ORDER BY date_taken ASC, subsec_time ASC, id ASC
                         """
                     )
@@ -1011,7 +1377,7 @@ def get_photos(
                                    date_taken, subsec_time, exposure_bias, shutter_speed, f_number, camera_model,
                                    is_stack_primary, stack_id, rating, is_raw, raw_format
                             FROM photos
-                            WHERE stack_id IN ({','.join(['?']*len(sid_chunk))})
+                            WHERE stack_id IN ({','.join(['?']*len(sid_chunk))}) AND IFNULL(is_unlinked, 0) = 0
                             ORDER BY date_taken ASC, subsec_time ASC, id ASC
                             """,
                             sid_chunk
@@ -1139,22 +1505,15 @@ def get_photo_by_id(photo_id: int) -> Optional[Dict[str, Any]]:
 
 
 def get_duplicate_photos_count() -> int:
-    """ライブラリ全体で重複（同一撮影日時 ＋ 同一ファイルサイズ）が存在する写真の総数を返す"""
+    """ライブラリ全体で重複（複数フォルダ・複数メディアにリンクが存在する）写真の総数を返す"""
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
             """
             SELECT COUNT(*) as count
-            FROM photos p
-            INNER JOIN (
-                SELECT date_taken, file_size
-                FROM photos
-                WHERE date_taken IS NOT NULL AND date_taken != '' AND file_size > 0
-                  AND IFNULL(is_unlinked, 0) = 0
-                GROUP BY date_taken, file_size
-                HAVING COUNT(*) > 1
-            ) dup ON p.date_taken = dup.date_taken AND p.file_size = dup.file_size
-            WHERE IFNULL(p.is_unlinked, 0) = 0
+            FROM photos
+            WHERE IFNULL(is_unlinked, 0) = 0
+              AND COALESCE(link_count, 1) > 1
             """
         )
         row = cursor.fetchone()
@@ -2093,19 +2452,31 @@ def get_existing_photos_map(
     volume_serial: Optional[str] = None,
 ) -> Dict[str, Tuple[int, int, Optional[float]]]:
     """
-    指定ディレクトリ配下の登録済み写真の {file_path: (id, file_size, file_mtime)} マップを取得する。
-    volume_serial が指定されている場合は当該メディア（またはシリアル未設定）の写真のみを対象とし、
+    指定ディレクトリ配下の登録済み写真リンクの {file_path: (photo_id, file_size, file_mtime)} マップを取得する。
+    volume_serial が指定されている場合は当該メディア（またはシリアル未設定）のリンクのみを対象とし、
     別SDカードの同名パス写真との混同を防止する。
     """
-    sql_frag, params = _directory_filter_sql(directory_path, recursive=recursive, column_name="directory_path")
+    sql_frag, params = _directory_filter_sql_with_vsn(
+        directory_path,
+        volume_serial=volume_serial,
+        recursive=recursive,
+        column_name="pl.directory_path",
+        vsn_column="pl.volume_serial",
+    )
     if volume_serial and volume_serial.strip():
-        sql_frag = f"({sql_frag}) AND (volume_serial = ? OR volume_serial IS NULL)"
-        params.append(volume_serial.strip())
+        vsn_sql, vsn_params = _vsn_in_sql("pl.volume_serial", volume_serial.strip())
+        sql_frag = f"({sql_frag}) AND ({vsn_sql} OR pl.volume_serial = '')"
+        params.extend(vsn_params)
 
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            f"SELECT id, file_path, file_size, file_mtime FROM photos WHERE {sql_frag}",
+            f"""
+            SELECT p.id, pl.file_path, p.file_size, COALESCE(pl.file_mtime, p.file_mtime) AS file_mtime
+            FROM photo_links pl
+            INNER JOIN photos p ON pl.photo_id = p.id
+            WHERE {sql_frag}
+            """,
             params,
         )
         res = {}
@@ -2120,42 +2491,54 @@ def get_existing_photos_map(
 def get_photo_by_path(file_path: str, volume_serial: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """
     ファイルパス（およびオプションのVSN）で写真情報を取得する。
-    volume_serial 指定時は別SDカードのレコードを誤返却せず、退避中 (vsn://<SERIAL>/...) のレコードも探索する。
+    photo_links から該当リンクを特定し、リンク固有のパス情報を反映して返す。
     """
-    clean_fp = _strip_vsn_prefix_raw(file_path)
-    vs_clean = (volume_serial or "").strip()
+    vsn_norm, rel_path, _, clean_fp, _ = _split_link_path(file_path, None, volume_serial)
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM photos WHERE file_path = ?", (clean_fp,))
-        row = cursor.fetchone()
-        if row:
-            row_vs = (row["volume_serial"] or "").strip()
-            if not vs_clean or not row_vs or row_vs == vs_clean:
-                d = dict(row)
-                d["file_path"] = _strip_vsn_prefix_raw(d.get("file_path"))
-                return d
+        link_row = None
+        if vsn_norm:
+            cursor.execute(
+                "SELECT * FROM photo_links WHERE volume_serial = ? AND rel_path = ? COLLATE NOCASE LIMIT 1",
+                (vsn_norm, rel_path),
+            )
+            link_row = cursor.fetchone()
+            if not link_row:
+                cursor.execute(
+                    "SELECT * FROM photo_links WHERE volume_serial = '' AND file_path = ? COLLATE NOCASE LIMIT 1",
+                    (clean_fp,),
+                )
+                link_row = cursor.fetchone()
+        else:
+            cursor.execute(
+                "SELECT * FROM photo_links WHERE file_path = ? COLLATE NOCASE ORDER BY is_primary DESC, id ASC LIMIT 1",
+                (clean_fp,),
+            )
+            link_row = cursor.fetchone()
 
-        if vs_clean:
-            parked_fp = f"vsn://{vs_clean}/{clean_fp}"
-            cursor.execute("SELECT * FROM photos WHERE file_path = ?", (parked_fp,))
+        if link_row:
+            cursor.execute("SELECT * FROM photos WHERE id = ?", (link_row["photo_id"],))
             prow = cursor.fetchone()
             if prow:
                 d = dict(prow)
-                d["file_path"] = _strip_vsn_prefix_raw(d.get("file_path"))
+                d["file_path"] = _strip_vsn_prefix_raw(link_row["file_path"])
+                d["directory_path"] = link_row["directory_path"]
+                d["file_name"] = link_row["file_name"]
+                d["volume_serial"] = link_row["volume_serial"] or None
+                if link_row["file_mtime"] is not None:
+                    d["file_mtime"] = link_row["file_mtime"]
+                d["paired_raw_path"] = link_row["paired_raw_path"]
                 return d
 
-            fname = os.path.basename(clean_fp)
-            rel_tail = _drive_relative_tail(clean_fp).lower()
-            if fname and rel_tail:
-                cursor.execute(
-                    "SELECT * FROM photos WHERE volume_serial = ? AND file_name = ?",
-                    (vs_clean, fname),
-                )
-                for cand in cursor.fetchall():
-                    if _drive_relative_tail(cand["file_path"]).lower() == rel_tail:
-                        d = dict(cand)
-                        d["file_path"] = _strip_vsn_prefix_raw(d.get("file_path"))
-                        return d
+        # フォールバック: リンク消失中 (is_unlinked=1) 等の photos.file_path 直接照合
+        cursor.execute("SELECT * FROM photos WHERE file_path = ? COLLATE NOCASE", (clean_fp,))
+        row = cursor.fetchone()
+        if row:
+            row_vs = (row["volume_serial"] or "").strip().upper()
+            if not vsn_norm or not row_vs or row_vs == vsn_norm:
+                d = dict(row)
+                d["file_path"] = _strip_vsn_prefix_raw(d.get("file_path"))
+                return d
         return None
 
 
@@ -2166,15 +2549,16 @@ def find_missing_photo_match(
     camera_model: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """
-    接続中（オンライン）のドライブ上で実ファイルが既に存在しなくなった（移動元となった）既存写真レコードの中から、
-    Exif撮影日時・ファイルサイズ・ファイル名などの特徴量が一致する同一写真を照合・探索する。
-    ※ 未接続（オフライン）のSDカードや外付けドライブ上のレコードは移動扱いにしない（別メディアとして保護）。
+    リンク消失状態 (is_unlinked=1) または接続中（オンライン）ドライブ上で実ファイルが既に存在しなくなった
+    既存写真レコードの中から、Exif撮影日時・ファイルサイズ・ファイル名などの特徴量が一致する同一写真を照合・探索する。
     """
     from ..scanner import resolve_portable_path
     with get_connection() as conn:
         cursor = conn.cursor()
 
-        def _is_online_but_missing(row_obj) -> bool:
+        def _is_unlinked_or_online_missing(row_obj) -> bool:
+            if int(row_obj["is_unlinked"] or 0) == 1 or int(row_obj["link_count"] or 0) == 0:
+                return True
             dir_p = row_obj["directory_path"]
             v_ser = row_obj["volume_serial"]
             if not dir_p:
@@ -2185,7 +2569,6 @@ def find_missing_photo_match(
             f_path, _ = resolve_portable_path(row_obj["file_path"], expected_serial=v_ser)
             return not os.path.exists(str(f_path))
 
-        # 1. 最優先: ファイル名 + 撮影日時 + ファイルサイズ の完全一致（確度 100%）
         if date_taken:
             cursor.execute(
                 """
@@ -2195,10 +2578,9 @@ def find_missing_photo_match(
                 (file_name, date_taken, date_taken, file_size),
             )
             for row in cursor.fetchall():
-                if _is_online_but_missing(row):
+                if _is_unlinked_or_online_missing(row):
                     return dict(row)
 
-        # 2. 次点: 撮影日時 + ファイルサイズ + カメラ機種（リネームされて移動したケース）
         if date_taken and camera_model and camera_model != "不明":
             cursor.execute(
                 """
@@ -2208,10 +2590,9 @@ def find_missing_photo_match(
                 (date_taken, date_taken, file_size, camera_model),
             )
             for row in cursor.fetchall():
-                if _is_online_but_missing(row):
+                if _is_unlinked_or_online_missing(row):
                     return dict(row)
 
-        # 3. 日時なし画像の場合: ファイル名 + ファイルサイズ
         cursor.execute(
             """
             SELECT * FROM photos
@@ -2220,7 +2601,7 @@ def find_missing_photo_match(
             (file_name, file_size),
         )
         for row in cursor.fetchall():
-            if _is_online_but_missing(row):
+            if _is_unlinked_or_online_missing(row):
                 return dict(row)
 
         return None
@@ -2232,29 +2613,59 @@ def relink_photo_path(
     new_dir: str,
     new_volume_serial: Optional[str] = None,
 ) -> bool:
-    """移動した写真レコードのパス情報（および移動先ボリュームのVSN）を更新し、既存のタグ・星評価を完全維持して再紐付けする"""
+    """移動した写真レコードのリンク情報（photo_links および代表パス）を更新し、既存のタグ・評価を完全維持して再紐付けする"""
+    from ..scanner import resolve_portable_path
     with get_connection() as conn:
         cursor = conn.cursor()
-        if new_volume_serial is not None:
-            cursor.execute(
-                """
-                UPDATE photos
-                SET file_path = ?, directory_path = ?, volume_serial = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-                """,
-                (new_path, new_dir, new_volume_serial, photo_id),
-            )
-        else:
-            cursor.execute(
-                """
-                UPDATE photos
-                SET file_path = ?, directory_path = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-                """,
-                (new_path, new_dir, photo_id),
-            )
+        cursor.execute("SELECT id, volume_serial FROM photos WHERE id = ?", (photo_id,))
+        prow = cursor.fetchone()
+        if not prow:
+            return False
+
+        eff_vsn = new_volume_serial if new_volume_serial is not None else prow["volume_serial"]
+        vsn_norm, rel_path, rel_dir, clean_fp, clean_dir = _split_link_path(new_path, new_dir, eff_vsn)
+        fname = os.path.basename(clean_fp)
+
+        # オンラインで実ファイルが消えている古いリンクがあれば除去
+        cursor.execute("SELECT id, file_path, directory_path, volume_serial FROM photo_links WHERE photo_id = ?", (photo_id,))
+        old_links = cursor.fetchall()
+        dead_ids = []
+        for lk in old_links:
+            try:
+                _, is_online = resolve_portable_path(lk["directory_path"], expected_serial=lk["volume_serial"] or None)
+                if is_online:
+                    f_p, _ = resolve_portable_path(lk["file_path"], expected_serial=lk["volume_serial"] or None)
+                    if not os.path.exists(str(f_p)):
+                        dead_ids.append(lk["id"])
+            except Exception:
+                pass
+        if len(old_links) == 1 and not dead_ids:
+            dead_ids = [old_links[0]["id"]]
+        if dead_ids:
+            ph = ",".join(["?"] * len(dead_ids))
+            cursor.execute(f"DELETE FROM photo_links WHERE id IN ({ph})", dead_ids)
+
+        cursor.execute(
+            """
+            INSERT INTO photo_links (
+                photo_id, volume_serial, rel_path, rel_dir,
+                file_path, directory_path, file_name, is_primary
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+            ON CONFLICT(volume_serial, rel_path) DO UPDATE SET
+                photo_id = excluded.photo_id,
+                rel_dir = excluded.rel_dir,
+                file_path = excluded.file_path,
+                directory_path = excluded.directory_path,
+                file_name = excluded.file_name,
+                is_primary = 1,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (photo_id, vsn_norm, rel_path, rel_dir, clean_fp, clean_dir, fname),
+        )
+        new_link_id = cursor.lastrowid
+        _sync_photo_links_state(cursor, photo_id, preferred_link_id=new_link_id)
         conn.commit()
-        return cursor.rowcount > 0
+        return True
 
 
 def cleanup_missing_photos_in_folder(
@@ -2262,63 +2673,83 @@ def cleanup_missing_photos_in_folder(
     recursive: bool = False,
     volume_serial: Optional[str] = None,
 ) -> int:
-    """指定フォルダのファイル存在チェックを行い、
-    実ファイルが消えている写真のDB レコード（写真・タグ・サムネイル）を安全に削除する。
-    recursive=False は直下のみ、True は配下サブフォルダも対象とする。
-    スタックメンバーが削除された場合は同じ範囲のスタック整合性を自動修復する。
-    ドライブ未接続（オフライン）や別SDカード装着時に誤って削除しないよう、
-    VSN対応の resolve_portable_path で当該ボリュームがオンラインと判定できた写真のみを削除対象とする。"""
+    """
+    指定フォルダのファイル存在チェックを行い、実ファイルが消えているリンクを photo_links から削除する。
+    他メディア・他フォルダに有効なリンクが残っている写真は残存リンクを代表にして保護し、
+    有効なリンクが0本になった写真のみ DB（photos・photo_tags・thumbnails）から削除する。
+    """
     from ..scanner import resolve_portable_path
     norm_win = os.path.normpath(directory_path).rstrip("\\/")
-    sql_frag, sql_params = _directory_filter_sql(directory_path, recursive=recursive, column_name="directory_path")
+    sql_frag, sql_params = _build_folder_missing_filter(
+        directory_path,
+        recursive=recursive,
+        volume_serial=volume_serial,
+        column_name="pl.directory_path",
+        vsn_column="pl.volume_serial",
+    )
     if volume_serial and volume_serial.strip():
-        sql_frag = f"({sql_frag}) AND (volume_serial = ? OR volume_serial IS NULL)"
-        sql_params.append(volume_serial.strip())
+        vsn_sql, vsn_params = _vsn_in_sql("pl.volume_serial", volume_serial.strip())
+        sql_frag = f"({sql_frag}) AND ({vsn_sql} OR pl.volume_serial = '')"
+        sql_params.extend(vsn_params)
 
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
             f"""
-            SELECT id, file_path, directory_path, volume_serial, stack_id, is_stack_primary FROM photos
+            SELECT pl.id AS link_id, pl.photo_id, pl.file_path, pl.directory_path, pl.volume_serial
+            FROM photo_links pl
             WHERE {sql_frag}
             """,
             sql_params,
         )
         rows = cursor.fetchall()
-        missing_ids = []
+        missing_link_ids: List[int] = []
+        affected_photo_ids: set = set()
         for r in rows:
-            v_ser = r["volume_serial"]
+            v_ser = r["volume_serial"] or None
             _, is_dir_online = resolve_portable_path(r["directory_path"], expected_serial=v_ser)
             if not is_dir_online:
                 continue
             f_path, _ = resolve_portable_path(r["file_path"], expected_serial=v_ser)
             if not os.path.exists(str(f_path)):
-                missing_ids.append(r["id"])
+                missing_link_ids.append(r["link_id"])
+                affected_photo_ids.add(r["photo_id"])
 
-        if missing_ids:
-            for i in range(0, len(missing_ids), 500):
-                chunk = missing_ids[i:i + 500]
+        if missing_link_ids:
+            for i in range(0, len(missing_link_ids), 500):
+                chunk = missing_link_ids[i:i + 500]
                 placeholders = ",".join(["?"] * len(chunk))
-                cursor.execute(f"DELETE FROM photo_tags WHERE photo_id IN ({placeholders})", chunk)
-                cursor.execute(f"DELETE FROM thumbnails WHERE photo_id IN ({placeholders})", chunk)
-                cursor.execute(f"DELETE FROM photos WHERE id IN ({placeholders})", chunk)
+                cursor.execute(f"DELETE FROM photo_links WHERE id IN ({placeholders})", chunk)
+
+            zero_link_photo_ids: List[int] = []
+            for pid in affected_photo_ids:
+                rem = _sync_photo_links_state(cursor, pid)
+                if rem == 0:
+                    zero_link_photo_ids.append(pid)
+
+            if zero_link_photo_ids:
+                for i in range(0, len(zero_link_photo_ids), 500):
+                    chunk = zero_link_photo_ids[i:i + 500]
+                    placeholders = ",".join(["?"] * len(chunk))
+                    cursor.execute(f"DELETE FROM photo_tags WHERE photo_id IN ({placeholders})", chunk)
+                    cursor.execute(f"DELETE FROM thumbnails WHERE photo_id IN ({placeholders})", chunk)
+                    cursor.execute(f"DELETE FROM photos WHERE id IN ({placeholders})", chunk)
+
             conn.commit()
 
-            # スタックの健全性を即座に修復（実在写真のみでスタックを再編成）
             try:
                 from .stacks import recalculate_stacks
                 recalculate_stacks(norm_win, recursive=recursive)
             except Exception as stack_err:
                 print(f"[WARN] スタック修復エラー（削除自体は完了）: {stack_err}")
 
-            return len(missing_ids)
+            return len(missing_link_ids)
         return 0
 
 
 def cleanup_missing_upload_photos(upload_dir: Path) -> int:
     """
-    storage（旧 carry）フォルダ配下の写真で、実ファイルが削除されたレコードをDBから完全にクリーンアップする。
-    （サブフォルダ内の写真およびポータブル移動時の相対パスも検証し、実在する写真は確実に保持する）
+    storage（旧 carry）フォルダ配下の写真リンクで、実ファイルが削除されたものをDBからクリーンアップする。
     """
     from ..scanner import resolve_portable_path
 
@@ -2326,16 +2757,15 @@ def cleanup_missing_upload_photos(upload_dir: Path) -> int:
     upload_dir_str = str(upload_dir_resolved).rstrip("\\/")
     upload_dir_low = upload_dir_str.lower()
 
-    dir_sql, dir_params = _directory_filter_sql(upload_dir_str, recursive=True, column_name="directory_path")
-    fp_sql, fp_params = _directory_filter_sql(upload_dir_str, recursive=True, column_name="file_path")
+    dir_sql, dir_params = _directory_filter_sql(upload_dir_str, recursive=True, column_name="pl.directory_path")
+    fp_sql, fp_params = _directory_filter_sql(upload_dir_str, recursive=True, column_name="pl.file_path")
 
     with get_connection() as conn:
         cursor = conn.cursor()
-        # storage ディレクトリ（およびサブフォルダ）配下の写真を検索
         cursor.execute(
             f"""
-            SELECT id, file_path, directory_path
-            FROM photos
+            SELECT pl.id AS link_id, pl.photo_id, pl.file_path, pl.directory_path
+            FROM photo_links pl
             WHERE {dir_sql} OR {fp_sql}
             """,
             dir_params + fp_params,
@@ -2344,7 +2774,8 @@ def cleanup_missing_upload_photos(upload_dir: Path) -> int:
         if not rows:
             return 0
 
-        missing_ids = []
+        missing_link_ids: List[int] = []
+        affected_photo_ids: set = set()
         for r in rows:
             raw_fp = _strip_vsn_prefix_raw(r["file_path"] or "")
             p_path = Path(raw_fp)
@@ -2363,26 +2794,37 @@ def cleanup_missing_upload_photos(upload_dir: Path) -> int:
                         is_present = True
 
             if not is_present:
-                missing_ids.append(r["id"])
+                missing_link_ids.append(r["link_id"])
+                affected_photo_ids.add(r["photo_id"])
 
-        if missing_ids:
-            # SQLiteの変数上限（999個）を回避するため500件ずつチャンク削除
-            for i in range(0, len(missing_ids), 500):
-                chunk = missing_ids[i:i + 500]
+        if missing_link_ids:
+            for i in range(0, len(missing_link_ids), 500):
+                chunk = missing_link_ids[i:i + 500]
                 placeholders = ",".join(["?"] * len(chunk))
-                cursor.execute(f"DELETE FROM thumbnails WHERE photo_id IN ({placeholders})", chunk)
-                cursor.execute(f"DELETE FROM photo_tags WHERE photo_id IN ({placeholders})", chunk)
-                cursor.execute(f"DELETE FROM photos WHERE id IN ({placeholders})", chunk)
+                cursor.execute(f"DELETE FROM photo_links WHERE id IN ({placeholders})", chunk)
+
+            zero_link_photo_ids: List[int] = []
+            for pid in affected_photo_ids:
+                rem = _sync_photo_links_state(cursor, pid)
+                if rem == 0:
+                    zero_link_photo_ids.append(pid)
+
+            if zero_link_photo_ids:
+                for i in range(0, len(zero_link_photo_ids), 500):
+                    chunk = zero_link_photo_ids[i:i + 500]
+                    placeholders = ",".join(["?"] * len(chunk))
+                    cursor.execute(f"DELETE FROM thumbnails WHERE photo_id IN ({placeholders})", chunk)
+                    cursor.execute(f"DELETE FROM photo_tags WHERE photo_id IN ({placeholders})", chunk)
+                    cursor.execute(f"DELETE FROM photos WHERE id IN ({placeholders})", chunk)
+
             conn.commit()
-            print(f"[INFO] storage 内のリンク切れ写真 {len(missing_ids)} 件をDBから自動クリーンアップしました。")
-            return len(missing_ids)
+            print(f"[INFO] storage 内のリンク切れ写真 {len(missing_link_ids)} 件をDBから自動クリーンアップしました。")
+            return len(missing_link_ids)
         return 0
 
 
 def delete_photo_by_id(photo_id: int, delete_file: bool = False) -> bool:
-    """
-    指定されたIDの写真をDB（およびオプションで実ファイル）から削除する。
-    """
+    """指定されたIDの写真をDB（およびオプションで実ファイル）から削除する"""
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT file_path, volume_serial FROM photos WHERE id = ?", (photo_id,))
@@ -2393,6 +2835,7 @@ def delete_photo_by_id(photo_id: int, delete_file: bool = False) -> bool:
         file_path_str = row["file_path"]
         vol_serial = row["volume_serial"]
 
+        cursor.execute("DELETE FROM photo_links WHERE photo_id = ?", (photo_id,))
         cursor.execute("DELETE FROM thumbnails WHERE photo_id = ?", (photo_id,))
         cursor.execute("DELETE FROM photo_tags WHERE photo_id = ?", (photo_id,))
         cursor.execute("DELETE FROM photos WHERE id = ?", (photo_id,))
@@ -2412,8 +2855,7 @@ def delete_photo_by_id(photo_id: int, delete_file: bool = False) -> bool:
 
 def delete_photos_by_ids(photo_ids: List[int]) -> int:
     """
-    複数の写真をDB（写真・タグ・サムネイル）から一括削除する。実ファイルは削除しない。
-    削除した写真が属していたディレクトリのスタックを再計算し、代表写真が消えたスタックを修復する。
+    複数の写真をDB（写真・リンク・タグ・サムネイル）から一括削除する。実ファイルは削除しない。
     """
     if not photo_ids:
         return 0
@@ -2425,14 +2867,14 @@ def delete_photos_by_ids(photo_ids: List[int]) -> int:
             chunk = photo_ids[i:i + 500]
             placeholders = ",".join(["?"] * len(chunk))
             cursor.execute(f"SELECT DISTINCT directory_path FROM photos WHERE id IN ({placeholders})", chunk)
-            affected_dirs.update(r["directory_path"] for r in cursor.fetchall())
+            affected_dirs.update(r["directory_path"] for r in cursor.fetchall() if r["directory_path"])
+            cursor.execute(f"DELETE FROM photo_links WHERE photo_id IN ({placeholders})", chunk)
             cursor.execute(f"DELETE FROM photo_tags WHERE photo_id IN ({placeholders})", chunk)
             cursor.execute(f"DELETE FROM thumbnails WHERE photo_id IN ({placeholders})", chunk)
             cursor.execute(f"DELETE FROM photos WHERE id IN ({placeholders})", chunk)
             deleted += cursor.rowcount
         conn.commit()
 
-    # スタックの健全性を修復（削除元ディレクトリ直下のみ）
     for d in affected_dirs:
         try:
             from .stacks import recalculate_stacks
@@ -2443,11 +2885,11 @@ def delete_photos_by_ids(photo_ids: List[int]) -> int:
 
 
 def get_photo_brief(photo_id: int) -> Optional[Dict[str, Any]]:
-    """サムネイルおよびビューワ画像配信のための軽量な写真情報（単一主キー検索・JOIN/サブクエリなし）を取得する"""
+    """サムネイルおよびビューワ画像配信のための軽量な写真情報を取得する（代表リンクがオフラインの場合もオンラインリンクがあれば自動補完）"""
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT id, file_name, file_path, volume_serial, file_size, file_mtime, date_taken, is_raw, paired_raw_path, rotation, fine_angle, crop_x, crop_y, crop_w, crop_h, crop_aspect, brightness, contrast, saturation FROM photos WHERE id = ?",
+            "SELECT id, file_name, file_path, volume_serial, file_size, file_mtime, date_taken, is_raw, paired_raw_path, rotation, fine_angle, crop_x, crop_y, crop_w, crop_h, crop_aspect, brightness, contrast, saturation, link_count FROM photos WHERE id = ?",
             (photo_id,),
         )
         row = cursor.fetchone()
@@ -2459,7 +2901,7 @@ def get_photo_brief(photo_id: int) -> Optional[Dict[str, Any]]:
 
 
 def get_photos_brief_batch(photo_ids: List[int]) -> List[Dict[str, Any]]:
-    """複数写真のサムネイル処理用軽量情報（id, file_path, volume_serial, file_size, file_mtime, date_taken, rotation, fine_angle, crop_*, トーン調整値）を一括取得する"""
+    """複数写真のサムネイル処理用軽量情報を一括取得する"""
     if not photo_ids:
         return []
     with get_connection() as conn:
@@ -2469,7 +2911,7 @@ def get_photos_brief_batch(photo_ids: List[int]) -> List[Dict[str, Any]]:
             chunk = photo_ids[i:i + 500]
             placeholders = ",".join(["?"] * len(chunk))
             cursor.execute(
-                f"SELECT id, file_path, volume_serial, file_size, file_mtime, date_taken, rotation, fine_angle, crop_x, crop_y, crop_w, crop_h, crop_aspect, brightness, contrast, saturation FROM photos WHERE id IN ({placeholders})",
+                f"SELECT id, file_name, file_path, volume_serial, file_size, file_mtime, date_taken, rotation, fine_angle, crop_x, crop_y, crop_w, crop_h, crop_aspect, brightness, contrast, saturation FROM photos WHERE id IN ({placeholders})",
                 chunk,
             )
             for r in cursor.fetchall():
@@ -2482,8 +2924,8 @@ def get_photos_brief_batch(photo_ids: List[int]) -> List[Dict[str, Any]]:
 def get_missing_photos(limit: int = 0) -> List[Dict[str, Any]]:
     """
     接続中（オンライン）のドライブ・フォルダに登録されているが、
-    実ファイルが削除または移動されて見つからない写真（孤児レコード）を抽出して返す。
-    未接続（オフライン）の外部ドライブ・別SDカードの写真は除外され、安全に保護される。
+    実ファイルが削除または移動されて見つからない写真リンクを抽出して返す。
+    未接続（オフライン）の外部ドライブ・別SDカードのリンクは除外され、安全に保護される。
     """
     from ..scanner import resolve_portable_path
     with get_connection() as conn:
@@ -2491,28 +2933,38 @@ def get_missing_photos(limit: int = 0) -> List[Dict[str, Any]]:
         cursor.execute(
             """
             SELECT p.*,
+                   pl.id AS link_id,
+                   pl.file_path AS link_file_path,
+                   pl.directory_path AS link_directory_path,
+                   pl.file_name AS link_file_name,
+                   pl.volume_serial AS link_volume_serial,
                    t.width AS thumb_width,
                    t.height AS thumb_height,
                    v.volume_label,
                    COALESCE(v.custom_name, '') AS volume_custom_name,
                    v.drive_letter AS volume_drive,
                    CASE WHEN t.photo_id IS NOT NULL THEN 1 ELSE 0 END AS has_thumbnail
-            FROM photos p
-            LEFT JOIN volumes v ON p.volume_serial = v.volume_serial
+            FROM photo_links pl
+            INNER JOIN photos p ON pl.photo_id = p.id
+            LEFT JOIN volumes v ON pl.volume_serial = v.volume_serial
             LEFT JOIN thumbnails t ON p.id = t.photo_id
             WHERE p.rating IN (0, 1, 2)
               AND (p.is_unlinked IS NULL OR p.is_unlinked = 0)
-            ORDER BY p.date_taken DESC, p.file_name ASC
+            ORDER BY p.date_taken DESC, pl.file_name ASC
             """
         )
         rows = cursor.fetchall()
         dir_online_cache: Dict[Tuple[str, str], bool] = {}
         dir_files_cache: Dict[Tuple[str, str], Optional[set]] = {}
         missing_photos: List[Dict[str, Any]] = []
+        seen_photo_ids: set = set()
 
         for r in rows:
-            d_path = r["directory_path"]
-            v_ser = r["volume_serial"] or ""
+            pid = r["id"]
+            if pid in seen_photo_ids:
+                continue
+            d_path = r["link_directory_path"]
+            v_ser = r["link_volume_serial"] or ""
             cache_key = (d_path, v_ser)
             if cache_key not in dir_online_cache:
                 resolved_dir, is_online = resolve_portable_path(d_path, expected_serial=v_ser or None)
@@ -2526,25 +2978,27 @@ def get_missing_photos(limit: int = 0) -> List[Dict[str, Any]]:
                 else:
                     dir_files_cache[cache_key] = None
 
-            # 親ドライブ/フォルダがオンラインなのに、実ファイルが存在しない写真
             if dir_online_cache[cache_key]:
                 file_set = dir_files_cache.get(cache_key)
-                fname = r["file_name"] or os.path.basename(_strip_vsn_prefix_raw(r["file_path"] or ""))
+                fname = r["link_file_name"] or os.path.basename(_strip_vsn_prefix_raw(r["link_file_path"] or ""))
                 if file_set is not None and fname and fname.lower() in file_set:
                     continue
-                f_path, _ = resolve_portable_path(r["file_path"], expected_serial=v_ser or None)
+                f_path, _ = resolve_portable_path(r["link_file_path"], expected_serial=v_ser or None)
                 if not os.path.exists(str(f_path)):
                     item = dict(r)
-                    item["file_path"] = _strip_vsn_prefix_raw(item.get("file_path"))
+                    item["file_path"] = _strip_vsn_prefix_raw(r["link_file_path"])
+                    item["directory_path"] = r["link_directory_path"]
+                    item["file_name"] = r["link_file_name"]
+                    item["volume_serial"] = r["link_volume_serial"] or None
                     item["is_missing"] = True
                     item["is_offline"] = False
                     item["stack_count"] = 1
                     item["stack_photos"] = []
                     missing_photos.append(item)
+                    seen_photo_ids.add(pid)
                     if limit and limit > 0 and len(missing_photos) >= limit:
                         break
 
-        # タグ情報を付与 (SQLiteバインド上限回避のため900件ずつチャンク取得)
         if missing_photos:
             photo_ids = [p["id"] for p in missing_photos]
             tags_map: Dict[int, List[str]] = {}
@@ -2574,47 +3028,63 @@ def unlink_missing_photos_in_folder(
     volume_serial: Optional[str] = None,
 ) -> int:
     """
-    指定フォルダ内で実ファイルが見つからない写真について、
-    DBのレコードやサムネイル・タグは保持したまま、実体パスとの紐付けを解除（is_unlinked = 1）にする。
-    これにより、写真データ（メタ情報・サムネ）を安全に維持しつつ「リンク消失」状態へ移行する。
+    指定フォルダ内で実ファイルが見つからないリンクを photo_links から削除する。
+    - 他メディア・他フォルダにまだリンクが残っている写真は、残存リンクを代表にして通常表示（is_unlinked = 0）を維持する。
+    - すべてのリンクが失われた（残りリンク0本になった）写真のみ is_unlinked = 1, link_count = 0 として
+      「リンク消失の写真」リストへ移行し、明示的にパージされるまでサムネイル・タグ・評価を保持する。
     """
     from ..scanner import resolve_portable_path
-    sql_frag, sql_params = _directory_filter_sql(directory_path, recursive=recursive, column_name="directory_path")
+    sql_frag, sql_params = _build_folder_missing_filter(
+        directory_path,
+        recursive=recursive,
+        volume_serial=volume_serial,
+        column_name="pl.directory_path",
+        vsn_column="pl.volume_serial",
+    )
     if volume_serial and volume_serial.strip():
-        sql_frag = f"({sql_frag}) AND (volume_serial = ? OR volume_serial IS NULL)"
-        sql_params.append(volume_serial.strip())
+        vsn_sql, vsn_params = _vsn_in_sql("pl.volume_serial", volume_serial.strip())
+        sql_frag = f"({sql_frag}) AND ({vsn_sql} OR pl.volume_serial = '')"
+        sql_params.extend(vsn_params)
 
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
             f"""
-            SELECT id, file_path, directory_path, volume_serial, stack_id, is_stack_primary FROM photos
-            WHERE {sql_frag} AND (is_unlinked IS NULL OR is_unlinked = 0)
+            SELECT pl.id AS link_id, pl.photo_id, pl.file_path, pl.directory_path, pl.volume_serial
+            FROM photo_links pl
+            INNER JOIN photos p ON pl.photo_id = p.id
+            WHERE {sql_frag} AND (p.is_unlinked IS NULL OR p.is_unlinked = 0)
             """,
             sql_params,
         )
         rows = cursor.fetchall()
-        missing_ids = []
+        missing_link_ids: List[int] = []
+        affected_photo_ids: List[int] = []
+        seen_pids: set = set()
         for r in rows:
-            v_ser = r["volume_serial"]
+            v_ser = r["volume_serial"] or None
             _, is_dir_online = resolve_portable_path(r["directory_path"], expected_serial=v_ser)
             if not is_dir_online:
                 continue
             f_path, _ = resolve_portable_path(r["file_path"], expected_serial=v_ser)
             if not os.path.exists(str(f_path)):
-                missing_ids.append(r["id"])
+                missing_link_ids.append(r["link_id"])
+                pid = r["photo_id"]
+                if pid not in seen_pids:
+                    seen_pids.add(pid)
+                    affected_photo_ids.append(pid)
 
-        if missing_ids:
-            for i in range(0, len(missing_ids), 500):
-                chunk = missing_ids[i:i + 500]
+        if missing_link_ids:
+            for i in range(0, len(missing_link_ids), 500):
+                chunk = missing_link_ids[i:i + 500]
                 placeholders = ",".join(["?"] * len(chunk))
-                cursor.execute(
-                    f"UPDATE photos SET is_unlinked = 1, updated_at = CURRENT_TIMESTAMP WHERE id IN ({placeholders})",
-                    chunk,
-                )
+                cursor.execute(f"DELETE FROM photo_links WHERE id IN ({placeholders})", chunk)
+
+            for pid in affected_photo_ids:
+                _sync_photo_links_state(cursor, pid)
+
             conn.commit()
 
-            # スタックの健全性を修復
             try:
                 from .stacks import recalculate_stacks
                 norm_win = os.path.normpath(directory_path).rstrip("\\/")
@@ -2622,12 +3092,12 @@ def unlink_missing_photos_in_folder(
             except Exception as stack_err:
                 logger.warning(f"スタック修復スキップ: {stack_err}")
 
-            return len(missing_ids)
+            return len(missing_link_ids)
         return 0
 
 
 def get_unlinked_photos_count() -> int:
-    """実体パスとの紐付けが外れた（リンク消失）写真の件数を高速に取得する"""
+    """すべてのリンクが失われた（リンク消失: is_unlinked = 1）写真の件数を高速に取得する"""
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*) AS cnt FROM photos WHERE is_unlinked = 1")
@@ -2637,8 +3107,7 @@ def get_unlinked_photos_count() -> int:
 
 def purge_unlinked_photos(photo_ids: Optional[List[int]] = None) -> int:
     """
-    リンク消失した写真を、ユーザーの明示的な指示によりDB（サムネイル・タグ・メタデータ）から完全抹消する。
-    photo_ids 指定時はその写真のみ、None の場合は is_unlinked = 1 の全写真を削除する。
+    リンク消失した写真を、ユーザーの明示的な指示によりDB（サムネイル・タグ・メタデータ・リンク）から完全抹消する。
     """
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -2657,11 +3126,11 @@ def purge_unlinked_photos(photo_ids: Optional[List[int]] = None) -> int:
         for i in range(0, len(target_ids), 500):
             chunk = target_ids[i:i + 500]
             placeholders = ",".join(["?"] * len(chunk))
+            cursor.execute(f"DELETE FROM photo_links WHERE photo_id IN ({placeholders})", chunk)
             cursor.execute(f"DELETE FROM photo_tags WHERE photo_id IN ({placeholders})", chunk)
             cursor.execute(f"DELETE FROM thumbnails WHERE photo_id IN ({placeholders})", chunk)
             cursor.execute(f"DELETE FROM photos WHERE id IN ({placeholders})", chunk)
 
-        # 孤立サムネイルクリーンアップ
         cursor.execute("DELETE FROM thumbnails WHERE photo_id NOT IN (SELECT id FROM photos)")
         conn.commit()
         return len(target_ids)
