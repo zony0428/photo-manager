@@ -499,7 +499,22 @@ function applyFilterPreset(preset) {
 }
 
 async function deleteFilterPreset(presetId, presetName) {
-  if (!confirm(`\u30D5\u30A3\u30EB\u30BF\u30BB\u30C3\u30C8\u300C${presetName}\u300D\u3092\u524A\u9664\u3057\u3066\u3082\u3088\u308D\u3057\u3044\u3067\u3059\u304B\uFF1F`)) {
+  const confirmed = typeof showConfirmModal === 'function'
+    ? await showConfirmModal({
+        title: '保存済みセットの削除',
+        subtitle: 'フィルタプリセットの削除',
+        icon: 'trash',
+        headingPrefix: 'フィルタセット',
+        targetName: presetName,
+        headingSuffix: 'を削除しますか？',
+        descriptionLines: [
+          '保存された絞り込み条件セットを削除します（写真やタグ自体は変更されません）。',
+        ],
+        confirmText: '削除する',
+        confirmVariant: 'danger',
+      })
+    : confirm(`\u30D5\u30A3\u30EB\u30BF\u30BB\u30C3\u30C8\u300C${presetName}\u300D\u3092\u524A\u9664\u3057\u3066\u3082\u3088\u308D\u3057\u3044\u3067\u3059\u304B\uFF1F`);
+  if (!confirmed) {
     return;
   }
 

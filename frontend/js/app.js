@@ -3833,10 +3833,23 @@ function setupEventListeners() {
   // リンク消失写真の一括完全消去ボタン
   if (elements.purgeUnlinkedBtn) {
     elements.purgeUnlinkedBtn.addEventListener('click', async () => {
-      const confirmed = confirm(
-        'リンク消失しているすべての写真レコード（サムネイル・タグ含む）をDBから完全に消去しますか？\n' +
-        'この操作は取り消せません。'
-      );
+      const confirmed = typeof showConfirmModal === 'function'
+        ? await showConfirmModal({
+            title: 'リンク消失写真の完全消去',
+            subtitle: 'データベースからのレコード一括消去',
+            icon: 'trash',
+            headingText: 'リンク消失しているすべての写真レコードをDBから完全に消去しますか？',
+            descriptionLines: [
+              'サムネイル・タグ・評価を含むすべての登録情報がデータベースから削除されます。',
+              '※ この操作は取り消せません。',
+            ],
+            confirmText: '完全に消去する',
+            confirmVariant: 'danger',
+          })
+        : confirm(
+            'リンク消失しているすべての写真レコード（サムネイル・タグ含む）をDBから完全に消去しますか？\n' +
+            'この操作は取り消せません。'
+          );
       if (!confirmed) return;
 
       try {
@@ -3902,8 +3915,22 @@ function setupEventListeners() {
       // ドライブ全体やルート種別の場合は警告ダイアログを表示
       const isDriveRoot = /^[a-zA-Z]:\\?$/.test(node.fullPath);
       if (isDriveRoot) {
-        const msg = `「${node.name}」はドライブ全体です。配下のすべてのサブフォルダをスキャンすると時間がかかる場合があります。\n\nスキャンを開始しますか？`;
-        if (!confirm(msg)) return;
+        const confirmed = typeof showConfirmModal === 'function'
+          ? await showConfirmModal({
+              title: 'ドライブ全体のスキャン確認',
+              subtitle: '広範囲のサブフォルダ再帰スキャン',
+              icon: 'folder-refresh',
+              targetName: node.name,
+              headingSuffix: 'はドライブ全体です。スキャンを開始しますか？',
+              subPath: node.fullPath,
+              descriptionLines: [
+                '配下のすべてのサブフォルダをスキャンするため、時間がかかる場合があります。',
+              ],
+              confirmText: 'スキャンを開始',
+              confirmVariant: 'primary',
+            })
+          : confirm(`「${node.name}」はドライブ全体です。配下のすべてのサブフォルダをスキャンすると時間がかかる場合があります。\n\nスキャンを開始しますか？`);
+        if (!confirmed) return;
       }
       showToast(`「${node.name}」配下を再帰スキャン中...`, 'info');
       await executeScan(node.fullPath, true, false);
@@ -3920,8 +3947,23 @@ function setupEventListeners() {
         showToast('ドライブが未接続または実フォルダが存在しないためリフレッシュできません', 'warning');
         return;
       }
-      const msg = `フォルダ「${node.name}」内の写真フォルダを再スキャンし、PC上から移動・削除された写真をライブラリから削除（リフレッシュ）します。\n\nよろしいですか？`;
-      if (!confirm(msg)) return;
+      const confirmed = typeof showConfirmModal === 'function'
+        ? await showConfirmModal({
+            title: 'フォルダのリフレッシュ',
+            subtitle: '再スキャンと移動・削除写真の整理',
+            icon: 'folder-refresh',
+            targetName: node.name,
+            headingSuffix: 'をリフレッシュ（最新化）しますか？',
+            subPath: node.fullPath,
+            descriptionLines: [
+              '配下の写真フォルダを再スキャンし、PC上から移動・削除された写真をライブラリから削除（リフレッシュ）します。',
+              '※ PC上の実ファイル本体は削除されません。',
+            ],
+            confirmText: 'リフレッシュ実行',
+            confirmVariant: 'primary',
+          })
+        : confirm(`フォルダ「${node.name}」内の写真フォルダを再スキャンし、PC上から移動・削除された写真をライブラリから削除（リフレッシュ）します。\n\nよろしいですか？`);
+      if (!confirmed) return;
 
       showToast(`「${node.name}」をリフレッシュ中（消失写真のDB整理を含む）...`, 'info');
       await executeScan(node.fullPath, true, true);
@@ -3935,8 +3977,23 @@ function setupEventListeners() {
       closeFolderContextMenu();
       if (!node) return;
 
-      const msg = `フォルダ「${node.name}」配下の写真にAIタグを付与しますか？\n（※すでにタグ付け済みの写真はスキップされます）`;
-      if (!confirm(msg)) return;
+      const confirmed = typeof showConfirmModal === 'function'
+        ? await showConfirmModal({
+            title: 'AI自動タグ付け',
+            subtitle: 'ローカルAI（CLIP Vision）による被写体・シーン認識',
+            icon: 'ai',
+            targetName: node.name,
+            headingSuffix: '配下の写真にAIタグを付与しますか？',
+            subPath: node.fullPath,
+            descriptionLines: [
+              '※ すでにタグ付け済みの写真はスキップされます。',
+              '※ すべての推論処理はPC内部（オフライン）で完結します。',
+            ],
+            confirmText: 'AIタグ付けを開始',
+            confirmVariant: 'primary',
+          })
+        : confirm(`フォルダ「${node.name}」配下の写真にAIタグを付与しますか？\n（※すでにタグ付け済みの写真はスキップされます）`);
+      if (!confirmed) return;
 
       try {
         showToast(`「${node.name}」のAIタグ付けを開始しました...`, 'info');
@@ -3967,8 +4024,22 @@ function setupEventListeners() {
       closeFolderContextMenu();
       if (!node) return;
 
-      const msg = `フォルダ「${node.name}」配下の写真に対して、AIカラータグ（12色）のみを再判定しますか？\n（※手動タグおよびAI被写体タグは保護されます）`;
-      if (!confirm(msg)) return;
+      const confirmed = typeof showConfirmModal === 'function'
+        ? await showConfirmModal({
+            title: 'AIカラータグの再判定',
+            subtitle: '12色カラーパレットの再解析',
+            icon: 'palette',
+            targetName: node.name,
+            headingSuffix: '配下の写真に対してAIカラータグ（12色）を再判定しますか？',
+            subPath: node.fullPath,
+            descriptionLines: [
+              '※ 手動タグおよびAI被写体タグは保護されます。',
+            ],
+            confirmText: 'カラー再判定を開始',
+            confirmVariant: 'primary',
+          })
+        : confirm(`フォルダ「${node.name}」配下の写真に対して、AIカラータグ（12色）のみを再判定しますか？\n（※手動タグおよびAI被写体タグは保護されます）`);
+      if (!confirmed) return;
 
       try {
         showToast(`「${node.name}」のAIカラータグ再判定を開始しました...`, 'info');
@@ -4005,8 +4076,25 @@ function setupEventListeners() {
 
       const isRootKind = (node.kind === 'drive' || node.kind === 'shortcut' || node.kind === 'offline');
       const count = node.totalCount > 0 ? node.totalCount : node.count;
-      const msg = `${isRootKind ? 'ドライブ' : 'フォルダ'}「${node.name}」（写真 ${count}枚）をライブラリから除外しますか？\n\n（※PC上の実ファイル本体は削除されません）`;
-      if (!confirm(msg)) return;
+      const kindLabel = isRootKind ? 'ドライブ' : 'フォルダ';
+      const confirmed = typeof showConfirmModal === 'function'
+        ? await showConfirmModal({
+            title: `${kindLabel}の管理解除`,
+            subtitle: 'ライブラリからの登録解除',
+            icon: 'folder',
+            headingPrefix: kindLabel,
+            targetName: node.name,
+            headingSuffix: `（写真 ${(count || 0).toLocaleString()} 枚）をライブラリから外しますか？`,
+            subPath: node.fullPath,
+            descriptionLines: [
+              'ライブラリ上の登録（サムネイル・タグ情報）が解除されます。',
+              '※ PC上の実ファイル本体は一切削除されません。',
+            ],
+            confirmText: '管理から外す',
+            confirmVariant: 'danger',
+          })
+        : confirm(`${kindLabel}「${node.name}」（写真 ${count}枚）をライブラリから除外しますか？\n\n（※PC上の実ファイル本体は削除されません）`);
+      if (!confirmed) return;
 
       try {
         const res = await fetch('/api/folders', {
@@ -4036,8 +4124,24 @@ function setupEventListeners() {
     closeFolderContextMenu();
     if (!node) return;
 
-    const msg = `フォルダ「${node.name}」を管理対象外（除外）に設定しますか？\n\n・ライブラリから登録解除されます\n・今後、親フォルダを再スキャンしても自動登録されなくなります\n（※PC上の実ファイル本体は削除されません）`;
-    if (!confirm(msg)) return;
+    const confirmed = typeof showConfirmModal === 'function'
+      ? await showConfirmModal({
+          title: '管理対象外（除外）に設定',
+          subtitle: '自動スキャン対象からの除外',
+          icon: 'folder',
+          targetName: node.name,
+          headingSuffix: 'を管理対象外（除外）に設定しますか？',
+          subPath: node.fullPath,
+          descriptionLines: [
+            '・ライブラリから登録解除されます',
+            '・今後、親フォルダを再スキャンしても自動登録されなくなります',
+            '※ PC上の実ファイル本体は一切削除されません。',
+          ],
+          confirmText: '除外に設定する',
+          confirmVariant: 'danger',
+        })
+      : confirm(`フォルダ「${node.name}」を管理対象外（除外）に設定しますか？\n\n・ライブラリから登録解除されます\n・今後、親フォルダを再スキャンしても自動登録されなくなります\n（※PC上の実ファイル本体は削除されません）`);
+    if (!confirmed) return;
 
     try {
       const res = await fetch('/api/folders/ignore', {
@@ -4275,6 +4379,14 @@ function setupEventListeners() {
     if (elements.registerFolderModal && elements.registerFolderModal.style.display !== 'none') {
       if (e.key === 'Escape' && typeof closeRegisterFolderModal === 'function') {
         closeRegisterFolderModal(null);
+      }
+      return;
+    }
+
+    // 汎用確認モーダル表示中
+    if (elements.commonConfirmModal && elements.commonConfirmModal.style.display !== 'none') {
+      if (e.key === 'Escape' && typeof closeConfirmModal === 'function') {
+        closeConfirmModal(false);
       }
       return;
     }
@@ -4939,7 +5051,7 @@ async function uploadPhotos(fileList) {
   const validExtPattern = /\.(jpg|jpeg|png|webp|bmp|gif|tiff|tif|heic|heif|avif|rw2|arw|cr2|cr3|nef|nrw|dng|raf|orf|pef|srw|x3f|xmp|pp3|arp|dop|on1|cos|nksc|spd)$/i;
   const validFiles = Array.from(fileList).filter(f => (f.type && f.type.startsWith('image/')) || validExtPattern.test(f.name || ''));
   if (validFiles.length === 0) {
-    alert('画像ファイル（JPEG, PNG, WebP等）が選択されていません');
+    showToast('画像ファイル（JPEG, PNG, WebP等）が選択されていません', 'warning');
     return;
   }
 
@@ -5662,9 +5774,24 @@ function renderManagedMediaModalList() {
     unmanageBtn.style.cssText = 'font-size:11.5px; padding:4px 10px; color:#ef4444; border-color:rgba(239,68,68,0.35);';
     unmanageBtn.textContent = '一覧から登録解除';
     unmanageBtn.addEventListener('click', async () => {
-      const ok = window.confirm(
-        `メディア「${primaryName} [ID:${shortId}]」の登録（写真インデックス ${v.photo_count} 枚分）を Tetheract Photo Manager の管理対象から解除しますか？\n\n※SDカードやドライブ内の実際の写真ファイルは一切削除されません。`
-      );
+      const ok = typeof showConfirmModal === 'function'
+        ? await showConfirmModal({
+            title: '登録メディアの管理解除',
+            subtitle: 'SDカード・外部メディアの登録解除',
+            icon: 'folder',
+            headingPrefix: 'メディア',
+            targetName: `${primaryName} [ID:${shortId}]`,
+            headingSuffix: `（写真 ${(v.photo_count || 0).toLocaleString()} 枚）を管理対象から解除しますか？`,
+            descriptionLines: [
+              'ライブラリ上の登録インデックスが解除されます。',
+              '※ SDカードやドライブ内の実際の写真ファイルは一切削除されません。',
+            ],
+            confirmText: '登録を解除する',
+            confirmVariant: 'danger',
+          })
+        : window.confirm(
+            `メディア「${primaryName} [ID:${shortId}]」の登録（写真インデックス ${v.photo_count} 枚分）を Tetheract Photo Manager の管理対象から解除しますか？\n\n※SDカードやドライブ内の実際の写真ファイルは一切削除されません。`
+          );
       if (!ok) return;
       try {
         unmanageBtn.disabled = true;
@@ -5752,25 +5879,69 @@ async function checkAndPromptFolderRefresh(folderPath, folderName, node) {
       return;
     }
 
-    // 第1ダイアログ: リフレッシュ提案（子フォルダおよびファイルの増減内訳を表示）
-    const changeDetails = [];
+    // 第1モーダル: リフレッシュ提案（子フォルダおよびファイルの増減内訳を表示）
+    const detailRows = [];
     if (diff.added_folders_count > 0) {
       const names = (diff.added_folders || []).slice(0, 3).join(', ');
       const suffix = diff.added_folders_count > 3 ? ' 他' : '';
-      changeDetails.push(`新規フォルダ: ${diff.added_folders_count}件${names ? ` [${names}${suffix}]` : ''}`);
+      detailRows.push({
+        label: '新規フォルダ:',
+        value: `${diff.added_folders_count} 件`,
+        subText: names ? `[${names}${suffix}]` : '',
+        color: '#22c55e',
+      });
     }
     if (diff.deleted_folders_count > 0) {
       const names = (diff.deleted_folders || []).slice(0, 3).join(', ');
       const suffix = diff.deleted_folders_count > 3 ? ' 他' : '';
-      changeDetails.push(`消失フォルダ: ${diff.deleted_folders_count}件${names ? ` [${names}${suffix}]` : ''}`);
+      detailRows.push({
+        label: '消失フォルダ:',
+        value: `${diff.deleted_folders_count} 件`,
+        subText: names ? `[${names}${suffix}]` : '',
+        color: '#f59e0b',
+      });
     }
-    if (diff.added > 0) changeDetails.push(`新規追加: ${diff.added}枚`);
-    if (diff.deleted > 0) changeDetails.push(`削除・消失: ${diff.deleted}枚`);
-    if (diff.modified > 0) changeDetails.push(`変更: ${diff.modified}枚`);
-    const detailText = changeDetails.length > 0 ? `\n（${changeDetails.join(' / ')}）` : '';
+    if (diff.added > 0) {
+      detailRows.push({
+        label: '新規追加:',
+        value: `${diff.added.toLocaleString()} 枚`,
+        color: '#22c55e',
+      });
+    }
+    if (diff.deleted > 0) {
+      detailRows.push({
+        label: '削除・消失:',
+        value: `${diff.deleted.toLocaleString()} 枚`,
+        color: '#f59e0b',
+      });
+    }
+    if (diff.modified > 0) {
+      detailRows.push({
+        label: '変更・更新:',
+        value: `${diff.modified.toLocaleString()} 枚`,
+        color: '#3b82f6',
+      });
+    }
 
-    const msg1 = `フォルダ「${name}」の内容が更新された可能性があります。${detailText}\n\nライブラリをリフレッシュ（最新化）しますか？`;
-    if (!confirm(msg1)) {
+    const shouldRefresh = typeof showConfirmModal === 'function'
+      ? await showConfirmModal({
+          title: 'フォルダの更新（差分検出）',
+          subtitle: 'フォルダ内の変更をライブラリへ反映',
+          icon: 'folder-refresh',
+          targetName: name,
+          headingSuffix: 'の内容が更新されています',
+          subPath: folderPath,
+          detailRows,
+          descriptionLines: [
+            '変更内容をスキャンして、ライブラリをリフレッシュ（最新化）しますか？',
+          ],
+          cancelText: 'あとで (Esc)',
+          confirmText: 'リフレッシュ（最新化）',
+          confirmVariant: 'primary',
+        })
+      : confirm(`フォルダ「${name}」の内容が更新された可能性があります。\n\nライブラリをリフレッシュ（最新化）しますか？`);
+
+    if (!shouldRefresh) {
       _dismissedFolderDiffSignatures.set(normKey, diffSignature);
       return;
     }
@@ -5786,11 +5957,29 @@ async function checkAndPromptFolderRefresh(folderPath, folderName, node) {
       showToast(`${folderMsg}${diff.added}枚の写真を取り込みました`, 'success');
     }
 
-    // もし削除（見つからない写真）がある場合: 第2ダイアログでリンク解除（リンク消失）確認
+    // もし削除（見つからない写真）がある場合: 第2モーダルでリンク解除（リンク消失）確認
     if (diff.deleted > 0) {
       setTimeout(async () => {
-        const msg2 = `フォルダ「${name}」内に実体ファイルが見つからない写真が ${diff.deleted}枚 あります。\n\n実体へのパス紐付けを解除（リンク消失）しますか？\n※写真のサムネイルやタグ、評価は保持されます。\n※後からクイックアクセスやフォルダツリーの「リンク消失の写真」で確認・完全消去が可能です。\n（「キャンセル」を押すと、パスの紐付けをそのまま残します）`;
-        if (confirm(msg2)) {
+        const shouldUnlink = typeof showConfirmModal === 'function'
+          ? await showConfirmModal({
+              title: '消失写真のリンク解除',
+              subtitle: '実体ファイルが見つからない写真の整理',
+              icon: 'unlink',
+              targetName: name,
+              headingSuffix: `内に実体ファイルが見つからない写真が ${diff.deleted.toLocaleString()} 枚あります`,
+              subPath: folderPath,
+              descriptionLines: [
+                '実体へのパス紐付けを解除（リンク消失状態へ移行）しますか？',
+                '※ 写真のサムネイルやタグ、評価はそのまま保持されます。',
+                '※ 後から「リンク消失の写真」フィルタで確認・完全消去が可能です。',
+              ],
+              cancelText: 'そのまま残す (Esc)',
+              confirmText: 'リンクを解除する',
+              confirmVariant: 'primary',
+            })
+          : confirm(`フォルダ「${name}」内に実体ファイルが見つからない写真が ${diff.deleted}枚 あります。\n\n実体へのパス紐付けを解除（リンク消失）しますか？`);
+
+        if (shouldUnlink) {
           try {
             const cleanRes = await fetch('/api/folders/unlink-missing', {
               method: 'POST',

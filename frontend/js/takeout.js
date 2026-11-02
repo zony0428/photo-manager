@@ -375,9 +375,22 @@
   /**
    * モーダルを閉じる
    */
-  function closeSmartTakeoutModal() {
+  async function closeSmartTakeoutModal() {
     if (isExporting) {
-      if (!confirm('現在テイクアウト処理中です。画面を閉じますか？（処理はバックグラウンドで続行されます）')) {
+      const confirmed = typeof showConfirmModal === 'function'
+        ? await showConfirmModal({
+            title: 'テイクアウト処理中',
+            subtitle: 'バックグラウンド書き出しの確認',
+            icon: 'info',
+            headingText: '現在テイクアウト処理中です。画面を閉じますか？',
+            descriptionLines: [
+              '※ 画面を閉じても書き出し処理はバックグラウンドで続行されます。',
+            ],
+            confirmText: '画面を閉じる',
+            confirmVariant: 'primary',
+          })
+        : confirm('現在テイクアウト処理中です。画面を閉じますか？（処理はバックグラウンドで続行されます）');
+      if (!confirmed) {
         return;
       }
     }

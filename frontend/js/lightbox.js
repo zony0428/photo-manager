@@ -631,7 +631,7 @@ async function addTagToCurrentPhoto(photoId, tag) {
     }
     elements.lightboxNewTagInput.value = '';
   } catch (err) {
-    alert('エラー: ' + err.message);
+    if (typeof showToast === 'function') showToast('エラー: ' + err.message, 'error');
   }
 }
 
@@ -657,7 +657,7 @@ async function removeTagFromCurrentPhoto(photoId, tag) {
       fetchTags();
     }
   } catch (err) {
-    alert('エラー: ' + err.message);
+    if (typeof showToast === 'function') showToast('エラー: ' + err.message, 'error');
   }
 }
 
@@ -697,7 +697,7 @@ async function promoteTagForPhoto(photoId, tag) {
     fetchTags();
     showToast(`「${tag}」を手動タグとして確定しました`, 'success');
   } catch (err) {
-    alert('エラー: ' + err.message);
+    if (typeof showToast === 'function') showToast('エラー: ' + err.message, 'error');
   }
 }
 
@@ -740,7 +740,7 @@ async function triggerAiTagForSinglePhoto(photoId, btnElement) {
       showToast('この写真に該当するタグは見つかりませんでした', 'info');
     }
   } catch (err) {
-    alert('AIタグ付けエラー: ' + err.message);
+    if (typeof showToast === 'function') showToast('AIタグ付けエラー: ' + err.message, 'error');
   } finally {
     if (btnElement) {
       btnElement.disabled = false;

@@ -2556,7 +2556,7 @@ function startInlineRename(pillItem, node) {
         });
       }
     } catch (err) {
-      alert('エラー: ' + err.message);
+      if (typeof showToast === 'function') showToast('エラー: ' + err.message, 'error');
       input.remove();
       nameSpan.style.display = '';
     }
@@ -2628,7 +2628,7 @@ async function deleteTagCompletely(tagPath, photoCount = 0) {
       if (p) showSingleInspector(p);
     }
   } catch (err) {
-    alert('エラー: ' + err.message);
+    if (typeof showToast === 'function') showToast('エラー: ' + err.message, 'error');
   }
 }
 window.deleteTagCompletely = deleteTagCompletely;

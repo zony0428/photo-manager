@@ -564,17 +564,30 @@ function showSingleInspector(photo) {
 
           xmpImportBtn.onclick = async (e) => {
             e.stopPropagation();
-            const confirmLines = [`「${photo.file_name}」のXMPサイドカーから以下の情報を取り込みますか？\n`];
+            const descLines = [];
             if (hasXmpRating) {
               const rawR = xmpInfo.rating.raw_rating !== undefined ? xmpInfo.rating.raw_rating : '?';
               const pmLabel = ratingLabelMap[String(xmpInfo.rating.pm_rating)] || '可';
-              confirmLines.push(`・評価: XMP評価 (${rawR}) → Tetheract 4段階評価「${pmLabel}」`);
+              descLines.push(`・評価: XMP評価 (${rawR}) → Tetheract 4段階評価「${pmLabel}」`);
             }
             if (hasXmpTags) {
               const previewTags = xmpTags.slice(0, 5).join(', ') + (xmpTags.length > 5 ? ' ほか' : '');
-              confirmLines.push(`・タグ (${xmpTags.length}件): ${previewTags}\n  ※ 既存タグと混ざらないよう「XMP/」ルート配下に登録されます`);
+              descLines.push(`・タグ (${xmpTags.length}件): ${previewTags}`);
+              descLines.push('※ 既存タグと混ざらないよう「XMP/」ルート配下に登録されます。');
             }
-            if (!confirm(confirmLines.join('\n'))) return;
+            const confirmed = typeof showConfirmModal === 'function'
+              ? await showConfirmModal({
+                  title: 'XMPサイドカーの取り込み',
+                  subtitle: '外部現像ソフトの評価・タグを取り込み',
+                  icon: 'xmp',
+                  targetName: photo.file_name,
+                  headingSuffix: 'のXMPサイドカーから情報を取り込みますか？',
+                  descriptionLines: descLines,
+                  confirmText: '取り込む',
+                  confirmVariant: 'primary',
+                })
+              : confirm([`「${photo.file_name}」のXMPサイドカーから以下の情報を取り込みますか？`, ...descLines].join('\n'));
+            if (!confirmed) return;
 
             try {
               const res = await fetch(`/api/photo/${photo.id}/import-xmp-metadata`, {
@@ -1071,7 +1084,9 @@ function showSingleInspector(photo) {
             const res = await fetch(`/api/photo/${photo.id}/open-raw`, { method: 'POST' });
             if (!res.ok) {
               const err = await res.json();
-              alert(err.detail || 'RAWファイルを開けませんでした');
+              if (typeof showToast === 'function') {
+                showToast(err.detail || 'RAWファイルを開けませんでした', 'error');
+              }
             }
           } catch (e) {
             console.error('RAWファイルを開く際のエラー:', e);
@@ -2134,7 +2149,7 @@ async function addTagToPhoto(photoId, tag, photoObj = null) {
     }
   } catch (err) {
     console.error('タグ追加エラー:', err);
-    alert('エラー: ' + err.message);
+    if (typeof showToast === 'function') showToast('エラー: ' + err.message, 'error');
   }
 }
 
@@ -2205,7 +2220,7 @@ async function batchToggleTag(tagName, shouldAdd) {
     await Promise.all([fetchPhotos(), fetchTags()]);
   } catch (err) {
     console.error('一括タグ更新エラー:', err);
-    alert('エラー: ' + err.message);
+    if (typeof showToast === 'function') showToast('エラー: ' + err.message, 'error');
     await Promise.all([fetchPhotos(), fetchTags()]);
   }
 }
@@ -2296,7 +2311,7 @@ async function removeTagFromPhoto(photoId, tag, chipEl = null, photoObj = null) 
     }
   } catch (err) {
     console.error('タグ削除エラー:', err);
-    alert('エラー: ' + err.message);
+    if (typeof showToast === 'function') showToast('エラー: ' + err.message, 'error');
     await Promise.all([fetchPhotos(), fetchTags()]);
   }
 }
@@ -2320,7 +2335,7 @@ async function batchRemoveTagFromSelection(tag) {
     clearSelection();
     await Promise.all([fetchPhotos(), fetchTags()]);
   } catch (err) {
-    alert('エラー: ' + err.message);
+    if (typeof showToast === 'function') showToast('エラー: ' + err.message, 'error');
   }
 }
 
@@ -2564,10 +2579,24 @@ function initInspectorEvents() {
       const photo = state.photos.find(p => p.id === pid);
       if (!photo) return;
 
-      const confirmed = confirm(
-        `「${photo.file_name}」のジオタグ情報（緯度・経度・地名）をSQLiteデータベースから削除しますか？\n\n` +
-        `※ 元の写真ファイル（EXIF）は変更されません。`
-      );
+      const confirmed = typeof showConfirmModal === 'function'
+        ? await showConfirmModal({
+            title: 'ジオタグ情報の削除',
+            subtitle: 'データベース上の位置情報をクリア',
+            icon: 'map-pin',
+            targetName: photo.file_name,
+            headingSuffix: 'のジオタグ情報をDBから削除しますか？',
+            descriptionLines: [
+              'SQLiteデータベースから緯度・経度・地名情報を削除します。',
+              '※ 元の写真ファイル（EXIF）は変更されません。',
+            ],
+            confirmText: 'ジオタグを削除',
+            confirmVariant: 'danger',
+          })
+        : confirm(
+            `「${photo.file_name}」のジオタグ情報（緯度・経度・地名）をSQLiteデータベースから削除しますか？\n\n` +
+            `※ 元の写真ファイル（EXIF）は変更されません。`
+          );
       if (!confirmed) return;
 
       try {

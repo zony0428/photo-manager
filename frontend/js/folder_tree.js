@@ -1126,7 +1126,7 @@ function _ftInitPathInput() {
   const btn = elements.folderPathScanBtn;
   if (!input || !btn) return;
 
-  const doScanFromInput = () => {
+  const doScanFromInput = async () => {
     const raw = (input.value || '').trim();
     if (!raw) {
       showToast('フォルダのパスを入力してください', 'warning');
@@ -1135,7 +1135,22 @@ function _ftInitPathInput() {
     }
     // ドライブ直下の警告
     if (/^[a-zA-Z]:\\?$/.test(raw)) {
-      if (!confirm(`「${raw}」はドライブ全体です。配下のすべてのサブフォルダをスキャンすると時間がかかる場合があります。\n\nスキャンを開始しますか？`)) {
+      const confirmed = typeof showConfirmModal === 'function'
+        ? await showConfirmModal({
+            title: 'ドライブ全体のスキャン確認',
+            subtitle: '広範囲のサブフォルダ再帰スキャン',
+            icon: 'folder-refresh',
+            targetName: raw,
+            headingSuffix: 'はドライブ全体です。スキャンを開始しますか？',
+            subPath: raw,
+            descriptionLines: [
+              '配下のすべてのサブフォルダをスキャンするため、時間がかかる場合があります。',
+            ],
+            confirmText: 'スキャンを開始',
+            confirmVariant: 'primary',
+          })
+        : confirm(`「${raw}」はドライブ全体です。配下のすべてのサブフォルダをスキャンすると時間がかかる場合があります。\n\nスキャンを開始しますか？`);
+      if (!confirmed) {
         return;
       }
     }

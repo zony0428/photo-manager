@@ -789,7 +789,22 @@ async function deleteEmptyStorageFolder(folderPath, folderName = '') {
   if (typeof closeFolderContextMenu === 'function') closeFolderContextMenu();
   if (!folderPath) return;
 
-  const ok = window.confirm(`空のサブフォルダ「${folderName || folderPath}」を削除しますか？\n（※フォルダ内に写真がある場合は削除されません）`);
+  const ok = typeof showConfirmModal === 'function'
+    ? await showConfirmModal({
+        title: '空フォルダの削除',
+        subtitle: 'storage 内の空サブフォルダ削除',
+        icon: 'trash',
+        headingPrefix: '空のサブフォルダ',
+        targetName: folderName || folderPath,
+        headingSuffix: 'を削除しますか？',
+        subPath: folderPath,
+        descriptionLines: [
+          '※ フォルダ内に写真がある場合は削除されません。',
+        ],
+        confirmText: '削除する',
+        confirmVariant: 'danger',
+      })
+    : window.confirm(`空のサブフォルダ「${folderName || folderPath}」を削除しますか？\n（※フォルダ内に写真がある場合は削除されません）`);
   if (!ok) return;
 
   try {

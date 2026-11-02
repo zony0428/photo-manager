@@ -1599,6 +1599,138 @@
       'Between tag groups: OR search (match any group)\nClick to switch back to "AND"',
     '異グループ間: AND検索（両方のタグ条件に一致）\nクリックで「または (OR)」に切り替える':
       'Between tag groups: AND search (match all groups)\nClick to switch to "OR"',
+
+    // --- フォルダ管理登録モーダル & 汎用確認モーダル (commonConfirmModal) ---
+    '確認': 'Confirm',
+    '操作の確認': 'Confirm Action',
+    'フォルダの管理登録': 'Register Folder to Library',
+    'ライブラリへのフォルダ追加': 'Add folder to library management',
+    '直下のみ': 'Direct Only',
+    '子フォルダを含む': 'Include Subfolders',
+    '登録範囲を選択してください。サブフォルダの写真もまとめて登録する場合は「子フォルダを含む」を選択してください。':
+      'Select the scan scope. Choose "Include Subfolders" to also register photos inside nested subfolders.',
+    '直下の画像ファイル: なし（子フォルダに写真がある場合があります）':
+      'Direct image files: None (subfolders may contain photos)',
+    'フォルダの更新（差分検出）': 'Folder Updated (Changes Detected)',
+    'フォルダ内の変更をライブラリへ反映': 'Sync folder changes to library',
+    'の内容が更新されています': ' has been updated',
+    '新規フォルダ:': 'Added Folders:',
+    '消失フォルダ:': 'Missing Folders:',
+    '新規追加:': 'Added Photos:',
+    '削除・消失:': 'Missing / Moved:',
+    '変更・更新:': 'Modified:',
+    '変更内容をスキャンして、ライブラリをリフレッシュ（最新化）しますか？':
+      'Scan detected changes and refresh the library view?',
+    'あとで (Esc)': 'Later (Esc)',
+    'リフレッシュ（最新化）': 'Refresh Library',
+    '消失写真のリンク解除': 'Unlink Missing Photos',
+    '実体ファイルが見つからない写真の整理': 'Clean up links for missing source files',
+    '実体へのパス紐付けを解除（リンク消失状態へ移行）しますか？':
+      'Unlink missing file paths (move to Unlinked Photos)?',
+    '※ 写真のサムネイルやタグ、評価はそのまま保持されます。':
+      '* Cached thumbnails, tags, and ratings will be preserved.',
+    '※ 後から「リンク消失の写真」フィルタで確認・完全消去が可能です。':
+      '* You can review or permanently purge them later under "Unlinked Photos".',
+    'そのまま残す (Esc)': 'Keep Links (Esc)',
+    'リンクを解除する': 'Unlink Missing',
+    'リンク消失写真の完全消去': 'Purge Unlinked Photos',
+    'データベースからのレコード一括消去': 'Permanently delete unlinked records from DB',
+    'リンク消失しているすべての写真レコードをDBから完全に消去しますか？':
+      'Permanently purge all unlinked photo records from the database?',
+    'サムネイル・タグ・評価を含むすべての登録情報がデータベースから削除されます。':
+      'All cached thumbnails, tags, and ratings for unlinked photos will be removed from the DB.',
+    '※ この操作は取り消せません。': '* This action cannot be undone.',
+    '完全に消去する': 'Purge All',
+    'ドライブ全体のスキャン確認': 'Confirm Full Drive Scan',
+    '広範囲のサブフォルダ再帰スキャン': 'Recursive scan across entire drive',
+    'はドライブ全体です。スキャンを開始しますか？': ' is an entire drive. Start recursive scan?',
+    '配下のすべてのサブフォルダをスキャンするため、時間がかかる場合があります。':
+      'Scanning all subfolders on the drive may take some time.',
+    'スキャンを開始': 'Start Scan',
+    'フォルダのリフレッシュ': 'Refresh Folder',
+    '再スキャンと移動・削除写真の整理': 'Rescan folder and clean up moved/deleted photos',
+    'をリフレッシュ（最新化）しますか？': ' — Refresh this folder?',
+    '配下の写真フォルダを再スキャンし、PC上から移動・削除された写真をライブラリから削除（リフレッシュ）します。':
+      'Rescans subfolders and removes records of moved or deleted files from the library.',
+    '※ PC上の実ファイル本体は削除されません。': '* Original files on your PC are never deleted.',
+    '※ PC上の実ファイル本体は一切削除されません。': '* Original files on your PC are never deleted.',
+    'リフレッシュ実行': 'Refresh Now',
+    'ローカルAI（CLIP Vision）による被写体・シーン認識': 'Subject & scene recognition by Local AI (CLIP Vision)',
+    '配下の写真にAIタグを付与しますか？': ' — Auto-tag photos in this folder with AI?',
+    '※ すでにタグ付け済みの写真はスキップされます。': '* Already tagged photos will be skipped.',
+    '※ すべての推論処理はPC内部（オフライン）で完結します。': '* All AI inference runs locally offline on your PC.',
+    'AIタグ付けを開始': 'Start AI Tagging',
+    'AIカラータグの再判定': 'Re-evaluate AI Color Tags',
+    '12色カラーパレットの再解析': 'Re-analyze 12-color palette tags',
+    '配下の写真に対してAIカラータグ（12色）を再判定しますか？': ' — Re-evaluate AI color tags (12 colors)?',
+    '※ 手動タグおよびAI被写体タグは保護されます。': '* Manual tags and AI subject tags are preserved.',
+    'カラー再判定を開始': 'Re-evaluate Colors',
+    'フォルダの管理解除': 'Unmanage Folder',
+    'ドライブの管理解除': 'Unmanage Drive',
+    'ライブラリからの登録解除': 'Remove registration from library',
+    'ライブラリ上の登録（サムネイル・タグ情報）が解除されます。':
+      'Library registration (thumbnails & tags) for this folder will be removed.',
+    '管理から外す': 'Unmanage',
+    '管理対象外（除外）に設定': 'Set Folder as Ignored',
+    '自動スキャン対象からの除外': 'Exclude folder from scanning',
+    'を管理対象外（除外）に設定しますか？': ' — Set this folder as Ignored?',
+    '・ライブラリから登録解除されます': '• Unregisters this folder from the library',
+    '・今後、親フォルダを再スキャンしても自動登録されなくなります':
+      '• Prevents automatic registration when scanning parent folders',
+    '除外に設定する': 'Ignore Folder',
+    '登録メディアの管理解除': 'Unmanage Registered Media',
+    'SDカード・外部メディアの登録解除': 'Remove SD card / external drive from library',
+    'ライブラリ上の登録インデックスが解除されます。': 'Removes the catalog index for this media from the library.',
+    '※ SDカードやドライブ内の実際の写真ファイルは一切削除されません。':
+      '* Actual photo files on the SD card or drive are never deleted.',
+    '登録を解除する': 'Unmanage Media',
+    'XMPサイドカーの取り込み': 'Import XMP Sidecar',
+    '外部現像ソフトの評価・タグを取り込み': 'Import rating & tags from XMP sidecar',
+    'のXMPサイドカーから情報を取り込みますか？': ' — Import metadata from XMP sidecar?',
+    '※ 既存タグと混ざらないよう「XMP/」ルート配下に登録されます。':
+      '* Tags will be registered under the "XMP/" root to keep them organized.',
+    '取り込む': 'Import',
+    'ジオタグ情報の削除': 'Clear Geotag Info',
+    'データベース上の位置情報をクリア': 'Clear GPS coordinates from database',
+    'のジオタグ情報をDBから削除しますか？': ' — Clear GPS data from database?',
+    'SQLiteデータベースから緯度・経度・地名情報を削除します。':
+      'Removes latitude, longitude, and location names from the SQLite database.',
+    '※ 元の写真ファイル（EXIF）は変更されません。': '* Original photo file (EXIF) is not modified.',
+    'ジオタグを削除': 'Clear Geotag',
+    '写真をライブラリから削除': 'Remove Photos from Library',
+    '選択した写真のDB登録を解除': 'Unregister selected photos from database',
+    '※ 写真ファイル自体は削除されません。': '* Original photo files on disk are never deleted.',
+    '※ タグ・評価・サムネイルの情報は失われます。': '* Tags, ratings, and thumbnails in DB will be removed.',
+    '※ 同じフォルダを再スキャンすると再登録されます。': '* Rescanning the folder will re-register the photos.',
+    'ライブラリから削除': 'Remove from Library',
+    'スマホGPSの一括準用': 'Batch Copy Phone GPS',
+    '撮影時刻が近い写真のジオタグをコピー': 'Infer GPS from photos taken around the same time',
+    '撮影時刻が近いスマホ写真のジオタグ（±1時間以内）を検索して適用します。':
+      'Finds and applies GPS coordinates from smartphone photos taken within ±1 hour.',
+    '※ 元の写真ファイル（EXIF）は書き換えません。': '* Original photo files (EXIF) are not modified.',
+    '※ 準用されたジオタグは後から解除することも可能です。': '* Inferred geotags can be cleared anytime later.',
+    '一括準用する': 'Apply GPS',
+    'ジオタグ情報の一括削除': 'Batch Clear Geotags',
+    '選択写真のDB上の位置情報をクリア': 'Clear GPS data of selected photos from DB',
+    'SQLiteデータベース上の緯度・経度・地名情報を一括削除します。':
+      'Batch removes latitude, longitude, and location names from the SQLite database.',
+    '※ ジオタグがついていない写真はスキップされます。': '* Photos without geotags will be skipped.',
+    '一括削除する': 'Clear All GPS',
+    '保存済みセットの削除': 'Delete Saved Preset',
+    'フィルタプリセットの削除': 'Remove saved filter preset',
+    'を削除しますか？': ' — Delete this item?',
+    '保存された絞り込み条件セットを削除します（写真やタグ自体は変更されません）。':
+      'Deletes the saved filter preset (photos and tags are untouched).',
+    '削除する': 'Delete',
+    '空フォルダの削除': 'Delete Empty Folder',
+    'storage 内の空サブフォルダ削除': 'Delete empty subfolder in storage',
+    '※ フォルダ内に写真がある場合は削除されません。': '* Folder will not be deleted if it contains any photos.',
+    'テイクアウト処理中': 'Takeout in Progress',
+    'バックグラウンド書き出しの確認': 'Export continues in background',
+    '現在テイクアウト処理中です。画面を閉じますか？': 'Takeout export is currently running. Close this window?',
+    '※ 画面を閉じても書き出し処理はバックグラウンドで続行されます。':
+      '* Export processing will continue in the background after closing.',
+    '画面を閉じる': 'Close Window',
   };
 
   const MONTH_NAMES_SHORT = [
@@ -1828,6 +1960,14 @@
     [/^…他\s*(\d+)\s*枚$/, '...and $1 more'],
     [/^XMPサイドカーから取り込み\s*\((.+)\)$/, 'Import from XMP sidecar ($1)'],
     [/^(?:📥\s*)?XMPからメタデータを取り込みました（タグ\s*(\d+)件）$/, 'Imported metadata from XMP ($1 tags)'],
+    [/^直下の画像ファイル数:\s*([\d,]+)\s*枚$/, 'Direct image files: $1 shots'],
+    [/^内に実体ファイルが見つからない写真が\s*([\d,]+)\s*枚あります$/, ' has $1 missing source files'],
+    [/^（写真\s*([\d,]+)\s*枚）をライブラリから外しますか？$/, ' ($1 shots) — Unmanage from library?'],
+    [/^（写真\s*([\d,]+)\s*枚）を管理対象から解除しますか？$/, ' ($1 shots) — Unmanage from library?'],
+    [/^選択中の\s*([\d,]+)\s*枚をライブラリから削除しますか？（スタック内の写真\s*([\d,]+)\s*枚も含みます）$/, 'Remove $1 selected photos from library? (Includes $2 stacked frames)'],
+    [/^選択中の\s*([\d,]+)\s*枚をライブラリから削除しますか？$/, 'Remove $1 selected photos from library?'],
+    [/^選択中の\s*([\d,]+)\s*枚（ジオタグなし）にスマホ写真のGPSを一括準用しますか？$/, 'Apply phone GPS (±1h) to $1 selected photos without geotags?'],
+    [/^選択中の\s*([\d,]+)\s*枚からDB上のジオタグ情報を一括削除しますか？$/, 'Clear DB geotags from $1 selected photos?'],
   ];
 
   /**

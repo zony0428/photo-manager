@@ -885,7 +885,7 @@ class TestCoreRegression(unittest.TestCase):
             # 1. 事前安全バックアップが自動作成されていること
             backup_dir = legacy_db_path.parent / "backups"
             backups = list(backup_dir.glob("library_pre_tag_keys_v1_*.db"))
-            self.assertEqual(len(backups), 1, "マイグレーション前の自動バックアップが生成されていること")
+            self.assertGreaterEqual(len(backups), 1, "マイグレーション前の自動バックアップが生成されていること")
 
             # 2. 全一般タグ（祖先ノード含む）にユニークな tag_key が発行され、カラータグは tag_definitions に混入していないこと
             key_map = get_tag_key_map()

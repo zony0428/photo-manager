@@ -1022,13 +1022,28 @@ async function deleteSelectedPhotos() {
 
   const selectedCount = state.selectedPhotoIds.size;
   const extraCount = targetIds.size - selectedCount;
-  const confirmed = confirm(
-    `選択中の ${selectedCount} 枚をライブラリから削除しますか？\n` +
-    (extraCount > 0 ? `（スタック内の写真 ${extraCount} 枚も含みます）\n` : '') +
-    `\n※ 写真ファイル自体は削除されません。\n` +
-    `※ タグ・評価・サムネイルの情報は失われます。\n` +
-    `※ 同じフォルダを再スキャンすると再登録されます。`
-  );
+  const confirmed = typeof showConfirmModal === 'function'
+    ? await showConfirmModal({
+        title: '写真をライブラリから削除',
+        subtitle: '選択した写真のDB登録を解除',
+        icon: 'trash',
+        headingText: `選択中の ${selectedCount.toLocaleString()} 枚をライブラリから削除しますか？` +
+          (extraCount > 0 ? `（スタック内の写真 ${extraCount.toLocaleString()} 枚も含みます）` : ''),
+        descriptionLines: [
+          '※ 写真ファイル自体は削除されません。',
+          '※ タグ・評価・サムネイルの情報は失われます。',
+          '※ 同じフォルダを再スキャンすると再登録されます。',
+        ],
+        confirmText: 'ライブラリから削除',
+        confirmVariant: 'danger',
+      })
+    : confirm(
+        `選択中の ${selectedCount} 枚をライブラリから削除しますか？\n` +
+        (extraCount > 0 ? `（スタック内の写真 ${extraCount} 枚も含みます）\n` : '') +
+        `\n※ 写真ファイル自体は削除されません。\n` +
+        `※ タグ・評価・サムネイルの情報は失われます。\n` +
+        `※ 同じフォルダを再スキャンすると再登録されます。`
+      );
   if (!confirmed) return;
 
   try {
@@ -1152,12 +1167,26 @@ async function executeBatchInferGps() {
   const photoIds = Array.from(state.selectedPhotoIds);
   if (photoIds.length === 0) return;
 
-  const confirmed = confirm(
-    `選択中の ${photoIds.length} 枚の写真のうち、ジオタグがない写真に対して\n` +
-    `撮影時刻が近いスマホ写真のジオタグ（±1時間以内）を一括準用しますか？\n\n` +
-    `※ 元の写真ファイル（EXIF）は書き換えません。\n` +
-    `※ 準用されたジオタグは後から解除することも可能です。`
-  );
+  const confirmed = typeof showConfirmModal === 'function'
+    ? await showConfirmModal({
+        title: 'スマホGPSの一括準用',
+        subtitle: '撮影時刻が近い写真のジオタグをコピー',
+        icon: 'map-pin',
+        headingText: `選択中の ${photoIds.length.toLocaleString()} 枚（ジオタグなし）にスマホ写真のGPSを一括準用しますか？`,
+        descriptionLines: [
+          '撮影時刻が近いスマホ写真のジオタグ（±1時間以内）を検索して適用します。',
+          '※ 元の写真ファイル（EXIF）は書き換えません。',
+          '※ 準用されたジオタグは後から解除することも可能です。',
+        ],
+        confirmText: '一括準用する',
+        confirmVariant: 'primary',
+      })
+    : confirm(
+        `選択中の ${photoIds.length} 枚の写真のうち、ジオタグがない写真に対して\n` +
+        `撮影時刻が近いスマホ写真のジオタグ（±1時間以内）を一括準用しますか？\n\n` +
+        `※ 元の写真ファイル（EXIF）は書き換えません。\n` +
+        `※ 準用されたジオタグは後から解除することも可能です。`
+      );
   if (!confirmed) return;
 
   if (typeof showToast === 'function') {
@@ -1202,11 +1231,25 @@ async function executeBatchClearGps() {
   const photoIds = Array.from(state.selectedPhotoIds);
   if (photoIds.length === 0) return;
 
-  const confirmed = confirm(
-    `選択中の ${photoIds.length} 枚の写真から、SQLiteデータベース上のジオタグ情報（緯度・経度・地名）を一括削除しますか？\n\n` +
-    `※ 元の写真ファイル（EXIF）は変更されません。\n` +
-    `※ ジオタグがついていない写真はスキップされます。`
-  );
+  const confirmed = typeof showConfirmModal === 'function'
+    ? await showConfirmModal({
+        title: 'ジオタグ情報の一括削除',
+        subtitle: '選択写真のDB上の位置情報をクリア',
+        icon: 'map-pin',
+        headingText: `選択中の ${photoIds.length.toLocaleString()} 枚からDB上のジオタグ情報を一括削除しますか？`,
+        descriptionLines: [
+          'SQLiteデータベース上の緯度・経度・地名情報を一括削除します。',
+          '※ 元の写真ファイル（EXIF）は変更されません。',
+          '※ ジオタグがついていない写真はスキップされます。',
+        ],
+        confirmText: '一括削除する',
+        confirmVariant: 'danger',
+      })
+    : confirm(
+        `選択中の ${photoIds.length} 枚の写真から、SQLiteデータベース上のジオタグ情報（緯度・経度・地名）を一括削除しますか？\n\n` +
+        `※ 元の写真ファイル（EXIF）は変更されません。\n` +
+        `※ ジオタグがついていない写真はスキップされます。`
+      );
   if (!confirmed) return;
 
   if (typeof showToast === 'function') {
