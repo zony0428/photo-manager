@@ -291,13 +291,13 @@ def main() -> None:
 
     # 1. サーバー立ち上がり待機後にブラウザ/アプリウィンドウを起動するスレッド
     def _delayed_launch():
-        # サーバーがポートを開くまでポーリング待機（最大10秒、0.2秒刻み）
-        for _ in range(50):
+        # サーバーがポートを開くまでポーリング待機（初回大規模DBマイグレーション等を考慮し最大180秒、0.2秒刻み）
+        for _ in range(900):
             time.sleep(0.2)
             if is_port_in_use(PORT, HOST):
-                break
-        time.sleep(0.4)
-        launch_app_window()
+                time.sleep(0.4)
+                launch_app_window()
+                return
 
     launcher_thread = threading.Thread(target=_delayed_launch, daemon=True, name="WindowLauncher")
     launcher_thread.start()
