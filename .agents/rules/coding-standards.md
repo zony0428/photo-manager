@@ -168,7 +168,7 @@ def get_starred_photos(min_rating: int = 1):
 
 ---
 
-## 6. Karpathy LLM ガイドライン（AI行動規範）
+## 7. Karpathy LLM ガイドライン（AI行動規範）
 
 1. **シンプル第一 (Simplicity First)**:
    - 問題を解決する最小限のコードを書く。

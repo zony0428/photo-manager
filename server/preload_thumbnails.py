@@ -37,7 +37,8 @@ def _process_single_thumbnail(row: Dict[str, Any]) -> Optional[Tuple[int, bytes,
     photo_id = row["id"]
     file_path_str = row["file_path"]
     try:
-        target_path, is_online = resolve_portable_path(file_path_str)
+        # 同じドライブ文字に挿さった別SDカードの同名ファイルを誤って読まないよう VSN を必ず渡す
+        target_path, is_online = resolve_portable_path(file_path_str, expected_serial=row.get("volume_serial"))
         if not is_online or not target_path.exists():
             return None
 
@@ -89,7 +90,7 @@ def preload_all_thumbnails(batch_size: int = 50):
             cursor = conn.cursor()
             # 未生成の写真を抽出（非破壊調整値も含める）
             cursor.execute("""
-                SELECT p.id, p.file_path, p.file_name, p.file_size, p.date_taken, p.original_date_taken, p.is_raw,
+                SELECT p.id, p.file_path, p.file_name, p.file_size, p.date_taken, p.original_date_taken, p.is_raw, p.volume_serial,
                        p.rotation, p.fine_angle, p.crop_x, p.crop_y, p.crop_w, p.crop_h,
                        p.brightness, p.contrast, p.saturation
                 FROM photos p
@@ -119,7 +120,7 @@ def preload_all_thumbnails(batch_size: int = 50):
             if dt and sz > 0:
                 dup_thumb = find_existing_thumbnail_for_duplicate(file_size=sz, date_taken=dt, exclude_photo_id=p_id)
                 if dup_thumb:
-                    target_path, _ = resolve_portable_path(row["file_path"])
+                    target_path, _ = resolve_portable_path(row["file_path"], expected_serial=row.get("volume_serial"))
                     fh = compute_thumbnail_hash(str(target_path))
                     cloned_batch.append((p_id, dup_thumb["data"], dup_thumb["width"], dup_thumb["height"], fh))
                     continue

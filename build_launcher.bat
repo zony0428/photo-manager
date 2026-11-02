@@ -14,12 +14,18 @@ if not exist "%CSC%" (
 )
 
 echo [INFO] Compiling launcher using %CSC%...
-"%CSC%" /target:winexe /optimize+ /win32icon:frontend\favicon.ico /out:Tetheract.exe launcher\Launcher.cs
+if exist "%~dp0PhotoManager.exe" del /f /q "%~dp0PhotoManager.exe" >nul 2>&1
+if exist "%~dp0Tetheract.exe" del /f /q "%~dp0Tetheract.exe" >nul 2>&1
+"%CSC%" /nologo /target:winexe /optimize+ /win32icon:"%~dp0frontend\favicon.ico" /out:"%~dp0Tetheract.exe" "%~dp0launcher\Launcher.cs"
 
 if errorlevel 1 (
     echo [ERROR] Build failed.
     pause
     exit /b 1
+)
+
+if exist "%~dp0python\python.exe" (
+    "%~dp0python\python.exe" -c "import pathlib, run; run.refresh_windows_exe_icon(pathlib.Path('Tetheract.exe'))" >nul 2>&1
 )
 
 echo [SUCCESS] Tetheract.exe created successfully.

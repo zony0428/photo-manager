@@ -51,7 +51,7 @@
 ### CSS モジュール (`frontend/css/` — カスケード順序通りに `<link>` 読込)
 | スタイルシート | 役割・担当コンポーネント |
 |---|---|
-| `frontend/css/style.css` | テーマ変数（和紙 `paper` / 夜墨 `sumi`）、リセット、上部ヘッダーツールバー、左サイドバー（アコーディオン、タイムライン、フォルダツリー、タグツリー、`📊 枚数順` トグル、カラーパレット） |
+| `frontend/css/style.css` | テーマ変数（`data-scheme`: `tetheract-d` / `tetheract-l` / `sumi` / `paper`）、リセット、上部ヘッダーツールバー、左サイドバー（アコーディオン、タイムライン、フォルダツリー、タグツリー、`📊 枚数順` トグル、カラーパレット） |
 | `frontend/css/grid-lightbox.css` | メインコンテンツエリア、写真グリッド（標準・びっしり・マウント・クリーン表示）、スキャンモーダル、ライトボックス全画面ビュー |
 | `frontend/css/selection-menu.css` | マルチ選択チェックボックス、右クリックコンテキストメニュー（#contextMenu）、フォルダ右クリックメニュー（#folderContextMenu） |
 | `frontend/css/inspector.css` | 右インスペクタ・ペイン、露出ブラケット・連写スタックバー、RAWバッジ、GPSミニマップ、評価フィルタトグル |
@@ -60,7 +60,7 @@
 | `frontend/css/histogram.css` | オンデマンドRGB・輝度ヒストグラムウィジェット |
 | `frontend/css/compare.css` | 2枚並列比較ビュー (`#compareModal`) |
 | `frontend/css/ui-unify.css` | UI形状3分類（器=`2px`、操作=`5px`、表示ピル=`999px`）＆ 操作3タイプ（単発A・トグルB・択一セレクトC）統一ルール |
-| `frontend/css/mobile.css` | スマホ専用画面 (`mobile.html` / `PhotoManager_Mobile.html`) 用スタイル |
+| `frontend/css/mobile.css` | スマホ専用画面 (`mobile.html` / `Tetheract_Mobile.html`) 用スタイル |
 
 ---
 
@@ -228,15 +228,15 @@ ONNX Runtime と CLIP モデルによるローカル画像分類・被写体自�
 
 ## 13. Android / スマホ専用UI & ハイブリッドDB連携 (Mobile Viewer & Offline DB Sync)
 
-スマートフォン（Android）からのWi-Fi直結リアルタイム閲覧・選別、および外出先での完全インライン単体HTML (`PhotoManager_Mobile.html`) ＋ USB内 `cache/library.db` 直接読込（WebAssembly SQLite によるファイルロック完全回避）と差分同期機能。
+スマートフォン（Android）からのWi-Fi直結リアルタイム閲覧・選別、および外出先での完全インライン単体HTML (`Tetheract_Mobile.html`) ＋ USB内 `cache/library.db` 直接読込（WebAssembly SQLite によるファイルロック完全回避）と差分同期機能。
 
 | 項目 | 内容 |
 |---|---|
-| **UI要素 (HTML)** | **スマホ専用画面**: `frontend/mobile.html` / 単体完結版 `PhotoManager_Mobile.html` (`#mPhotoGrid`, `#mViewerModal`, `#mDrawer`, `#mInfoSheet`, `#mDbSyncOverlay`)<br>**PC側連携モーダル**: `frontend/index.html` (`#openMobileModalBtn`, `#mobileConnectModal`, `#mobileUrlsContainer`, `#mobileDetectedSyncBox`, `#pasteMobileSyncJsonBtn`, `#pickMobileSyncFileBtn`) |
+| **UI要素 (HTML)** | **スマホ専用画面**: `frontend/mobile.html` / 単体完結版 `Tetheract_Mobile.html` (`#mPhotoGrid`, `#mViewerModal`, `#mDrawer`, `#mInfoSheet`, `#mDbSyncOverlay`)<br>**PC側連携モーダル**: `frontend/index.html` (`#openMobileModalBtn`, `#mobileConnectModal`, `#mobileUrlsContainer`, `#mobileDetectedSyncBox`, `#pasteMobileSyncJsonBtn`, `#pickMobileSyncFileBtn`) |
 | **CSS** | `frontend/css/mobile.css` (Hinomaru Ink 夜墨・和紙対応モバイルUI、親指ドック、ボトムシート、セーフエリア対応) |
 | **フロントエンド (JS)** | `frontend/js/mobile.js`<br>・`tryConnectServer()` / `ensureSqlJsLoaded()` / `loadLocalSqliteFile(file)`: `server` モードと `localdb` (`sql.js` WebAssembly・Base64 `wasmBinary` 直接展開対応) モードの自動切替とメモリ展開、`_safeGetStorage` による `content://` 保護<br>・`getMobileThumbnailUrl(photo)`: サーバーサムネイルURLまたは `thumbnails.data` BLOB からの `ObjectURL` 生成＆キャッシュ<br>・`rateCurrentViewerPhoto()` / `setupViewerTouchGestures()`: 親指ワンタップ4段階評価（自動次送り連動）、左右スワイプ送り、ダブルタップズーム<br>・`exportSyncJsonFile()` / `shareSyncJsonFile()` / `copySyncJsonToClipboard()` / `pushPendingChangesToServer()`: `mobile_sync.json` 出力（Data URI対応）・OS共有・コピー・Wi-Fi直接反映<br>`frontend/js/common.js`<br>・`openMobileModal()` / `loadMobileConnectionInfo()` / `applyDetectedMobileSync()` / `importMobileSyncJsonFile()` / `importMobileSyncFromClipboard()`: PC側からの接続URL表示・差分インポート制御 |
-| **単体HTML / WASM資産** | `PhotoManager_Mobile.html` (自動生成単体ファイル), `server/mobile_bundle.py`, `frontend/vendor/sqljs/sql-wasm.js`, `frontend/vendor/sqljs/sql-wasm.wasm` |
-| **APIエンドポイント** | `GET /m` (`mobile.html` エントリ)<br>`GET /api/mobile/standalone` (`PhotoManager_Mobile.html` ダウンロード配信)<br>`GET /api/mobile/info` (LAN/Tailscale接続URL一覧、DBサイズ、未反映 `mobile_sync.json` 自動検知)<br>`POST /api/mobile/sync-import` (評価・タグ差分のサニタイズ＆3段階フォールバック照合マージ) |
+| **単体HTML / WASM資産** | `Tetheract_Mobile.html` (自動生成単体ファイル), `server/mobile_bundle.py`, `frontend/vendor/sqljs/sql-wasm.js`, `frontend/vendor/sqljs/sql-wasm.wasm` |
+| **APIエンドポイント** | `GET /m` (`mobile.html` エントリ)<br>`GET /api/mobile/standalone` (`Tetheract_Mobile.html` ダウンロード配信)<br>`GET /api/mobile/info` (LAN/Tailscale接続URL一覧、DBサイズ、未反映 `mobile_sync.json` 自動検知)<br>`POST /api/mobile/sync-import` (評価・タグ差分のサニタイズ＆3段階フォールバック照合マージ) |
 | **バックエンド (Python)** | `server/mobile_bundle.py`: `build_standalone_mobile_html()`, `ensure_standalone_mobile_html()`<br>`server/app.py`: `mobile_app_entry()`, `api_mobile_standalone()`, `api_mobile_info()`, `api_mobile_sync_import()`, `_sanitize_mobile_tag()`<br>`server/lan_access.py`: `is_host_header_allowed()` (DNS Rebinding防止), `is_lan_path_allowed()` (LANホワイトリスト), トークン認証・Cookie管理, `enable_lan_listeners()`, 30分アイドル自動待受停止<br>`run.py`: サーバー起動・アプリウィンドウ立ち上げ |
 | **関連ナレッジ** | `mobile-hybrid-architecture.md` |
 

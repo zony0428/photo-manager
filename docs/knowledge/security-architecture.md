@@ -67,8 +67,9 @@ Photo Manager は、ローカルPC上で高速に動作するスタンドアロ�
 
 ### Layer 2: Origin ヘッダ検証 (server/app.py)
 外部Webサイトからの非同期リクエスト（`fetch`, `XMLHttpRequest`）やフォーム送信には `Origin` ヘッダが付与される。
-- `Origin` が存在する場合、それが現在のサーバーURL（`http://127.0.0.1:8088`, `http://localhost:8088`, LAN IP）と一致するか照合する。
-- 外部サイト（`https://evil.com` 等）や `Origin: null` からのリクエストは直ちに `HTTP 403 Forbidden` で遮断する。
+- `Origin` が存在する場合、ループバック（`127.0.0.1` / `localhost` / `[::1]`）か、リクエストの `Host` ヘッダと一致する同一オリジン（スマホ画面を PC の LAN IP から配信した場合など）のみ許可する。
+- プライベートLANのIP帯を一括許可してはならない（LAN上の他ホストのページから `127.0.0.1` 宛ての破壊系APIを呼べてしまうため。v1.1.1 で修正）。
+- 外部サイト（`https://evil.com` 等）からのリクエストは直ちに `HTTP 403 Forbidden` で遮断する。`Origin: null`（単体モバイルHTML）は `_NULL_ORIGIN_ALLOWED_PATHS` の同期系APIのみ許可する。
 
 ### Layer 3: LAN接続トークン認証 (server/lan_access.py)
 同一LAN（家庭内Wi-Fiなど）にいる他端末からの無断アクセスを防ぐため、オンデマンドLAN待受にはセッショントークン認証を導入している。

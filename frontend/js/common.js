@@ -1216,7 +1216,7 @@ async function confirmShutdown() {
         <div style="text-align: center; padding: 24px 0;">
           <div style="font-size: 2.8rem; margin-bottom: 14px; font-weight: 700; color: var(--danger, #ef4444);">!</div>
           <h3 style="font-size: 1.15rem; font-weight: 700; color: var(--text-main); margin-bottom: 8px;">サーバーは正常に停止しました</h3>
-          <p style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.5;">このブラウザタブまたはウィンドウを閉じてください。<br>次回は <strong>PhotoManager.exe</strong> から一瞬で起動できます。</p>
+          <p style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.5;">このブラウザタブまたはウィンドウを閉じてください。<br>次回は <strong>Tetheract.exe</strong> から一瞬で起動できます。</p>
         </div>
       `;
     }

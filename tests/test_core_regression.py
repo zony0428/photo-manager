@@ -85,6 +85,26 @@ class TestCoreRegression(unittest.TestCase):
             self.assertIn("COVERING INDEX", plan_detail)
             self.assertNotIn("USE TEMP B-TREE", plan_detail)
 
+    def test_01b_duplicate_match_query_uses_indexes(self):
+        """重複照合（date_taken OR original_date_taken）と VSN 復帰照合が全件スキャンにならないことを確認"""
+        with get_connection() as conn:
+            plan = " ".join(
+                str(dict(r).get("detail", ""))
+                for r in conn.execute(
+                    "EXPLAIN QUERY PLAN SELECT * FROM photos WHERE file_size = ? AND (date_taken = ? OR original_date_taken = ?) AND id != ?",
+                    (1, "a", "a", 0),
+                ).fetchall()
+            )
+            self.assertIn("MULTI-INDEX OR", plan)
+            self.assertNotIn("SCAN photos", plan)
+            plan_vsn = " ".join(
+                str(dict(r).get("detail", ""))
+                for r in conn.execute(
+                    "EXPLAIN QUERY PLAN SELECT id FROM photos WHERE volume_serial = ? AND file_name = ?", ("A", "B")
+                ).fetchall()
+            )
+            self.assertIn("idx_photos_volume_name", plan_vsn)
+
     def test_02_unlinked_photos_excluded_from_duplicates(self):
         """片方がリンク消失(is_unlinked=1)になったペアが重複として誤検知されないことを確認"""
         p1_id = upsert_photo({
@@ -427,11 +447,14 @@ class TestCoreRegression(unittest.TestCase):
         self.assertIn("function _safeGetStorage(", html)
         self.assertIn("function _safeSetStorage(", html)
 
-        # 3. ファイル出力確認
-        out_path = ensure_standalone_mobile_html(force=True)
-        self.assertIsNotNone(out_path)
-        self.assertTrue(out_path.exists())
-        self.assertGreater(out_path.stat().st_size, 800 * 1024)
+        # 3. ファイル出力確認（本番の Tetheract_Mobile.html を汚さないよう一時パスへ出力）
+        import unittest.mock as _mock
+        temp_mobile_html = Path(self._temp_dir.name) / "Tetheract_Mobile.html"
+        with _mock.patch("server.mobile_bundle.STANDALONE_HTML_PATH", temp_mobile_html):
+            out_path = ensure_standalone_mobile_html(force=True)
+            self.assertIsNotNone(out_path)
+            self.assertTrue(out_path.exists())
+            self.assertGreater(out_path.stat().st_size, 800 * 1024)
 
         # 4. モバイル同期タグのサニタイズ検証
         self.assertEqual(_sanitize_mobile_tag("旅行/2026/京都"), "旅行/2026/京都")
@@ -1267,6 +1290,113 @@ class TestCoreRegression(unittest.TestCase):
             self.assertIsNotNone(resolved_cloud)
             self.assertEqual(resolved_cloud, cloud_file)
 
+    def test_20_vsn_parking_merges_duplicate_instead_of_silent_delete(self) -> None:
+        """VSN退避先に同一実ファイルの重複レコードがある場合、評価・タグを統合してから削除し、データを失わないことを検証"""
+        from server.database import get_photo_by_id
+
+        path = r"E:\DCIM\100MSDCF\DSC09999.JPG"
+        base = {"file_path": path, "directory_path": r"E:\DCIM\100MSDCF", "file_name": "DSC09999.JPG",
+                "file_size": 4000000, "date_taken": "2026-10-05 09:00:00"}
+        # カードA（VSN: AAAA0001）の現行レコード
+        cur_id = upsert_photo({**base, "volume_serial": "AAAA0001"})
+        # 同じ実ファイルを指す旧レコード（評価・タグあり）が退避先 vsn://AAAA0001/<PATH> に残っている状態を再現
+        old_id = upsert_photo({**base, "file_path": path + ".old", "file_name": "DSC09999_old.JPG", "volume_serial": "AAAA0001"})
+        update_rating(old_id, 3)
+        add_tag_to_photo(old_id, "旅行/京都")
+        with get_connection() as conn:
+            conn.execute("UPDATE photos SET file_path = ? WHERE id = ?", (f"vsn://AAAA0001/{path}", old_id))
+            conn.commit()
+        self.assertNotEqual(old_id, cur_id)
+
+        # カードB（VSN: BBBB0002）が同じパスでスキャンされ、現行レコードが退避される
+        new_id = upsert_photo({**base, "file_size": 4100000, "volume_serial": "bbbb0002"})
+        self.assertNotIn(new_id, (old_id, cur_id))
+
+        merged = get_photo_by_id(cur_id)
+        self.assertIsNotNone(merged, "現行レコードは退避されて残ること")
+        self.assertEqual(merged["rating"], 3, "重複退避レコードの評価が統合されること")
+        self.assertIn("旅行/京都", merged["tags"], "重複退避レコードのタグが統合されること")
+        self.assertIsNone(get_photo_by_id(old_id), "統合後の重複レコードのみ削除されること")
+
+        # VSNの大文字小文字の表記揺れでは退避されないこと（同一メディア扱い）
+        same_id = upsert_photo({**base, "file_size": 4100000, "volume_serial": "BBBB0002"})
+        self.assertEqual(same_id or new_id, new_id)
+        with get_connection() as conn:
+            parked = conn.execute("SELECT COUNT(*) FROM photos WHERE file_path LIKE 'vsn://BBBB0002/%' OR file_path LIKE 'vsn://bbbb0002/%'").fetchone()[0]
+        self.assertEqual(parked, 0)
+
+        # バッチ登録（upsert_photos_batch）の2件目以降で退避重複統合が走っても SQLite 自己デッドロックを起こさないこと
+        from server.database import upsert_photos_batch
+        path2 = r"E:\DCIM\100MSDCF\DSC09998.JPG"
+        base2 = {
+            "file_path": path2,
+            "directory_path": r"E:\DCIM\100MSDCF",
+            "file_name": "DSC09998.JPG",
+            "file_size": 4200000,
+            "date_taken": "2026-10-05 09:05:00",
+        }
+        cur_id2 = upsert_photo({**base2, "volume_serial": "AAAA0001"})
+        old_id2 = upsert_photo({**base2, "file_path": path2 + ".old", "file_name": "DSC09998_old.JPG", "volume_serial": "AAAA0001"})
+        update_rating(old_id2, 2)
+        add_tag_to_photo(old_id2, "バッチ統合テスト")
+        with get_connection() as conn:
+            conn.execute("UPDATE photos SET file_path = ? WHERE id = ?", (f"vsn://AAAA0001/{path2}", old_id2))
+            conn.commit()
+
+        upsert_photos_batch([
+            {
+                "file_path": r"E:\DCIM\100MSDCF\DSC09997.JPG",
+                "directory_path": r"E:\DCIM\100MSDCF",
+                "file_name": "DSC09997.JPG",
+                "file_size": 4300000,
+                "date_taken": "2026-10-05 09:10:00",
+                "volume_serial": "BBBB0002",
+            },
+            {
+                **base2,
+                "file_size": 4400000,
+                "volume_serial": "BBBB0002",
+            },
+        ])
+        merged2 = get_photo_by_id(cur_id2)
+        self.assertIsNotNone(merged2)
+        self.assertEqual(merged2["rating"], 2, "バッチスキャン中もデッドロックせず評価が統合されること")
+        self.assertIn("バッチ統合テスト", merged2["tags"])
+        self.assertIsNone(get_photo_by_id(old_id2))
+
+    def test_21_ai_color_retag_keeps_existing_tags_on_empty_result(self) -> None:
+        """AIカラー再判定の結果が空（推論失敗・モデル未ロード）の場合、既存のAIカラータグを消さないことを検証"""
+        from server.database import get_photo_tags_details, replace_ai_color_tags_for_photo
+
+        pid = upsert_photo({"file_path": r"C:\Photos\Color\C001.JPG", "directory_path": r"C:\Photos\Color",
+                            "file_name": "C001.JPG", "file_size": 1234, "date_taken": "2026-10-06 10:00:00"})
+        replace_ai_color_tags_for_photo(pid, [{"tag": "青", "confidence": 0.3, "category": "color"}])
+        replace_ai_color_tags_for_photo(pid, [])
+        tags = {t["tag"]: t["source"] for t in get_photo_tags_details(pid)}
+        self.assertEqual(tags.get("青"), "ai", "空の再判定結果で既存のAIカラータグが消えないこと")
+
+    def test_22_network_paths_skip_vsn_strict_matching(self) -> None:
+        """ネットワークドライブ・UNC上の写真は VSN 厳密照合の対象外となり、オフライン誤判定されないことを検証"""
+        import unittest.mock as _mock
+
+        from server import scanner
+
+        nas_dir = Path(self._temp_dir.name) / "NasShare"
+        nas_dir.mkdir(parents=True, exist_ok=True)
+        nas_file = nas_dir / "NAS_0001.JPG"
+        nas_file.write_bytes(b"FAKE_JPEG_DATA")
+
+        self.assertTrue(scanner._is_network_path(r"\\nas\photos\NAS_0001.JPG"))
+        # 一時フォルダをネットワークドライブ上のパスとみなし、VSN対応表に無いシリアルを指定しても解決できること
+        with _mock.patch.object(scanner, "_is_network_path", return_value=True):
+            resolved, online = scanner.resolve_portable_path(str(nas_file), expected_serial="DEADBEEF")
+        self.assertTrue(online)
+        self.assertEqual(Path(resolved), nas_file)
+        # ローカル扱いのままなら、対応表に無いVSNはオフライン（別メディアへの誤一致防止）のまま
+        with _mock.patch.object(scanner, "_is_network_path", return_value=False):
+            _, online_local = scanner.resolve_portable_path(str(nas_file), expected_serial="DEADBEEF")
+        self.assertFalse(online_local)
+
     def test_15_ai_color_tag_only_reexecution(self) -> None:
         """コンテキストメニューからのAIカラータグ（12色）単独再判定・既存タグ保護の検証"""
         from server.database import (
@@ -1650,6 +1780,244 @@ class TestCoreRegression(unittest.TestCase):
             self.assertEqual(details_map.get("車・ドライブ"), "ai")
             self.assertEqual(details_map.get("愛車/ロードスター"), "manual")
             self.assertEqual(details_map.get("黒"), "manual")
+
+    def test_23_vsn_stack_isolation_and_drive_letter_shift(self) -> None:
+        """
+        1. 異なるSDカード（VSN）が同一ドライブ文字・同一フォルダに同名ファイル（DSC00001.JPG/ARW）を持つ場合、
+           recalculate_stacks で別カード同士が合体・非表示化されず独立してペア・スタック維持されること
+        2. クロスフォルダ RAW+JPEG ペアリングで別SDカードの同名RAWとJPEGが誤ペアリングされないこと
+        3. ドライブ文字が変化した接続中SDカード（E: -> F:）が folder_tree.build_roots で分裂せず、
+           F: 側のフォルダ指定でも get_directory_counts_under / get_photos が正しくヒットすること
+        4. get_calendar_summary でペア済みRAWが重複カウントされないこと
+        """
+        import unittest.mock as _mock
+        from server import folder_tree
+        from server.database import (
+            get_calendar_summary,
+            get_directory_counts_under,
+            get_photo_by_id,
+            get_photos,
+            recalculate_stacks,
+            upsert_photo,
+            upsert_volume,
+        )
+
+        upsert_volume("AAAA1111", "SD_A", "E:")
+        upsert_volume("BBBB2222", "SD_B", "E:")
+
+        # SDカードA (AAAA1111): E:\DCIM\100MSDCF\DSC00001.JPG + DSC00001.ARW のペア
+        a_jpg = upsert_photo({
+            "file_path": r"E:\DCIM\100MSDCF\DSC00001.JPG",
+            "directory_path": r"E:\DCIM\100MSDCF",
+            "file_name": "DSC00001.JPG",
+            "file_size": 5100000,
+            "date_taken": "2026-10-10 10:00:00",
+            "camera_model": "ILCE-7M4",
+            "is_raw": 0,
+            "volume_serial": "AAAA1111",
+        })
+        a_raw = upsert_photo({
+            "file_path": r"E:\DCIM\100MSDCF\DSC00001.ARW",
+            "directory_path": r"E:\DCIM\100MSDCF",
+            "file_name": "DSC00001.ARW",
+            "file_size": 25100000,
+            "date_taken": "2026-10-10 10:00:00",
+            "camera_model": "ILCE-7M4",
+            "is_raw": 1,
+            "raw_format": ".arw",
+            "volume_serial": "AAAA1111",
+        })
+
+        # SDカードB (BBBB2222): 同じパス E:\DCIM\100MSDCF\DSC00001.JPG (単独JPEG)
+        # → これにより SDカードA のレコードは vsn://AAAA1111/E:\... へ自動退避される
+        b_jpg = upsert_photo({
+            "file_path": r"E:\DCIM\100MSDCF\DSC00001.JPG",
+            "directory_path": r"E:\DCIM\100MSDCF",
+            "file_name": "DSC00001.JPG",
+            "file_size": 6200000,
+            "date_taken": "2026-10-12 15:00:00",
+            "camera_model": "ILCE-7CR",
+            "is_raw": 0,
+            "volume_serial": "BBBB2222",
+        })
+
+        # 別フォルダにあるSDカードAの未ペアRAW（クロスフォルダでSDカードBの同名JPEGと誤ペアリングされないことを検証）
+        a_unpaired_raw = upsert_photo({
+            "file_path": r"E:\DCIM\101RAW\DSC00009.ARW",
+            "directory_path": r"E:\DCIM\101RAW",
+            "file_name": "DSC00009.ARW",
+            "file_size": 26000000,
+            "date_taken": "2026-10-12 16:00:00",
+            "camera_model": "ILCE-7M4",
+            "is_raw": 1,
+            "raw_format": ".arw",
+            "volume_serial": "AAAA1111",
+        })
+        b_other_jpg = upsert_photo({
+            "file_path": r"E:\DCIM\100MSDCF\DSC00009.JPG",
+            "directory_path": r"E:\DCIM\100MSDCF",
+            "file_name": "DSC00009.JPG",
+            "file_size": 6300000,
+            "date_taken": "2026-10-12 16:00:00",
+            "camera_model": "ILCE-7CR",
+            "is_raw": 0,
+            "volume_serial": "BBBB2222",
+        })
+
+        # SDカードBのスキャン時（existing_paths に E:\DCIM\100MSDCF\DSC00001.JPG がある状態）を再現してスタック再計算
+        recalculate_stacks(
+            directory_path=r"E:\DCIM",
+            recursive=True,
+            existing_paths={r"E:\DCIM\100MSDCF\DSC00001.JPG", r"E:\DCIM\100MSDCF\DSC00009.JPG"},
+        )
+
+        # 1. SDカードAの DSC00001.JPG と DSC00001.ARW はカードA内で正しくペアになり、vsn:// プレフィックス無しの paired_raw_path になること
+        a_jpg_row = get_photo_by_id(a_jpg)
+        a_raw_row = get_photo_by_id(a_raw)
+        b_jpg_row = get_photo_by_id(b_jpg)
+        self.assertEqual(a_jpg_row["paired_raw_path"], r"E:\DCIM\100MSDCF\DSC00001.ARW")
+        self.assertEqual(a_raw_row["paired_raw_path"], r"E:\DCIM\100MSDCF\DSC00001.JPG")
+        self.assertIsNone(b_jpg_row["paired_raw_path"], "SDカードBの単独JPEGにSDカードAのRAWが誤紐付けされないこと")
+        self.assertEqual(a_jpg_row["is_stack_primary"], 1, "退避中のSDカードAのJPEGが非表示(0)に潰されないこと")
+
+        # 2. 別SDカード間でクロスフォルダ誤ペアリングが起きないこと
+        self.assertIsNone(get_photo_by_id(a_unpaired_raw)["paired_raw_path"])
+        self.assertIsNone(get_photo_by_id(b_other_jpg)["paired_raw_path"])
+
+        # 3. 撮影カレンダー集計でペア済みRAW (a_raw) が重複カウントされないこと
+        cal_summary = {c["date"]: c["count"] for c in get_calendar_summary()}
+        self.assertEqual(cal_summary.get("2026-10-10"), 1, "RAW+JPEGペアはカレンダー集計で1枚としてカウントされること")
+
+        # 4. SDカードA (AAAA1111) が別ポート F: で接続された場合、build_roots で F: に枚数が合算され offline_volumes に分裂しないこと
+        fake_connected = [
+            {
+                "letter": "F:",
+                "path": "F:\\",
+                "drive_type": "removable",
+                "volume_serial": "AAAA1111",
+                "label": "SD_A",
+            }
+        ]
+        with _mock.patch.object(folder_tree, "_list_connected_drives", return_value=fake_connected):
+            roots = folder_tree.build_roots([])
+        f_drive = next(d for d in roots["drives"] if d["letter"] == "F:")
+        self.assertEqual(f_drive["total"], 3, "前回E:でスキャンしたSDカードAの3枚が接続中F:ドライブに合算されること")
+        offline_serials = {v["volume_serial"] for v in roots["offline_volumes"]}
+        self.assertNotIn("AAAA1111", offline_serials, "接続中のSDカードAが未接続メディアに重複出現しないこと")
+        self.assertIn("BBBB2222", offline_serials, "未接続のSDカードBは未接続メディアに表示されること")
+
+        # F: 側のパス指定でも get_directory_counts_under と get_photos が VSN 一致でヒットすること
+        dir_counts_f = get_directory_counts_under("F:\\", volume_serial="AAAA1111", serial_mode="match_or_null")
+        dir_map_f = {r["directory_path"]: r["count"] for r in dir_counts_f}
+        self.assertEqual(dir_map_f.get(r"F:\DCIM\100MSDCF"), 2)
+        self.assertEqual(dir_map_f.get(r"F:\DCIM\101RAW"), 1)
+
+        photos_f = get_photos(folder=r"F:\DCIM\100MSDCF", volume_serial="AAAA1111", serial_mode="match", stacked=True)
+        self.assertEqual([p["id"] for p in photos_f], [a_jpg])
+
+    def test_24_parent_folder_with_only_subfolder_photos_is_managed(self) -> None:
+        """
+        直下に画像が0枚で、子フォルダにのみ管理写真が存在する親フォルダ（例: 2026 -> 0 + 3952）が、
+        scan_roots の登録有無にかかわらず list_children および get_folders_summary で status='managed' になり、
+        count(直下枚数) / sub_count(子フォルダ枚数) / total(合計枚数) が正確に返ることを検証
+        """
+        from server import folder_tree
+        from server.database import get_folders_summary, upsert_photo
+
+        root_dir = Path(self._temp_dir.name) / "10.PHOTO"
+        dir_2026 = root_dir / "2026"
+        dir_202601 = dir_2026 / "202601"
+        dir_202602 = dir_2026 / "202602"
+        dir_unmanaged = root_dir / "30.WORK"
+        dir_202601.mkdir(parents=True, exist_ok=True)
+        dir_202602.mkdir(parents=True, exist_ok=True)
+        dir_unmanaged.mkdir(parents=True, exist_ok=True)
+
+        # 2026 直下には写真を1枚も置かず、子フォルダ 202601 (2枚) と 202602 (1枚) にのみ登録
+        upsert_photo({
+            "file_path": str(dir_202601 / "IMG_001.JPG"),
+            "directory_path": str(dir_202601),
+            "file_name": "IMG_001.JPG",
+            "file_size": 1000,
+            "date_taken": "2026-01-10 10:00:00",
+        })
+        upsert_photo({
+            "file_path": str(dir_202601 / "IMG_002.JPG"),
+            "directory_path": str(dir_202601),
+            "file_name": "IMG_002.JPG",
+            "file_size": 1100,
+            "date_taken": "2026-01-11 10:00:00",
+        })
+        upsert_photo({
+            "file_path": str(dir_202602 / "IMG_003.JPG"),
+            "directory_path": str(dir_202602),
+            "file_name": "IMG_003.JPG",
+            "file_size": 1200,
+            "date_taken": "2026-02-05 12:00:00",
+        })
+
+        # 1. folder_tree.list_children で 10.PHOTO の子を取得した際、2026 が managed (0 + 3 = 3) になること
+        res = folder_tree.list_children(str(root_dir))
+        by_name = {c["name"]: c for c in res["children"]}
+        self.assertIn("2026", by_name)
+        self.assertIn("30.WORK", by_name)
+
+        node_2026 = by_name["2026"]
+        self.assertEqual(node_2026["status"], "managed", "直下0枚でも子フォルダに管理写真があれば managed 扱いになること")
+        self.assertEqual(node_2026["count"], 0, "直下枚数は 0 枚")
+        self.assertEqual(node_2026["sub_count"], 3, "子フォルダ枚数は 3 枚")
+        self.assertEqual(node_2026["total"], 3, "合計枚数は 0 + 3 = 3 枚")
+        self.assertTrue(node_2026["has_managed"])
+        self.assertTrue(node_2026["has_children"])
+
+        node_work = by_name["30.WORK"]
+        self.assertEqual(node_work["status"], "unmanaged", "直下も子フォルダも0枚のフォルダは unmanaged のまま")
+        self.assertEqual(node_work["count"], 0)
+        self.assertEqual(node_work["sub_count"], 0)
+        self.assertEqual(node_work["total"], 0)
+
+        # 2. get_folders_summary でも 2026 が status='managed' として返ること
+        summary_map = {
+            os.path.normcase(os.path.normpath(f["directory_path"])): f
+            for f in get_folders_summary()
+        }
+        key_2026 = os.path.normcase(os.path.normpath(str(dir_2026)))
+        self.assertIn(key_2026, summary_map)
+        self.assertEqual(summary_map[key_2026]["status"], "managed")
+
+        # 3. 左クリック時の check_folder_diff で親フォルダ(2026)配下の子フォルダ・ファイルの増減を検知できること
+        from server.scanner import check_folder_diff
+        import shutil
+
+        # 実体ファイルを配置して差分なしの状態を作る
+        f1 = dir_202601 / "IMG_001.JPG"
+        f2 = dir_202601 / "IMG_002.JPG"
+        f3 = dir_202602 / "IMG_003.JPG"
+        f1.write_bytes(b"X" * 1000)
+        f2.write_bytes(b"X" * 1100)
+        f3.write_bytes(b"X" * 1200)
+
+        diff_clean = check_folder_diff(str(dir_2026))
+        self.assertTrue(diff_clean["is_managed"])
+        self.assertFalse(diff_clean["has_changes"], "実体とDBが一致していれば差分なし")
+
+        # OS側で新しい子フォルダ 202603（中に写真2枚）と、既存子フォルダ 202601 内への新規写真1枚を追加し、
+        # さらに既存子フォルダ 202602（写真1枚）を削除したケース
+        dir_202603 = dir_2026 / "202603"
+        dir_202603.mkdir(parents=True, exist_ok=True)
+        (dir_202603 / "NEW_A.JPG").write_bytes(b"X" * 1500)
+        (dir_202603 / "NEW_B.JPG").write_bytes(b"X" * 1600)
+        (dir_202601 / "IMG_004.JPG").write_bytes(b"X" * 1300)
+        shutil.rmtree(dir_202602)
+
+        diff_changed = check_folder_diff(str(dir_2026))
+        self.assertTrue(diff_changed["is_managed"])
+        self.assertTrue(diff_changed["has_changes"])
+        self.assertTrue(diff_changed["has_subfolder_changes"])
+        self.assertEqual(diff_changed["added_folders"], ["202603"], "OS側で追加された新規子フォルダが検知されること")
+        self.assertEqual(diff_changed["deleted_folders"], ["202602"], "OS側で削除された管理下子フォルダが検知されること")
+        self.assertEqual(diff_changed["added"], 3, "202603の2枚 + 202601の1枚 = 計3枚の新規ファイルが検知されること")
+        self.assertEqual(diff_changed["deleted"], 1, "消失した202602内の1枚が削除・消失として検知されること")
 
 
 if __name__ == "__main__":

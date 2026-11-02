@@ -1,5 +1,7 @@
 # Windows PowerShell エンコーディングトラブルシューティング集 (No Mojibake)
 
+> 本書のツール名（`view_file` / `write_to_file` / `grep_search` / `replace_file_content`）は Antigravity IDE での例である。他の実行環境では同等機能のツール（例: `read_file` / `write_file` / `edit_file`）に読み替えること。
+
 ## 1. 概要
 
 Windows PowerShell（標準の `powershell.exe`）は、日本語環境において極めて厄介なエンコーディングのトラップを複数抱えている。

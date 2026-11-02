@@ -1462,7 +1462,7 @@ function renderActiveFilterChips() {
           title: `${yr}年の全${ymsInYear.length}ヶ月を選択中\n左クリック: 他の年月を追加・変更 ｜ ×: ${yr}年を解除`,
           onRemove: () => {
             if (typeof window.toggleYearMonths === 'function') {
-              window.toggleYearMonths(yr, ymsInYear);
+              window.toggleYearMonths(ymsInYear, yr);
             } else {
               ymsInYear.forEach(ym => state.selectedYearMonths.delete(ym));
               fetchPhotos();
@@ -4095,8 +4095,28 @@ function setupEventListeners() {
       return;
     }
 
-    showToast(`「${node.name}」を管理に追加・スキャン中...`, 'info');
-    await executeScan(node.fullPath, false, false);
+    let isRecursive = false;
+    if (node.hasChildren && typeof showRegisterFolderModal === 'function') {
+      let directDiskCount = 0;
+      try {
+        const diffRes = await fetch('/api/folders/check-diff', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ folder_path: node.fullPath, volume_serial: node.volumeSerial || null }),
+        });
+        if (diffRes.ok) {
+          const diffData = await diffRes.json();
+          directDiskCount = diffData.total_disk || 0;
+        }
+      } catch (_e) {}
+      const choice = await showRegisterFolderModal(node.fullPath, node.name, directDiskCount);
+      if (!choice) return;
+      isRecursive = (choice === 'recursive');
+    }
+
+    const rangeText = isRecursive ? '（子フォルダ含む）' : '（直下のみ）';
+    showToast(`「${node.name}」を管理に追加・スキャン中${rangeText}...`, 'info');
+    await executeScan(node.fullPath, isRecursive, false);
   };
   if (elements.folderMenuAddAndScan) {
     elements.folderMenuAddAndScan.addEventListener('click', handleAddAndScan);
@@ -4257,6 +4277,27 @@ function setupEventListeners() {
         closeRegisterFolderModal(null);
       }
       return;
+    }
+
+    // その他の専用モーダル（拡大カレンダー・画像調整・スライドショー・2枚比較・ラボカルテ・地図・重複・ベタ焼き・ストレージ操作等）が表示中はグリッド/ライトボックスのショートカットを無効化
+    const otherBlockingModalIds = [
+      'calendarModal',
+      'imageAdjustModal',
+      'slideshowModal',
+      'compareModal',
+      'labKarteModal',
+      'locationMapModal',
+      'contactSheetModal',
+      'duplicatesModal',
+      'storageRenameModal',
+      'storageFolderModal',
+      'gpsCandidateModal',
+    ];
+    for (const modalId of otherBlockingModalIds) {
+      const mEl = document.getElementById(modalId);
+      if (mEl && mEl.style.display && mEl.style.display !== 'none') {
+        return;
+      }
     }
 
     // ? または F1 キーでヘルプモーダル開閉
@@ -5622,7 +5663,7 @@ function renderManagedMediaModalList() {
     unmanageBtn.textContent = '一覧から登録解除';
     unmanageBtn.addEventListener('click', async () => {
       const ok = window.confirm(
-        `メディア「${primaryName} [ID:${shortId}]」の登録（写真インデックス ${v.photo_count} 枚分）を Photo Manager の管理対象から解除しますか？\n\n※SDカードやドライブ内の実際の写真ファイルは一切削除されません。`
+        `メディア「${primaryName} [ID:${shortId}]」の登録（写真インデックス ${v.photo_count} 枚分）を Tetheract Photo Manager の管理対象から解除しますか？\n\n※SDカードやドライブ内の実際の写真ファイルは一切削除されません。`
       );
       if (!ok) return;
       try {
@@ -5656,10 +5697,11 @@ function renderManagedMediaModalList() {
 }
 
 let _diffChecking = false;
+const _dismissedFolderDiffSignatures = new Map();
 
 /**
  * フォルダ選択時にバックグラウンドで差分または管理状態を高速判定し、
- * 未登録フォルダなら登録確認、管理下フォルダで変更があれば段階的リフレッシュを提案する
+ * 未登録フォルダなら登録確認、管理下フォルダでファイル・子フォルダの増減があれば段階的リフレッシュを提案する
  */
 async function checkAndPromptFolderRefresh(folderPath, folderName, node) {
   if (!folderPath || _diffChecking) return;
@@ -5695,25 +5737,53 @@ async function checkAndPromptFolderRefresh(folderPath, folderName, node) {
       return;
     }
 
-    // 【ケース2: 管理下フォルダをクリックした場合（差分がある場合のみ更新提案）】
+    // 【ケース2: 管理下フォルダをクリックした場合（ファイルや子フォルダの増減・変更がある場合のみ更新提案）】
     if (!diff.has_changes) return;
 
-    // 第1ダイアログ: リフレッシュ提案
+    const normKey = String(folderPath).toLowerCase();
+    const diffSignature = JSON.stringify({
+      af: diff.added_folders || [],
+      df: diff.deleted_folders || [],
+      a: diff.added || 0,
+      d: diff.deleted || 0,
+      m: diff.modified || 0,
+    });
+    if (_dismissedFolderDiffSignatures.get(normKey) === diffSignature) {
+      return;
+    }
+
+    // 第1ダイアログ: リフレッシュ提案（子フォルダおよびファイルの増減内訳を表示）
     const changeDetails = [];
+    if (diff.added_folders_count > 0) {
+      const names = (diff.added_folders || []).slice(0, 3).join(', ');
+      const suffix = diff.added_folders_count > 3 ? ' 他' : '';
+      changeDetails.push(`新規フォルダ: ${diff.added_folders_count}件${names ? ` [${names}${suffix}]` : ''}`);
+    }
+    if (diff.deleted_folders_count > 0) {
+      const names = (diff.deleted_folders || []).slice(0, 3).join(', ');
+      const suffix = diff.deleted_folders_count > 3 ? ' 他' : '';
+      changeDetails.push(`消失フォルダ: ${diff.deleted_folders_count}件${names ? ` [${names}${suffix}]` : ''}`);
+    }
     if (diff.added > 0) changeDetails.push(`新規追加: ${diff.added}枚`);
     if (diff.deleted > 0) changeDetails.push(`削除・消失: ${diff.deleted}枚`);
     if (diff.modified > 0) changeDetails.push(`変更: ${diff.modified}枚`);
     const detailText = changeDetails.length > 0 ? `\n（${changeDetails.join(' / ')}）` : '';
 
     const msg1 = `フォルダ「${name}」の内容が更新された可能性があります。${detailText}\n\nライブラリをリフレッシュ（最新化）しますか？`;
-    if (!confirm(msg1)) return;
+    if (!confirm(msg1)) {
+      _dismissedFolderDiffSignatures.set(normKey, diffSignature);
+      return;
+    }
+    _dismissedFolderDiffSignatures.delete(normKey);
 
+    const useRecursive = Boolean(diff.has_subfolder_changes);
     showToast(`「${name}」の変更を取り込み中...`, 'info');
-    // 直下の差分スキャン（cleanupなしで安全に取り込み）
-    await executeScan(folderPath, false, false);
+    // 差分スキャン（子フォルダに変更がある場合は再帰スキャン、cleanupなしで安全に取り込み）
+    await executeScan(folderPath, useRecursive, false);
 
-    if (diff.added > 0) {
-      showToast(`${diff.added}枚の写真が新しく追加されました`, 'success');
+    if (diff.added > 0 || diff.added_folders_count > 0) {
+      const folderMsg = diff.added_folders_count > 0 ? `${diff.added_folders_count}件の新規フォルダ / ` : '';
+      showToast(`${folderMsg}${diff.added}枚の写真を取り込みました`, 'success');
     }
 
     // もし削除（見つからない写真）がある場合: 第2ダイアログでリンク解除（リンク消失）確認
@@ -5725,7 +5795,11 @@ async function checkAndPromptFolderRefresh(folderPath, folderName, node) {
             const cleanRes = await fetch('/api/folders/unlink-missing', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ folder_path: folderPath, recursive: false, volume_serial: (node && node.volumeSerial) || null }),
+              body: JSON.stringify({
+                folder_path: folderPath,
+                recursive: useRecursive,
+                volume_serial: (node && node.volumeSerial) || null,
+              }),
             });
             if (!cleanRes.ok) throw new Error(`リンク解除に失敗しました (HTTP ${cleanRes.status})`);
             const cleanData = await cleanRes.json();

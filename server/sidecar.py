@@ -493,6 +493,7 @@ def _normalize_tag_to_xmp_root(raw_tag: str) -> Optional[str]:
 def _find_best_xmp_for_photo(
     file_path: Union[str, Path],
     paired_raw_path: Optional[str] = None,
+    volume_serial: Optional[str] = None,
 ) -> Optional[Path]:
     """対象ファイル（またはそのペアRAW）に付随する .xmp サイドカーファイルを探索する"""
     candidates: List[Dict[str, Any]] = []
@@ -504,7 +505,7 @@ def _find_best_xmp_for_photo(
     if not candidates and paired_raw_path:
         try:
             from .scanner import resolve_portable_path
-            p_cand, is_online = resolve_portable_path(paired_raw_path)
+            p_cand, is_online = resolve_portable_path(paired_raw_path, expected_serial=volume_serial)
             target_pair = p_cand if is_online else Path(paired_raw_path)
         except Exception:
             target_pair = Path(paired_raw_path)
@@ -530,13 +531,14 @@ MAX_XMP_FILE_BYTES = 5 * 1024 * 1024
 def parse_xmp_for_photo(
     file_path: Union[str, Path],
     paired_raw_path: Optional[str] = None,
+    volume_serial: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     写真ファイル（およびペアRAWパス）に付随する .xmp ファイルを解析し、
     機材情報・評価（4段階変換）・タグ（XMP/ルート配下）・非破壊調整パラメータを抽出して返す。
     """
     result = _empty_xmp_info()
-    xmp_path = _find_best_xmp_for_photo(file_path, paired_raw_path)
+    xmp_path = _find_best_xmp_for_photo(file_path, paired_raw_path, volume_serial=volume_serial)
     if not xmp_path or not xmp_path.exists():
         return result
 

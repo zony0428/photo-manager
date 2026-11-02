@@ -149,6 +149,14 @@ def initialize_database() -> None:
         cursor.execute("DROP INDEX IF EXISTS idx_photos_date_taken")
         cursor.execute("DROP INDEX IF EXISTS idx_photos_date_taken_size")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_photos_date_size_unlinked ON photos(date_taken, file_size, is_unlinked)")
+        # 重複照合 `file_size = ? AND (date_taken = ? OR original_date_taken = ?)` を MULTI-INDEX OR で引くための部分インデックス
+        # （日時シフト補正済みの写真のみが対象のため小さい。無いと全件スキャンになり、スキャン時に O(全件×新規枚数) となる）
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_photos_orig_date_size ON photos(original_date_taken, file_size) "
+            "WHERE original_date_taken IS NOT NULL"
+        )
+        # VSN別パス衝突時の復帰照合 `volume_serial = ? AND file_name = ?` 用
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_photos_volume_name ON photos(volume_serial, file_name)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_photos_year_month ON photos(year_month)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_photos_directory ON photos(directory_path)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_photos_directory_nocase ON photos(directory_path COLLATE NOCASE)")

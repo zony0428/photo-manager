@@ -236,14 +236,11 @@ def _fast_json(obj: Any) -> Response:
 # アプリ初期化
 app = FastAPI(title="Tetheract Photo Manager", version=__version__, lifespan=lifespan)
 
-# ローカル・プライベートLANオリジン判定用正規表現
+# ループバック（PC自身）オリジン判定用正規表現
+# ※ プライベートLANのIPを一括許可すると、LAN上の他ホスト（ルーター・他PC等）のページから
+#   127.0.0.1 宛ての破壊系APIを呼べてしまうため、LANオリジンは「同一オリジン（Origin = Host）」のみ許可する
 _ALLOWED_ORIGIN_RE = re.compile(
-    r"^https?://("
-    r"127\.0\.0\.1|localhost|\[::1\]|"
-    r"192\.168\.\d{1,3}\.\d{1,3}|"
-    r"10\.\d{1,3}\.\d{1,3}\.\d{1,3}|"
-    r"172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}"
-    r")(:\d+)?$",
+    r"^https?://(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$",
     re.IGNORECASE,
 )
 
@@ -255,13 +252,19 @@ _NULL_ORIGIN_ALLOWED_PATHS = {
     "/api/version",
 }
 
-def _is_origin_allowed(origin: Optional[str], path: str) -> bool:
-    """クロスオリジンリクエストのOriginヘッダを検証し、外部悪意サイトからのCSRF/Localhost攻撃を遮断する"""
+def _is_origin_allowed(origin: Optional[str], path: str, host: Optional[str] = None) -> bool:
+    """
+    クロスオリジンリクエストのOriginヘッダを検証し、外部悪意サイトからのCSRF/Localhost攻撃を遮断する。
+    許可するのは「ループバックのオリジン」と「同一オリジン（スマホ画面が PC の LAN IP から配信された場合など）」のみ。
+    """
     if not origin:
         return True
     if origin == "null":
         return path in _NULL_ORIGIN_ALLOWED_PATHS
-    return bool(_ALLOWED_ORIGIN_RE.match(origin))
+    if _ALLOWED_ORIGIN_RE.match(origin):
+        return True
+    origin_netloc = origin.split("://", 1)[-1].rstrip("/").lower()
+    return bool(host) and origin_netloc == host.strip().lower()
 
 
 def _is_lan_request_allowed(client_host: str, method: str, path: str) -> bool:
@@ -295,7 +298,7 @@ async def add_no_cache_header(request: Request, call_next):
     if not is_host_header_allowed(request.headers.get("host")):
         return _json_error(400, "Invalid Host header")
 
-    if not _is_origin_allowed(origin, path):
+    if not _is_origin_allowed(origin, path, request.headers.get("host")):
         return _json_error(403, "Forbidden origin")
 
     set_lan_cookie = False
@@ -1144,6 +1147,8 @@ def api_ai_tag_single_photo(photo_id: int, color_only: bool = False):
     from .ai import get_ai_tagger
     from .database import add_ai_tags_to_photo, replace_ai_color_tags_for_photo, get_photo_tags_details
     tagger = get_ai_tagger()
+    if not tagger.load():
+        raise HTTPException(status_code=503, detail="AIモデルを読み込めませんでした（既存のタグは変更していません）")
     matches = tagger.predict_from_bytes(thumb_bytes, top_k=3, color_only=color_only)
     if color_only:
         replace_ai_color_tags_for_photo(photo_id, matches)
@@ -1176,6 +1181,8 @@ def api_ai_tag_color_photos(req: AITagColorBatchRequest):
     from .ai import get_ai_tagger
     from .database import replace_ai_color_tags_for_photo, get_photo_tags_details
     tagger = get_ai_tagger()
+    if not tagger.load():
+        raise HTTPException(status_code=503, detail="AIモデルを読み込めませんでした（既存のタグは変更していません）")
     results: Dict[int, List[Dict[str, Any]]] = {}
     predicted_colors: Dict[int, List[str]] = {}
     tagged_count = 0

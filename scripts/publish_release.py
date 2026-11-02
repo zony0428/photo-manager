@@ -19,6 +19,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 from typing import Any, Dict, Optional
@@ -34,7 +35,6 @@ from server.version import get_version
 
 PUBLIC_REPO = "zony0428/photo-manager"
 PUBLIC_REMOTE = "public"
-DEFAULT_RELEASE_TITLE = "TETHERACT pm v1.1.0 - Multi-SD Card VSN Management, Metadata Inheritance, Calendar & AI Color Re-Tagging"
 
 
 def _run_git(*args: str) -> str:
@@ -104,6 +104,15 @@ def _github_api_request(
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         body = resp.read().decode("utf-8")
         return json.loads(body) if body else None
+
+
+def read_release_title(notes_path: Path, version: str) -> str:
+    """リリースノート冒頭の `- **Title**: `...`` 行からリリースタイトルを取得する（無ければ既定タイトル）"""
+    match = re.search(r"^- \*\*Title\*\*:\s*`([^`]+)`", notes_path.read_text(encoding="utf-8"), re.MULTILINE)
+    if match:
+        return match.group(1).strip()
+    print(f"[WARN] {notes_path.name} に Title 行が無いため既定タイトルを使用します。")
+    return f"Tetheract Photo Manager v{version}"
 
 
 def sync_public_repository(tag_name: str) -> str:
@@ -221,7 +230,7 @@ def main() -> None:
     """エントリーポイント"""
     parser = argparse.ArgumentParser(description="Publish Photo Manager release to GitHub Releases.")
     parser.add_argument("--build", action="store_true", help="Run build_dist.bat before publishing")
-    parser.add_argument("--title", default=DEFAULT_RELEASE_TITLE, help="Release title on GitHub")
+    parser.add_argument("--title", default=None, help="Release title on GitHub (省略時はリリースノートの Title 行)")
     args = parser.parse_args()
 
     ver = get_version()
@@ -247,7 +256,7 @@ def main() -> None:
     token = _get_github_token()
 
     sync_public_repository(tag_name)
-    release = upsert_github_release(token, tag_name, args.title, release_body)
+    release = upsert_github_release(token, tag_name, args.title or read_release_title(notes_path, ver), release_body)
     upload_release_assets(token, release, [full_zip, diff_zip])
 
     print("\n============================================================")

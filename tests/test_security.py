@@ -1,9 +1,12 @@
 """
 セキュリティ回帰テスト（Host検証・Origin検証・LANトークン認証・LANホワイトリスト・XMPサイズ上限）
-実行: python\\python.exe -m pytest tests -q  または  python\\python.exe tests\\test_security.py
+実行: python\\python.exe -m unittest discover -s tests -p "test_*.py"  または  python\\python.exe tests\\test_security.py
+（同梱 Python に pytest は無いため、末尾の unittest ラッパー経由で discover からも実行される）
 """
 
 import sys
+import tempfile
+import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -48,6 +51,26 @@ def test_foreign_origin_rejected():
     """外部サイトからのクロスオリジン要求は 403 で拒否される"""
     assert LOCAL.post("/api/shutdown", headers={"Origin": "https://evil.example.com"}).status_code == 403
     assert LOCAL.post("/api/shutdown", headers={"Origin": "null"}).status_code == 403
+
+
+def test_lan_host_origin_cannot_call_localhost_destructive_apis():
+    """LAN上の他ホスト（ルーター・他PC等）のページから 127.0.0.1 宛ての破壊系APIは 403 で拒否される"""
+    foreign_lan = {"Origin": "http://192.168.1.1"}
+    assert LOCAL.delete("/api/volumes/DEADBEEF", headers=foreign_lan).status_code == 403
+    assert LOCAL.put("/api/volumes/DEADBEEF", json={"custom_name": "x"}, headers=foreign_lan).status_code == 403
+    assert LOCAL.get("/api/volumes/DEADBEEF/status", headers=foreign_lan).status_code == 403
+    assert LOCAL.post("/api/ai/tag-color-photos", json={"photo_ids": [1]}, headers=foreign_lan).status_code == 403
+    assert LOCAL.options("/api/volumes/DEADBEEF", headers=foreign_lan).status_code == 403
+
+
+def test_same_origin_lan_mobile_requests_allowed():
+    """スマホ画面（PC の LAN IP から配信）からの同一オリジン要求は Origin 検証を通過する"""
+    lan = _lan_client(with_cookie=True)
+    r = lan.get("/api/version", headers={"Origin": "http://192.168.1.10:8088"})
+    assert r.status_code == 200
+    # LAN経由でも新しい破壊系APIはホワイトリスト外のため 403
+    assert lan.delete("/api/volumes/DEADBEEF").status_code == 403
+    assert lan.put("/api/tags-meta", json={}).status_code == 403
 
 
 def test_lan_requires_token():
@@ -115,9 +138,42 @@ def test_open_folder_rejects_files():
     assert open_folder_in_windows_explorer(Path("C:/Windows/System32/calc.exe")) is False
 
 
-if __name__ == "__main__":
-    import tempfile
+class TestSecurityRegression(unittest.TestCase):
+    """unittest discover からも上記のセキュリティ回帰テストを実行するためのラッパー"""
 
+    def test_local_access_ok(self):
+        test_local_access_ok()
+
+    def test_dns_rebinding_host_rejected(self):
+        test_dns_rebinding_host_rejected()
+
+    def test_foreign_origin_rejected(self):
+        test_foreign_origin_rejected()
+
+    def test_lan_host_origin_cannot_call_localhost_destructive_apis(self):
+        test_lan_host_origin_cannot_call_localhost_destructive_apis()
+
+    def test_same_origin_lan_mobile_requests_allowed(self):
+        test_same_origin_lan_mobile_requests_allowed()
+
+    def test_lan_requires_token(self):
+        test_lan_requires_token()
+
+    def test_lan_whitelist_blocks_admin_apis(self):
+        test_lan_whitelist_blocks_admin_apis()
+
+    def test_lan_whitelist_allows_mobile_apis(self):
+        test_lan_whitelist_allows_mobile_apis()
+
+    def test_xmp_size_limit(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            test_xmp_size_limit(Path(tmp_dir))
+
+    def test_open_folder_rejects_files(self):
+        test_open_folder_rejects_files()
+
+
+if __name__ == "__main__":
     failures = 0
     for name, func in list(globals().items()):
         if name.startswith("test_") and callable(func):

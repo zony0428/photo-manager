@@ -1,4 +1,4 @@
-# Photo Manager - ドキュメントポータル (Documentation Portal)
+# Tetheract Photo Manager - ドキュメントポータル (Documentation Portal)
 
 本ディレクトリは、Photo Manager の設計文書、技術知見、リリースノート、および開発履歴アーカイブを集約したドキュメント基底ポータルである。
 
@@ -49,7 +49,7 @@ Photo Manager の設計判断、パフォーマンス最適化パターン、セ
 | :--- | :--- |
 | [design-philosophy-four-pillars.md](knowledge/design-philosophy-four-pillars.md) | **【4つの設計原則（4本の柱）】** プロダクトの基本思想4原則と、それを実現する全機能体系・対外文章の編集原則 |
 | [feature-code-map.md](knowledge/feature-code-map.md) | **【機能別コードマップ】** 14の大分類（グリッド・ライトボックス・タグ・スタック・スキャン・storage・画像調整・セキュリティ等）とコードの対応表 |
-| [ui-design-system-and-tiat-guidelines.md](knowledge/ui-design-system-and-tiat-guidelines.md) | **【UI/UXデザインシステム】** 2段階左サイドバー、1段ヘッダー、4:3インスペクタ、脱絵文字、和紙/夜墨テーマ等の規約 |
+| [ui-design-system-and-tiat-guidelines.md](knowledge/ui-design-system-and-tiat-guidelines.md) | **【UI/UXデザインシステム】** 2段階左サイドバー、1段ヘッダー、4:3インスペクタ、脱絵文字、4カラーテーマ等の規約 |
 | [security-architecture.md](knowledge/security-architecture.md) | **【セキュリティアーキテクチャ】** 4層防御（Host検証、Origin検証、LANトークン認証、LAN APIホワイトリスト）、自動停止タイマー |
 | [storage-and-xmp-sidecar-architecture.md](knowledge/storage-and-xmp-sidecar-architecture.md) | **【storage・XMP連携】** アプリ内ストレージ管理、XMPサイドカー追従・プレビュー・隔離取込 |
 | [mobile-hybrid-architecture.md](knowledge/mobile-hybrid-architecture.md) | **【モバイル連携】** Wi-Fi直結モード（`/m`）および WebAssembly SQLite (`sql.js`) 直接読込 |
@@ -63,8 +63,12 @@ Photo Manager の設計判断、パフォーマンス最適化パターン、セ
 
 GitHub Releases 投稿用に作成されたバージョン別リリースノート。差分アップデート版（`*diff.zip`）とフル版の使い分け、日英対訳の更新内容を収録。
 
+> 旧系列（旧称 Photo Manager: v2.x〜v3.2.1）と新系列（Tetheract Photo Manager: v1.0.0〜）が同居している。下表に無い版（v3.0.2〜v3.2.1 等）は `release_notes/` を直接参照。
+
 | バージョン | 主な更新内容 | ファイル |
 | :--- | :--- | :--- |
+| **v1.1.0** | 複数SDカードのVSN個体識別・メタデータ引き継ぎ、撮影カレンダー、AIカラータグ単独再判定 | [RELEASE_NOTES_v1.1.0.md](release_notes/RELEASE_NOTES_v1.1.0.md) |
+| **v1.0.0** | 「Tetheract Photo Manager」へ改称しバージョンを v1.0.0 から再出発、tag_key スキーマ、Tetheract D/L テーマ | [RELEASE_NOTES_v1.0.0.md](release_notes/RELEASE_NOTES_v1.0.0.md) |
 | **v3.0.1** | セキュリティ多層防御（DNS Rebinding・LANトークン認証・APIホワイトリスト）、ポータブルパス保護、フォント/Leafletローカル同梱、UI・ドキュメント整備 | [RELEASE_NOTES_v3.0.1.md](release_notes/RELEASE_NOTES_v3.0.1.md) |
 | **v3.00** | メジャーUI大改装（2段階左サイドバー・1段ヘッダー・4:3インスペクタ・脱絵文字・下部バー廃止）、起動高速化 | [RELEASE_NOTES_v3.00.md](release_notes/RELEASE_NOTES_v3.00.md) |
 | **v2.44** | UIレイアウト交通整理（Step 1）、基本ビューア体験強化（Step 2: 矢印キー移動・Before/After比較・画像コピー・12種ソート） | [RELEASE_NOTES_v2.44.md](release_notes/RELEASE_NOTES_v2.44.md) |

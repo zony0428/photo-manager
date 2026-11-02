@@ -7,7 +7,6 @@ Windows API (GetVolumeInformationW / SetVolumeLabelW) を ctypes 経由で呼び
 
 import logging
 import re
-import string
 import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -97,10 +96,17 @@ def find_online_drive_for_serial(volume_serial: str) -> Optional[Dict[str, Any]]
     if not serial_clean or sys.platform != "win32":
         return None
 
-    for letter in string.ascii_uppercase:
-        info = get_volume_info_for_drive(letter)
-        if info and info.get("serial", "").upper() == serial_clean:
-            return info
+    # 26ドライブの直接照会は切断済みネットワークドライブでブロックするため、
+    # ネットワークドライブ除外・エラーダイアログ抑止済みの共通走査結果（scanner）から引く
+    from .scanner import _get_connected_drive_serial_map
+
+    serial_to_drive, _ = _get_connected_drive_serial_map()
+    drive = serial_to_drive.get(serial_clean)
+    if not drive:
+        return None
+    info = get_volume_info_for_drive(drive)
+    if info and info.get("serial", "").upper() == serial_clean:
+        return info
     return None
 
 

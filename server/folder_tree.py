@@ -266,13 +266,16 @@ def build_roots(quick_access: List[Dict[str, Any]]) -> Dict[str, Any]:
 
     connected = _list_connected_drives()
     connected_by_letter = {d["letter"]: d for d in connected}
+    connected_by_serial = {
+        str(d["volume_serial"]).upper(): d for d in connected if d.get("volume_serial")
+    }
     count_rows = get_drive_photo_counts()
     all_vols = get_all_volumes()
     volumes_by_serial: Dict[str, Dict[str, Any]] = {
         str(v["volume_serial"]).upper(): v for v in all_vols if v.get("volume_serial")
     }
 
-    # 接続中ドライブの写真数（シリアル一致またはシリアル未記録。ネットワークは文字一致のみ）
+    # 接続中ドライブの写真数（シリアル一致またはシリアル未記録。ドライブ文字が変わった接続中SDカードもVSN一致で追従）
     drives: List[Dict[str, Any]] = []
     for d in connected:
         serial = d["volume_serial"]
@@ -284,14 +287,23 @@ def build_roots(quick_access: List[Dict[str, Any]]) -> Dict[str, Any]:
         total = 0
         other_serial_has_photos = False
         for r in count_rows:
-            if r["drive"] != d["letter"]:
-                continue
-            if serial is None or r["volume_serial"] is None or r["volume_serial"] == serial:
-                total += r["count"]
-                if not custom_name and r.get("custom_name"):
-                    custom_name = str(r["custom_name"]).strip()
+            r_serial = r["volume_serial"]
+            r_serial_upper = str(r_serial).upper() if r_serial else ""
+            if serial_upper:
+                if r_serial_upper == serial_upper:
+                    # VSNが一致すれば、前回スキャン時のドライブ文字（例: E:）と現在の文字（例: F:）が異なっても合算
+                    total += r["count"]
+                    if not custom_name and r.get("custom_name"):
+                        custom_name = str(r["custom_name"]).strip()
+                elif r_serial is None and r["drive"] == d["letter"]:
+                    total += r["count"]
+                elif r["drive"] == d["letter"]:
+                    other_serial_has_photos = True
             else:
-                other_serial_has_photos = True
+                if r["drive"] == d["letter"]:
+                    total += r["count"]
+                    if not custom_name and r.get("custom_name"):
+                        custom_name = str(r["custom_name"]).strip()
 
         # 別SDカードのスキャンルートが同じドライブ文字(E:等)に残っている場合、
         # 現在挿さっているSDカードに写真が0枚なら未管理として正しく表示する
@@ -325,16 +337,20 @@ def build_roots(quick_access: List[Dict[str, Any]]) -> Dict[str, Any]:
     for r in count_rows:
         letter = r["drive"]
         serial = r["volume_serial"]
+        serial_upper = str(serial).upper() if serial else ""
+        # VSNが現在接続中のいずれかのドライブと一致していれば（ドライブ文字が変わっていても）接続中扱い
+        if serial_upper and serial_upper in connected_by_serial:
+            continue
         conn_drive = connected_by_letter.get(letter)
         if conn_drive is not None:
             conn_serial = conn_drive["volume_serial"]
+            conn_serial_upper = str(conn_serial).upper() if conn_serial else ""
             # 同じドライブ文字で接続中のボリュームと一致（またはシリアル不明）なら接続中扱い
-            if conn_serial is None or serial is None or serial == conn_serial:
+            if conn_serial is None or serial is None or serial_upper == conn_serial_upper:
                 continue
-        group_key = f"serial:{serial}" if serial else f"drive:{letter}"
+        group_key = f"serial:{serial_upper}" if serial_upper else f"drive:{letter}"
         group = offline_map.get(group_key)
         if group is None:
-            serial_upper = str(serial).upper() if serial else ""
             vol_meta = volumes_by_serial.get(serial_upper) if serial_upper else None
             custom_name = (
                 (r.get("custom_name") or "").strip()
@@ -399,11 +415,20 @@ def list_children(
     ignored_keys = [_key(p) for p in get_ignored_folders()]
 
     # VSNが厳密指定(serial_mode=='match')されている場合、現在そのドライブ文字に別VSNのメディアが挿さっていればオフライン扱いとする
+    # ※ 切断済みネットワークドライブでのブロックを防ぐため、キャッシュ・エラー抑止済みの _get_connected_drive_serial_map を使用する
     effective_offline = offline
     if not effective_offline and volume_serial and serial_mode == "match" and len(base) >= 2 and base[1] == ":":
-        info = get_volume_info_for_drive(base[:2])
-        if info is None or (info.get("serial") and str(info["serial"]).upper() != str(volume_serial).upper()):
-            effective_offline = True
+        try:
+            from .scanner import _get_connected_drive_serial_map
+
+            _, drive_to_serial = _get_connected_drive_serial_map()
+            cur_serial = drive_to_serial.get(base[:2].upper())
+            if not cur_serial or str(cur_serial).upper() != str(volume_serial).upper():
+                effective_offline = True
+        except Exception:
+            info = get_volume_info_for_drive(base[:2])
+            if info is None or (info.get("serial") and str(info["serial"]).upper() != str(volume_serial).upper()):
+                effective_offline = True
 
     # 1. DB 集計（配下全ディレクトリの枚数を1クエリで取得し、直下の子ごとに合算）
     db_children: Dict[str, Dict[str, Any]] = {}
@@ -446,12 +471,20 @@ def list_children(
         child_path = f"{base}\\{node['name']}"
         child_key = child_path.lower()
         db_info = node.get("db") or {"total": 0, "count": 0, "deeper": False}
+        direct_count = int(db_info["count"] or 0)
+        total_count = int(db_info["total"] or 0)
+        sub_count = max(0, total_count - direct_count)
 
         child_is_storage = parent_is_storage or _is_under(child_key, storage_key)
 
         if any(_is_under(child_key, ig) for ig in ignored_keys):
             status = "ignored"
-        elif child_is_storage or db_info["count"] > 0 or (db_info["total"] > 0 and child_key in scan_root_keys) or (not volume_serial and child_key in scan_root_keys):
+        elif (
+            child_is_storage
+            or total_count > 0
+            or (not volume_serial and child_key in scan_root_keys)
+        ):
+            # 直下枚数が0枚でも、管理下の子フォルダに写真が存在する場合（例: 0 + 3952 = 3952）は管理下(managed)として扱う
             status = "managed"
         else:
             status = "unmanaged"
@@ -469,9 +502,10 @@ def list_children(
             "name": node["name"],
             "path": child_path,
             "status": status,
-            "count": db_info["count"],
-            "total": db_info["total"],
-            "has_managed": child_is_storage or db_info["total"] > 0 or (not volume_serial and _has_scan_root_under(child_key, scan_root_keys)),
+            "count": direct_count,
+            "sub_count": sub_count,
+            "total": total_count,
+            "has_managed": child_is_storage or total_count > 0 or (not volume_serial and _has_scan_root_under(child_key, scan_root_keys)),
             "has_children": has_children,
             # 親フォルダは存在するのに実フォルダが無い = 消失（親自体が無い場合は未接続扱いで消失とはしない）
             "is_missing": parent_exists and not node["in_fs"],
@@ -482,9 +516,12 @@ def list_children(
         result.append(child_item)
 
     result.sort(key=lambda c: _natural_sort_key(c["name"]))
+    parent_sub_count = sum(c["total"] for c in result)
     return {
         "path": parent,
         "exists": parent_exists,
         "direct_count": parent_direct,
+        "sub_count": parent_sub_count,
+        "total_count": parent_direct + parent_sub_count,
         "children": result,
     }

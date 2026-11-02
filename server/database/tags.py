@@ -359,6 +359,10 @@ def replace_ai_color_tags_for_photo(photo_id: int, tag_items: List[Dict[str, Any
         item for item in (tag_items or [])
         if is_color_tag(str(item.get("tag", "")).strip())
     ]
+    if not color_items:
+        # 推論失敗・モデル未ロード時も空リストになるため、既存のAIカラータグは消さずに保持する
+        logger.info(f"AIカラー再判定の結果が空のため既存のAIカラータグを保持します (photo_id={photo_id})")
+        return 0
     with get_connection() as conn:
         cursor = conn.cursor()
         target_ids = _expand_stack_and_pair_photo_ids(conn, [photo_id])
@@ -377,9 +381,6 @@ def replace_ai_color_tags_for_photo(photo_id: int, tag_items: List[Dict[str, Any
             """,
             [*target_ids, *color_list],
         )
-        if not color_items:
-            conn.commit()
-            return 0
         params = []
         for pid in target_ids:
             for item in color_items:

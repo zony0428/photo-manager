@@ -932,6 +932,8 @@ function ensureCalendarModalDom() {
       document.addEventListener('keydown', (e) => {
         const m = document.getElementById('calendarModal');
         if (!m || m.style.display === 'none') return;
+        // モーダル表示中のキー入力は window 側のグリッド用ショートカット（評価・回転・選択移動・選択解除）へ伝播させない
+        e.stopPropagation();
         if (e.target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
         if (e.key === 'Escape') {
           e.preventDefault();

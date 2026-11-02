@@ -679,7 +679,9 @@ def import_photos_to_storage(photo_ids: List[int], destination: Optional[str] = 
         pair_src: Optional[Path] = None
         paired_raw_str = photo.get("paired_raw_path")
         if paired_raw_str:
-            p_cand, p_online = resolve_portable_path(paired_raw_str)
+            p_cand, p_online = resolve_portable_path(
+                paired_raw_str, expected_serial=photo.get("volume_serial")
+            )
             if p_online and p_cand.exists() and p_cand.resolve() != src_path.resolve():
                 pair_src = p_cand
 

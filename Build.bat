@@ -32,9 +32,15 @@ pause
 exit /b 1
 
 :RUN_CSC
+if exist "%~dp0PhotoManager.exe" del /f /q "%~dp0PhotoManager.exe" >nul 2>&1
+if exist "%~dp0Tetheract.exe" del /f /q "%~dp0Tetheract.exe" >nul 2>&1
 "%CSC%" /nologo /target:winexe /optimize+ /win32icon:"%~dp0frontend\favicon.ico" /out:"%~dp0Tetheract.exe" "%~dp0launcher\Launcher.cs"
 if errorlevel 1 goto :CSC_FAIL
 if not exist "%~dp0Tetheract.exe" goto :CSC_FAIL
+
+if exist "%~dp0python\python.exe" (
+    "%~dp0python\python.exe" -c "import pathlib, run; run.refresh_windows_exe_icon(pathlib.Path('Tetheract.exe'))" >nul 2>&1
+)
 
 echo       [OK] Tetheract.exe created successfully!
 

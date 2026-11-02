@@ -32,15 +32,15 @@
 
 ## 3. コア技術仕様
 
-### 3.1 完全インライン単体HTML (`PhotoManager_Mobile.html`) による非HTTPS・`content://` 制限の突破
+### 3.1 完全インライン単体HTML (`Tetheract_Mobile.html`) による非HTTPS・`content://` 制限の突破
 - **ブラウザ仕様上の壁**:
   1. Android Chrome は `http://192.168.x.x:8088/m` のような非HTTPSオリジンでは Service Worker (`sw_mobile.js`) の登録を許可しないため、通常の「ホーム画面に追加」だけではPC電源OFF時にオフライン起動できない。
   2. Android のファイルアプリから HTML ファイルを直接開くと `content://`（不透明オリジン `null`）で開かれ、外部ファイル（`.css`, `.js`, `.wasm`）の読み込みがすべてブロックされるほか、`window.localStorage` への直接アクセスが `SecurityError` を投げる。
 - **解決策 (`server/mobile_bundle.py`)**:
-  - サーバー起動時および配布パッケージ作成時（`build_dist.bat`）に、`mobile.html` + `mobile.css` + `sql-wasm.js` + `sql-wasm.wasm`（Base64文字列化） + `mobile.js` を1つの自己完結型ファイル **`PhotoManager_Mobile.html`**（プロジェクト直下 / USBルート）へ自動バンドルする。
+  - サーバー起動時および配布パッケージ作成時（`build_dist.bat`）に、`mobile.html` + `mobile.css` + `sql-wasm.js` + `sql-wasm.wasm`（Base64文字列化） + `mobile.js` を1つの自己完結型ファイル **`Tetheract_Mobile.html`**（プロジェクト直下 / USBルート）へ自動バンドルする。
   - `mobile.js` の `ensureSqlJsLoaded()` では、`window.__PM_SQL_WASM_BASE64__` が存在する場合は Base64 を `Uint8Array` にデコードし、`initSqlJs({ wasmBinary })` でメモリから直接 WebAssembly をインスタンス化する（`fetch()` 不使用）。
   - `localStorage` アクセスはすべて `_safeGetStorage()` / `_safeSetStorage()` で保護し、Android `content://` 上でも `SecurityError` で停止しない設計とする。
-  - セキュリティ対策として、生成される `PhotoManager_Mobile.html` にはユーザーデータやローカルIP等を一切含めず、厳格な `Content-Security-Policy` (CSP) メタタグを付与して外部スクリプト注入を遮断する。
+  - セキュリティ対策として、生成される `Tetheract_Mobile.html` にはユーザーデータやローカルIP等を一切含めず、厳格な `Content-Security-Policy` (CSP) メタタグを付与して外部スクリプト注入を遮断する。
 
 ### 3.2 `sql.js` (WebAssembly) によるメモリ展開と BLOB サムネイル抽出
 - `frontend/vendor/sqljs/` に `sql-wasm.js` および `sql-wasm.wasm`（MITライセンス）をローカル同梱し、外部CDN非依存（完全オフライン動作）を実現。
@@ -68,8 +68,8 @@ PC本体への反映時は、Data URI ダウンロード（`content://` でも�
 
 | ファイルパス | 役割 |
 |---|---|
-| `PhotoManager_Mobile.html` | **【単体完結型ファイル】** CSS・JS・WASMを全内蔵したオフライン起動用HTML（自動生成） |
-| `server/mobile_bundle.py` | `mobile.html` と依存資産から `PhotoManager_Mobile.html` を自動生成するバンドラ |
+| `Tetheract_Mobile.html` | **【単体完結型ファイル】** CSS・JS・WASMを全内蔵したオフライン起動用HTML（自動生成） |
+| `server/mobile_bundle.py` | `mobile.html` と依存資産から `Tetheract_Mobile.html` を自動生成するバンドラ |
 | `frontend/mobile.html` | スマートフォン専用 UI ソーステンプレート（CSPヘッダ・同期メニュー付き） |
 | `frontend/css/mobile.css` | Hinomaru Ink（夜墨・和紙）モバイル専用レスポンシブスタイル |
 | `frontend/js/mobile.js` | `server` / `localdb` デュアルエンジン・WASMメモリ展開・差分同期コントローラ |

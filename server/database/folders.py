@@ -106,14 +106,17 @@ def get_all_volumes() -> List[Dict[str, Any]]:
     """
     登録済みの全メディア（ボリューム）一覧を、収録写真枚数・撮影期間・カメラ機種・接続状態付きで取得する。
     """
-    import string
+    from ..scanner import _get_connected_drive_serial_map
     from ..volume_info import get_volume_info_for_drive
 
-    # 1. 現在PCに接続されているドライブのボリューム情報を収集 (VSN -> info)
+    # 1. 現在PCに接続されているローカルドライブのボリューム情報を収集 (VSN -> info)
+    #    ※ 26ドライブを直接照会すると切断済みネットワークドライブで長時間ブロックするため、
+    #      ネットワークドライブ除外・エラーダイアログ抑止・2秒キャッシュ済みの共通走査結果を使う
     online_map: Dict[str, Dict[str, Any]] = {}
     try:
-        for letter in string.ascii_uppercase:
-            info = get_volume_info_for_drive(letter)
+        serial_to_drive, _ = _get_connected_drive_serial_map()
+        for drive in serial_to_drive.values():
+            info = get_volume_info_for_drive(drive)
             if info and info.get("serial"):
                 online_map[info["serial"].upper()] = info
     except Exception as e:
@@ -305,6 +308,7 @@ def get_calendar_summary() -> List[Dict[str, Any]]:
                 WHERE p.date_taken IS NOT NULL
                   AND LENGTH(TRIM(p.date_taken)) >= 10
                   AND IFNULL(p.is_unlinked, 0) = 0
+                  AND NOT (p.is_raw = 1 AND p.paired_raw_path IS NOT NULL)
             )
             SELECT
                 date_ymd AS date,
@@ -795,9 +799,10 @@ def get_folders_summary() -> List[Dict[str, Any]]:
                 candidate_parents_dict[r_key] = r_path
 
         for p_key, p_dir in candidate_parents_dict.items():
-            # ルート自身が結果に未登録なら追加
-            if p_key not in seen_paths and any(p_key == r.lower() for r in roots):
-                is_ig = p_key in ignored_set
+            # 配下に管理写真が存在する親ディレクトリまたは登録ルート自身が未登録なら managed（除外対象なら ignored）として追加
+            is_drive_root = (os.path.dirname(p_dir) == p_dir)
+            if p_key not in seen_paths and (not is_drive_root or any(p_key == r.lower() for r in roots)):
+                is_ig = any(p_key == ig or p_key.startswith(ig + os.sep) for ig in ignored_set)
                 is_dir_present = _cached_isdir(p_dir)
                 result.append({
                     "directory_path": p_dir,
@@ -817,12 +822,13 @@ def get_folders_summary() -> List[Dict[str, Any]]:
                 sub_key = sub_path.lower()
                 if sub_key not in seen_paths:
                     is_sub_ignored = any(sub_key == ig or sub_key.startswith(ig + os.sep) for ig in ignored_set)
+                    is_sub_managed_parent = sub_key in candidate_parents_dict
                     result.append({
                         "directory_path": sub_path,
                         "count": 0,
                         "cached_count": 0,
                         "has_all_thumbnails": True,
-                        "status": "ignored" if is_sub_ignored else "unmanaged",
+                        "status": "ignored" if is_sub_ignored else ("managed" if is_sub_managed_parent else "unmanaged"),
                     })
                     seen_paths.add(sub_key)
 
@@ -842,8 +848,10 @@ def get_drive_photo_counts() -> List[Dict[str, Any]]:
                    COALESCE(v.custom_name, '') AS custom_name,
                    COUNT(*) AS count
             FROM photos p
-            LEFT JOIN volumes v ON p.volume_serial = v.volume_serial
-            WHERE p.directory_path IS NOT NULL AND p.directory_path != ''
+            LEFT JOIN volumes v ON UPPER(p.volume_serial) = UPPER(v.volume_serial)
+            WHERE p.directory_path IS NOT NULL
+              AND p.directory_path != ''
+              AND p.directory_path LIKE '_:%'
             GROUP BY drive, p.volume_serial
             """
         )
@@ -861,22 +869,58 @@ def get_directory_counts_under(
     接続中/未接続の写真を取り違えないため）:
       any: 絞り込みなし / match: volume_serial 一致のみ /
       match_or_null: 一致またはシリアル未記録 / null: シリアル未記録のみ
+    ※ ドライブレターが変化した接続中メディア（例: 前回 E: → 今回 F:）でも、
+      volume_serial 一致レコードのドライブ相対パスを現在のドライブ文字に読み替えて集計する。
     """
+    norm_folder = normalize_folder_path(folder_path).rstrip("\\/")
     dir_sql, params = _directory_filter_sql(folder_path, recursive=True, column_name="directory_path")
     query = f"SELECT directory_path, COUNT(*) AS count FROM photos WHERE {dir_sql}"
-    if serial_mode == "match" and volume_serial:
-        query += " AND volume_serial = ?"
-        params.append(volume_serial)
-    elif serial_mode == "match_or_null" and volume_serial:
-        query += " AND (volume_serial = ? OR volume_serial IS NULL)"
-        params.append(volume_serial)
+    vs_upper = volume_serial.strip().upper() if volume_serial and volume_serial.strip() else ""
+    if serial_mode == "match" and vs_upper:
+        query += " AND UPPER(volume_serial) = ?"
+        params.append(vs_upper)
+    elif serial_mode == "match_or_null" and vs_upper:
+        query += " AND (UPPER(volume_serial) = ? OR volume_serial IS NULL)"
+        params.append(vs_upper)
     elif serial_mode == "null":
         query += " AND volume_serial IS NULL"
     query += " GROUP BY directory_path"
+
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(query, params)
-        return [dict(r) for r in cursor.fetchall()]
+        merged_counts: Dict[str, int] = {}
+        for r in cursor.fetchall():
+            d_norm = normalize_folder_path(r["directory_path"]).rstrip("\\/")
+            merged_counts[d_norm] = merged_counts.get(d_norm, 0) + int(r["count"] or 0)
+
+        # VSNが指定されておりドライブ文字パス（例: F: や F:\DCIM）の場合、
+        # 別ドライブ文字で登録された同一VSNの写真も現在のドライブ文字に読み替えて合算する
+        if vs_upper and serial_mode in ("match", "match_or_null") and len(norm_folder) >= 2 and norm_folder[1] == ":":
+            target_drive = norm_folder[:2].upper()
+            target_tail = norm_folder[2:].lower()  # "" または "\dcim" など
+            cursor.execute(
+                """
+                SELECT directory_path, COUNT(*) AS count
+                FROM photos
+                WHERE UPPER(volume_serial) = ?
+                  AND directory_path LIKE '_:%'
+                  AND UPPER(SUBSTR(directory_path, 1, 2)) != ?
+                GROUP BY directory_path
+                """,
+                (vs_upper, target_drive),
+            )
+            for r in cursor.fetchall():
+                raw_dir = normalize_folder_path(r["directory_path"]).rstrip("\\/")
+                if len(raw_dir) < 2 or raw_dir[1] != ":":
+                    continue
+                tail = raw_dir[2:]
+                tail_lower = tail.lower()
+                if not target_tail or tail_lower == target_tail or tail_lower.startswith(target_tail + "\\"):
+                    remapped_dir = target_drive + tail
+                    merged_counts[remapped_dir] = merged_counts.get(remapped_dir, 0) + int(r["count"] or 0)
+
+        return [{"directory_path": k, "count": v} for k, v in merged_counts.items()]
 
 
 def remove_folder_photos(

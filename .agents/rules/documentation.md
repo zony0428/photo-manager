@@ -24,22 +24,23 @@
 バージョン番号を更新してリリースを行う際は、チャット上の案内だけでなく、**必ずプロジェクト配下のファイルとしてリリースノートを生成・保存**する。
 
 1. **保存場所とファイル構成**:
-   - **バージョン別アーカイブ**: `docs/release_notes/RELEASE_NOTES_v<VERSION>.md`（例: `docs/release_notes/RELEASE_NOTES_v2.43.md`）
+   - **バージョン別アーカイブ**: `docs/release_notes/RELEASE_NOTES_v<VERSION>.md`（例: `docs/release_notes/RELEASE_NOTES_v1.1.0.md`）
      - GitHub Releases の投稿フォームにそのままコピー＆ペーストできる完全版テキストとして保存する。
    - **ルート直下の統合リリースノート**: `RELEASE_NOTES.md`（プロジェクトルート直下）
      - 最新バージョンのリリース内容を先頭に配置し、過去バージョンの更新履歴（Changelog）もあわせて収録する。`build_dist.bat` により `dist/` および `dist_update/` にも自動同梱される。
 
 2. **リリースノートの必須記載項目**:
-   - **メタ情報**: `Tag`（例: `v2.43`）および `Title`（主な目玉機能が一目で分かるタイトル）。
+   - **メタ情報**: `Tag`（例: `v1.1.0`）および `Title`（主な目玉機能が一目で分かるタイトル）。
+     - `- **Title**: `...`` の行は `scripts/publish_release.py` が GitHub Release のタイトルとして読み取るため、この書式を変えないこと。
    - **アップデート方法のご案内（差分版 / フル版の使い分け）**:
-     - 既存ユーザー向けに、軽量差分パッケージ **`PhotoManager_v<VERSION>diff.zip`** を解凍して既存フォルダへ上書きするだけで 1秒でアップデート完了すること（`cache/`・`storage/`・`models/`・`python/` は維持されること）を明記する。
-     - 新規導入ユーザー向けに、フルパッケージ版 **`PhotoManager_v<VERSION>.zip`** の利用を案内する。
+     - 既存ユーザー向けに、軽量差分パッケージ **`Tetheract_v<VERSION>diff.zip`** を解凍して既存フォルダへ上書きするだけで 1秒でアップデート完了すること（`cache/`・`storage/`・`models/`・`python/` は維持されること）を明記する。
+     - 新規導入ユーザー向けに、フルパッケージ版 **`Tetheract_v<VERSION>.zip`** の利用を案内する。
    - **更新内容（日本語 ＆ 英語の2言語併記）**:
      - 新機能（What's New）、パフォーマンス改善、UI反応性・不具合修正（Bug Fixes）を分かりやすく整理して記載する。
 
 3. **GitHub Releases 自動公開フロー (`scripts/publish_release.py`)**:
    - ユーザーから「リリースして」「リリースお願い」等の指示があった際は、手動コピペ案内で終わらせず、`build_dist.bat` で配布ZIP 2種を生成した上で `.\python\python.exe scripts\publish_release.py` を実行する。
-   - これにより、公開リポジトリ（`public`: `zony0428/photo-manager`）へのコミット・タグ同期、GitHub Release ページの作成（`docs/release_notes/RELEASE_NOTES_v<VERSION>.md` の反映）、および `PhotoManager_v<VERSION>.zip` / `PhotoManager_v<VERSION>diff.zip` のアップロードまでを完全自動で完了させる。
+   - これにより、公開リポジトリ（`public`: `zony0428/photo-manager`）へのコミット・タグ同期、GitHub Release ページの作成（`docs/release_notes/RELEASE_NOTES_v<VERSION>.md` の反映）、および `Tetheract_v<VERSION>.zip` / `Tetheract_v<VERSION>diff.zip` のアップロードまでを完全自動で完了させる。
 
 ---
 

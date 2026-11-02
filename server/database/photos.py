@@ -77,6 +77,67 @@ def _directory_filter_sql(folder: str, recursive: bool = True, column_name: str 
     return sql, params
 
 
+def _vsn_in_sql(vsn_column: str, volume_serial: str) -> Tuple[str, List[str]]:
+    """インデックスを効かせつつ VSN の大文字・小文字表記揺れを吸収する IN 句を生成する"""
+    vs = (volume_serial or "").strip()
+    variants = list(dict.fromkeys([vs, vs.upper(), vs.lower()]))
+    if len(variants) == 1:
+        return f"{vsn_column} = ?", variants
+    ph = ",".join(["?"] * len(variants))
+    return f"{vsn_column} IN ({ph})", variants
+
+
+def _directory_filter_sql_with_vsn(
+    folder: str,
+    volume_serial: Optional[str],
+    recursive: bool = True,
+    column_name: str = "directory_path",
+    vsn_column: str = "volume_serial",
+) -> Tuple[str, List[Any]]:
+    """
+    ディレクトリ絞り込みSQLを生成する。
+    volume_serial が指定されドライブ文字パス（例: F:\\DCIM）である場合、
+    前回別ドライブ文字（例: E:\\DCIM）でスキャンされた同一VSNの写真もドライブ相対パス一致でヒットさせる。
+    """
+    base_sql, base_params = _directory_filter_sql(folder, recursive=recursive, column_name=column_name)
+    vs = (volume_serial or "").strip()
+    norm = folder.rstrip("\\/").replace("/", "\\")
+    if not vs or len(norm) < 2 or norm[1] != ":":
+        return base_sql, base_params
+
+    tail_win = norm[2:]  # "" (ドライブ直下) または "\\DCIM" など
+    tail_posix = tail_win.replace("\\", "/")
+    vsn_sql, vsn_params = _vsn_in_sql(vsn_column, vs)
+
+    if not tail_win:
+        # ドライブ直下指定（例: "F:" / "F:\\"）なら、そのVSNを持つ全ドライブ文字のパスを許容
+        sql = f"({base_sql} OR ({vsn_sql} AND {column_name} LIKE '_:%'))"
+        return sql, base_params + vsn_params
+
+    sub_col = f"SUBSTR({column_name}, 3)"
+    if not recursive:
+        rel_sql = f"({sub_col} = ? COLLATE NOCASE OR {sub_col} = ? COLLATE NOCASE OR {sub_col} = ? COLLATE NOCASE)"
+        rel_params = [tail_win, tail_posix, tail_win + "\\"]
+    else:
+        rel_sql = (
+            f"({sub_col} = ? COLLATE NOCASE"
+            f" OR {sub_col} = ? COLLATE NOCASE"
+            f" OR ({sub_col} >= ? COLLATE NOCASE AND {sub_col} < ? COLLATE NOCASE)"
+            f" OR ({sub_col} >= ? COLLATE NOCASE AND {sub_col} < ? COLLATE NOCASE))"
+        )
+        rel_params = [
+            tail_win,
+            tail_posix,
+            tail_win + "\\",
+            tail_win + "]",
+            tail_posix + "/",
+            tail_posix + "0",
+        ]
+
+    sql = f"({base_sql} OR ({vsn_sql} AND {column_name} LIKE '_:%' AND {rel_sql}))"
+    return sql, base_params + vsn_params + rel_params
+
+
 def _sanitize_photo_data(photo_data: Dict[str, Any]) -> Dict[str, Any]:
     """写真メタデータのデフォルト値補完とサニタイズ（NUL文字除去等）を行う共通関数"""
     clean_data = dict(photo_data)
@@ -197,11 +258,27 @@ def _prepare_vsn_path_for_upsert(cursor, clean_data: Dict[str, Any]) -> None:
     existing = cursor.fetchone()
     if existing:
         old_vsn = (existing["volume_serial"] or "").strip()
-        if old_vsn and old_vsn != new_vsn:
-            parked_fp = f"vsn://{old_vsn}/{_strip_vsn_prefix_raw(existing['file_path'])}"
-            cursor.execute("SELECT id FROM photos WHERE file_path = ? AND id != ?", (parked_fp, existing["id"]))
+        # VSN表記揺れ（大文字小文字）で同一メディアを別メディアと誤判定しないよう大文字で比較する
+        if old_vsn and old_vsn.upper() != new_vsn.upper():
+            stripped_existing = _strip_vsn_prefix_raw(existing["file_path"])
+            parked_fp = f"vsn://{old_vsn.upper()}/{stripped_existing}"
+            parked_candidates = list(dict.fromkeys([parked_fp, f"vsn://{old_vsn}/{stripped_existing}"]))
+            placeholders = ",".join(["?"] * len(parked_candidates))
+            cursor.execute(
+                f"SELECT id FROM photos WHERE file_path IN ({placeholders}) AND id != ?",
+                [*parked_candidates, existing["id"]],
+            )
             dup_parked = cursor.fetchone()
             if dup_parked:
+                # 同一VSN・同一パス（＝同じ実ファイル）の退避済みレコードが既にある場合は、
+                # 評価・タグ・非破壊調整等を現行レコードへ統合（未設定項目のみ補完）してから重複側を削除する。
+                # バッチスキャン中の自己デッドロックを防ぐため同一 cursor を引き継ぐ。
+                from .duplicates import copy_metadata_to_duplicate
+
+                copy_metadata_to_duplicate(dup_parked["id"], existing["id"], cursor=cursor)
+                logger.warning(
+                    f"VSN退避先の重複レコードを統合して削除しました: id={dup_parked['id']} -> id={existing['id']} ({parked_fp})"
+                )
                 cursor.execute("DELETE FROM photos WHERE id = ?", (dup_parked["id"],))
             cursor.execute("UPDATE photos SET file_path = ? WHERE id = ?", (parked_fp, existing["id"]))
             existing = None
@@ -211,9 +288,11 @@ def _prepare_vsn_path_for_upsert(cursor, clean_data: Dict[str, Any]) -> None:
         fname = clean_data.get("file_name") or os.path.basename(fp)
         rel_tail = _drive_relative_tail(fp).lower()
         if fname and rel_tail:
+            vsn_variants = list(dict.fromkeys([new_vsn, new_vsn.upper(), new_vsn.lower()]))
+            vsn_ph = ",".join(["?"] * len(vsn_variants))
             cursor.execute(
-                "SELECT id, file_path, directory_path, paired_raw_path FROM photos WHERE volume_serial = ? AND file_name = ?",
-                (new_vsn, fname),
+                f"SELECT id, file_path, directory_path, paired_raw_path FROM photos WHERE volume_serial IN ({vsn_ph}) AND file_name = ?",
+                [*vsn_variants, fname],
             )
             for cand in cursor.fetchall():
                 if _drive_relative_tail(cand["file_path"]).lower() == rel_tail:
@@ -418,30 +497,43 @@ def get_photos(
             params.append(city)
 
     if folder:
-        dir_sql, dir_params = _directory_filter_sql(folder, recursive=True, column_name="p.directory_path")
+        dir_sql, dir_params = _directory_filter_sql_with_vsn(
+            folder,
+            volume_serial=volume_serial,
+            recursive=True,
+            column_name="p.directory_path",
+            vsn_column="p.volume_serial",
+        )
         query += f" AND {dir_sql}"
         params.extend(dir_params)
 
     # VSN（ボリュームシリアル番号）によるメディア単位絞り込み
     s_mode = (serial_mode or "").strip().lower()
     if volume_serial and volume_serial.strip():
-        vs_clean = volume_serial.strip()
+        vsn_sql, vsn_params = _vsn_in_sql("p.volume_serial", volume_serial.strip())
         if s_mode == "match_or_null":
-            query += " AND (p.volume_serial = ? OR p.volume_serial IS NULL)"
-            params.append(vs_clean)
+            query += f" AND ({vsn_sql} OR p.volume_serial IS NULL)"
+            params.extend(vsn_params)
         else:
-            query += " AND p.volume_serial = ?"
-            params.append(vs_clean)
+            query += f" AND {vsn_sql}"
+            params.extend(vsn_params)
     elif s_mode == "null":
         query += " AND p.volume_serial IS NULL"
 
     # フォルダ除外絞り込み（指定フォルダおよび配下を除外）
     if exclude_folder:
-        ex_sql, ex_params = _directory_filter_sql(exclude_folder, recursive=True, column_name="p.directory_path")
+        ex_sql, ex_params = _directory_filter_sql_with_vsn(
+            exclude_folder,
+            volume_serial=volume_serial,
+            recursive=True,
+            column_name="p.directory_path",
+            vsn_column="p.volume_serial",
+        )
         if volume_serial and volume_serial.strip():
-            query += f" AND NOT ({ex_sql} AND p.volume_serial = ?)"
+            vsn_ex_sql, vsn_ex_params = _vsn_in_sql("p.volume_serial", volume_serial.strip())
+            query += f" AND NOT ({ex_sql} AND {vsn_ex_sql})"
             params.extend(ex_params)
-            params.append(volume_serial.strip())
+            params.extend(vsn_ex_params)
         else:
             query += f" AND NOT {ex_sql}"
             params.extend(ex_params)
@@ -614,15 +706,22 @@ def get_photos(
             sub_clauses = ["p_sub.stack_id = p.stack_id"]
             sub_params: List[Any] = []
             if folder:
-                sub_dir_sql, sub_dir_params = _directory_filter_sql(folder, recursive=True, column_name="p_sub.directory_path")
+                sub_dir_sql, sub_dir_params = _directory_filter_sql_with_vsn(
+                    folder,
+                    volume_serial=volume_serial,
+                    recursive=True,
+                    column_name="p_sub.directory_path",
+                    vsn_column="p_sub.volume_serial",
+                )
                 sub_clauses.append(sub_dir_sql)
                 sub_params.extend(sub_dir_params)
             if volume_serial and volume_serial.strip():
+                sub_vsn_sql, sub_vsn_params = _vsn_in_sql("p_sub.volume_serial", volume_serial.strip())
                 if s_mode == "match_or_null":
-                    sub_clauses.append("(p_sub.volume_serial = ? OR p_sub.volume_serial IS NULL)")
+                    sub_clauses.append(f"({sub_vsn_sql} OR p_sub.volume_serial IS NULL)")
                 else:
-                    sub_clauses.append("p_sub.volume_serial = ?")
-                sub_params.append(volume_serial.strip())
+                    sub_clauses.append(sub_vsn_sql)
+                sub_params.extend(sub_vsn_params)
             query += f""" AND (
                 p.is_stack_primary = 1 
                 OR p.stack_id IS NULL

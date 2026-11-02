@@ -2,6 +2,8 @@
 
 本ドキュメントは、Windows PowerShell 環境で発生する文字化け・ファイル破損を防止するための絶対厳守ルールを定義する。
 
+> ツール名は実行環境（Antigravity IDE / Antigravity 2.0 / Claude Code 等）によって異なる。本書のツール名は例であり、同等機能のツールに読み替えること。
+
 ---
 
 ## 1. 背景と根本原因
@@ -18,13 +20,13 @@ Windows の PowerShell には以下の2大問題が存在する：
 日本語ファイルでは確実に文字化けするため実行しない。
 - ❌ `git diff HEAD -- file.py`
 - ❌ `git log -p`
-- ✅ **代替手段**: IDE専用ツール（`view_file`）を使う。
+- ✅ **代替手段**: エージェントのファイル閲覧ツール（例: `view_file` / `read_file`）を使う。差分全体が必要な場合は、Python の `subprocess.run(["git", "diff", ...], capture_output=True)` で取得した `stdout` を UTF-8 でデコードしてファイルへ書き出し、それを閲覧ツールで読む。
 
 ### ルール 2: PowerShell のリダイレクトでファイルを書き込まない
 - ❌ `echo "test" > file.txt`（UTF-16 LE BOM で破損する）
 - ❌ `"content" | Out-File config.json`
 - ❌ `Set-Content -Path file.py -Value "content"`
-- ✅ **代替手段**: IDE専用ツール（`write_to_file`）または Python（`encoding='utf-8'`）で書き込む。
+- ✅ **代替手段**: エージェントのファイル作成ツール（例: `write_to_file` / `write_file`）または Python（`encoding='utf-8'`）で書き込む。
 
 ```powershell
 # Python経由での安全な1行書き込み例
@@ -43,9 +45,9 @@ PowerShell のテキスト操作コマンドは内部で文字列のエンコー
 
 | 目的 | 推奨ツール / 手順 |
 |---|---|
-| **テキスト・コード検索** | `grep_search` ツール（ripgrep ベース、UTF-8完全対応） |
-| **テキスト置換・ファイル修正** | `replace_file_content` / `multi_replace_file_content` ツール |
-| **ファイル内容閲覧** | `view_file` ツール |
+| **テキスト・コード検索** | エージェントの検索ツール（例: `grep_search`。ripgrep ベース、UTF-8完全対応） |
+| **テキスト置換・ファイル修正** | エージェントの編集ツール（例: `replace_file_content` / `edit_file`） |
+| **ファイル内容閲覧** | エージェントの閲覧ツール（例: `view_file` / `read_file`） |
 | **複数ファイルの一括操作** | Python スクリプト（`open(..., encoding='utf-8')` を明示） |
 
 ---

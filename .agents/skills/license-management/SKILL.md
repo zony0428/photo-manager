@@ -102,7 +102,7 @@ LibRaw は **LGPL 2.1 / CDDL 1.0 のデュアルライセンス** であり、�
 
 ## exe化・ランチャー配布時の注意
 
-- 本プロジェクトは Embeddable Python + C#製ネイティブランチャー（`PhotoManager.exe`）を採用しており、通常 PyInstaller は使用しない。
+- 本プロジェクトは Embeddable Python + C#製ネイティブランチャー（`Tetheract.exe`）を採用しており、通常 PyInstaller は使用しない。
 - 将来的に PyInstaller 等を利用する場合でも、**`--onedir` モード**を使うこと（`--onefile` は LibRaw 等の LGPL 要件に抵触する可能性があるため禁止）。
 - 配布パッケージ生成時（`build_dist.bat`）は、dist/ フォルダに `LICENSES/` フォルダを必ずそのままコピーする。
 - vcomp140.dll (Visual C++ ランタイム) は rawpy パッケージの一部として再頒布可能。

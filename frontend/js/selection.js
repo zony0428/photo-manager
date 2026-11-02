@@ -276,7 +276,11 @@ function openFolderContextMenu(x, y, node) {
   const kind = node.kind || 'folder';
   const isMissing = !!node.isMissing;
   const isOffline = !!node.isOffline;
+  const directCount = Number(node.count || 0);
   const total = Number(node.totalCount || node.count || 0);
+  const subCount = node.subCount !== undefined
+    ? Number(node.subCount || 0)
+    : Math.max(0, total - directCount);
   const isRootKind = (kind === 'drive' || kind === 'shortcut' || kind === 'offline');
 
   if (elements.folderContextMenuPath) {
@@ -284,7 +288,10 @@ function openFolderContextMenu(x, y, node) {
     if (isOffline) prefix = '[未接続] ';
     else if (isMissing) prefix = '[消失] ';
     elements.folderContextMenuPath.textContent = `${prefix}${folderName}`;
-    elements.folderContextMenuPath.title = `${folderPath}${isOffline ? '（ドライブ未接続）' : (isMissing ? '（実フォルダ消失）' : '')}`;
+    const countBreakdown = (kind === 'folder' && total > 0)
+      ? `\n写真: 合計 ${total.toLocaleString('ja-JP')} 枚（直下: ${directCount.toLocaleString('ja-JP')} 枚 / 子フォルダ: ${subCount.toLocaleString('ja-JP')} 枚）`
+      : '';
+    elements.folderContextMenuPath.title = `${folderPath}${isOffline ? '（ドライブ未接続）' : (isMissing ? '（実フォルダ消失）' : '')}${countBreakdown}`;
   }
 
   // 補助関数: 要素の有効/無効化

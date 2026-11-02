@@ -144,11 +144,10 @@ class AITaggingWorker:
                 cursor = conn.cursor()
 
                 query = """
-                    SELECT p.id, p.file_name
+                    SELECT p.id, p.file_name, p.file_path, p.volume_serial, p.paired_raw_path
                     FROM photos p
-                    JOIN thumbnails t ON p.id = t.photo_id
                 """
-                conditions = []
+                conditions = ["IFNULL(p.is_unlinked, 0) = 0"]
                 params = []
 
                 effective_force_retag = True if color_only else force_retag
@@ -219,6 +218,21 @@ class AITaggingWorker:
 
                     with self._state_lock:
                         self.current_file = fname
+
+                    if not thumb_bytes:
+                        try:
+                            from ..scanner import ensure_thumbnail
+
+                            gen_thumb = ensure_thumbnail(
+                                pid,
+                                row["file_path"],
+                                paired_raw_path=row["paired_raw_path"],
+                                volume_serial=row["volume_serial"],
+                            )
+                            if gen_thumb and gen_thumb.get("data"):
+                                thumb_bytes = gen_thumb["data"]
+                        except Exception as gen_err:
+                            logger.debug(f"AI推論用の動的サムネイル生成スキップ (ID={pid}): {gen_err}")
 
                     if not thumb_bytes:
                         with self._state_lock:

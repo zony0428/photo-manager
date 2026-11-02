@@ -79,9 +79,14 @@ function _ftOfflineNode(v) {
 
 function _ftChildNode(parent, c) {
   const isStorage = !!c.is_storage || !!parent?.isStorage;
+  const directCount = Number(c.count || 0);
+  const totalCount = Number(c.total || 0);
+  const subCount = c.sub_count !== undefined
+    ? Number(c.sub_count || 0)
+    : Math.max(0, totalCount - directCount);
   return {
     kind: 'folder', scope: parent.scope, key: _ftKey(parent.scope, c.path), name: c.name, path: c.path,
-    icon: FOLDER_SVG_CLOSED, status: c.status, count: c.count, total: c.total, hasManaged: !!c.has_managed || isStorage,
+    icon: FOLDER_SVG_CLOSED, status: c.status, count: directCount, subCount, total: totalCount, hasManaged: !!c.has_managed || isStorage,
     hasChildren: !!c.has_children, isMissing: !!c.is_missing, isOffline: parent.isOffline,
     volumeSerial: parent.volumeSerial, serialMode: parent.serialMode, isStorage, isStorageRoot: false, label: parent.label || '', customName: parent.customName || '', shortSerial: parent.shortSerial || '', letter: parent.letter || '',
   };
@@ -251,8 +256,15 @@ function _ftTooltip(node) {
     lines.push('未登録のフォルダ（右クリックで管理に追加）');
   }
   if (node.total > 0) {
-    const direct = node.count > 0 && node.count !== node.total ? `（直下 ${_ftFormatCount(node.count)} 枚）` : '';
-    lines.push(`写真: 配下 ${_ftFormatCount(node.total)} 枚${direct}`);
+    if (node.kind === 'folder') {
+      const directCnt = Number(node.count || 0);
+      const subCnt = node.subCount !== undefined
+        ? Number(node.subCount || 0)
+        : Math.max(0, Number(node.total || 0) - directCnt);
+      lines.push(`写真: 合計 ${_ftFormatCount(node.total)} 枚（直下: ${_ftFormatCount(directCnt)} 枚 / 子フォルダ: ${_ftFormatCount(subCnt)} 枚）`);
+    } else {
+      lines.push(`写真: 配下 ${_ftFormatCount(node.total)} 枚`);
+    }
   } else if (node.hasManaged) {
     lines.push('● 配下に管理フォルダがあります');
   }
@@ -277,6 +289,15 @@ function _ftBadges(node) {
     const b = document.createElement('span');
     b.className = 'nav-count';
     b.textContent = _ftFormatCount(node.total);
+    if (node.kind === 'folder') {
+      const directCnt = Number(node.count || 0);
+      const subCnt = node.subCount !== undefined
+        ? Number(node.subCount || 0)
+        : Math.max(0, Number(node.total || 0) - directCnt);
+      b.title = `合計 ${_ftFormatCount(node.total)} 枚（直下: ${_ftFormatCount(directCnt)} 枚 / 子フォルダ: ${_ftFormatCount(subCnt)} 枚）`;
+    } else {
+      b.title = `配下合計 ${_ftFormatCount(node.total)} 枚`;
+    }
     badges.push(b);
   } else if (node.hasManaged) {
     const b = document.createElement('span');
@@ -386,10 +407,13 @@ function _ftBuildNodeLi(node) {
   icon.className = 'folder-tree-icon';
   icon.innerHTML = _ftIcon(node, isExpanded);
 
+  const tooltipText = _ftTooltip(node);
+  item.title = tooltipText;
+
   const name = document.createElement('span');
   name.className = 'folder-tree-name';
   name.textContent = node.name;
-  name.title = _ftTooltip(node);
+  name.title = tooltipText;
 
   item.append(toggle, icon, name, ..._ftBadges(node));
 
@@ -545,6 +569,11 @@ function _ftHandleClick(node) {
 function _ftHandleContextMenu(e, node) {
   e.preventDefault();
   e.stopPropagation();
+  const directCnt = Number(node.count || 0);
+  const totalCnt = Number(node.total || 0);
+  const subCnt = node.subCount !== undefined
+    ? Number(node.subCount || 0)
+    : Math.max(0, totalCnt - directCnt);
   openFolderContextMenu(e.clientX, e.clientY, {
     name: node.name,
     fullPath: node.path,
@@ -552,9 +581,11 @@ function _ftHandleContextMenu(e, node) {
     kind: node.kind,
     isMissing: node.isMissing || node.isOffline,
     isOffline: node.isOffline,
-    count: node.count,
-    totalCount: node.total,
+    count: directCnt,
+    subCount: subCnt,
+    totalCount: totalCnt,
     hasManaged: node.hasManaged,
+    hasChildren: !!node.hasChildren,
     isStorage: !!node.isStorage,
     isStorageRoot: !!node.isStorageRoot,
     volumeSerial: node.volumeSerial || null,

@@ -1,4 +1,4 @@
-# Photo Manager - 技術ナレッジ集 (Knowledge Base)
+# Tetheract Photo Manager - 技術ナレッジ集 (Knowledge Base)
 
 本ディレクトリは、Photo Manager の開発において得られた設計判断、パフォーマンス改善、障害対策、トラブルシューティングのノウハウを蓄積したアーカイブである。
 別の開発PCや異なるAIエージェント環境でも、過去の知見をそのまま参照・活用できるように自己完結型で管理されている。

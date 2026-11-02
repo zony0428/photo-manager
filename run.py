@@ -121,33 +121,153 @@ def launch_app_window() -> None:
         ).start()
 
 
+def refresh_windows_exe_icon(exe_path: Path) -> None:
+    """
+    Windows エクスプローラーのアイコンキャッシュが旧アイコン（PhotoManager.exe 時代等）を
+    保持し続ける現象を防ぐため、ファイル作成日時を最新化した上で Shell 更新通知を送る。
+    """
+    if sys.platform != "win32" or not exe_path.exists():
+        return
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        resolved = str(exe_path.resolve())
+        kernel32 = ctypes.windll.kernel32
+        # FILE_WRITE_ATTRIBUTES (0x0100), OPEN_EXISTING (3), FILE_ATTRIBUTE_NORMAL (0x80)
+        handle = kernel32.CreateFileW(resolved, 0x0100, 7, None, 3, 0x80, None)
+        if handle != -1 and handle != wintypes.HANDLE(-1).value:
+            ft = wintypes.FILETIME()
+            kernel32.GetSystemTimeAsFileTime(ctypes.byref(ft))
+            kernel32.SetFileTime(handle, ctypes.byref(ft), ctypes.byref(ft), ctypes.byref(ft))
+            kernel32.CloseHandle(handle)
+
+        shell32 = ctypes.windll.shell32
+        wpath = ctypes.c_wchar_p(resolved)
+        wdir = ctypes.c_wchar_p(str(exe_path.resolve().parent))
+        # SHCNF_PATHW | SHCNF_FLUSHNOWAIT (0x2005), SHCNF_IDLIST | SHCNF_FLUSHNOWAIT (0x2000)
+        shell32.SHChangeNotify(0x00000004, 0x2005, wpath, None)  # SHCNE_DELETE
+        shell32.SHChangeNotify(0x00000002, 0x2005, wpath, None)  # SHCNE_CREATE
+        shell32.SHChangeNotify(0x00002000, 0x2005, wpath, None)  # SHCNE_UPDATEITEM
+        shell32.SHChangeNotify(0x00001000, 0x2005, wdir, None)   # SHCNE_UPDATEDIR
+        shell32.SHChangeNotify(0x08000000, 0x2000, None, None)   # SHCNE_ASSOCCHANGED
+    except Exception as e:
+        print(f"[WARN] アイコンキャッシュ更新通知スキップ: {e}")
+
+
+def _compile_tetheract_launcher(root_dir: Path) -> bool:
+    """
+    Windows 標準の csc.exe を用いて、最新の frontend/favicon.ico と launcher/Launcher.cs から
+    Tetheract.exe をクリーンビルドする。
+    """
+    if sys.platform != "win32":
+        return False
+    cs_path = root_dir / "launcher" / "Launcher.cs"
+    ico_path = root_dir / "frontend" / "favicon.ico"
+    out_path = root_dir / "Tetheract.exe"
+    tmp_path = root_dir / "Tetheract.new.exe"
+    if not cs_path.exists() or not ico_path.exists():
+        return False
+
+    csc_candidates = [
+        Path(r"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe"),
+        Path(r"C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe"),
+    ]
+    csc_exe = next((p for p in csc_candidates if p.exists()), None)
+    if csc_exe is None:
+        return False
+
+    try:
+        if tmp_path.exists():
+            tmp_path.unlink()
+        res = subprocess.run(
+            [
+                str(csc_exe),
+                "/nologo",
+                "/target:winexe",
+                "/optimize+",
+                f"/win32icon:{ico_path}",
+                f"/out:{tmp_path}",
+                str(cs_path),
+            ],
+            capture_output=True,
+            timeout=15,
+        )
+        if res.returncode != 0 or not tmp_path.exists():
+            return False
+
+        if out_path.exists():
+            out_path.unlink()
+        tmp_path.replace(out_path)
+        refresh_windows_exe_icon(out_path)
+        return True
+    except Exception as e:
+        print(f"[WARN] Tetheract.exe の自動ビルドスキップ: {e}")
+        try:
+            if tmp_path.exists():
+                tmp_path.unlink()
+        except Exception:
+            pass
+        return False
+
 
 def _migrate_legacy_launcher_files() -> None:
     """
     旧バージョンの PhotoManager.exe / PhotoManager_Mobile.html が残っている場合、
     ランチャープロセス終了後（0.4秒後）に自動で Tetheract.exe / Tetheract_Mobile.html へ
-    リネームまたは重複削除してクリーンアップする。
+    移行・クリーンアップする。
+    ※ PhotoManager.exe（旧アイコン）を単純リネームすると旧アイコンがキャッシュされるため、
+       最新アイコンでの再コンパイルを優先する。
     """
     def _worker():
         time.sleep(0.4)
         root_dir = Path(_PROJECT_ROOT)
-        pairs = [
-            ("PhotoManager.exe", "Tetheract.exe"),
-            ("PhotoManager_Mobile.html", "Tetheract_Mobile.html"),
-        ]
-        for old_name, new_name in pairs:
-            old_p = root_dir / old_name
-            new_p = root_dir / new_name
-            if not old_p.exists():
-                continue
+        old_exe = root_dir / "PhotoManager.exe"
+        new_exe = root_dir / "Tetheract.exe"
+        ico_path = root_dir / "frontend" / "favicon.ico"
+
+        # 1. PhotoManager.exe の移行または削除
+        if old_exe.exists():
             for _ in range(5):
                 try:
-                    if new_p.exists():
-                        old_p.unlink()
-                        print(f"[MIGRATE] 旧ファイルを整理しました: {old_name} (新: {new_name})")
+                    if not new_exe.exists():
+                        if _compile_tetheract_launcher(root_dir):
+                            old_exe.unlink()
+                            print("[MIGRATE] 最新アイコンで Tetheract.exe を生成し、旧 PhotoManager.exe を削除しました")
+                        else:
+                            old_exe.replace(new_exe)
+                            print("[MIGRATE] ランチャーをリネームしました: PhotoManager.exe -> Tetheract.exe")
                     else:
-                        old_p.replace(new_p)
-                        print(f"[MIGRATE] ランチャーをリネームしました: {old_name} -> {new_name}")
+                        old_exe.unlink()
+                        print("[MIGRATE] 旧ファイルを整理しました: PhotoManager.exe (新: Tetheract.exe)")
+                    break
+                except Exception:
+                    time.sleep(0.3)
+
+        # 2. 既存の Tetheract.exe に旧アイコンが入っている場合は自動再ビルド
+        if new_exe.exists() and ico_path.exists():
+            try:
+                exe_bytes = new_exe.read_bytes()
+                ico_bytes = ico_path.read_bytes()
+                needs_rebuild = (b"\x89PNG\r\n\x1a\n" in ico_bytes and ico_bytes[-4096:] not in exe_bytes)
+                if needs_rebuild:
+                    if _compile_tetheract_launcher(root_dir):
+                        print("[MIGRATE] Tetheract.exe のアイコンを最新リソースで更新しました")
+            except Exception as e:
+                print(f"[WARN] Tetheract.exe アイコン検証スキップ: {e}")
+
+        # 3. PhotoManager_Mobile.html の移行または削除
+        old_mob = root_dir / "PhotoManager_Mobile.html"
+        new_mob = root_dir / "Tetheract_Mobile.html"
+        if old_mob.exists():
+            for _ in range(5):
+                try:
+                    if new_mob.exists():
+                        old_mob.unlink()
+                        print("[MIGRATE] 旧ファイルを整理しました: PhotoManager_Mobile.html (新: Tetheract_Mobile.html)")
+                    else:
+                        old_mob.replace(new_mob)
+                        print("[MIGRATE] モバイルHTMLをリネームしました: PhotoManager_Mobile.html -> Tetheract_Mobile.html")
                     break
                 except Exception:
                     time.sleep(0.3)

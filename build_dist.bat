@@ -223,7 +223,10 @@ if not exist "%CSC%" (
 if exist "%CSC%" (
     "%CSC%" /nologo /target:winexe /optimize+ /win32icon:"%SRC%frontend\favicon.ico" /out:"%DIST%\Tetheract.exe" "%SRC%launcher\Launcher.cs" >nul 2>&1
     if exist "%DIST%\Tetheract.exe" (
+        if exist "%SRC%PhotoManager.exe" del /f /q "%SRC%PhotoManager.exe" >nul 2>&1
+        if exist "%SRC%Tetheract.exe" del /f /q "%SRC%Tetheract.exe" >nul 2>&1
         copy /y "%DIST%\Tetheract.exe" "%SRC%Tetheract.exe" >nul 2>&1
+        if exist "%SRC%python\python.exe" "%SRC%python\python.exe" -c "import pathlib, run; run.refresh_windows_exe_icon(pathlib.Path('Tetheract.exe'))" >nul 2>&1
         copy /y "%DIST%\Tetheract.exe" "%DIST_UPD%\Tetheract.exe" >nul 2>&1
         echo        [OK] Tetheract.exe compiled and bundled.
         goto :MAKE_ZIPS
