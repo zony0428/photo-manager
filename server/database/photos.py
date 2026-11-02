@@ -40,6 +40,27 @@ def _drive_relative_tail(path_str: Optional[str]) -> str:
     return ""
 
 
+def _is_same_photo_metadata(a: Any, b: Any) -> bool:
+    """2つの写真メタデータが同一秒・同一サイズの別コマ（連写・ブラケット）ではなく同一画像であるか判定する"""
+    sub_a = str(a["subsec_time"] if "subsec_time" in a.keys() and a["subsec_time"] is not None else "").strip()
+    sub_b = str(b.get("subsec_time") or "").strip() if isinstance(b, dict) else str(b["subsec_time"] or "").strip()
+    if sub_a and sub_b and sub_a != sub_b:
+        return False
+    ss_a = str(a["shutter_speed"] if "shutter_speed" in a.keys() and a["shutter_speed"] is not None else "").strip()
+    ss_b = str(b.get("shutter_speed") or "").strip() if isinstance(b, dict) else str(b["shutter_speed"] or "").strip()
+    if ss_a and ss_b and ss_a != ss_b:
+        return False
+    ev_a = a["exposure_bias"] if "exposure_bias" in a.keys() else None
+    ev_b = b.get("exposure_bias") if isinstance(b, dict) else (b["exposure_bias"] if "exposure_bias" in b.keys() else None)
+    if ev_a is not None and ev_b is not None:
+        try:
+            if abs(float(ev_a) - float(ev_b)) > 0.05:
+                return False
+        except (ValueError, TypeError):
+            pass
+    return True
+
+
 def _compute_content_key(meta: Dict[str, Any]) -> Optional[str]:
     """写真メタデータから不変の同一画像識別キー (content_key) を生成する"""
     fsize = int(meta.get("file_size") or 0)
@@ -49,7 +70,32 @@ def _compute_content_key(meta: Dict[str, Any]) -> Optional[str]:
     dt_raw = str(meta.get("original_date_taken") or meta.get("date_taken") or "").strip()
     if dt_raw:
         dt_norm = dt_raw.replace(":", "-", 2)[:19]
-        return f"dt:{dt_norm}|sz:{fsize}|raw:{is_raw_flag}"
+        extra_parts = []
+        subsec = str(meta.get("subsec_time") or "").strip()
+        if subsec:
+            extra_parts.append(f"ss:{subsec}")
+        shutter = str(meta.get("shutter_speed") or "").strip()
+        if shutter:
+            extra_parts.append(f"tv:{shutter}")
+        fnum = meta.get("f_number")
+        if fnum is not None and str(fnum).strip() != "":
+            try:
+                extra_parts.append(f"av:{float(fnum):.2f}")
+            except (ValueError, TypeError):
+                extra_parts.append(f"av:{fnum}")
+        iso_val = meta.get("iso")
+        if iso_val is not None and str(iso_val).strip() != "":
+            extra_parts.append(f"iso:{iso_val}")
+        ev_val = meta.get("exposure_bias")
+        if ev_val is not None and str(ev_val).strip() != "":
+            try:
+                ev_f = round(float(ev_val), 2)
+                if abs(ev_f) > 1e-4:
+                    extra_parts.append(f"ev:{ev_f:+.2f}")
+            except (ValueError, TypeError):
+                pass
+        suffix = ("|" + "|".join(extra_parts)) if extra_parts else ""
+        return f"dt:{dt_norm}|sz:{fsize}|raw:{is_raw_flag}{suffix}"
     fname = str(meta.get("file_name") or "").strip().lower()
     if fname:
         w = int(meta.get("width") or 0)
@@ -501,11 +547,13 @@ def _upsert_single_photo_in_tx(cursor: Any, clean_data: Dict[str, Any]) -> int:
             ORDER BY COALESCE(is_unlinked, 0) ASC,
                      (CASE WHEN rating != 0 OR is_favorite != 0 THEN 1 ELSE 0 END) DESC,
                      id ASC
-            LIMIT 1
             """,
             (fsize, is_raw_val, dt_val, dt_val),
         )
-        target_photo = cursor.fetchone()
+        for cand in cursor.fetchall():
+            if _is_same_photo_metadata(cand, clean_data):
+                target_photo = cand
+                break
 
     if target_photo:
         pid = int(target_photo["id"])

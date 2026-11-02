@@ -88,6 +88,11 @@ def build_standalone_mobile_html() -> str:
         f'<link rel="apple-touch-icon" href="{icon_data_uri}">',
         html,
     )
+    html = re.sub(
+        r'src="/icons/icon-192\.png[^"]*"',
+        f'src="{icon_data_uri}"',
+        html,
+    )
     html = re.sub(r'<link\s+rel="manifest"[^>]*>\s*', "", html)
 
     # 2. CSPメタタグの挿入（まだ存在しない場合）

@@ -384,7 +384,7 @@ button, input, select, textarea {
 .logo {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   font-family: 'Outfit', sans-serif;
   font-weight: 700;
   letter-spacing: 1px;
@@ -392,11 +392,20 @@ button, input, select, textarea {
   flex-shrink: 0;
 }
 
-.logo-lockup-svg {
-  height: 26px;
-  width: auto;
+.logo-app-icon {
+  width: 24px;
+  height: 24px;
   display: block;
   flex-shrink: 0;
+  object-fit: contain;
+}
+
+.logo-lockup-svg {
+  height: 26px;
+  width: 134px;
+  display: block;
+  flex-shrink: 0;
+  overflow: visible;
 }
 
 .hinomaru-disc {

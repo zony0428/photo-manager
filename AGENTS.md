@@ -19,7 +19,7 @@ USBメモリやポータブルSSDでの持ち歩き運用（完全スタンド�
 - **サムネイル**: SQLite BLOBストレージ（`thumbnails` テーブルにWebPバイナリを格納）
 - **UI起動**: `Tetheract.exe`（または `start.bat`） -> `server/run.py`（または ルート `run.py`） -> Edge/Chrome の `--app` モード（タブ/URLバー無しの単体アプリ風ウィンドウ）
 - **単体モバイルHTML**: `Tetheract_Mobile.html`（`server/mobile_bundle.py` が自動生成。旧名 `PhotoManager_Mobile.html`）
-- **プロセス終了**: `server/heartbeat.py` によるブラウザ生存監視（ブラウザを閉じるとサーバーも自動停止）
+- **常駐・プロセス終了**: `server/tray.py`（`pystray`）によるタスクトレイ常駐と、UI終了ボタン（`POST /api/shutdown` -> `server/heartbeat.py` の `request_shutdown()`）またはトレイメニューからの明示的シャットダウン（※ハートビート途絶による自動終了は無効化済み）
 
 ---
 
@@ -193,7 +193,7 @@ photo-manager/
     ├── raw_loader.py          ★ 各社RAWファイル解析・LibRaw連携
     ├── shell_thumbnail.py     ★ Windows Shell APIサムネイルフォールバック
     ├── volume_info.py         ★ ドライブVSN・ボリュームラベル取得
-    ├── heartbeat.py           ★ ブラウザ生存監視・自動シャットダウン
+    ├── heartbeat.py           ★ 明示的シャットダウン制御（ハートビート自動終了は無効化済み）
     ├── tray.py                ★ システムトレイアイコン・メニュー（pystray）
     ├── make_release_zips.py   ★ 配布用ZIP生成（除外ルール適用）
     ├── ai/                    ★ ローカルAI自動タグ付けエンジン（ONNX推論）

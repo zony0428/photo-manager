@@ -437,10 +437,13 @@ def _copy_metadata_to_duplicate_with_cursor(cursor: Any, source_photo_id: int, t
     for tid_src in tag_source_ids:
         cursor.execute(
             """
-            INSERT OR IGNORE INTO photo_tags (photo_id, tag, source, confidence)
-            SELECT ?, tag, source, confidence
+            INSERT INTO photo_tags (photo_id, tag, source, confidence)
+            SELECT ?, tag, COALESCE(source, 'manual'), COALESCE(confidence, 1.0)
             FROM photo_tags
             WHERE photo_id = ?
+            ON CONFLICT(photo_id, tag) DO UPDATE SET
+                source = CASE WHEN excluded.source = 'manual' THEN 'manual' ELSE photo_tags.source END,
+                confidence = CASE WHEN excluded.source = 'manual' THEN 1.0 ELSE MAX(COALESCE(photo_tags.confidence, 0.0), COALESCE(excluded.confidence, 0.0)) END
             """,
             (target_photo_id, tid_src),
         )

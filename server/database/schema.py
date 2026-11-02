@@ -413,6 +413,13 @@ def initialize_database() -> None:
             if _ensure_photo_links_synced(cursor):
                 conn.commit()
 
+        # --- マイグレーション: v1.2.0 初版DDL再構築時の CASCADE DELETE で消失した photo_tags / thumbnails を事前バックアップから自動復元 ---
+        cursor.execute("SELECT 1 FROM migrations WHERE name = 'restore_cascaded_tags_and_thumbs_v1'")
+        if not cursor.fetchone():
+            _restore_cascaded_tags_and_thumbs_from_backup(cursor, conn)
+            cursor.execute("INSERT INTO migrations (name) VALUES ('restore_cascaded_tags_and_thumbs_v1')")
+            conn.commit()
+
         # 起動時の高速整合性チェック: 階層タグの親・祖先レコード欠落があれば自動補完（カバリングインデックス使用）
         repaired_anc_count = repair_missing_ancestor_tags(cursor)
         if repaired_anc_count > 0:
@@ -455,10 +462,12 @@ def _upgrade_legacy_schema_ddl(cursor, conn) -> bool:
     """
     既存DBのテーブル定義が旧スキーマ（photos.file_path の UNIQUE 制約、photo_tags の id カラム、
     thumbnails の file_hash PRIMARY KEY）である場合に、新スキーマへ安全に再構築する。
+    ※ SQLite では PRAGMA foreign_keys = ON のまま親テーブル (photos) を DROP すると、
+       FOREIGN KEY ... ON DELETE CASCADE を持つ子テーブル (photo_tags / thumbnails) の全行が
+       カスケード削除されてしまうため、必ずトランザクションを確定して foreign_keys = OFF にした上で、
+       さらに子テーブルのデータを一時退避して旧子テーブルを先に DROP してから photos を再構築する。
     """
-    changed = False
-
-    # 1. photos テーブルの file_path UNIQUE 制約を解除
+    # 1. photos テーブルの file_path UNIQUE 制約の有無を検査
     cursor.execute("PRAGMA index_list(photos)")
     has_unique_filepath = False
     for idx in cursor.fetchall():
@@ -469,144 +478,212 @@ def _upgrade_legacy_schema_ddl(cursor, conn) -> bool:
                 has_unique_filepath = True
                 break
 
-    if has_unique_filepath:
-        cursor.execute("DROP TRIGGER IF EXISTS trg_photos_after_delete")
-        cursor.execute(
-            """
-            CREATE TABLE photos_new (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                file_path TEXT NOT NULL,
-                file_name TEXT NOT NULL,
-                directory_path TEXT NOT NULL,
-                file_size INTEGER NOT NULL,
-                file_mtime REAL,
-                width INTEGER,
-                height INTEGER,
-                date_taken TEXT,
-                year_month TEXT,
-                camera_model TEXT,
-                rating INTEGER DEFAULT 0,
-                is_favorite INTEGER DEFAULT 0,
-                exposure_bias REAL DEFAULT 0.0,
-                shutter_speed TEXT,
-                f_number REAL,
-                iso INTEGER,
-                focal_length REAL,
-                lens_model TEXT,
-                subsec_time TEXT,
-                stack_id INTEGER,
-                is_stack_primary INTEGER DEFAULT 1,
-                stack_type TEXT,
-                is_raw INTEGER DEFAULT 0,
-                raw_format TEXT,
-                paired_raw_path TEXT,
-                volume_serial TEXT,
-                latitude REAL,
-                longitude REAL,
-                gps_source TEXT,
-                country TEXT,
-                state TEXT,
-                city TEXT,
-                meta_dirty INTEGER DEFAULT 0,
-                is_unlinked INTEGER DEFAULT 0,
-                rotation INTEGER DEFAULT 0,
-                fine_angle REAL DEFAULT 0.0,
-                crop_x REAL,
-                crop_y REAL,
-                crop_w REAL,
-                crop_h REAL,
-                crop_aspect TEXT,
-                brightness INTEGER DEFAULT 0,
-                contrast INTEGER DEFAULT 0,
-                saturation INTEGER DEFAULT 0,
-                original_date_taken TEXT,
-                content_key TEXT,
-                link_count INTEGER DEFAULT 1,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-            """
-        )
-        cursor.execute("PRAGMA table_info(photos)")
-        old_cols = {r["name"] for r in cursor.fetchall()}
-        cursor.execute("PRAGMA table_info(photos_new)")
-        new_cols = [r["name"] for r in cursor.fetchall()]
-        common_cols = [c for c in new_cols if c in old_cols]
-        col_list = ", ".join(common_cols)
-        cursor.execute(f"INSERT INTO photos_new ({col_list}) SELECT {col_list} FROM photos")
-        cursor.execute("DROP TABLE photos")
-        cursor.execute("ALTER TABLE photos_new RENAME TO photos")
-        changed = True
-
-    # 2. photo_tags テーブルを PRIMARY KEY (photo_id, tag) WITHOUT ROWID に再構築
+    # 2. photo_tags テーブルの再構築要否を検査
     cursor.execute("PRAGMA table_info(photo_tags)")
     pt_cols = {r["name"] for r in cursor.fetchall()}
     cursor.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='photo_tags'")
     pt_sql_row = cursor.fetchone()
     pt_sql = (pt_sql_row["sql"] or "").upper() if pt_sql_row else ""
-    if "id" in pt_cols or "WITHOUT ROWID" not in pt_sql:
-        has_created = "created_at" in pt_cols
-        created_sel = "COALESCE(created_at, CURRENT_TIMESTAMP)" if has_created else "CURRENT_TIMESTAMP"
-        cursor.execute(
-            """
-            CREATE TABLE photo_tags_new (
-                photo_id INTEGER NOT NULL,
-                tag TEXT NOT NULL,
-                source TEXT DEFAULT 'manual',
-                confidence REAL DEFAULT 1.0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (photo_id, tag),
-                FOREIGN KEY(photo_id) REFERENCES photos(id) ON DELETE CASCADE
-            ) WITHOUT ROWID
-            """
-        )
-        cursor.execute(
-            f"""
-            INSERT OR IGNORE INTO photo_tags_new (photo_id, tag, source, confidence, created_at)
-            SELECT photo_id, tag, COALESCE(source, 'manual'), COALESCE(confidence, 1.0), {created_sel}
-            FROM photo_tags
-            """
-        )
-        cursor.execute("DROP TABLE photo_tags")
-        cursor.execute("ALTER TABLE photo_tags_new RENAME TO photo_tags")
-        changed = True
+    need_rebuild_pt = bool("id" in pt_cols or "WITHOUT ROWID" not in pt_sql or has_unique_filepath)
 
-    # 3. thumbnails テーブルを photo_id INTEGER PRIMARY KEY に再構築
+    # 3. thumbnails テーブルの再構築要否を検査
     cursor.execute("PRAGMA table_info(thumbnails)")
     th_info = [dict(r) for r in cursor.fetchall()]
     th_cols = {r["name"] for r in th_info}
     pk_cols = [r["name"] for r in th_info if r.get("pk")]
-    if pk_cols != ["photo_id"]:
-        th_created_sel = "COALESCE(created_at, CURRENT_TIMESTAMP)" if "created_at" in th_cols else "CURRENT_TIMESTAMP"
-        cursor.execute(
-            """
-            CREATE TABLE thumbnails_new (
-                photo_id INTEGER PRIMARY KEY,
-                file_hash TEXT,
-                data BLOB NOT NULL,
-                width INTEGER,
-                height INTEGER,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY(photo_id) REFERENCES photos(id) ON DELETE CASCADE
+    need_rebuild_th = bool(pk_cols != ["photo_id"] or has_unique_filepath)
+
+    if not (has_unique_filepath or need_rebuild_pt or need_rebuild_th):
+        return False
+
+    # トランザクション外で PRAGMA foreign_keys = OFF を確実に有効化する
+    conn.commit()
+    conn.execute("PRAGMA foreign_keys = OFF")
+    try:
+        cursor.execute("DROP TRIGGER IF EXISTS trg_photos_after_delete")
+
+        # 先に子テーブル (photo_tags / thumbnails) のデータを退避し、旧テーブルを DROP して CASCADE DELETE を物理的に遮断
+        if need_rebuild_pt:
+            has_pt_created = "created_at" in pt_cols
+            pt_created_sel = "COALESCE(created_at, CURRENT_TIMESTAMP)" if has_pt_created else "CURRENT_TIMESTAMP"
+            pt_src_sel = "COALESCE(source, 'manual')" if "source" in pt_cols else "'manual'"
+            pt_conf_sel = "COALESCE(confidence, 1.0)" if "confidence" in pt_cols else "1.0"
+            cursor.execute("DROP TABLE IF EXISTS _mig_bak_photo_tags")
+            cursor.execute(
+                f"""
+                CREATE TABLE _mig_bak_photo_tags AS
+                SELECT photo_id, tag, {pt_src_sel} AS source, {pt_conf_sel} AS confidence, {pt_created_sel} AS created_at
+                FROM photo_tags
+                """
             )
-            """
-        )
-        cursor.execute(
-            f"""
-            INSERT OR REPLACE INTO thumbnails_new (photo_id, file_hash, data, width, height, created_at)
-            SELECT photo_id, file_hash, data, width, height, {th_created_sel}
-            FROM thumbnails
-            WHERE photo_id IS NOT NULL
-            """
-        )
-        cursor.execute("DROP TABLE thumbnails")
-        cursor.execute("ALTER TABLE thumbnails_new RENAME TO thumbnails")
-        changed = True
+            cursor.execute("DROP TABLE photo_tags")
 
-    if changed:
+        if need_rebuild_th:
+            th_created_sel = "COALESCE(created_at, CURRENT_TIMESTAMP)" if "created_at" in th_cols else "CURRENT_TIMESTAMP"
+            cursor.execute("DROP TABLE IF EXISTS _mig_bak_thumbnails")
+            cursor.execute(
+                f"""
+                CREATE TABLE _mig_bak_thumbnails AS
+                SELECT photo_id, file_hash, data, width, height, {th_created_sel} AS created_at
+                FROM thumbnails
+                WHERE photo_id IS NOT NULL
+                """
+            )
+            cursor.execute("DROP TABLE thumbnails")
+
+        if has_unique_filepath:
+            cursor.execute("DROP TABLE IF EXISTS _mig_bak_photo_links")
+            cursor.execute("CREATE TABLE _mig_bak_photo_links AS SELECT * FROM photo_links")
+            cursor.execute("DROP TABLE photo_links")
+
+            cursor.execute(
+                """
+                CREATE TABLE photos_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    file_path TEXT NOT NULL,
+                    file_name TEXT NOT NULL,
+                    directory_path TEXT NOT NULL,
+                    file_size INTEGER NOT NULL,
+                    file_mtime REAL,
+                    width INTEGER,
+                    height INTEGER,
+                    date_taken TEXT,
+                    year_month TEXT,
+                    camera_model TEXT,
+                    rating INTEGER DEFAULT 0,
+                    is_favorite INTEGER DEFAULT 0,
+                    exposure_bias REAL DEFAULT 0.0,
+                    shutter_speed TEXT,
+                    f_number REAL,
+                    iso INTEGER,
+                    focal_length REAL,
+                    lens_model TEXT,
+                    subsec_time TEXT,
+                    stack_id INTEGER,
+                    is_stack_primary INTEGER DEFAULT 1,
+                    stack_type TEXT,
+                    is_raw INTEGER DEFAULT 0,
+                    raw_format TEXT,
+                    paired_raw_path TEXT,
+                    volume_serial TEXT,
+                    latitude REAL,
+                    longitude REAL,
+                    gps_source TEXT,
+                    country TEXT,
+                    state TEXT,
+                    city TEXT,
+                    meta_dirty INTEGER DEFAULT 0,
+                    is_unlinked INTEGER DEFAULT 0,
+                    rotation INTEGER DEFAULT 0,
+                    fine_angle REAL DEFAULT 0.0,
+                    crop_x REAL,
+                    crop_y REAL,
+                    crop_w REAL,
+                    crop_h REAL,
+                    crop_aspect TEXT,
+                    brightness INTEGER DEFAULT 0,
+                    contrast INTEGER DEFAULT 0,
+                    saturation INTEGER DEFAULT 0,
+                    original_date_taken TEXT,
+                    content_key TEXT,
+                    link_count INTEGER DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            cursor.execute("PRAGMA table_info(photos)")
+            old_cols = {r["name"] for r in cursor.fetchall()}
+            cursor.execute("PRAGMA table_info(photos_new)")
+            new_cols = [r["name"] for r in cursor.fetchall()]
+            common_cols = [c for c in new_cols if c in old_cols]
+            col_list = ", ".join(common_cols)
+            cursor.execute(f"INSERT INTO photos_new ({col_list}) SELECT {col_list} FROM photos")
+            cursor.execute("DROP TABLE photos")
+            cursor.execute("ALTER TABLE photos_new RENAME TO photos")
+
+            cursor.execute(
+                """
+                CREATE TABLE photo_links (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    photo_id INTEGER NOT NULL,
+                    volume_serial TEXT NOT NULL DEFAULT '' COLLATE NOCASE,
+                    rel_path TEXT NOT NULL COLLATE NOCASE,
+                    rel_dir TEXT NOT NULL COLLATE NOCASE,
+                    file_path TEXT NOT NULL COLLATE NOCASE,
+                    directory_path TEXT NOT NULL COLLATE NOCASE,
+                    file_name TEXT NOT NULL COLLATE NOCASE,
+                    file_mtime REAL,
+                    paired_raw_path TEXT,
+                    is_primary INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(volume_serial, rel_path),
+                    FOREIGN KEY(photo_id) REFERENCES photos(id) ON DELETE CASCADE
+                )
+                """
+            )
+            cursor.execute("INSERT OR IGNORE INTO photo_links SELECT * FROM _mig_bak_photo_links")
+            cursor.execute("DROP TABLE _mig_bak_photo_links")
+
+        if need_rebuild_pt:
+            cursor.execute(
+                """
+                CREATE TABLE photo_tags (
+                    photo_id INTEGER NOT NULL,
+                    tag TEXT NOT NULL,
+                    source TEXT DEFAULT 'manual',
+                    confidence REAL DEFAULT 1.0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (photo_id, tag),
+                    FOREIGN KEY(photo_id) REFERENCES photos(id) ON DELETE CASCADE
+                ) WITHOUT ROWID
+                """
+            )
+            cursor.execute(
+                """
+                INSERT INTO photo_tags (photo_id, tag, source, confidence, created_at)
+                SELECT photo_id, tag, source, confidence, created_at
+                FROM _mig_bak_photo_tags
+                WHERE photo_id IS NOT NULL AND tag IS NOT NULL
+                ON CONFLICT(photo_id, tag) DO UPDATE SET
+                    source = CASE WHEN excluded.source = 'manual' THEN 'manual' ELSE photo_tags.source END,
+                    confidence = CASE WHEN excluded.source = 'manual' THEN 1.0 ELSE MAX(COALESCE(photo_tags.confidence, 0.0), COALESCE(excluded.confidence, 0.0)) END
+                """
+            )
+            cursor.execute("DROP TABLE _mig_bak_photo_tags")
+
+        if need_rebuild_th:
+            cursor.execute(
+                """
+                CREATE TABLE thumbnails (
+                    photo_id INTEGER PRIMARY KEY,
+                    file_hash TEXT,
+                    data BLOB NOT NULL,
+                    width INTEGER,
+                    height INTEGER,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(photo_id) REFERENCES photos(id) ON DELETE CASCADE
+                )
+                """
+            )
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO thumbnails (photo_id, file_hash, data, width, height, created_at)
+                SELECT photo_id, file_hash, data, width, height, created_at
+                FROM _mig_bak_thumbnails
+                WHERE photo_id IS NOT NULL AND data IS NOT NULL
+                """
+            )
+            cursor.execute("DROP TABLE _mig_bak_thumbnails")
+
         _create_photos_indexes(cursor)
+        conn.commit()
+    finally:
+        conn.commit()
+        conn.execute("PRAGMA foreign_keys = ON")
 
-    return changed
+    return True
 
 
 def _ensure_photo_links_synced(cursor) -> int:
@@ -618,7 +695,8 @@ def _ensure_photo_links_synced(cursor) -> int:
         """
         SELECT id, file_path, file_name, directory_path, file_size, file_mtime,
                width, height, date_taken, original_date_taken, is_raw, raw_format,
-               paired_raw_path, volume_serial, is_unlinked, content_key
+               paired_raw_path, volume_serial, is_unlinked, content_key,
+               subsec_time, shutter_speed, f_number, iso, exposure_bias
         FROM photos
         WHERE content_key IS NULL
            OR file_path LIKE 'vsn://%'
@@ -813,6 +891,7 @@ def _migrate_ideal_photo_links_v1(cursor, conn) -> None:
         sec_ids = [int(s["id"]) for s in secondaries]
         if sec_ids:
             ph = ",".join(["?"] * len(sec_ids))
+            cursor.execute(f"UPDATE photos SET stack_id = ? WHERE stack_id IN ({ph})", [master_id] + sec_ids)
             cursor.execute(f"DELETE FROM photos WHERE id IN ({ph})", sec_ids)
             merged_duplicates_count += len(sec_ids)
 
@@ -833,6 +912,269 @@ def _migrate_ideal_photo_links_v1(cursor, conn) -> None:
         f"[MIGRATE] ideal_photo_links_v1: 所在リンク {total_links_created} 件を構築し、"
         f"重複レコード {merged_duplicates_count} 件を統合しました"
     )
+
+
+def _restore_cascaded_tags_and_thumbs_from_backup(cursor, conn) -> None:
+    """
+    v1.2.0 初版の DDL 再構築時に ON DELETE CASCADE で消失した photo_tags / thumbnails、
+    および旧 content_key で誤統合された同一秒・同一サイズの連写・ブラケット別コマを、
+    自動作成された事前バックアップ (library_pre_ideal_photo_links_v1_*.db) から無損失で自動復元する。
+    """
+    try:
+        db_file = ""
+        cursor.execute("PRAGMA database_list")
+        for row in cursor.fetchall():
+            if row["name"] == "main" and row["file"]:
+                db_file = row["file"]
+                break
+        if not db_file:
+            db_file = str(_conn_mod.DB_PATH)
+        if not db_file or not os.path.isfile(db_file):
+            return
+
+        backup_dir = Path(db_file).parent / "backups"
+        if not backup_dir.is_dir():
+            return
+
+        candidates = sorted(
+            backup_dir.glob("library_pre_ideal_photo_links_v1_*.db"),
+            key=lambda p: p.stat().st_mtime,
+        )
+        if not candidates:
+            return
+
+        best_bck = None
+        best_score = -1
+        for cand in candidates:
+            try:
+                bc = sqlite3.connect(f"file:{cand.as_posix()}?mode=ro", uri=True)
+                try:
+                    t_cnt = bc.execute("SELECT COUNT(*) FROM photo_tags").fetchone()[0]
+                    th_cnt = bc.execute("SELECT COUNT(*) FROM thumbnails").fetchone()[0]
+                    score = int(t_cnt) * 10 + int(th_cnt)
+                    if score > best_score:
+                        best_score = score
+                        best_bck = cand
+                finally:
+                    bc.close()
+            except Exception:
+                continue
+
+        if not best_bck or best_score <= 0:
+            return
+
+        bck_conn = sqlite3.connect(f"file:{best_bck.as_posix()}?mode=ro", uri=True)
+        bck_conn.row_factory = sqlite3.Row
+        try:
+            bck_cur = bck_conn.cursor()
+
+            # 1. 現在の photos の ID と新 content_key を把握し、全行の content_key を新方式に更新
+            cursor.execute("SELECT * FROM photos")
+            curr_photos = [dict(r) for r in cursor.fetchall()]
+            curr_ids = {int(p["id"]) for p in curr_photos}
+            curr_ckeys = {}
+            ckey_updates = []
+            for p in curr_photos:
+                pid = int(p["id"])
+                new_ck = _compute_content_key(p)
+                if new_ck:
+                    curr_ckeys[new_ck] = pid
+                if new_ck != p.get("content_key"):
+                    ckey_updates.append((new_ck, pid))
+            if ckey_updates:
+                cursor.executemany("UPDATE photos SET content_key = ? WHERE id = ?", ckey_updates)
+
+            # 2. バックアップ内の全 photos を走査し、旧 content_key で誤統合された連写・ブラケット別コマがあれば分離・復元
+            bck_cur.execute("SELECT * FROM photos ORDER BY id ASC")
+            bck_photos = [dict(r) for r in bck_cur.fetchall()]
+
+            cursor.execute("PRAGMA table_info(photos)")
+            curr_photo_cols = [r["name"] for r in cursor.fetchall()]
+            bck_cur.execute("PRAGMA table_info(photos)")
+            bck_photo_cols = {r["name"] for r in bck_cur.fetchall()}
+            common_photo_cols = [c for c in curr_photo_cols if c in bck_photo_cols]
+            col_names_sql = ", ".join(common_photo_cols)
+            col_placeholders = ", ".join(["?"] * len(common_photo_cols))
+
+            unmerged_count = 0
+            affected_master_ids = set()
+            for bp in bck_photos:
+                oid = int(bp["id"])
+                vsn_norm, rel_path, rel_dir, clean_fp, clean_dir = _split_link_path(
+                    bp.get("file_path"),
+                    bp.get("directory_path"),
+                    bp.get("volume_serial"),
+                )
+                bp["_vsn_norm"] = vsn_norm
+                bp["_rel_path"] = rel_path
+                bp["_rel_dir"] = rel_dir
+                bp["_clean_fp"] = clean_fp
+                bp["_clean_dir"] = clean_dir
+                bp["_clean_fname"] = bp.get("file_name") or os.path.basename(clean_fp)
+                bp["_clean_paired"] = _strip_vsn_prefix_raw(bp.get("paired_raw_path")) if bp.get("paired_raw_path") else None
+
+                bp_for_ck = dict(bp)
+                bp_for_ck["file_path"] = clean_fp
+                bp_for_ck["directory_path"] = clean_dir
+                bp_for_ck["file_name"] = bp["_clean_fname"]
+                ck = _compute_content_key(bp_for_ck)
+                bp["_ckey"] = ck
+
+                if oid not in curr_ids and ck:
+                    if ck not in curr_ckeys:
+                        # 同一秒・同一ファイルサイズだが subsec_time や露出が異なる別コマを復元
+                        bp["file_path"] = clean_fp
+                        bp["directory_path"] = clean_dir
+                        bp["file_name"] = bp["_clean_fname"]
+                        bp["paired_raw_path"] = bp["_clean_paired"]
+                        bp["content_key"] = ck
+                        vals = [bp.get(c) for c in common_photo_cols]
+                        cursor.execute(
+                            f"INSERT OR IGNORE INTO photos ({col_names_sql}) VALUES ({col_placeholders})",
+                            vals,
+                        )
+                        curr_ids.add(oid)
+                        curr_ckeys[ck] = oid
+                        unmerged_count += 1
+
+                    target_entity_id = curr_ckeys[ck]
+                    cursor.execute(
+                        "SELECT id, photo_id FROM photo_links WHERE volume_serial = ? AND rel_path = ? COLLATE NOCASE",
+                        (vsn_norm, rel_path),
+                    )
+                    lk_row = cursor.fetchone()
+                    if lk_row:
+                        prev_master_id = int(lk_row["photo_id"])
+                        if prev_master_id != target_entity_id:
+                            cursor.execute(
+                                "UPDATE photo_links SET photo_id = ? WHERE id = ?",
+                                (target_entity_id, lk_row["id"]),
+                            )
+                            affected_master_ids.add(prev_master_id)
+                            affected_master_ids.add(target_entity_id)
+                    elif int(bp.get("is_unlinked") or 0) == 0 and clean_fp:
+                        cursor.execute(
+                            """
+                            INSERT OR REPLACE INTO photo_links (
+                                photo_id, volume_serial, rel_path, rel_dir,
+                                file_path, directory_path, file_name, file_mtime, paired_raw_path, is_primary
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                            """,
+                            (
+                                target_entity_id,
+                                vsn_norm,
+                                rel_path,
+                                rel_dir,
+                                clean_fp,
+                                clean_dir,
+                                bp["_clean_fname"],
+                                bp.get("file_mtime"),
+                                bp["_clean_paired"],
+                            ),
+                        )
+                        affected_master_ids.add(target_entity_id)
+
+            for m_id in affected_master_ids:
+                _sync_photo_links_state(cursor, m_id)
+
+            # 3. バックアップ photo_id -> 現在の photo_id の完全マッピングを構築
+            cursor.execute("SELECT photo_id, volume_serial, rel_path FROM photo_links")
+            curr_links_map = {
+                ((r["volume_serial"] or "").upper(), (r["rel_path"] or "").lower()): int(r["photo_id"])
+                for r in cursor.fetchall()
+            }
+
+            id_map: Dict[int, int] = {}
+            for bp in bck_photos:
+                oid = int(bp["id"])
+                if oid in curr_ids:
+                    id_map[oid] = oid
+                    continue
+                lk_key = (bp["_vsn_norm"].upper(), bp["_rel_path"].lower())
+                if lk_key in curr_links_map:
+                    id_map[oid] = curr_links_map[lk_key]
+                    continue
+                ck = bp["_ckey"]
+                if ck and ck in curr_ckeys:
+                    id_map[oid] = curr_ckeys[ck]
+
+            # 4. photo_tags の復元
+            bck_cur.execute("PRAGMA table_info(photo_tags)")
+            bpt_cols = {r["name"] for r in bck_cur.fetchall()}
+            bpt_src = "COALESCE(source, 'manual')" if "source" in bpt_cols else "'manual'"
+            bpt_conf = "COALESCE(confidence, 1.0)" if "confidence" in bpt_cols else "1.0"
+            bpt_created = "COALESCE(created_at, CURRENT_TIMESTAMP)" if "created_at" in bpt_cols else "CURRENT_TIMESTAMP"
+
+            bck_cur.execute(
+                f"SELECT photo_id, tag, {bpt_src} AS source, {bpt_conf} AS confidence, {bpt_created} AS created_at FROM photo_tags"
+            )
+            tag_rows_to_insert = []
+            for tr in bck_cur.fetchall():
+                old_pid = int(tr["photo_id"])
+                target_pid = id_map.get(old_pid)
+                tag_val = tr["tag"]
+                if target_pid is not None and tag_val:
+                    tag_rows_to_insert.append((target_pid, tag_val, tr["source"], tr["confidence"], tr["created_at"]))
+
+            restored_tags = 0
+            if tag_rows_to_insert:
+                before_tags_cnt = cursor.execute("SELECT COUNT(*) FROM photo_tags").fetchone()[0]
+                cursor.executemany(
+                    """
+                    INSERT INTO photo_tags (photo_id, tag, source, confidence, created_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(photo_id, tag) DO UPDATE SET
+                        source = CASE WHEN excluded.source = 'manual' THEN 'manual' ELSE photo_tags.source END,
+                        confidence = CASE WHEN excluded.source = 'manual' THEN 1.0 ELSE MAX(COALESCE(photo_tags.confidence, 0.0), COALESCE(excluded.confidence, 0.0)) END
+                    """,
+                    tag_rows_to_insert,
+                )
+                after_tags_cnt = cursor.execute("SELECT COUNT(*) FROM photo_tags").fetchone()[0]
+                restored_tags = max(0, after_tags_cnt - before_tags_cnt)
+
+            # 5. thumbnails の復元（代表ID自身のサムネイルを優先し、次に統合セカンダリIDのサムネイルを補完）
+            bck_cur.execute("PRAGMA table_info(thumbnails)")
+            bth_cols = {r["name"] for r in bck_cur.fetchall()}
+            bth_created = "COALESCE(created_at, CURRENT_TIMESTAMP)" if "created_at" in bth_cols else "CURRENT_TIMESTAMP"
+            bck_cur.execute(
+                f"SELECT photo_id, file_hash, data, width, height, {bth_created} AS created_at FROM thumbnails WHERE photo_id IS NOT NULL AND data IS NOT NULL"
+            )
+            primary_thumbs = []
+            secondary_thumbs = []
+            for thr in bck_cur.fetchall():
+                old_pid = int(thr["photo_id"])
+                target_pid = id_map.get(old_pid)
+                if target_pid is None:
+                    continue
+                rec = (target_pid, thr["file_hash"], thr["data"], thr["width"], thr["height"], thr["created_at"])
+                if old_pid == target_pid:
+                    primary_thumbs.append(rec)
+                else:
+                    secondary_thumbs.append(rec)
+
+            restored_thumbs = 0
+            if primary_thumbs or secondary_thumbs:
+                before_thumbs_cnt = cursor.execute("SELECT COUNT(*) FROM thumbnails").fetchone()[0]
+                cursor.executemany(
+                    """
+                    INSERT OR IGNORE INTO thumbnails (photo_id, file_hash, data, width, height, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    primary_thumbs + secondary_thumbs,
+                )
+                after_thumbs_cnt = cursor.execute("SELECT COUNT(*) FROM thumbnails").fetchone()[0]
+                restored_thumbs = max(0, after_thumbs_cnt - before_thumbs_cnt)
+
+            if restored_tags > 0 or restored_thumbs > 0 or unmerged_count > 0:
+                repair_missing_ancestor_tags(cursor)
+                print(
+                    f"[MIGRATE] restore_cascaded_tags_and_thumbs_v1: バックアップ ({best_bck.name}) から "
+                    f"タグ {restored_tags} 件・サムネイル {restored_thumbs} 件・連写別コマ {unmerged_count} 件を復元しました"
+                )
+        finally:
+            bck_conn.close()
+    except Exception as e:
+        logger.warning(f"[MIGRATE] restore_cascaded_tags_and_thumbs_v1 実行中に警告が発生しました: {e}")
 
 
 def _create_pre_migration_backup(cursor, conn, migration_name: str) -> str:

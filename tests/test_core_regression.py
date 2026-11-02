@@ -2146,7 +2146,8 @@ class TestCoreRegression(unittest.TestCase):
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 photo_id INTEGER NOT NULL,
                 tag TEXT NOT NULL,
-                UNIQUE(photo_id, tag)
+                UNIQUE(photo_id, tag),
+                FOREIGN KEY(photo_id) REFERENCES photos(id) ON DELETE CASCADE
             )
             """
         )
@@ -2157,7 +2158,8 @@ class TestCoreRegression(unittest.TestCase):
                 photo_id INTEGER NOT NULL,
                 data BLOB NOT NULL,
                 width INTEGER,
-                height INTEGER
+                height INTEGER,
+                FOREIGN KEY(photo_id) REFERENCES photos(id) ON DELETE CASCADE
             )
             """
         )
@@ -2205,6 +2207,20 @@ class TestCoreRegression(unittest.TestCase):
             self.assertFalse(detail["file_path"].startswith("vsn://"), "vsn://退避プレフィックスが除去されていること")
             thumb = get_thumbnail(master_id)
             self.assertIsNotNone(thumb, "サムネイルも代表IDへ引き継がれること")
+
+            # さらに、万が一初版v1.2.0で photo_tags / thumbnails が消失していた場合でも、
+            # 事前バックアップから restore_cascaded_tags_and_thumbs_v1 で自動復元されることを検証
+            with get_connection() as conn:
+                conn.execute("DELETE FROM photo_tags")
+                conn.execute("DELETE FROM thumbnails")
+                conn.execute("DELETE FROM migrations WHERE name = 'restore_cascaded_tags_and_thumbs_v1'")
+                conn.commit()
+
+            initialize_database()
+            restored_detail = get_photo_by_id(master_id)
+            self.assertIn("家族", restored_detail["tags"], "事前バックアップからタグが自動復元されること")
+            self.assertIn("旅行", restored_detail["tags"], "事前バックアップから重複統合タグも自動復元されること")
+            self.assertIsNotNone(get_thumbnail(master_id), "事前バックアップからサムネイルも自動復元されること")
         finally:
             switch_database_path(prev_db)
 

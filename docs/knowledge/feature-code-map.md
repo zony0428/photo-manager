@@ -221,7 +221,7 @@ ONNX Runtime と CLIP モデルによるローカル画像分類・被写体自�
 | **UI要素 (HTML)** | `#dbMaintenanceModal` (`⚙️ 設定 ＆ タグツリーエディタ`), `#settingTagSortModeSelect`, `#settingsTagTreeContainer`, `#dbMaintVacuumBtn`, `#dbMaintBackupBtn`, `#dbMaintOpenBackupDirBtn`, `#shutdownModal` |
 | **フロントエンド (JS)** | `frontend/js/folder_tree.js`<br>・`_ftInitDbMaintenanceModal()`: 名前順ルール保存、右ペイン `renderSettingsTagTreeEditor()` 描画、データベース統計取得、VACUUM最適化、世代管理バックアップ、フォルダ起動<br>`frontend/js/common.js`<br>・`confirmShutdown()`: アプリ正常終了リクエスト発行<br>・`initPaneResize()`: 左右ペインのリサイズバー制御と `localStorage` 永続化 |
 | **APIエンドポイント** | `POST /api/heartbeat`<br>`POST /api/shutdown`<br>`GET /api/version`<br>`GET /api/database/stats`<br>`POST /api/database/vacuum`<br>`POST /api/database/backup`<br>`GET /api/database/backups`<br>`POST /api/database/open-backup-dir`<br>`GET /api/volumes` |
-| **バックエンド / ビルド** | `server/heartbeat.py`: ブラウザ生存監視、自動シャットダウンタイマー<br>`server/database/connection.py`: SQLite接続・PRAGMA設定<br>`server/database/stats.py`: DBサイズ計算、VACUUM、バックアップ管理<br>`build_dist.bat` & `server/make_release_zips.py`: `robocopy /MIR` 差分同期によるフル版 (`dist/` → `PhotoManager_v<VER>.zip`) ＆ 軽量差分アップデート版 (`dist_update/` → `PhotoManager_v<VER>diff.zip`) の自動生成 |
+| **バックエンド / ビルド** | `server/tray.py`: タスクトレイ常駐・アプリ画面再表示・終了メニュー (`pystray`)<br>`server/heartbeat.py`: 明示的シャットダウン処理 (`request_shutdown` ※ハートビート自動終了は無効化済み)<br>`server/database/connection.py`: SQLite接続・PRAGMA設定<br>`server/database/stats.py`: DBサイズ計算、VACUUM、バックアップ管理<br>`build_dist.bat` & `server/make_release_zips.py`: `robocopy /MIR` 差分同期によるフル版 (`dist/` → `Tetheract_v<VER>.zip`) ＆ 軽量差分アップデート版 (`dist_update/` → `Tetheract_v<VER>diff.zip`) の自動生成 |
 | **関連ナレッジ** | `portable-storage-patterns.md`, `sqlite-blob-thumbnails.md`, `performance-optimization-patterns.md` |
 
 ---

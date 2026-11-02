@@ -9,11 +9,11 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#16181b" id="mMetaThemeColor">
   <title>Tetheract Photo Manager Mobile</title>
-  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=1.2.0">
-  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png?v=1.2.0">
-  <link rel="apple-touch-icon" href="/icons/icon-192.png?v=1.2.0">
-  <link rel="manifest" href="/manifest_mobile.json?v=1.2.0">
-  <link rel="stylesheet" href="/css/mobile.css?v=1.2.0">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=1.2.1">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png?v=1.2.1">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png?v=1.2.1">
+  <link rel="manifest" href="/manifest_mobile.json?v=1.2.1">
+  <link rel="stylesheet" href="/css/mobile.css?v=1.2.1">
   <!-- オフラインUSB library.db 直接読み込み用 WebAssembly SQLite (sql.js) -->
   <script src="/vendor/sqljs/sql-wasm.js"></script>
 </head>
@@ -32,19 +32,12 @@
         </button>
 
         <div class="m-brand" title="Tetheract Photo Manager Mobile">
-          <svg class="m-logo-icon" viewBox="8 8 48 48" width="26" height="26" fill="none" aria-hidden="true">
-            <line x1="11.5" y1="11.5" x2="27.18" y2="27.18" stroke="var(--logo-tether)" stroke-width="2.8" stroke-linecap="round"/>
-            <line x1="52.5" y1="11.5" x2="45.41" y2="27.18" stroke="var(--logo-tether)" stroke-width="2.8" stroke-linecap="round"/>
-            <line x1="52.5" y1="52.5" x2="45.41" y2="45.41" stroke="var(--logo-tether)" stroke-width="2.8" stroke-linecap="round"/>
-            <line x1="11.5" y1="52.5" x2="27.18" y2="45.41" stroke="var(--logo-tether)" stroke-width="2.8" stroke-linecap="round"/>
-            <rect x="10" y="10" width="44" height="44" rx="5.0" stroke="var(--logo-outer)" stroke-width="3.0"/>
-            <rect x="27.18" y="27.18" width="18.23" height="18.23" stroke="var(--logo-inner)" stroke-width="2.8"/>
-          </svg>
+          <img class="m-logo-icon" src="/icons/icon-192.png?v=1.2.1" width="26" height="26" alt="" aria-hidden="true">
           <div class="m-brand-titles">
             <div class="m-brand-main">
-              <svg class="m-brand-wordmark" viewBox="62 12 232 36" height="15" fill="none" role="img" aria-label="TETHERACT pm">
+              <svg class="m-brand-wordmark" viewBox="62 12 246 36" width="102" height="15" fill="none" role="img" aria-label="TETHERACT pm">
                 <text x="0" y="45.41" fill="var(--logo-text)" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif" font-size="44.38" font-weight="700" letter-spacing="2.8" textLength="269.4" lengthAdjust="spacingAndGlyphs" transform="translate(64, 0) scale(0.7071, 1)">TETHERACT</text>
-                <text x="0" y="45.41" fill="var(--logo-pm)" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif" font-size="35.60" font-weight="600" letter-spacing="1.0" transform="translate(261, 0) scale(0.75, 1)">pm</text>
+                <text x="0" y="45.41" fill="var(--logo-pm)" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif" font-size="35.60" font-weight="600" letter-spacing="1.0" transform="translate(263, 0) scale(0.75, 1)">pm</text>
               </svg>
             </div>
             <div class="m-brand-sub">
@@ -446,6 +439,6 @@
     <div id="mToast" class="m-toast" style="display:none;"></div>
   </div>
 
-  <script src="/js/mobile.js?v=1.2.0"></script>
+  <script src="/js/mobile.js?v=1.2.1"></script>
 </body>
 </html>
