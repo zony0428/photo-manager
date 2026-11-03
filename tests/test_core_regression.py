@@ -2224,6 +2224,231 @@ class TestCoreRegression(unittest.TestCase):
         finally:
             switch_database_path(prev_db)
 
+    def test_27_loome_storage_resolution_and_external_drive_loome(self) -> None:
+        """
+        1. ensure_storage_dir() が既存 storage/ に中身がある場合は storage/ を維持し、空または未作成なら Loome/ を採用すること
+        2. resolve_portable_path() が Loome/ と storage/ の両方の相対パス解決に対応すること
+        3. 外部ドライブへの Loome 作成 (enable_volume_loome)・一覧取得・サブフォルダ作成・解除 (disable_volume_loome) が機能すること
+        """
+        import unittest.mock as _mock
+        from server import folder_tree, scanner, storage_manager
+        from server.database import get_all_volumes
+
+        # 1. 空の storage/ → Loome/ へ自動切替、中身のある storage/ → storage/ 維持の検証
+        with tempfile.TemporaryDirectory() as app_dir_str:
+            app_dir = Path(app_dir_str)
+            legacy_dir = app_dir / "storage"
+            loome_dir = app_dir / "Loome"
+            legacy_dir.mkdir(parents=True, exist_ok=True)
+
+            with _mock.patch.object(storage_manager, "LEGACY_STORAGE_DIR", legacy_dir), _mock.patch.object(
+                storage_manager, "LOOME_DIR", loome_dir
+            ):
+                chosen_empty = storage_manager.ensure_storage_dir()
+                self.assertEqual(chosen_empty, loome_dir, "空の storage/ は片付けられ Loome/ が採用されること")
+                self.assertTrue(loome_dir.exists())
+                self.assertFalse(legacy_dir.exists())
+
+                # 次に storage/ にファイルが存在する状態を再現
+                legacy_dir.mkdir(parents=True, exist_ok=True)
+                (legacy_dir / "KEEP_ME.JPG").write_bytes(b"DATA")
+                chosen_non_empty = storage_manager.ensure_storage_dir()
+                self.assertEqual(chosen_non_empty, legacy_dir, "storage/ に中身がある場合は storage/ が維持されること")
+
+                # 2. resolve_portable_path で Loome/ と storage/ の両方が解決できること
+                (loome_dir / "IN_LOOME.JPG").write_bytes(b"LOOME_DATA")
+                res_loome, ok_loome = scanner.resolve_portable_path(r"Z:\OldPortable\Loome\IN_LOOME.JPG", base_dir=app_dir)
+                self.assertTrue(ok_loome)
+                self.assertEqual(Path(res_loome), loome_dir / "IN_LOOME.JPG")
+
+                res_legacy, ok_legacy = scanner.resolve_portable_path(r"Z:\OldPortable\storage\KEEP_ME.JPG", base_dir=app_dir)
+                self.assertTrue(ok_legacy)
+                self.assertEqual(Path(res_legacy), legacy_dir / "KEEP_ME.JPG")
+            storage_manager.ensure_storage_dir()
+
+        # 3. 外部ドライブへの Loome 作成・サブフォルダ作成・解除の検証
+        with tempfile.TemporaryDirectory() as ext_drive_dir:
+            ext_root = Path(ext_drive_dir)
+            ext_loome_dir = ext_root / "Loome"
+            fake_online_info = {
+                "serial": "CAFE1234",
+                "label": "PORTABLE_SSD",
+                "drive": str(ext_root),
+                "filesystem": "exFAT",
+            }
+            with _mock.patch.object(storage_manager, "find_online_drive_for_serial", return_value=fake_online_info), _mock.patch.object(
+                storage_manager, "_get_connected_drive_serial_map", return_value=({"CAFE1234": str(ext_root)}, {})
+            ):
+                en_res = storage_manager.enable_volume_loome("CAFE1234", drive_letter=str(ext_root))
+                self.assertEqual(en_res["status"], "ok")
+                self.assertTrue(ext_loome_dir.exists(), "外部ドライブ直下に Loome フォルダが作成されること")
+
+                # 写真が0枚でも loome_enabled=True のボリュームは get_all_volumes() に含まれること
+                vols = {v["volume_serial"]: v for v in get_all_volumes()}
+                self.assertIn("CAFE1234", vols)
+                self.assertTrue(vols["CAFE1234"]["loome_enabled"])
+
+                # get_all_loome_roots() に本体 Loome と外部ドライブ Loome の両方が含まれること
+                roots = storage_manager.get_all_loome_roots()
+                ext_roots = [r for r in roots if r.get("volume_serial") == "CAFE1234"]
+                self.assertEqual(len(ext_roots), 1)
+                self.assertTrue(storage_manager.is_path_in_storage(str(ext_loome_dir), volume_serial="CAFE1234"))
+
+                # 外部ドライブの Loome 内にサブフォルダを作成できること
+                sub_res = storage_manager.create_storage_subfolder(str(ext_loome_dir), "2026_Trip")
+                self.assertEqual(sub_res["status"], "ok")
+                self.assertTrue((ext_loome_dir / "2026_Trip").exists())
+
+                # Loome 登録を解除しても実フォルダと中身は消えないこと
+                dis_res = storage_manager.disable_volume_loome("CAFE1234")
+                self.assertEqual(dis_res["status"], "ok")
+                self.assertTrue((ext_loome_dir / "2026_Trip").exists(), "解除しても実フォルダは削除されないこと")
+
+    def test_28_deleted_files_and_deleted_folder_refresh_unlinks_correctly(self) -> None:
+        """
+        接続中のメディア上でファイル単体またはフォルダごと削除された場合でも、
+        check_folder_diff が差分（消失）を検出し、scan_directory(cleanup_orphans=True) によるリフレッシュで
+        1) 他メディアにリンクが残る写真は片方のリンクのみ解除して通常表示を維持し、
+        2) 全リンクを失った写真は物理抹消せず is_unlinked=1（リンク消失の写真）へ移行すること
+        """
+        import shutil
+        import unittest.mock as _mock
+        from server import scanner
+        from server.database import (
+            add_tag_to_photo,
+            get_photo_by_id,
+            get_photos,
+            get_unlinked_photos_count,
+            upsert_photo,
+        )
+
+        with tempfile.TemporaryDirectory() as media_a_str, tempfile.TemporaryDirectory() as media_b_str:
+            media_a = Path(media_a_str) / "DCIM" / "100MSDCF"
+            media_b = Path(media_b_str) / "Backup"
+            media_a.mkdir(parents=True, exist_ok=True)
+            media_b.mkdir(parents=True, exist_ok=True)
+
+            f_a1 = media_a / "001.jpg"
+            f_a2 = media_a / "002.jpg"
+            f_b1 = media_b / "001.jpg"
+            f_a1.write_bytes(b"SAMPLE_JPEG_001_CONTENT")
+            f_a2.write_bytes(b"SAMPLE_JPEG_002_CONTENT_UNIQUE")
+            shutil.copy2(f_a1, f_b1)
+
+            vsn_a = "DELA0001"
+            vsn_b = "DELB0002"
+
+            id_001 = upsert_photo({
+                "file_path": str(f_a1),
+                "directory_path": str(media_a),
+                "file_name": "001.jpg",
+                "file_size": f_a1.stat().st_size,
+                "file_mtime": f_a1.stat().st_mtime,
+                "date_taken": "2026-11-01 10:00:00",
+                "year_month": "2026-11",
+                "camera_make": "SONY",
+                "camera_model": "ILCE-7RM5",
+                "width": 64,
+                "height": 64,
+                "volume_serial": vsn_a,
+            })
+            # 同一写真 001.jpg をメディアBにも登録（マルチリンク化）
+            id_001_b = upsert_photo({
+                "file_path": str(f_b1),
+                "directory_path": str(media_b),
+                "file_name": "001.jpg",
+                "file_size": f_b1.stat().st_size,
+                "file_mtime": f_b1.stat().st_mtime,
+                "date_taken": "2026-11-01 10:00:00",
+                "year_month": "2026-11",
+                "camera_make": "SONY",
+                "camera_model": "ILCE-7RM5",
+                "width": 64,
+                "height": 64,
+                "volume_serial": vsn_b,
+            })
+            self.assertEqual(id_001, id_001_b, "同一写真は1つのphotoエンティティに統合されること")
+
+            # 002.jpg はメディアAのみに登録
+            id_002 = upsert_photo({
+                "file_path": str(f_a2),
+                "directory_path": str(media_a),
+                "file_name": "002.jpg",
+                "file_size": f_a2.stat().st_size,
+                "file_mtime": f_a2.stat().st_mtime,
+                "date_taken": "2026-11-01 10:05:00",
+                "year_month": "2026-11",
+                "camera_make": "SONY",
+                "camera_model": "ILCE-7RM5",
+                "width": 64,
+                "height": 64,
+                "volume_serial": vsn_a,
+            })
+            add_tag_to_photo(id_002, "大切な思い出")
+
+            # メディアA上の 100MSDCF フォルダごと削除（メディアA自体は接続中）
+            shutil.rmtree(media_a)
+            self.assertFalse(media_a.exists())
+
+            drive_a = media_a.drive or str(Path(media_a_str))
+            drive_b = media_b.drive or str(Path(media_b_str))
+            fake_serial_map = ({vsn_a: drive_a, vsn_b: drive_b}, {drive_a.upper(): vsn_a})
+
+            with _mock.patch.object(scanner, "_get_connected_drive_serial_map", return_value=fake_serial_map):
+                # 1. 削除されたフォルダに対して check_folder_diff を呼ぶと差分（削除2件・フォルダ消失）が検出されること
+                diff = scanner.check_folder_diff(str(media_a), volume_serial=vsn_a)
+                self.assertTrue(diff["is_valid"])
+                self.assertTrue(diff["has_changes"])
+                self.assertTrue(diff.get("folder_deleted"))
+                self.assertEqual(diff["deleted"], 2)
+
+                # 2. 削除されたフォルダに対して scan_directory(cleanup_orphans=True) でリフレッシュを実行
+                scan_res = scanner.scan_directory(
+                    str(media_a), cleanup_orphans=True, recursive=True, volume_serial=vsn_a
+                )
+                self.assertEqual(scan_res["cleaned"], 2)
+
+                # 001.jpg はメディアBのリンクが残っているため is_unlinked=0 のまま通常表示されること
+                p001 = get_photo_by_id(id_001)
+                self.assertIsNotNone(p001)
+                self.assertEqual(p001["is_unlinked"], 0)
+                self.assertEqual(p001["link_count"], 1)
+                self.assertEqual(p001["volume_serial"], vsn_b)
+
+                # 002.jpg は全リンクが0本になったため物理抹消されず is_unlinked=1（リンク消失リスト）へ移行し、保存ボリューム情報も消去され、タグは残ること
+                p002 = get_photo_by_id(id_002)
+                self.assertIsNotNone(p002, "全リンク喪失時にレコードが物理抹消されないこと")
+                self.assertEqual(p002["is_unlinked"], 1)
+                self.assertEqual(p002["link_count"], 0)
+                self.assertIsNone(p002["volume_serial"])
+                self.assertIsNone(p002.get("volume_label"))
+                self.assertIn("大切な思い出", p002["tags"])
+
+                # リンク消失の写真フィルタで 002.jpg が取得でき、volume_serial が残っていないこと
+                unlinked_list = get_photos(unlinked_only=True)
+                unlinked_ids = [p["id"] for p in unlinked_list]
+                self.assertIn(id_002, unlinked_ids)
+                self.assertNotIn(id_001, unlinked_ids)
+                unlinked_p002 = next(p for p in unlinked_list if p["id"] == id_002)
+                self.assertIsNone(unlinked_p002["volume_serial"])
+                self.assertIsNone(unlinked_p002.get("volume_label"))
+                self.assertGreaterEqual(get_unlinked_photos_count(), 1)
+
+                # 「すべての写真」（include_unlinked=True）でリンク消失写真も含めて取得できること
+                all_with_unlinked = get_photos(include_unlinked=True, stacked=False)
+                all_ids = [p["id"] for p in all_with_unlinked]
+                self.assertIn(id_001, all_ids)
+                self.assertIn(id_002, all_ids)
+
+                # get_connection_counts() で接続中 + 未接続 + リンク消失 = 合計 が成立すること
+                from server.database import get_connection_counts
+                conn_counts = get_connection_counts()
+                self.assertGreaterEqual(conn_counts["unlinked_count"], 1)
+                self.assertEqual(
+                    conn_counts["online_count"] + conn_counts["offline_count"] + conn_counts["unlinked_count"],
+                    conn_counts["total_count"],
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

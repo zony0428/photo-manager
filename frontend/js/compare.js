@@ -666,6 +666,7 @@
       const isB = idx === cmpState.idxB;
       item.classList.toggle('is-slot-a', isA);
       item.classList.toggle('is-slot-b', isB);
+      item.classList.toggle('is-discarded', Boolean(p && Number(p.rating ?? 0) === -1));
 
       const slotTag = item.querySelector('.compare-strip-slot-tag');
       if (slotTag) {
@@ -797,8 +798,19 @@
     if (typeof state !== 'undefined' && Array.isArray(state.photos)) {
       const mainPhoto = state.photos.find(p => p.id === photo.id);
       if (mainPhoto) mainPhoto.rating = newRating;
+      state.photos.forEach(p => {
+        if (Array.isArray(p.stack_photos)) {
+          const sm = p.stack_photos.find(sp => sp.id === photo.id);
+          if (sm) sm.rating = newRating;
+        }
+      });
     }
-    if (typeof updateCardRatingDirectly === 'function') {
+    if (typeof window.syncStackCoverAfterRatingChange === 'function') {
+      const syncRes = window.syncStackCoverAfterRatingChange(photo.id);
+      if (!syncRes.isStackMember && typeof updateCardRatingDirectly === 'function') {
+        updateCardRatingDirectly(photo.id, newRating);
+      }
+    } else if (typeof updateCardRatingDirectly === 'function') {
       updateCardRatingDirectly(photo.id, newRating);
     }
 
@@ -1023,10 +1035,11 @@
     }
 
 
-    // 3. 右クリックメニューの「🔍 プレビューを開く」の下に「⚖️ 2枚並べて比較 (V)」を追加
+    // 3. 右クリックメニューの「2枚並べて比較 (V)」をバインド（未配置時は「プレビューを開く」直下に生成）
+    let cItem = document.getElementById('contextMenuCompareItem');
     const ctxPreviewItem = document.getElementById('contextMenuPreviewItem');
-    if (ctxPreviewItem && !document.getElementById('contextMenuCompareItem')) {
-      const cItem = document.createElement('div');
+    if (!cItem && ctxPreviewItem) {
+      cItem = document.createElement('div');
       cItem.className = 'context-menu-item';
       cItem.id = 'contextMenuCompareItem';
       cItem.innerHTML = `
@@ -1034,11 +1047,15 @@
           <span>2枚並べて比較 (V)</span>
         </div>
       `;
+      ctxPreviewItem.insertAdjacentElement('afterend', cItem);
+    }
+    if (cItem && !cItem.dataset.boundCompare) {
+      cItem.dataset.boundCompare = '1';
       cItem.addEventListener('click', () => {
+        if (cItem.classList.contains('disabled')) return;
         if (typeof closeContextMenu === 'function') closeContextMenu();
         openCompareModal();
       });
-      ctxPreviewItem.insertAdjacentElement('afterend', cItem);
     }
 
     // 4. キーボードショートカット（キャプチャフェーズで比較モーダル操作＆ [V] キートグルを処理）

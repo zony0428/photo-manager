@@ -52,7 +52,7 @@ window.updateInspector = updateInspectorView;
  * ボリューム・メディア（SDカード / 外部ドライブ）の表示用情報を整形するヘルパー
  */
 function formatInspectorVolumeInfo(item) {
-  if (!item) return null;
+  if (!item || item.is_unlinked) return null;
   const serial = String(item.volume_serial || '').trim();
   const shortSerial = serial.length === 8 ? `${serial.slice(0, 4)}-${serial.slice(4)}` : serial;
   const customName = String(item.volume_custom_name || '').trim();
@@ -678,6 +678,14 @@ function showSingleInspector(photo) {
     };
   }
 
+  const stackPhotos = photo.stack_photos || [];
+  const isStackGroup = stackPhotos.length > 1;
+  const ratingSection = elements.inspectorRatingBtns ? elements.inspectorRatingBtns.closest('.inspector-rating-section') : null;
+  if (ratingSection) {
+    // スタック表示時は各コマ行にインライン評価セレクタを表示するため、上部の大きな評価セレクタは隠す
+    ratingSection.style.display = isStackGroup ? 'none' : '';
+  }
+
   // 評価ボタンの描画（即時反映）
   elements.inspectorRatingBtns.querySelectorAll('.rating-btn').forEach(btn => {
     const ratingVal = parseInt(btn.dataset.rating, 10);
@@ -717,8 +725,7 @@ function showSingleInspector(photo) {
 
   // 露出ブラケット / 連写スタックの描画（RAW+JPEGペアはスタックから分離済み）
   if (elements.inspectorBracketSection) {
-    const stackPhotos = photo.stack_photos || [];
-    if (stackPhotos.length > 1) {
+    if (isStackGroup) {
       elements.inspectorBracketSection.style.display = 'block';
       // スタック種別判定（重複、連写、または露出ブラケット）
       const isDuplicate = (photo.stack_type === 'duplicate');
@@ -764,6 +771,7 @@ function showSingleInspector(photo) {
         const item = document.createElement('div');
         item.className = 'inspector-bracket-item';
         if (sp.id === photo.id) item.classList.add('active');
+        if (Number(sp.rating ?? 0) === -1) item.classList.add('is-discarded');
 
         // 露出補正、連写秒ズレ、またはフォルダ名
         let biasClass = 'normal';
@@ -794,10 +802,15 @@ function showSingleInspector(photo) {
           }
         }
 
-        const isPrimary = sp.is_stack_primary === 1;
-        const primaryHtml = isPrimary 
-          ? '<span class="bracket-primary-badge">代表</span>' 
-          : `<button class="btn-make-primary" data-photo-id="${sp.id}" title="この写真を一覧の代表写真にする">代表に設定</button>`;
+        const curRate = Number(sp.rating ?? 0);
+        const inlineRatingHtml = `
+          <div class="bracket-inline-rating" data-photo-id="${sp.id}">
+            <button type="button" class="bracket-rate-btn rate-ex${curRate === 2 ? ' active' : ''}" data-rating="2" title="優">優</button>
+            <button type="button" class="bracket-rate-btn rate-gd${curRate === 1 ? ' active' : ''}" data-rating="1" title="良">良</button>
+            <button type="button" class="bracket-rate-btn rate-nm${curRate === 0 ? ' active' : ''}" data-rating="0" title="可">可</button>
+            <button type="button" class="bracket-rate-btn rate-rj${curRate === -1 ? ' active' : ''}" data-rating="-1" title="棄">棄</button>
+          </div>
+        `;
 
         const formatPill = sp.is_raw 
           ? `<span class="bracket-format-pill raw">${sp.raw_format ? sp.raw_format.replace('.', '').toUpperCase() : 'RAW'}</span>`
@@ -828,7 +841,7 @@ function showSingleInspector(photo) {
             <div class="bracket-exp-bias ${biasClass}">
               <span title="${escapeHtml(sp.directory_path || '')}">${biasText}</span>
               ${formatPill}
-              ${primaryHtml}
+              ${inlineRatingHtml}
             </div>
             <div class="bracket-details" title="${escapeHtml(sp.file_path || '')}">
               ${detailsHtml}
@@ -836,35 +849,28 @@ function showSingleInspector(photo) {
           </div>
         `;
 
-        // 「代表に設定」ボタン
-        const makePrimaryBtn = item.querySelector('.btn-make-primary');
-        if (makePrimaryBtn) {
-          makePrimaryBtn.addEventListener('click', async (e) => {
+        // インライン評価ボタン（優・良・可・棄）
+        item.querySelectorAll('.bracket-rate-btn').forEach(rBtn => {
+          rBtn.addEventListener('click', async (e) => {
             e.stopPropagation();
-            try {
-              const res = await fetch(`/api/photo/${sp.id}/set-primary`, { method: 'POST' });
-              if (!res.ok) throw new Error(`HTTP error ${res.status}`);
-              state.activeInspectorPhotoId = sp.id;
-              if (typeof clearSelection === 'function') {
-                clearSelection();
-              } else {
-                state.selectedPhotoIds.clear();
-              }
-              await fetchPhotos();
-              const updated = state.photos.find(p => p.id === sp.id);
-              if (updated) showSingleInspector(updated);
-            } catch (err) {
-              console.error('代表変更失敗:', err);
-              if (typeof showToast === 'function') showToast('代表写真の変更に失敗しました', 'warning');
-            }
+            const targetRate = parseInt(rBtn.dataset.rating, 10);
+            const currentRate = Number(sp.rating ?? 0);
+            const nextRate = (currentRate === targetRate && targetRate !== 0) ? 0 : targetRate;
+            sp.rating = nextRate;
+            item.classList.toggle('is-discarded', nextRate === -1);
+            item.querySelectorAll('.bracket-rate-btn').forEach(b => {
+              const bVal = parseInt(b.dataset.rating, 10);
+              b.classList.toggle('active', bVal === nextRate);
+            });
+            await updatePhotoRating(sp.id, nextRate);
           });
-        }
+        });
 
         item.title = `${sp.file_name} (${biasText})\nクリック: 上部にプレビュー表示\nダブルクリック: ライトボックスで全画面表示`;
 
         // 1. アイテム全体のシングルクリックで即座に上部プレビューを切り替え
         item.addEventListener('click', async (e) => {
-          if (e.target.closest('.btn-make-primary')) return;
+          if (e.target.closest('.bracket-inline-rating')) return;
 
           // 角ボタンのアクティブ表示（オレンジ枠）を即時切り替え
           elements.inspectorBracketList.querySelectorAll('.inspector-bracket-item').forEach(it => it.classList.remove('active'));
@@ -959,7 +965,7 @@ function showSingleInspector(photo) {
         // 2. ダブルクリックで直接ライトボックスで全画面表示
         item.addEventListener('dblclick', (e) => {
           e.stopPropagation();
-          if (e.target.closest('.btn-make-primary')) return;
+          if (e.target.closest('.bracket-inline-rating')) return;
           openLightboxForStackMember(sp, photo);
         });
 
@@ -1566,10 +1572,22 @@ function showBatchInspector() {
     elements.batchThumbnailsStrip.appendChild(more);
   }
 
-  // 一括星評価ボタン
+  // 一括評価ボタン（スタック画像が含まれる場合はグレーアウトして変更不可にする）
   if (elements.batchRateButtons) {
+    const hasStacked = typeof window.doesSelectionContainStackedCard === 'function'
+      ? window.doesSelectionContainStackedCard()
+      : false;
     elements.batchRateButtons.querySelectorAll('button').forEach(btn => {
+      btn.disabled = hasStacked;
+      btn.classList.toggle('disabled', hasStacked);
+      if (hasStacked) {
+        btn.title = 'スタック画像は変更できません';
+      } else {
+        const rv = parseInt(btn.dataset.rating, 10);
+        btn.title = rv === 2 ? '優 (1)' : rv === 1 ? '良 (2)' : rv === 0 ? '可 (0 / 4)' : '棄 (3 / X)';
+      }
       btn.onclick = async () => {
+        if (hasStacked) return;
         const rate = parseInt(btn.dataset.rating, 10);
         await batchRateSelection(rate);
       };
@@ -1717,16 +1735,18 @@ function renderInspectorQuickTree(container, onSelect) {
     return !isAi && !isColor;
   });
 
-  function appendInlineAddRow(targetEl, parentFullPath = '', parentDisplayName = '', indent = 0) {
+  function appendInlineAddRow(targetEl, parentFullPath = '', parentDisplayName = '', indent = 0, options = {}) {
+    const isRoot = !parentFullPath;
+    const onCancel = typeof options.onCancel === 'function' ? options.onCancel : null;
     const addRow = document.createElement('div');
-    addRow.className = 'inspector-tree-inline-add';
+    addRow.className = `inspector-tree-inline-add${isRoot ? ' is-root' : ''}`;
     addRow.style.paddingLeft = `${indent * 12 + 6}px`;
 
     const placeholderText = parentFullPath
       ? `${parentDisplayName} の子タグ...`
       : '新しいタグ名を入力...';
     const titleText = parentFullPath
-      ? `「${parentFullPath}/...」の子タグを作成して付与`
+      ? `「${parentFullPath}/...」の子タグを作成して付与 (Escで閉じる)`
       : '新しいタグを作成して付与 (親/子 も可)';
 
     addRow.innerHTML = `
@@ -1740,10 +1760,15 @@ function renderInspectorQuickTree(container, onSelect) {
     const inputEl = addRow.querySelector('.inspector-tree-inline-input');
     const btnEl = addRow.querySelector('.inspector-tree-inline-btn');
 
+    let isSubmitting = false;
     const submitInlineTag = () => {
-      if (!inputEl) return;
+      if (!inputEl || isSubmitting) return;
       const cleanVal = inputEl.value.replace(/^\/+|\/+$/g, '').trim();
-      if (!cleanVal) return;
+      if (!cleanVal) {
+        if (!isRoot && onCancel) onCancel();
+        return;
+      }
+      isSubmitting = true;
       const fullTag = parentFullPath ? `${parentFullPath}/${cleanVal}` : cleanVal;
 
       // 追加したタグの親階層をすべて展開状態キャッシュに登録し、再描画後も開いたままにする
@@ -1762,6 +1787,10 @@ function renderInspectorQuickTree(container, onSelect) {
 
     addRow.addEventListener('click', (e) => e.stopPropagation());
     if (btnEl) {
+      btnEl.addEventListener('mousedown', (e) => {
+        // blurによる自動クローズより先にクリックが成立するよう保護
+        e.stopPropagation();
+      });
       btnEl.addEventListener('click', (e) => {
         e.stopPropagation();
         submitInlineTag();
@@ -1773,11 +1802,26 @@ function renderInspectorQuickTree(container, onSelect) {
         if (e.key === 'Enter') {
           e.preventDefault();
           submitInlineTag();
+        } else if (e.key === 'Escape' && !isRoot && onCancel) {
+          e.preventDefault();
+          onCancel();
         }
       });
+      if (!isRoot && onCancel) {
+        inputEl.addEventListener('blur', () => {
+          setTimeout(() => {
+            if (isSubmitting || ! addRow.isConnected) return;
+            if (addRow.contains(document.activeElement)) return;
+            if (!inputEl.value.trim()) {
+              onCancel();
+            }
+          }, 120);
+        });
+      }
     }
 
     targetEl.appendChild(addRow);
+    return { addRow, inputEl };
   }
 
   // 右インスペクタ専用「名前順 ⇄ 枚数順」トグルボタンの状態同期＆イベントバインド
@@ -1882,13 +1926,12 @@ function renderInspectorQuickTree(container, onSelect) {
 
       nodeWrapper.appendChild(item);
 
-      // 子ノードコンテナ（親ノードは常設、葉ノードも「+子」クリックでオンデマンド展開可能）
+      // 子ノードコンテナ（普段は子タグ入力欄を出さず、「+子」クリック時のみオンデマンド表示）
       let childrenContainer = document.createElement('div');
       childrenContainer.className = `inspector-tree-children${(hasChildren && isExpanded) ? '' : ' hidden'}`;
       if (hasChildren) {
         appendTreeItems(node, childrenContainer, indent + 1);
       }
-      appendInlineAddRow(childrenContainer, node.fullPath, node.name, indent + 1);
       nodeWrapper.appendChild(childrenContainer);
 
       // アクションボタン群のイベント設定
@@ -1896,11 +1939,45 @@ function renderInspectorQuickTree(container, onSelect) {
       if (subAddBtn) {
         subAddBtn.addEventListener('click', (e) => {
           e.stopPropagation();
+          const existingRow = childrenContainer.querySelector(':scope > .inspector-tree-inline-add');
+          if (existingRow) {
+            const existingInput = existingRow.querySelector('.inspector-tree-inline-input');
+            if (existingInput && !existingInput.value.trim()) {
+              existingRow.remove();
+              if (!hasChildren) {
+                childrenContainer.classList.add('hidden');
+                state.inspectorQuickTreeExpandedPaths.delete(node.fullPath);
+              }
+              return;
+            }
+            if (existingInput) existingInput.focus();
+            return;
+          }
+
           childrenContainer.classList.remove('hidden');
           state.inspectorQuickTreeExpandedPaths.add(node.fullPath);
           const toggleBtn = item.querySelector('.tree-toggle-btn');
-          if (toggleBtn) toggleBtn.classList.remove('collapsed');
-          const subInput = childrenContainer.querySelector(':scope > .inspector-tree-inline-add .inspector-tree-inline-input');
+          if (toggleBtn) {
+            toggleBtn.classList.remove('collapsed');
+            toggleBtn.title = '折りたたむ';
+          }
+
+          const closeSubAdd = () => {
+            const curRow = childrenContainer.querySelector(':scope > .inspector-tree-inline-add');
+            if (curRow) curRow.remove();
+            if (!hasChildren) {
+              childrenContainer.classList.add('hidden');
+              state.inspectorQuickTreeExpandedPaths.delete(node.fullPath);
+            }
+          };
+
+          const { inputEl: subInput } = appendInlineAddRow(
+            childrenContainer,
+            node.fullPath,
+            node.name,
+            indent + 1,
+            { onCancel: closeSubAdd }
+          );
           if (subInput) setTimeout(() => subInput.focus(), 30);
         });
       }

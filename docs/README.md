@@ -49,13 +49,13 @@ Photo Manager の設計判断、パフォーマンス最適化パターン、セ
 | :--- | :--- |
 | [design-philosophy-four-pillars.md](knowledge/design-philosophy-four-pillars.md) | **【4つの設計原則（4本の柱）】** プロダクトの基本思想4原則と、それを実現する全機能体系・対外文章の編集原則 |
 | [feature-code-map.md](knowledge/feature-code-map.md) | **【機能別コードマップ】** 14の大分類（グリッド・ライトボックス・タグ・スタック・スキャン・storage・画像調整・セキュリティ等）とコードの対応表 |
-| [ui-design-system-and-tiat-guidelines.md](knowledge/ui-design-system-and-tiat-guidelines.md) | **【UI/UXデザインシステム】** 2段階左サイドバー、1段ヘッダー、4:3インスペクタ、脱絵文字、4カラーテーマ等の規約 |
+| [ui-design-system-and-tiat-guidelines.md](knowledge/ui-design-system-and-tiat-guidelines.md) | **【UI/UXデザインシステム】** 2段階左サイドバー、1段ヘッダー、4:3インスペクタ、脱絵文字、4カラーテーマ、カスタム確認モーダル（`#commonConfirmModal`）統一等の規約 |
 | [security-architecture.md](knowledge/security-architecture.md) | **【セキュリティアーキテクチャ】** 4層防御（Host検証、Origin検証、LANトークン認証、LAN APIホワイトリスト）、自動停止タイマー |
 | [storage-and-xmp-sidecar-architecture.md](knowledge/storage-and-xmp-sidecar-architecture.md) | **【storage・XMP連携】** アプリ内ストレージ管理、XMPサイドカー追従・プレビュー・隔離取込 |
 | [mobile-hybrid-architecture.md](knowledge/mobile-hybrid-architecture.md) | **【モバイル連携】** Wi-Fi直結モード（`/m`）および WebAssembly SQLite (`sql.js`) 直接読込 |
 | [performance-optimization-patterns.md](knowledge/performance-optimization-patterns.md) | **【最適化パターン】** 範囲比較フォルダ絞込、差分スキャン、高速JSON、BLOBサムネイル |
-| [portable-storage-patterns.md](knowledge/portable-storage-patterns.md) | **【ポータブル運用】** 相対パス原則、ドライブレター変動追跡、ボリュームシリアル照合 |
-| [sqlite-blob-thumbnails.md](knowledge/sqlite-blob-thumbnails.md) | **【サムネイル設計】** SQLite BLOB格納、WALモード、PRAGMAチューニング |
+| [portable-storage-patterns.md](knowledge/portable-storage-patterns.md) | **【ポータブル運用・所在リンク】** 相対パス原則、ドライブレター変動追跡、VSN照合、ユニーク画像 (`photos`) と複数メディア所在リンク (`photo_links`) の分離 |
+| [sqlite-blob-thumbnails.md](knowledge/sqlite-blob-thumbnails.md) | **【サムネイル・タグDB設計】** SQLite BLOB格納、`photo_id INTEGER PRIMARY KEY` ROWID直結、`photo_tags` の `WITHOUT ROWID` クラスタ化、安全マイグレーション |
 
 ---
 
@@ -67,6 +67,10 @@ GitHub Releases 投稿用に作成されたバージョン別リリースノー�
 
 | バージョン | 主な更新内容 | ファイル |
 | :--- | :--- | :--- |
+| **v1.2.2** | フォルダ更新（差分検出）・消失写真リンク解除 ＆ アプリ全体の確認ダイアログをカスタムモーダル（`#commonConfirmModal`）に統一、大規模DBマイグレーション時の起動待機時間延長（最大180秒） | [RELEASE_NOTES_v1.2.2.md](release_notes/RELEASE_NOTES_v1.2.2.md) |
+| **v1.2.1** | DBマイグレーション時の `ON DELETE CASCADE` 遮断と事前バックアップからの自動自己修復復元、4KBパディング連写・ブラケット識別精度向上、フルブリード新アプリアイコン | [RELEASE_NOTES_v1.2.1.md](release_notes/RELEASE_NOTES_v1.2.1.md) |
+| **v1.2.0** | ユニーク画像エンティティ（`photos`）と実ファイル所在リンク（`photo_links`）の分離、`thumbnails` ROWID直結化、`photo_tags` `WITHOUT ROWID` クラスタ化 | [RELEASE_NOTES_v1.2.0.md](release_notes/RELEASE_NOTES_v1.2.0.md) |
+| **v1.1.1** | サブフォルダ差分検出、親フォルダ管理統合、複数SDカードVSN安定化、ランチャーアイコンキャッシュ更新 | [RELEASE_NOTES_v1.1.1.md](release_notes/RELEASE_NOTES_v1.1.1.md) |
 | **v1.1.0** | 複数SDカードのVSN個体識別・メタデータ引き継ぎ、撮影カレンダー、AIカラータグ単独再判定 | [RELEASE_NOTES_v1.1.0.md](release_notes/RELEASE_NOTES_v1.1.0.md) |
 | **v1.0.0** | 「Tetheract Photo Manager」へ改称しバージョンを v1.0.0 から再出発、tag_key スキーマ、Tetheract D/L テーマ | [RELEASE_NOTES_v1.0.0.md](release_notes/RELEASE_NOTES_v1.0.0.md) |
 | **v3.0.1** | セキュリティ多層防御（DNS Rebinding・LANトークン認証・APIホワイトリスト）、ポータブルパス保護、フォント/Leafletローカル同梱、UI・ドキュメント整備 | [RELEASE_NOTES_v3.0.1.md](release_notes/RELEASE_NOTES_v3.0.1.md) |

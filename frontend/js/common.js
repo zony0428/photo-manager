@@ -76,6 +76,7 @@ const state = {
   untaggedOnly: false,      // 未分類写真フィルタ
   onlineOnly: false,        // 接続中の写真のみ表示フィルタ (後方互換)
   connectionFilter: 'all',  // 'all' | 'online' | 'offline' (接続中 / 未接続フィルタ)
+  connectionStates: new Set(['online', 'offline', 'unlinked']), // 有効な接続状態セット ('online' | 'offline' | 'unlinked')
   availableTags: [],        // 利用可能なタグ一覧
   selectedYearMonths: new Set(), // タイムライン複数選択（OR条件）用Set
   selectedDates: new Set(),      // カレンダー日付複数選択（YYYY-MM-DD・OR条件）用Set
@@ -212,6 +213,7 @@ const elements = {
   // フォルダ専用コンテキストメニュー
   folderContextMenu: document.getElementById('folderContextMenu'),
   folderContextMenuPath: document.getElementById('folderContextMenuPath'),
+  folderContextHeaderUnlinkBtn: document.getElementById('folderContextHeaderUnlinkBtn'),
   folderMenuManagedGroup: document.getElementById('folderMenuManagedGroup'),
   folderMenuUnmanagedGroup: document.getElementById('folderMenuUnmanagedGroup'),
   folderMenuIgnoredGroup: document.getElementById('folderMenuIgnoredGroup'),
@@ -231,6 +233,7 @@ const elements = {
   folderWarningBanner: document.getElementById('folderWarningBanner'),
   warningBannerDesc: document.getElementById('warningBannerDesc'),
   warningBannerReloadBtn: document.getElementById('warningBannerReloadBtn'),
+  warningBannerUnlinkBtn: document.getElementById('warningBannerUnlinkBtn'),
   appVersion: document.getElementById('appVersion'),
   // サイドバー
   sidebar: document.getElementById('sidebar'),
@@ -277,7 +280,10 @@ const elements = {
   totalPhotosCount: document.getElementById('totalPhotosCount'),
   untaggedNavItem: document.getElementById('untaggedNavItem'),
   untaggedPhotosCount: document.getElementById('untaggedPhotosCount'),
+  allPhotosNavItem: document.getElementById('allPhotosNavItem'),
   onlineOnlyNavItem: document.getElementById('onlineOnlyNavItem'),
+  onlinePhotosCount: document.getElementById('onlinePhotosCount'),
+  offlinePhotosCount: document.getElementById('offlinePhotosCount'),
   offlineOnlyNavItem: document.getElementById('offlineOnlyNavItem'),
   unlinkedOnlyNavItem: document.getElementById('unlinkedOnlyNavItem'),
   unlinkedPhotosCount: document.getElementById('unlinkedPhotosCount'),
@@ -309,6 +315,8 @@ const elements = {
   tagSortByCountToggleBtn: document.getElementById('tagSortByCountToggleBtn'),
   tagTypeSegmentedControl: document.getElementById('tagTypeSegmentedControl'),
   // メインエリア
+  headerScopeSelect: document.getElementById('headerScopeSelect'),
+  headerAttrSelect: document.getElementById('headerAttrSelect'),
   viewTitle: document.getElementById('viewTitle'),
   currentCountBadge: document.getElementById('currentCountBadge'),
   ratingFilterToggles: document.getElementById('ratingFilterToggles'),
@@ -479,6 +487,7 @@ const elements = {
   dateShiftResetOrigBtn: document.getElementById('dateShiftResetOrigBtn'),
   dateShiftSubmitBtn: document.getElementById('dateShiftSubmitBtn'),
   attrSubFilterSelect: document.getElementById('attrSubFilterSelect'),
+  settingToolbarPositionSelect: document.getElementById('settingToolbarPositionSelect'),
 };
 
 
@@ -652,7 +661,24 @@ function initTheme() {
       applyTheme(settingThemeSelect.value || 'tetheract-d');
     });
   }
+
+  // ツールバー配置（フッター / ヘッダー）の復元・同期
+  const savedTbPos = localStorage.getItem('pm_toolbar_position') || 'bottom';
+  applyToolbarPosition(savedTbPos);
 }
+
+function applyToolbarPosition(pos) {
+  const normalized = (pos === 'top') ? 'top' : 'bottom';
+  document.documentElement.setAttribute('data-toolbar-pos', normalized);
+  try {
+    localStorage.setItem('pm_toolbar_position', normalized);
+  } catch (e) {}
+  const sel = document.getElementById('settingToolbarPositionSelect');
+  if (sel && sel.value !== normalized) {
+    sel.value = normalized;
+  }
+}
+window.applyToolbarPosition = applyToolbarPosition;
 
 function applyTheme(schemeOrTheme) {
   const validSchemes = new Set(['tetheract-d', 'tetheract-l', 'sumi', 'paper']);
@@ -2002,7 +2028,543 @@ function initCommonModals() {
 }
 
 function bootCommonUI() {
+  if (typeof window.t !== 'function') {
+    window.t = (_k, fb) => (fb !== undefined ? fb : _k);
+  }
   initCommonModals();
+  initTetheractActivityUI();
+}
+
+/* ==========================================================================
+   テサラクト (4D超立方体) Canvasアイコンアニメーター ＆ 統合アクティビティ・ドック
+   ========================================================================== */
+
+/**
+ * 指定された 2D Canvas コンテキストに Tetheract アイコンを描画する
+ * 正面から見たテサラクト（4次元超立方体）のW-Z回転投影として、
+ * 「内側の□が4本のコーナービームに沿って外枠へ拡大して重なり、
+ *   その時にはすでに奥から次の新しい□が現れて定位置に達している」無限ループを描画する。
+ *
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {number} S キャンバスの一辺ピクセル数
+ * @param {number} cycleProgress ループ進行度 (0.0〜1.0, 0.0が定位置静止状態)
+ * @param {number} glowBoost 発光強度倍率
+ */
+function drawTetheractIconFrame(ctx, S, cycleProgress = 0.0, glowBoost = 1.0) {
+  if (!ctx || S <= 0) return;
+  ctx.clearRect(0, 0, S, S);
+
+  const p = ((cycleProgress % 1) + 1) % 1;
+
+  const rrect = (x, y, w, h, r) => {
+    const rad = Math.max(0, Math.min(r, w * 0.5, h * 0.5));
+    ctx.beginPath();
+    ctx.moveTo(x + rad, y);
+    ctx.arcTo(x + w, y, x + w, y + h, rad);
+    ctx.arcTo(x + w, y + h, x, y + h, rad);
+    ctx.arcTo(x, y + h, x, y, rad);
+    ctx.arcTo(x, y, x + w, y, rad);
+    ctx.closePath();
+  };
+
+  // 1. 外周ダークリム (#141414)
+  rrect(S * 0.015, S * 0.015, S * 0.97, S * 0.97, S * 0.155);
+  ctx.fillStyle = '#141414';
+  ctx.fill();
+
+  // 2. シャンパンゴールド外枠 (#e8caa4)
+  rrect(S * 0.032, S * 0.032, S * 0.936, S * 0.936, S * 0.14);
+  const frameGrad = ctx.createLinearGradient(0, 0, S, S);
+  frameGrad.addColorStop(0, '#f0d7b6');
+  frameGrad.addColorStop(0.5, '#e6c7a0');
+  frameGrad.addColorStop(1, '#d5b288');
+  ctx.fillStyle = frameGrad;
+  ctx.fill();
+
+  // 3. 内部ダークチャンバー領域のクリップ (τ = 2.0 の外枠内縁)
+  const ox0 = S * 0.104;
+  const oy0 = S * 0.104;
+  const ox1 = S * 0.896;
+  const oy1 = S * 0.896;
+  const ow = ox1 - ox0;
+  const oh = oy1 - oy0;
+
+  ctx.save();
+  rrect(ox0, oy0, ow, oh, S * 0.068);
+  ctx.fillStyle = '#080808';
+  ctx.fill();
+  ctx.clip();
+
+  // 1点透視図法の不動消失点 V と基準スケール比 r の算出
+  // 定位置 (τ = 1.0) の内枠は中心 (0.565, 0.565), サイズ 0.365 (外枠内縁 0.792 に対する比率 r ≈ 0.46086)
+  const r = 0.365 / 0.792;
+  const vx = ((0.565 - 0.50 * r) / (1 - r)) * S;
+  const vy = ((0.565 - 0.50 * r) / (1 - r)) * S;
+
+  // 深さレベル τ ∈ [0, 2] における正方形座標を返す（全頂点が外枠四隅→消失点Vの直線レール上に厳密に乗る）
+  const getSquareAtTau = (tau) => {
+    const u = Math.pow(r, 2 - tau);
+    const x0 = vx + u * (ox0 - vx);
+    const y0 = vy + u * (oy0 - vy);
+    const x1 = vx + u * (ox1 - vx);
+    const y1 = vy + u * (oy1 - vy);
+    return { x0, y0, x1, y1, w: x1 - x0, h: y1 - y0, u };
+  };
+
+  // τ_B = p (奥から定位置へ湧き上がってくる次の□)
+  // τ_A = 1 + p (定位置から外枠へ向かって拡大していく現在の□)
+  const tauB = p;
+  const tauA = 1.0 + p;
+  const sqB = getSquareAtTau(tauB);
+  const sqA = getSquareAtTau(tauA);
+
+  // 4. 4面の台形パースペクティブ壁のシャンパンウォーム・ブルーム発光
+  // sin^2(πτ/2) の重みにより τ_B と τ_A の合計輝度が常に一定(1.0)となり、ループ境界のちらつきをゼロにする
+  const drawWallBloomForSquare = (sq, weight) => {
+    const alpha = Math.min(0.68, 0.44 * glowBoost * weight);
+    if (alpha < 0.01) return;
+
+    // 上壁
+    if (sq.y0 > oy0) {
+      const gTop = ctx.createLinearGradient(0, sq.y0, 0, oy0);
+      gTop.addColorStop(0, `rgba(232, 202, 164, ${alpha})`);
+      gTop.addColorStop(0.4, `rgba(176, 142, 104, ${alpha * 0.32})`);
+      gTop.addColorStop(1, 'rgba(10, 10, 10, 0)');
+      ctx.beginPath();
+      ctx.moveTo(ox0, oy0);
+      ctx.lineTo(ox1, oy0);
+      ctx.lineTo(sq.x1, sq.y0);
+      ctx.lineTo(sq.x0, sq.y0);
+      ctx.closePath();
+      ctx.fillStyle = gTop;
+      ctx.fill();
+    }
+    // 下壁
+    if (oy1 > sq.y1) {
+      const gBot = ctx.createLinearGradient(0, sq.y1, 0, oy1);
+      gBot.addColorStop(0, `rgba(232, 202, 164, ${alpha})`);
+      gBot.addColorStop(0.42, `rgba(176, 142, 104, ${alpha * 0.34})`);
+      gBot.addColorStop(1, 'rgba(10, 10, 10, 0)');
+      ctx.beginPath();
+      ctx.moveTo(sq.x0, sq.y1);
+      ctx.lineTo(sq.x1, sq.y1);
+      ctx.lineTo(ox1, oy1);
+      ctx.lineTo(ox0, oy1);
+      ctx.closePath();
+      ctx.fillStyle = gBot;
+      ctx.fill();
+    }
+    // 左壁
+    if (sq.x0 > ox0) {
+      const gLeft = ctx.createLinearGradient(sq.x0, 0, ox0, 0);
+      gLeft.addColorStop(0, `rgba(232, 202, 164, ${alpha})`);
+      gLeft.addColorStop(0.4, `rgba(176, 142, 104, ${alpha * 0.32})`);
+      gLeft.addColorStop(1, 'rgba(10, 10, 10, 0)');
+      ctx.beginPath();
+      ctx.moveTo(ox0, oy0);
+      ctx.lineTo(sq.x0, sq.y0);
+      ctx.lineTo(sq.x0, sq.y1);
+      ctx.lineTo(ox0, oy1);
+      ctx.closePath();
+      ctx.fillStyle = gLeft;
+      ctx.fill();
+    }
+    // 右壁
+    if (ox1 > sq.x1) {
+      const gRight = ctx.createLinearGradient(sq.x1, 0, ox1, 0);
+      gRight.addColorStop(0, `rgba(232, 202, 164, ${alpha})`);
+      gRight.addColorStop(0.42, `rgba(176, 142, 104, ${alpha * 0.34})`);
+      gRight.addColorStop(1, 'rgba(10, 10, 10, 0)');
+      ctx.beginPath();
+      ctx.moveTo(sq.x1, sq.y0);
+      ctx.lineTo(ox1, oy0);
+      ctx.lineTo(ox1, oy1);
+      ctx.lineTo(sq.x1, sq.y1);
+      ctx.closePath();
+      ctx.fillStyle = gRight;
+      ctx.fill();
+    }
+  };
+
+  const wB = Math.pow(Math.sin((Math.PI * 0.5) * tauB), 2);
+  const wA = Math.pow(Math.sin((Math.PI * 0.5) * tauA), 2);
+  if (wB > 0.005) drawWallBloomForSquare(sqB, wB);
+  if (wA > 0.005) drawWallBloomForSquare(sqA, wA);
+
+  // 5. 外枠四隅から奥のコア四隅へ貫く4本のテーパー付きテザービーム（4D視点レール）
+  const deepRailSq = getSquareAtTau(0.0);
+  const corners = [
+    { ox: ox0, oy: oy0, ix: deepRailSq.x0, iy: deepRailSq.y0 },
+    { ox: ox1, oy: oy0, ix: deepRailSq.x1, iy: deepRailSq.y0 },
+    { ox: ox1, oy: oy1, ix: deepRailSq.x1, iy: deepRailSq.y1 },
+    { ox: ox0, oy: oy1, ix: deepRailSq.x0, iy: deepRailSq.y1 },
+  ];
+  const wOuter = S * 0.033;
+  const wInner = S * 0.006;
+
+  for (const c of corners) {
+    const dx = c.ix - c.ox;
+    const dy = c.iy - c.oy;
+    const len = Math.hypot(dx, dy);
+    if (len < 1e-3) continue;
+    const nx = -dy / len;
+    const ny = dx / len;
+
+    const bGrad = ctx.createLinearGradient(c.ox, c.oy, c.ix, c.iy);
+    bGrad.addColorStop(0, '#b59d80');
+    bGrad.addColorStop(0.5, '#52493f');
+    bGrad.addColorStop(0.82, '#181615');
+    bGrad.addColorStop(1, '#090909');
+
+    ctx.beginPath();
+    ctx.moveTo(c.ox + nx * wOuter, c.oy + ny * wOuter);
+    ctx.lineTo(c.ox - nx * wOuter, c.oy - ny * wOuter);
+    ctx.lineTo(c.ix - nx * wInner, c.iy - ny * wInner);
+    ctx.lineTo(c.ix + nx * wInner, c.iy + ny * wInner);
+    ctx.closePath();
+    ctx.fillStyle = bGrad;
+    ctx.fill();
+  }
+
+  // 最深部コアの暗실塗りつぶし
+  ctx.fillStyle = '#070707';
+  ctx.fillRect(deepRailSq.x0, deepRailSq.y0, deepRailSq.w, deepRailSq.h);
+
+  // 6. 2層のテサラクト内枠□を描画する関数（奥の sqB → 手前へ拡大する sqA の順）
+  const drawInnerCubeSquare = (sq, tau) => {
+    let alpha = 1.0;
+    if (tau < 1.0) {
+      // τ: 0.0 → 1.0 で奥から滑らかに出現（p=0.15 付近ですでにハッキリ視認可能）
+      alpha = Math.sin((Math.PI * 0.5) * Math.min(1, tau / 0.85));
+    } else {
+      // τ: 1.0 → 2.0 で外枠に向かって拡大し、外枠に重なる直前 (τ > 1.75) で外枠へ溶け込む
+      if (tau > 1.72) {
+        alpha = Math.max(0, 1.0 - (tau - 1.72) / 0.28);
+      }
+    }
+    if (alpha <= 0.01) return;
+
+    // 線の太さも遠近スケールに連動して手前に来るほど力強くなる
+    const scaleFactor = 0.65 + 0.55 * sq.u;
+    const strokeW = Math.max(1.4, S * 0.036 * scaleFactor);
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.shadowColor = `rgba(236, 206, 168, ${Math.min(0.95, 0.72 * glowBoost)})`;
+    ctx.shadowBlur = S * 0.07 * glowBoost * scaleFactor;
+    ctx.lineWidth = strokeW;
+    // 外枠に近づくにつれて純白 (#ffffff) からシャンパンゴールド (#eed3b3) へわずかに馴染む
+    if (tau > 1.55) {
+      ctx.strokeStyle = '#f5e2c8';
+    } else {
+      ctx.strokeStyle = '#ffffff';
+    }
+    ctx.lineJoin = 'round';
+    ctx.strokeRect(
+      sq.x0 + strokeW * 0.35,
+      sq.y0 + strokeW * 0.35,
+      Math.max(1, sq.w - strokeW * 0.7),
+      Math.max(1, sq.h - strokeW * 0.7)
+    );
+    ctx.restore();
+  };
+
+  // 奥から湧き上がる次の□ (sqB) と、外枠へ拡大していく現在の□ (sqA) を描画
+  if (tauB > 0.005) {
+    drawInnerCubeSquare(sqB, tauB);
+  }
+  drawInnerCubeSquare(sqA, tauA);
+
+  ctx.restore();
+}
+
+/**
+ * テサラクト・アニメーション管理コントローラ
+ */
+const TetheractAnimator = {
+  canvases: new Set(),
+  isActive: false,
+  targetCycles: 0,
+  rafId: null,
+  cycle: 0.0, // 連続累積サイクル数 (整数部が周回数、小数部 0.0〜1.0 が現在の拡大位相)
+  glow: 1.0,
+  lastTs: 0,
+
+  registerCanvas(canvasEl) {
+    if (!canvasEl) return;
+    this.canvases.add(canvasEl);
+    this.renderOnce(canvasEl);
+    if (this.isActive || this.cycle < this.targetCycles) {
+      this._ensureLoop();
+    }
+  },
+
+  renderOnce(canvasEl) {
+    if (!canvasEl) return;
+    const ctx = canvasEl.getContext('2d');
+    if (!ctx) return;
+    drawTetheractIconFrame(ctx, canvasEl.width, this.cycle, this.glow);
+  },
+
+  renderAll() {
+    for (const c of this.canvases) {
+      if (!c.isConnected && c.id !== 'splashTetheractCanvas') {
+        this.canvases.delete(c);
+        continue;
+      }
+      this.renderOnce(c);
+    }
+  },
+
+  setActive(active) {
+    const next = Boolean(active);
+    if (this.isActive === next) return;
+    this.isActive = next;
+    if (!next) {
+      // アクティブ解除時は現在の拡大ループを次の整数周期（中の□が外枠に重なり、奥の□が定位置に来る地点）まで完走させて止める
+      const frac = this.cycle - Math.floor(this.cycle);
+      if (frac > 0.01) {
+        this.targetCycles = Math.max(this.targetCycles, Math.ceil(this.cycle));
+      }
+    }
+    this._ensureLoop();
+  },
+
+  pulse(cyclesCount = 1) {
+    // クリックやホバー、フォルダ切替時は最低1周（中の□が外枠へ拡大して次の□に入れ替わるループ）を実行
+    const addCycles = cyclesCount > 10 ? 1 : Math.max(1, Math.round(cyclesCount));
+    const base = Math.max(this.cycle, Math.floor(this.cycle));
+    this.targetCycles = Math.max(this.targetCycles, Math.ceil(base + 0.05));
+    if (this.targetCycles - this.cycle < 0.35) {
+      this.targetCycles += addCycles;
+    }
+    this._ensureLoop();
+  },
+
+  _ensureLoop() {
+    if (this.rafId != null) return;
+    this.lastTs = performance.now();
+    const tick = (now) => {
+      const dt = Math.min(0.06, Math.max(0.001, (now - this.lastTs) / 1000));
+      this.lastTs = now;
+
+      const splashEl = document.getElementById('startupSplashOverlay');
+      const splashVisible = Boolean(splashEl && !splashEl.classList.contains('is-hidden'));
+      const continuousActive = this.isActive || splashVisible;
+
+      // 1ループあたり約 0.95秒（中□→外□への拡大と奥からの次□出現が気持ちよく見える速度）
+      const baseSpeed = 1.05;
+
+      if (continuousActive) {
+        this.cycle += dt * baseSpeed;
+        this.targetCycles = Math.ceil(this.cycle);
+        this.glow += (1.22 - this.glow) * Math.min(1, dt * 6.0);
+      } else if (this.cycle < this.targetCycles) {
+        const remaining = this.targetCycles - this.cycle;
+        // 定位置（整数周期）への着地時のみ滑らかに減速してピタッと止まる
+        const speedMult = remaining < 0.25 ? Math.max(0.38, remaining / 0.25) : 1.0;
+        this.cycle = Math.min(this.targetCycles, this.cycle + dt * baseSpeed * speedMult);
+        this.glow += (1.0 - this.glow) * Math.min(1, dt * 6.0);
+      } else {
+        this.cycle = Math.round(this.cycle);
+        this.glow = 1.0;
+        this.renderAll();
+        this.rafId = null;
+        return;
+      }
+
+      this.renderAll();
+      this.rafId = requestAnimationFrame(tick);
+    };
+    this.rafId = requestAnimationFrame(tick);
+  },
+};
+
+function pulseHeaderTetheract(cycles = 1) {
+  TetheractAnimator.pulse(cycles);
+}
+
+// 統合アクティビティ・ドック状態管理
+const _globalActivities = new Map();
+const _ACTIVITY_PRIORITY = ['maint', 'storage', 'scan', 'ai', 'diff', 'fetch'];
+
+/**
+ * 統合アクティビティ・ドックに処理状態を登録・更新する
+ * @param {string} key アクティビティ識別子 ('scan' | 'ai' | 'storage' | 'fetch' | 'diff' | 'maint')
+ * @param {object} opts { title, countText, percent, filename, indeterminate, onCancel }
+ */
+function setGlobalActivity(key, opts = {}) {
+  if (!key) return;
+  _globalActivities.set(key, {
+    key,
+    title: opts.title || '',
+    countText: opts.countText != null ? String(opts.countText) : '',
+    percent: typeof opts.percent === 'number' ? Math.max(0, Math.min(100, Math.round(opts.percent))) : null,
+    filename: opts.filename != null ? String(opts.filename) : '',
+    indeterminate: Boolean(opts.indeterminate),
+    onCancel: typeof opts.onCancel === 'function' ? opts.onCancel : null,
+    updatedAt: performance.now(),
+  });
+  _renderGlobalActivityDock();
+}
+
+/**
+ * 統合アクティビティ・ドックから処理状態を解除する
+ * @param {string} key
+ */
+function clearGlobalActivity(key) {
+  if (!key) return;
+  _globalActivities.delete(key);
+  _renderGlobalActivityDock();
+}
+
+function _renderGlobalActivityDock() {
+  const banner = document.getElementById('globalScanBanner');
+  if (!banner) return;
+
+  if (_globalActivities.size === 0) {
+    banner.style.setProperty('display', 'none', 'important');
+    banner.classList.remove('is-indeterminate');
+    TetheractAnimator.setActive(false);
+    return;
+  }
+
+  // 優先度順に最優先のアクティビティを選出
+  let activeItem = null;
+  for (const priKey of _ACTIVITY_PRIORITY) {
+    if (_globalActivities.has(priKey)) {
+      activeItem = _globalActivities.get(priKey);
+      break;
+    }
+  }
+  if (!activeItem) {
+    activeItem = Array.from(_globalActivities.values())[0];
+  }
+
+  const titleEl = document.getElementById('globalScanTitle');
+  const countEl = document.getElementById('globalScanCount');
+  const pctEl = document.getElementById('globalScanPercent');
+  const fileEl = document.getElementById('globalScanFilename');
+  const fillEl = document.getElementById('globalScanFill');
+  const cancelBtn = document.getElementById('globalActivityCancelBtn');
+
+  const extraCount = _globalActivities.size > 1 ? ` (+${_globalActivities.size - 1})` : '';
+  if (titleEl) {
+    titleEl.textContent = `${activeItem.title || t('common.processing', '処理中...')}${extraCount}`;
+  }
+  if (countEl) {
+    countEl.textContent = activeItem.countText || '';
+  }
+  if (pctEl) {
+    if (!activeItem.indeterminate && activeItem.percent != null) {
+      pctEl.textContent = `${activeItem.percent}%`;
+      pctEl.style.display = '';
+    } else {
+      pctEl.textContent = '';
+      pctEl.style.display = 'none';
+    }
+  }
+  if (fileEl) {
+    fileEl.textContent = activeItem.filename || '';
+  }
+  if (fillEl) {
+    if (activeItem.indeterminate) {
+      banner.classList.add('is-indeterminate');
+    } else {
+      banner.classList.remove('is-indeterminate');
+      fillEl.style.width = `${activeItem.percent != null ? activeItem.percent : 0}%`;
+    }
+  }
+  if (cancelBtn) {
+    if (activeItem.onCancel) {
+      cancelBtn.style.display = 'inline-flex';
+      cancelBtn.textContent = t('folder.ai_cancel', '中断');
+      cancelBtn.onclick = activeItem.onCancel;
+    } else {
+      cancelBtn.style.display = 'none';
+      cancelBtn.onclick = null;
+    }
+  }
+
+  banner.style.setProperty('display', 'block', 'important');
+  TetheractAnimator.setActive(true);
+}
+
+/**
+ * 起動スプラッシュスクリーンの進捗メッセージを更新する
+ */
+function updateStartupSplash(opts = {}) {
+  const msgEl = document.getElementById('splashStatusMessage');
+  const pctEl = document.getElementById('splashStatusPercent');
+  const fillEl = document.getElementById('splashProgressFill');
+  const detailEl = document.getElementById('splashStatusDetail');
+
+  if (msgEl && opts.message != null) {
+    msgEl.textContent = opts.message;
+  }
+  if (pctEl && opts.percent != null) {
+    pctEl.textContent = `${Math.round(opts.percent)}%`;
+  }
+  if (fillEl && opts.percent != null) {
+    fillEl.style.width = `${Math.max(8, Math.min(100, Math.round(opts.percent)))}%`;
+  }
+  if (detailEl && opts.detail != null) {
+    detailEl.textContent = opts.detail;
+  }
+}
+
+/**
+ * 起動スプラッシュスクリーンを滑らかにフェードアウトして閉じる
+ */
+let _splashDismissed = false;
+let _splashShownAt = performance.now();
+
+function dismissStartupSplash() {
+  if (_splashDismissed) return;
+  _splashDismissed = true;
+  const overlay = document.getElementById('startupSplashOverlay');
+  if (!overlay) return;
+
+  updateStartupSplash({
+    message: t('splash.ready', '準備完了'),
+    percent: 100,
+    detail: '',
+  });
+
+  // スプラッシュのテサラクトアニメーションが最低限視認できるよう最小表示時間を確保
+  const elapsed = performance.now() - _splashShownAt;
+  const minDisplayMs = 680;
+  const waitMs = Math.max(120, minDisplayMs - elapsed);
+
+  setTimeout(() => {
+    overlay.classList.add('is-hidden');
+    // メイン画面登場時に左上ヘッダーのテサラクトアイコンも余韻パルスして定位置に収まる
+    pulseHeaderTetheract(1200);
+  }, waitMs);
+}
+
+function initTetheractActivityUI() {
+  _splashShownAt = performance.now();
+  const headerCanvas = document.getElementById('headerTetheractCanvas');
+  const splashCanvas = document.getElementById('splashTetheractCanvas');
+  const logoEl = document.getElementById('headerAppLogo') || document.querySelector('.logo');
+
+  if (headerCanvas) {
+    TetheractAnimator.registerCanvas(headerCanvas);
+    if (logoEl) {
+      logoEl.classList.add('tetheract-anim-ready');
+      logoEl.addEventListener('mouseenter', () => {
+        pulseHeaderTetheract(1);
+      });
+      logoEl.addEventListener('click', () => {
+        pulseHeaderTetheract(1);
+      });
+    }
+  }
+  if (splashCanvas) {
+    TetheractAnimator.registerCanvas(splashCanvas);
+    TetheractAnimator.pulse(2);
+  }
 }
 
 if (document.readyState === 'loading') {

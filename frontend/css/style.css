@@ -392,12 +392,35 @@ button, input, select, textarea {
   flex-shrink: 0;
 }
 
+.logo-icon-wrap {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
 .logo-app-icon {
   width: 24px;
   height: 24px;
   display: block;
   flex-shrink: 0;
   object-fit: contain;
+}
+
+.logo-app-icon-canvas {
+  position: absolute;
+  inset: 0;
+  width: 24px;
+  height: 24px;
+  display: block;
+  pointer-events: none;
+}
+
+.logo.tetheract-anim-ready .logo-app-icon {
+  opacity: 0;
 }
 
 .logo-lockup-svg {
@@ -1398,6 +1421,87 @@ body.resizing .resize-handle {
 }
 
 /* ==========================================================================
+   クイックアクセス 接続状態サブ項目
+   ========================================================================== */
+.nav-divider {
+  height: 1px;
+  background: var(--border-soft);
+  margin: 4px 8px;
+  list-style: none;
+}
+
+.nav-item.conn-sub-item {
+  padding-left: 16px;
+  transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.nav-item.conn-sub-item.is-conn-off {
+  opacity: 0.45;
+}
+
+.nav-item.conn-sub-item.is-conn-off:hover {
+  opacity: 0.78;
+}
+
+.nav-icon.conn-toggle-hit {
+  width: 20px;
+  height: 20px;
+  margin-left: -3px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, transform 0.12s ease;
+  cursor: pointer;
+}
+
+.nav-icon.conn-toggle-hit:hover {
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.18);
+  transform: scale(1.14);
+}
+
+.conn-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  box-sizing: border-box;
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.conn-dot-online {
+  background: #10b981;
+  border: 1.5px solid #10b981;
+  box-shadow: 0 0 5px rgba(16, 185, 129, 0.4);
+}
+
+.is-conn-off .conn-dot-online {
+  background: transparent;
+  box-shadow: none;
+}
+
+.conn-dot-offline {
+  background: var(--text-secondary, #9ca3af);
+  border: 1.5px solid var(--text-secondary, #9ca3af);
+}
+
+.is-conn-off .conn-dot-offline {
+  background: transparent;
+  border-color: var(--text-muted, #8c8881);
+}
+
+.conn-dot-unlinked {
+  background: #f59e0b;
+  border: 1.5px solid #f59e0b;
+  box-shadow: 0 0 5px rgba(245, 158, 11, 0.38);
+}
+
+.is-conn-off .conn-dot-unlinked {
+  background: transparent;
+  box-shadow: none;
+}
+
+/* ==========================================================================
    タイムライン エキスパンダツリー (年・月 階層アコーディオン)
    ========================================================================== */
 .timeline-tree {
@@ -1934,12 +2038,39 @@ body.resizing .resize-handle {
 .folder-context-menu {
   min-width: 235px;
 }
+.folder-context-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
 .folder-context-header-text {
   display: block;
   max-width: 215px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.folder-context-header-unlink-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--accent-primary, #e14d2a);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.14);
+  border: 1px solid rgba(var(--accent-rgb, 225, 77, 42), 0.45);
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.folder-context-header-unlink-btn:hover {
+  background: var(--accent-primary, #e14d2a);
+  color: #ffffff;
+  border-color: var(--accent-primary, #e14d2a);
 }
 .context-menu-item.disabled {
   opacity: 0.45;

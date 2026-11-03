@@ -48,13 +48,14 @@ function _ftFormatCount(n) {
    ノード情報の生成
    -------------------------------------------------------------------------- */
 function _ftShortcutNode(s) {
-  const isStorage = !!s.is_storage || s.key === 'storage';
-  const isStorageRoot = !!s.is_storage_root || s.key === 'storage';
+  const isStorage = !!s.is_storage || s.key === 'storage' || String(s.key || '').startsWith('loome_');
+  const isStorageRoot = !!s.is_storage_root || isStorage;
+  const isPrimaryLoome = s.is_primary_loome !== undefined ? !!s.is_primary_loome : (s.key === 'storage');
   return {
     kind: 'shortcut', scope: 'sc', key: _ftKey('sc', s.path), name: s.name, path: s.path,
     icon: FOLDER_TREE_SHORTCUT_ICONS[s.key] || (isStorage ? FOLDER_TREE_SHORTCUT_ICONS.storage : FOLDER_SVG_CLOSED), status: isStorage ? 'managed' : 'root', count: 0, total: s.total,
     hasManaged: !!s.has_managed || isStorage, hasChildren: true, isMissing: false, isOffline: false,
-    volumeSerial: null, serialMode: 'any', isStorage, isStorageRoot,
+    volumeSerial: s.volume_serial || null, serialMode: s.volume_serial ? 'match_or_null' : 'any', isStorage, isStorageRoot, isPrimaryLoome,
   };
 }
 
@@ -63,7 +64,7 @@ function _ftDriveNode(d) {
     kind: 'drive', scope: 'on', key: _ftKey('on', d.path), name: d.name, path: d.path,
     icon: FOLDER_TREE_DRIVE_ICONS[d.drive_type] || DRIVE_SVG_DEFAULT, status: 'root', count: 0, total: d.total,
     hasManaged: !!d.has_managed, hasChildren: true, isMissing: false, isOffline: false,
-    volumeSerial: d.volume_serial || null, serialMode: d.serial_mode || 'any', driveType: d.drive_type, label: d.label || '', customName: d.custom_name || '', shortSerial: d.short_serial || '', letter: d.letter || '',
+    volumeSerial: d.volume_serial || null, serialMode: d.serial_mode || 'any', driveType: d.drive_type, label: d.label || '', customName: d.custom_name || '', shortSerial: d.short_serial || '', letter: d.letter || '', loomeEnabled: !!d.loome_enabled,
   };
 }
 
@@ -79,6 +80,7 @@ function _ftOfflineNode(v) {
 
 function _ftChildNode(parent, c) {
   const isStorage = !!c.is_storage || !!parent?.isStorage;
+  const isStorageRoot = !!c.is_storage_root;
   const directCount = Number(c.count || 0);
   const totalCount = Number(c.total || 0);
   const subCount = c.sub_count !== undefined
@@ -88,7 +90,7 @@ function _ftChildNode(parent, c) {
     kind: 'folder', scope: parent.scope, key: _ftKey(parent.scope, c.path), name: c.name, path: c.path,
     icon: FOLDER_SVG_CLOSED, status: c.status, count: directCount, subCount, total: totalCount, hasManaged: !!c.has_managed || isStorage,
     hasChildren: !!c.has_children, isMissing: !!c.is_missing, isOffline: parent.isOffline,
-    volumeSerial: parent.volumeSerial, serialMode: parent.serialMode, isStorage, isStorageRoot: false, label: parent.label || '', customName: parent.customName || '', shortSerial: parent.shortSerial || '', letter: parent.letter || '',
+    volumeSerial: parent.volumeSerial, serialMode: parent.serialMode, isStorage, isStorageRoot, isPrimaryLoome: !!parent.isPrimaryLoome, label: parent.label || '', customName: parent.customName || '', shortSerial: parent.shortSerial || '', letter: parent.letter || '',
   };
 }
 
@@ -220,12 +222,10 @@ function renderFolderTree() {
   }
   container.replaceChildren(frag);
   syncFolderTreeFilterStates();
-  // スキャン中の場合、再描画後も対象ノードの直下にインライン進捗バーを再アタッチ
   if (_activeScanningPath) {
     const reItem = _ftFindItemByPath(_activeScanningPath);
     if (reItem) {
       reItem.classList.add('is-scanning-target');
-      _ftGetOrCreateInlineProgress(reItem);
     }
   }
 }
@@ -338,13 +338,25 @@ function syncFolderTreeFilterStates() {
   const filterSerial = (state.currentFilter && state.currentFilter.volumeSerial) || '';
   const isMediaRootFilter = Boolean(state.currentFilter && (state.currentFilter.type === 'folder' || state.currentFilter.type === 'folder_exclude') && !state.currentFilter.value && filterSerial);
 
+  // Loome（内部ストレージ）配下のパスかどうかを判定（ドキュメント配下にアプリ本体が置かれていても「ドキュメント」や「C:」が誤って+1点灯しないようにする）
+  const storageRootsNorm = ((folderTreeState.roots && folderTreeState.roots.shortcuts) || [])
+    .filter(s => s && (s.is_storage || s.key === 'storage' || String(s.key || '').startsWith('loome_')))
+    .map(s => _ftNormPath(s.path))
+    .filter(Boolean);
+  const isTargetInStorage = Boolean(
+    isFolderFilter &&
+    targetNorm &&
+    storageRootsNorm.some(sr => targetNorm === sr || targetNorm.startsWith(sr + '\\'))
+  );
+
   document.querySelectorAll('#folderList .folder-tree-item').forEach(el => {
     const itemPath = _ftNormPath(el.dataset.filterValue || '');
     const itemSerial = el.dataset.volumeSerial || '';
     const itemKind = el.dataset.nodeKind || '';
+    const itemIsStorage = el.classList.contains('is-storage-folder');
     const serialMatches = !filterSerial || !itemSerial || itemSerial === filterSerial;
     const isExact = (isMediaRootFilter && (itemKind === 'drive' || itemKind === 'offline') && itemSerial === filterSerial) || (isFolderFilter && itemPath && itemPath === targetNorm && serialMatches);
-    const isAncestor = isFolderFilter && itemPath && !isExact && targetNorm.startsWith(itemPath + '\\') && serialMatches;
+    const isAncestor = isFolderFilter && itemPath && !isExact && targetNorm.startsWith(itemPath + '\\') && serialMatches && (!isTargetInStorage || itemIsStorage);
 
     el.classList.toggle('active', isExact && !isExclude);
     el.classList.toggle('active-exclude', isExact && isExclude);
@@ -551,7 +563,10 @@ function _ftHandleClick(node) {
     setFilter('all', null, 'すべての写真');
     return;
   }
-  // 1回目: 通常絞り込み
+  // 1回目: 通常絞り込み（管理外フォルダでキャンセルされた際に元のフィルタへ戻せるよう直前の状態を保持）
+  const prevFilter = state.currentFilter
+    ? { ...state.currentFilter }
+    : { type: 'all', value: null, titleText: 'すべての写真' };
   let prefix = '';
   if (node.isOffline) prefix = '[未接続] ';
   else if (node.isMissing) prefix = '[消失] ';
@@ -559,9 +574,9 @@ function _ftHandleClick(node) {
   else if (node.status === 'unmanaged' && !node.hasManaged && !node.isStorage) prefix = '[未登録] ';
   setFilter('folder', node.path, `${prefix}${node.name}`, { volumeSerial: node.volumeSerial || null, serialMode: node.serialMode || 'any', isOffline: !!node.isOffline });
 
-  // 接続中かつ実フォルダが存在する場合、バックグラウンドで差分または管理登録判定
-  if (!node.isOffline && !node.isMissing && typeof checkAndPromptFolderRefresh === 'function') {
-    checkAndPromptFolderRefresh(node.path, node.name, node);
+  // 接続中の場合、実フォルダが削除（消失）されていてもバックグラウンドで差分・リンク整理または管理登録判定を実行
+  if (!node.isOffline && typeof checkAndPromptFolderRefresh === 'function') {
+    checkAndPromptFolderRefresh(node.path, node.name, { ...node, _prevFilter: prevFilter });
   }
 }
 
@@ -579,8 +594,8 @@ function _ftHandleContextMenu(e, node) {
     fullPath: node.path,
     status: node.status,
     kind: node.kind,
-    isMissing: node.isMissing || node.isOffline,
-    isOffline: node.isOffline,
+    isMissing: !!node.isMissing,
+    isOffline: !!node.isOffline,
     count: directCnt,
     subCount: subCnt,
     totalCount: totalCnt,
@@ -588,6 +603,9 @@ function _ftHandleContextMenu(e, node) {
     hasChildren: !!node.hasChildren,
     isStorage: !!node.isStorage,
     isStorageRoot: !!node.isStorageRoot,
+    isPrimaryLoome: node.isPrimaryLoome !== undefined ? !!node.isPrimaryLoome : !node.volumeSerial,
+    loomeEnabled: !!node.loomeEnabled,
+    driveLetter: node.letter || '',
     volumeSerial: node.volumeSerial || null,
     serialMode: node.serialMode || 'any',
     volumeLabel: node.label || '',
@@ -742,135 +760,96 @@ function _ftRenderScanProgress(status) {
 
   if (!status || !status.is_scanning) {
     if (card) card.style.display = 'none';
-    if (banner) banner.style.display = 'none';
     document.body.classList.remove('has-scan-banner');
     _ftRemoveInlineScanProgress();
     _activeScanningPath = null;
+    if (typeof clearGlobalActivity === 'function') {
+      clearGlobalActivity('scan');
+    } else if (banner) {
+      banner.style.display = 'none';
+    }
     return;
   }
 
   document.body.classList.add('has-scan-banner');
+  if (card) card.style.display = 'none';
+  _ftRemoveInlineScanProgress();
 
-  // 1. 左ドロワー内カードの表示
-  if (card) card.style.display = 'block';
-
-  // 2. 画面最下部グローバルフッターの表示（全画面常時視認ステータスバー）
-  if (banner) banner.style.display = 'flex';
-
-  // 3. クリックしたフォルダの直下にインラインプログレスバーを直接表示 (v2.02 視線移動ゼロ)
   const scanFolder = status.folder_path || _activeScanningPath;
   const targetItem = _ftFindItemByPath(scanFolder);
-  let inlineTitleEl = null;
-  let inlineCountEl = null;
-  let inlineFillEl = null;
-  let inlineFileEl = null;
-
   if (targetItem) {
     targetItem.classList.add('is-scanning-target');
-    const inlineEl = _ftGetOrCreateInlineProgress(targetItem);
-    inlineTitleEl = inlineEl.querySelector('.folder-inline-progress-title');
-    inlineCountEl = inlineEl.querySelector('.folder-inline-progress-count');
-    inlineFillEl = inlineEl.querySelector('.folder-inline-progress-fill');
-    inlineFileEl = inlineEl.querySelector('.folder-inline-progress-filename');
-  } else {
-    _ftRemoveInlineScanProgress();
   }
 
   if (status.phase === 'listing') {
-    const listingText = '写真ファイルを検索中...';
-    if (elements.folderScanProgressTitle) elements.folderScanProgressTitle.textContent = listingText;
-    if (elements.folderScanProgressCount) elements.folderScanProgressCount.textContent = '';
-    if (elements.folderScanProgressFill) elements.folderScanProgressFill.classList.add('indeterminate');
-    if (elements.folderScanProgressCurrent) elements.folderScanProgressCurrent.textContent = status.folder_path || '';
-
-    if (elements.globalScanTitle) elements.globalScanTitle.textContent = listingText;
-    if (elements.globalScanCount) elements.globalScanCount.textContent = '';
-    if (elements.globalScanFill) elements.globalScanFill.classList.add('indeterminate');
-    if (elements.globalScanFilename) elements.globalScanFilename.textContent = status.folder_path || '';
-
-    if (inlineTitleEl) inlineTitleEl.textContent = listingText;
-    if (inlineCountEl) inlineCountEl.textContent = '';
-    if (inlineFillEl) {
-      inlineFillEl.classList.add('indeterminate');
-      inlineFillEl.style.width = '50%';
+    const listingText = t('scan.listing', '写真ファイルを検索中...');
+    if (typeof setGlobalActivity === 'function') {
+      setGlobalActivity('scan', {
+        title: listingText,
+        countText: '',
+        percent: null,
+        filename: status.folder_path || '',
+        indeterminate: true,
+      });
     }
-    if (inlineFileEl) inlineFileEl.textContent = status.folder_path || '';
   } else if (status.phase === 'stacks') {
-    const stackText = '連写・露出グループ化中...';
-    if (elements.folderScanProgressTitle) elements.folderScanProgressTitle.textContent = stackText;
-    if (elements.folderScanProgressCount) elements.folderScanProgressCount.textContent = '';
-    if (elements.folderScanProgressFill) elements.folderScanProgressFill.classList.add('indeterminate');
-    if (elements.folderScanProgressCurrent) elements.folderScanProgressCurrent.textContent = '';
-
-    if (elements.globalScanTitle) elements.globalScanTitle.textContent = stackText;
-    if (elements.globalScanCount) elements.globalScanCount.textContent = '';
-    if (elements.globalScanFill) elements.globalScanFill.classList.add('indeterminate');
-    if (elements.globalScanFilename) elements.globalScanFilename.textContent = '';
-
-    if (inlineTitleEl) inlineTitleEl.textContent = stackText;
-    if (inlineCountEl) inlineCountEl.textContent = '';
-    if (inlineFillEl) {
-      inlineFillEl.classList.add('indeterminate');
-      inlineFillEl.style.width = '50%';
+    const stackText = t('scan.stacks', '連写・露出グループ化中...');
+    if (typeof setGlobalActivity === 'function') {
+      setGlobalActivity('scan', {
+        title: stackText,
+        countText: '',
+        percent: null,
+        filename: '',
+        indeterminate: true,
+      });
     }
-    if (inlineFileEl) inlineFileEl.textContent = '';
   } else {
-    if (elements.folderScanProgressFill) elements.folderScanProgressFill.classList.remove('indeterminate');
-    if (elements.globalScanFill) elements.globalScanFill.classList.remove('indeterminate');
-    if (inlineFillEl) inlineFillEl.classList.remove('indeterminate');
-
     const total = status.total_files || 0;
     const current = (status.scanned !== undefined ? status.scanned : status.scanned_files) || 0;
     const pct = typeof status.percent === 'number' && status.percent >= 0
       ? status.percent
       : (total > 0 ? Math.min(100, Math.round((current / total) * 100)) : 0);
-    const scanTitle = '写真スキャン中...';
-    const countText = total > 0 ? `${current.toLocaleString()} / ${total.toLocaleString()} 枚 (${pct}%)` : `${current.toLocaleString()} 枚`;
-    const fileName = status.current_file || '';
+    const scanTitle = t('scan.in_progress', '写真スキャン中...');
+    const countText = total > 0
+      ? `${current.toLocaleString()} / ${total.toLocaleString()} 枚`
+      : `${current.toLocaleString()} 枚`;
+    const fileName = status.current_file || status.folder_path || '';
 
-    // 左ドロワー内カード
-    if (elements.folderScanProgressTitle) elements.folderScanProgressTitle.textContent = scanTitle;
-    if (elements.folderScanProgressCount) elements.folderScanProgressCount.textContent = countText;
-    if (elements.folderScanProgressFill) elements.folderScanProgressFill.style.width = `${pct}%`;
-    if (elements.folderScanProgressCurrent) {
-      elements.folderScanProgressCurrent.textContent = fileName;
-      elements.folderScanProgressCurrent.title = fileName;
-    }
-
-    // 画面下部グローバルバナー
-    if (elements.globalScanTitle) elements.globalScanTitle.textContent = scanTitle;
-    if (elements.globalScanCount) elements.globalScanCount.textContent = countText;
-    if (elements.globalScanFill) elements.globalScanFill.style.width = `${pct}%`;
-    if (elements.globalScanFilename) {
-      elements.globalScanFilename.textContent = fileName;
-      elements.globalScanFilename.title = fileName;
-    }
-
-    // クリックフォルダ直下のインライン進捗バー
-    if (inlineTitleEl) inlineTitleEl.textContent = scanTitle;
-    if (inlineCountEl) inlineCountEl.textContent = countText;
-    if (inlineFillEl) inlineFillEl.style.width = `${pct}%`;
-    if (inlineFileEl) {
-      inlineFileEl.textContent = fileName;
-      inlineFileEl.title = fileName;
+    if (typeof setGlobalActivity === 'function') {
+      setGlobalActivity('scan', {
+        title: scanTitle,
+        countText,
+        percent: total > 0 ? pct : null,
+        filename: fileName,
+        indeterminate: total === 0,
+      });
     }
   }
 }
 
+let _ftScanPollSessionId = 0;
+
 function _ftStartScanPolling() {
   _ftStopScanPolling();
+  const pollId = ++_ftScanPollSessionId;
   _ftLastTreeRefreshTime = Date.now();
 
   fetch('/api/scan/status')
     .then(r => r.ok ? r.json() : null)
-    .then(s => { if (s && s.is_scanning) _ftRenderScanProgress(s); })
+    .then(s => {
+      if (pollId !== _ftScanPollSessionId || !_ftScanPollTimer) return;
+      if (s && s.is_scanning) _ftRenderScanProgress(s);
+    })
     .catch(() => {});
 
   _ftScanPollTimer = setInterval(async () => {
+    if (pollId !== _ftScanPollSessionId) return;
     try {
       const res = await fetch('/api/scan/status');
+      if (pollId !== _ftScanPollSessionId || !_ftScanPollTimer) return;
       if (!res.ok) return;
       const status = await res.json();
+      if (pollId !== _ftScanPollSessionId || !_ftScanPollTimer) return;
       if (status.is_scanning) {
         _ftRenderScanProgress(status);
 
@@ -890,6 +869,7 @@ function _ftStartScanPolling() {
 }
 
 function _ftStopScanPolling() {
+  _ftScanPollSessionId++;
   if (_ftScanPollTimer) {
     clearInterval(_ftScanPollTimer);
     _ftScanPollTimer = null;
@@ -897,54 +877,48 @@ function _ftStopScanPolling() {
 }
 
 let _ftAiPollTimer = null;
+let _ftAiPollSessionId = 0;
 
 function _ftRenderAiProgress(status) {
-  if (_ftScanPollTimer) return; // フォルダスキャン中はスキャン表示を優先
   const card = elements.folderScanProgressCard;
-  const banner = elements.globalScanBanner;
+  if (card) card.style.display = 'none';
 
   if (!status || !status.is_running) {
-    if (card) card.style.display = 'none';
-    if (banner) banner.style.display = 'none';
-    document.body.classList.remove('has-scan-banner');
+    if (typeof clearGlobalActivity === 'function') {
+      clearGlobalActivity('ai');
+    }
     return;
   }
-
-  document.body.classList.add('has-scan-banner');
-  if (card) card.style.display = 'block';
-  if (banner) banner.style.display = 'flex';
 
   const total = status.total_count || 0;
   const current = status.processed_count || 0;
   const pct = typeof status.percent === 'number' && status.percent >= 0
     ? Math.min(100, Math.round(status.percent))
     : (total > 0 ? Math.min(100, Math.round((current / total) * 100)) : 0);
-  const aiTitle = status.color_only ? 'AIカラータグ再判定中...' : 'AI自動タグ付け中...';
+  const aiTitle = status.color_only
+    ? t('ai.color_retagging', 'AIカラータグ再判定中...')
+    : t('ai.auto_tagging', 'AI自動タグ付け中...');
   const countText = total > 0
-    ? `${current.toLocaleString()} / ${total.toLocaleString()} 枚 (${pct}%)`
-    : '準備中...';
+    ? `${current.toLocaleString()} / ${total.toLocaleString()} 枚`
+    : t('common.preparing', '準備中...');
   const fileName = status.current_file || status.folder_path || '';
 
-  if (elements.folderScanProgressFill) {
-    elements.folderScanProgressFill.classList.toggle('indeterminate', total === 0);
-    elements.folderScanProgressFill.style.width = total > 0 ? `${pct}%` : '50%';
-  }
-  if (elements.folderScanProgressTitle) elements.folderScanProgressTitle.textContent = aiTitle;
-  if (elements.folderScanProgressCount) elements.folderScanProgressCount.textContent = countText;
-  if (elements.folderScanProgressCurrent) {
-    elements.folderScanProgressCurrent.textContent = fileName;
-    elements.folderScanProgressCurrent.title = fileName;
-  }
-
-  if (elements.globalScanFill) {
-    elements.globalScanFill.classList.toggle('indeterminate', total === 0);
-    elements.globalScanFill.style.width = total > 0 ? `${pct}%` : '50%';
-  }
-  if (elements.globalScanTitle) elements.globalScanTitle.textContent = aiTitle;
-  if (elements.globalScanCount) elements.globalScanCount.textContent = countText;
-  if (elements.globalScanFilename) {
-    elements.globalScanFilename.textContent = fileName;
-    elements.globalScanFilename.title = fileName;
+  if (typeof setGlobalActivity === 'function') {
+    setGlobalActivity('ai', {
+      title: aiTitle,
+      countText,
+      percent: total > 0 ? pct : null,
+      filename: fileName,
+      indeterminate: total === 0,
+      onCancel: async () => {
+        try {
+          await fetch('/api/ai/cancel', { method: 'POST' });
+          if (typeof showToast === 'function') {
+            showToast(t('ai.cancel_requested', 'AIタグ付けの中断を要求しました'), 'info');
+          }
+        } catch (_) {}
+      },
+    });
   }
 }
 
@@ -953,17 +927,22 @@ function startAiProgressPolling() {
     clearInterval(_ftAiPollTimer);
     _ftAiPollTimer = null;
   }
+  const aiPollId = ++_ftAiPollSessionId;
   let lastRunningStatus = null;
 
   const checkStatus = async () => {
+    if (aiPollId !== _ftAiPollSessionId) return;
     try {
       const res = await fetch('/api/ai/status');
+      if (aiPollId !== _ftAiPollSessionId) return;
       if (!res.ok) return;
       const status = await res.json();
+      if (aiPollId !== _ftAiPollSessionId) return;
       if (status.is_running) {
         lastRunningStatus = status;
         _ftRenderAiProgress(status);
       } else {
+        _ftAiPollSessionId++;
         if (_ftAiPollTimer) {
           clearInterval(_ftAiPollTimer);
           _ftAiPollTimer = null;
@@ -1014,7 +993,7 @@ function _ftStartAiPolling() {
 /**
  * フォルダスキャン実行（共通）
  */
-async function executeScan(folderPath, recursive = true, cleanupOrphans = false) {
+async function executeScan(folderPath, recursive = true, cleanupOrphans = false, volumeSerial = null) {
   if (!folderPath) {
     showToast('フォルダパスが指定されていません', 'warning');
     return;
@@ -1023,16 +1002,20 @@ async function executeScan(folderPath, recursive = true, cleanupOrphans = false)
 
   if (elements.folderPathScanBtn) elements.folderPathScanBtn.disabled = true;
 
-  // クリックしたフォルダの直下に即座にインライン進捗バーを先行表示 (0遅延フィードバック)
+  // 統合アクティビティ・ドックに即座に先行表示 (0遅延フィードバック)
   _activeScanningPath = folderPath;
   const immediateItem = _ftFindItemByPath(folderPath);
   if (immediateItem) {
     immediateItem.classList.add('is-scanning-target');
-    const inlineEl = _ftGetOrCreateInlineProgress(immediateItem);
-    const titleEl = inlineEl.querySelector('.folder-inline-progress-title');
-    const fillEl = inlineEl.querySelector('.folder-inline-progress-fill');
-    if (titleEl) titleEl.textContent = 'スキャン準備中...';
-    if (fillEl) fillEl.classList.add('indeterminate');
+  }
+  if (typeof setGlobalActivity === 'function') {
+    setGlobalActivity('scan', {
+      title: t('scan.preparing', 'スキャン準備中...'),
+      countText: '',
+      percent: null,
+      filename: folderPath,
+      indeterminate: true,
+    });
   }
 
   _ftStartScanPolling();
@@ -1046,6 +1029,7 @@ async function executeScan(folderPath, recursive = true, cleanupOrphans = false)
         recursive: recursive,
         cleanup_orphans: cleanupOrphans,
         auto_ai_tag: autoAi,
+        volume_serial: volumeSerial || null,
       }),
     });
     const data = await res.json();
@@ -1054,28 +1038,13 @@ async function executeScan(folderPath, recursive = true, cleanupOrphans = false)
     }
 
     _ftStopScanPolling();
-
-    // スキャン完了演出（1.8秒間完了を表示してフェードアウト）
-    if (elements.globalScanTitle) elements.globalScanTitle.textContent = 'スキャン完了';
-    if (elements.globalScanFill) elements.globalScanFill.style.width = '100%';
-    if (_inlineScanProgressEl) {
-      const inlineTitle = _inlineScanProgressEl.querySelector('.folder-inline-progress-title');
-      const inlineFill = _inlineScanProgressEl.querySelector('.folder-inline-progress-fill');
-      if (inlineTitle) inlineTitle.textContent = 'スキャン完了';
-      if (inlineFill) {
-        inlineFill.classList.remove('indeterminate');
-        inlineFill.style.width = '100%';
-      }
-    }
-    setTimeout(() => {
-      _ftRenderScanProgress(null);
-    }, 1800);
+    _ftRenderScanProgress(null);
 
     if (elements.folderScanProgressCard) elements.folderScanProgressCard.style.display = 'none';
 
-    const cleanedInfo = (data.result && data.result.cleaned > 0) ? ` / ${data.result.cleaned}枚 削除` : '';
-    const scanned = data.result ? data.result.scanned : 0;
-    const updated = data.result ? data.result.added_or_updated : 0;
+    const cleanedInfo = (data.result && data.result.cleaned > 0) ? ` / ${data.result.cleaned}枚 リンク整理` : '';
+    const scanned = data.result ? (data.result.scanned || 0) : 0;
+    const updated = data.result ? (data.result.added_or_updated || 0) : 0;
     showToast(`スキャン完了: ${scanned}枚検出 (${updated}枚更新${cleanedInfo})`, 'success');
 
     await Promise.all([
@@ -1092,6 +1061,8 @@ async function executeScan(folderPath, recursive = true, cleanupOrphans = false)
     if (elements.folderScanProgressCard) elements.folderScanProgressCard.style.display = 'none';
     showToast(`スキャンエラー: ${err.message}`, 'error');
   } finally {
+    _ftStopScanPolling();
+    _ftRenderScanProgress(null);
     if (elements.folderPathScanBtn) elements.folderPathScanBtn.disabled = false;
   }
 }
@@ -1431,7 +1402,8 @@ function _ftInitDbMaintenanceModal() {
 
     const treeRoot = typeof buildTagTree === 'function' ? buildTagTree(manualTags, { sortByCount: Boolean(state.settingsTagSortByCount) }) : { children: new Map() };
 
-    function appendInlineChildCreator(targetEl, parentFullPath, parentDisplayName, indent) {
+    function appendInlineChildCreator(targetEl, parentFullPath, parentDisplayName, indent, options = {}) {
+      const onCancel = typeof options.onCancel === 'function' ? options.onCancel : null;
       const addRow = document.createElement('div');
       addRow.className = 'inspector-tree-inline-add settings-tree-inline-add';
       addRow.style.paddingLeft = `${indent * 16 + 8}px`;
@@ -1444,15 +1416,21 @@ function _ftInitDbMaintenanceModal() {
       `;
       const inputEl = addRow.querySelector('.inspector-tree-inline-input');
       const btnEl = addRow.querySelector('.inspector-tree-inline-btn');
+      let isSubmitting = false;
       const submitChild = async () => {
-        if (!inputEl) return;
+        if (!inputEl || isSubmitting) return;
         const val = inputEl.value.replace(/^\/+|\/+$/g, '').trim();
-        if (!val) return;
+        if (!val) {
+          if (onCancel) onCancel();
+          return;
+        }
+        isSubmitting = true;
         inputEl.value = '';
         await executeCreateNewTag(`${parentFullPath}/${val}`);
       };
       addRow.addEventListener('click', (e) => e.stopPropagation());
       if (btnEl) {
+        btnEl.addEventListener('mousedown', (e) => e.stopPropagation());
         btnEl.addEventListener('click', (e) => {
           e.stopPropagation();
           submitChild();
@@ -1464,10 +1442,25 @@ function _ftInitDbMaintenanceModal() {
           if (e.key === 'Enter') {
             e.preventDefault();
             submitChild();
+          } else if (e.key === 'Escape' && onCancel) {
+            e.preventDefault();
+            onCancel();
           }
         });
+        if (onCancel) {
+          inputEl.addEventListener('blur', () => {
+            setTimeout(() => {
+              if (isSubmitting || !addRow.isConnected) return;
+              if (addRow.contains(document.activeElement)) return;
+              if (!inputEl.value.trim()) {
+                onCancel();
+              }
+            }, 120);
+          });
+        }
       }
       targetEl.appendChild(addRow);
+      return { addRow, inputEl };
     }
 
     function startSettingsInlineRename(itemEl, node) {
@@ -1582,7 +1575,6 @@ function _ftInitDbMaintenanceModal() {
         if (hasChildren) {
           appendEditorTreeNodes(node, childrenContainer, indent + 1);
         }
-        appendInlineChildCreator(childrenContainer, node.fullPath, node.name, indent + 1);
         nodeWrapper.appendChild(childrenContainer);
 
         // --- Drag & Drop イベント ---
@@ -1676,11 +1668,45 @@ function _ftInitDbMaintenanceModal() {
         if (subAddBtn) {
           subAddBtn.addEventListener('click', (e) => {
             e.stopPropagation();
+            const existingRow = childrenContainer.querySelector(':scope > .inspector-tree-inline-add');
+            if (existingRow) {
+              const existingInput = existingRow.querySelector('.inspector-tree-inline-input');
+              if (existingInput && !existingInput.value.trim()) {
+                existingRow.remove();
+                if (!hasChildren) {
+                  childrenContainer.classList.add('hidden');
+                  state.settingsTagTreeExpandedPaths.delete(node.fullPath);
+                }
+                return;
+              }
+              if (existingInput) existingInput.focus();
+              return;
+            }
+
             childrenContainer.classList.remove('hidden');
             state.settingsTagTreeExpandedPaths.add(node.fullPath);
             const toggleBtn = item.querySelector('.tree-toggle-btn');
-            if (toggleBtn) toggleBtn.classList.remove('collapsed');
-            const subInput = childrenContainer.querySelector(':scope > .inspector-tree-inline-add .inspector-tree-inline-input');
+            if (toggleBtn) {
+              toggleBtn.classList.remove('collapsed');
+              toggleBtn.title = '折りたたむ';
+            }
+
+            const closeSubAdd = () => {
+              const curRow = childrenContainer.querySelector(':scope > .inspector-tree-inline-add');
+              if (curRow) curRow.remove();
+              if (!hasChildren) {
+                childrenContainer.classList.add('hidden');
+                state.settingsTagTreeExpandedPaths.delete(node.fullPath);
+              }
+            };
+
+            const { inputEl: subInput } = appendInlineChildCreator(
+              childrenContainer,
+              node.fullPath,
+              node.name,
+              indent + 1,
+              { onCancel: closeSubAdd }
+            );
             if (subInput) setTimeout(() => subInput.focus(), 30);
           });
         }
@@ -1947,6 +1973,10 @@ function _ftInitDbMaintenanceModal() {
     if (themeSelect) {
       themeSelect.value = document.documentElement.getAttribute('data-scheme') || localStorage.getItem('pm_theme_scheme') || 'tetheract-d';
     }
+    const tbPosSelect = elements.settingToolbarPositionSelect || document.getElementById('settingToolbarPositionSelect');
+    if (tbPosSelect) {
+      tbPosSelect.value = document.documentElement.getAttribute('data-toolbar-pos') || localStorage.getItem('pm_toolbar_position') || 'bottom';
+    }
     const winSelect = elements.settingStartupWindowModeSelect || document.getElementById('settingStartupWindowModeSelect');
     if (winSelect) {
       winSelect.value = localStorage.getItem('pm_startup_window_mode') || 'maximized';
@@ -1977,6 +2007,30 @@ function _ftInitDbMaintenanceModal() {
   const closeModal = () => {
     modal.style.display = 'none';
   };
+
+  const tbPosSelectEl = elements.settingToolbarPositionSelect || document.getElementById('settingToolbarPositionSelect');
+  if (tbPosSelectEl && !tbPosSelectEl.dataset.bound) {
+    tbPosSelectEl.dataset.bound = 'true';
+    tbPosSelectEl.value = document.documentElement.getAttribute('data-toolbar-pos') || localStorage.getItem('pm_toolbar_position') || 'bottom';
+    tbPosSelectEl.addEventListener('change', () => {
+      const pos = tbPosSelectEl.value || 'bottom';
+      if (typeof window.applyToolbarPosition === 'function') {
+        window.applyToolbarPosition(pos);
+      } else {
+        document.documentElement.setAttribute('data-toolbar-pos', pos === 'top' ? 'top' : 'bottom');
+        localStorage.setItem('pm_toolbar_position', pos === 'top' ? 'top' : 'bottom');
+      }
+      if (typeof showToast === 'function') {
+        showToast(
+          pos === 'top'
+            ? 'ツールバーを上部（ヘッダー）に配置しました'
+            : 'ツールバーを下部（フッター）に配置しました',
+          'success',
+          2000
+        );
+      }
+    });
+  }
 
   const winSelectEl = elements.settingStartupWindowModeSelect || document.getElementById('settingStartupWindowModeSelect');
   if (winSelectEl && !winSelectEl.dataset.bound) {

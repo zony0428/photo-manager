@@ -102,6 +102,51 @@ def get_volume_by_serial(volume_serial: str) -> Optional[Dict[str, Any]]:
         return dict(row) if row else None
 
 
+def set_volume_loome_enabled(
+    volume_serial: str,
+    enabled: bool,
+    volume_label: Optional[str] = None,
+    drive_letter: Optional[str] = None,
+) -> Dict[str, Any]:
+    """指定VSNのメディアの Loome 有効状態 (loome_enabled) を設定・更新する"""
+    serial_clean = (volume_serial or "").strip().upper()
+    enabled_val = 1 if enabled else 0
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM volumes WHERE volume_serial = ?", (serial_clean,))
+        existing = cursor.fetchone()
+        if existing:
+            cursor.execute(
+                """
+                UPDATE volumes
+                SET loome_enabled = ?,
+                    volume_label = COALESCE(?, volume_label),
+                    drive_letter = COALESCE(?, drive_letter),
+                    last_seen_at = CURRENT_TIMESTAMP
+                WHERE volume_serial = ?
+                """,
+                (enabled_val, volume_label, drive_letter, serial_clean),
+            )
+        else:
+            cursor.execute(
+                """
+                INSERT INTO volumes (volume_serial, volume_label, custom_name, drive_letter, loome_enabled, last_seen_at)
+                VALUES (?, ?, '', ?, ?, CURRENT_TIMESTAMP)
+                """,
+                (serial_clean, volume_label or "", drive_letter, enabled_val),
+            )
+        conn.commit()
+        cursor.execute("SELECT * FROM volumes WHERE volume_serial = ?", (serial_clean,))
+        row = cursor.fetchone()
+        return dict(row) if row else {
+            "volume_serial": serial_clean,
+            "volume_label": volume_label or "",
+            "custom_name": "",
+            "drive_letter": drive_letter,
+            "loome_enabled": enabled_val,
+        }
+
+
 def get_all_volumes() -> List[Dict[str, Any]]:
     """
     登録済みの全メディア（ボリューム）一覧を、収録写真枚数・撮影期間・カメラ機種・接続状態付きで取得する。
@@ -156,7 +201,8 @@ def get_all_volumes() -> List[Dict[str, Any]]:
 
         photo_count = int(s_rec.get("photo_count") or 0)
         custom_name = (v_rec.get("custom_name") or "").strip()
-        if photo_count == 0 and not custom_name:
+        loome_enabled = bool(int(v_rec.get("loome_enabled") or 0))
+        if photo_count == 0 and not custom_name and not loome_enabled:
             continue
 
         vol_label = (
@@ -203,6 +249,8 @@ def get_all_volumes() -> List[Dict[str, Any]]:
             "drive_letter": drive_letter,
             "filesystem": (online.get("filesystem") if online else "") or "",
             "is_online": bool(online),
+            "loome_enabled": loome_enabled,
+            "loome_path": f"{drive_letter}\\Loome" if (loome_enabled and drive_letter) else "",
             "photo_count": photo_count,
             "excellent_count": int(s_rec.get("excellent_count") or 0),
             "good_count": int(s_rec.get("good_count") or 0),
@@ -668,6 +716,8 @@ def clear_folders_fs_cache() -> None:
         _isdir_cache.clear()
         _scandir_cache.clear()
         _PHOTO_DIR_SCAN_CACHE.clear()
+    from .connection import bump_db_commit_seq
+    bump_db_commit_seq()
 
 
 def _cached_isdir(path: str) -> bool:

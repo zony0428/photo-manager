@@ -47,6 +47,7 @@ function getCurrentFilterState() {
     sortBy: state.sortBy || 'date_taken DESC',
     untaggedOnly: !!state.untaggedOnly,
     connectionFilter: state.connectionFilter || 'all',
+    connectionStates: Array.from(state.connectionStates || ['online', 'offline', 'unlinked']),
     selectedYearMonths: Array.from(state.selectedYearMonths || []),
     selectedDates: Array.from(state.selectedDates || []),
     selectedCameras: Array.from(state.selectedCameras || []),
@@ -469,6 +470,18 @@ function applyFilterPreset(preset) {
   const offlineNav = document.getElementById('offlineOnlyNavItem');
   if (onlineNav) onlineNav.classList.toggle('active', state.connectionFilter === 'online');
   if (offlineNav) offlineNav.classList.toggle('active', state.connectionFilter === 'offline');
+  if (Array.isArray(f.connectionStates) && f.connectionStates.length > 0) {
+    state.connectionStates = new Set(f.connectionStates);
+  } else if (state.connectionFilter === 'online') {
+    state.connectionStates = new Set(['online']);
+  } else if (state.connectionFilter === 'offline') {
+    state.connectionStates = new Set(['offline']);
+  } else {
+    state.connectionStates = new Set(['online', 'offline', 'unlinked']);
+  }
+  if (typeof window.updateConnectionFilterUI === 'function') {
+    window.updateConnectionFilterUI();
+  }
 
   // 7. sort
   if (f.sortBy) {

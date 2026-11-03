@@ -16,10 +16,12 @@ from .connection import (
     get_connection,
     close_thread_connection,
     switch_database_path,
+    get_db_commit_seq,
+    bump_db_commit_seq,
 )
 
 # スキーマ・マイグレーション
-from .schema import initialize_database
+from .schema import initialize_database, get_startup_status, set_startup_status
 
 # 写真 CRUD・同期・GPS・ラボ分析
 from .photos import (
@@ -44,6 +46,7 @@ from .photos import (
     get_missing_photos_count,
     unlink_missing_photos_in_folder,
     get_unlinked_photos_count,
+    get_connection_counts,
     purge_unlinked_photos,
     get_duplicate_photos_count,
     update_photo_gps,
@@ -128,6 +131,7 @@ from .stacks import recalculate_stacks, recalculate_duplicate_stacks, set_stack_
 from .folders import (
     upsert_volume,
     update_volume_custom_name,
+    set_volume_loome_enabled,
     get_volume_by_serial,
     get_all_volumes,
     remove_volume_by_serial,

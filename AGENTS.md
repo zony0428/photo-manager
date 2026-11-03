@@ -15,8 +15,8 @@ USBメモリやポータブルSSDでの持ち歩き運用（完全スタンド�
 - **改称の対象外**: リポジトリ名（`photo-manager` / `photo-manager-dev`）、DBパス（`cache/library.db`）、Python ロガー名（`photo_manager.*`）、C# 名前空間（`PhotoManager`）は互換性維持のため旧名のまま。これらを「改称漏れ」として書き換えてはならない。
 - **Python環境**: リポジトリ内 `python/` に Embeddable Python を同梱（外部Python / venv 不要）
 - **フロントエンド**: Vanilla HTML5 + CSS3 + JavaScript (ES6+)。Node.js やビルドツール（Webpack/Vite等）は一切使わない
-- **データベース**: SQLite3 (`cache/library.db`)。WALモード + RAMキャッシュ最適化
-- **サムネイル**: SQLite BLOBストレージ（`thumbnails` テーブルにWebPバイナリを格納）
+- **データベース**: SQLite3 (`cache/library.db`)。WALモード + RAMキャッシュ最適化。ユニーク画像エンティティ（`photos`）と複数メディア所在リンク（`photo_links`）の正規化構造
+- **サムネイル・タグ**: SQLite BLOBストレージ（`thumbnails` テーブルに `photo_id INTEGER PRIMARY KEY` ROWID直結でWebPバイナリを格納、`photo_tags` は `WITHOUT ROWID` クラスタ化）
 - **UI起動**: `Tetheract.exe`（または `start.bat`） -> `server/run.py`（または ルート `run.py`） -> Edge/Chrome の `--app` モード（タブ/URLバー無しの単体アプリ風ウィンドウ）
 - **単体モバイルHTML**: `Tetheract_Mobile.html`（`server/mobile_bundle.py` が自動生成。旧名 `PhotoManager_Mobile.html`）
 - **常駐・プロセス終了**: `server/tray.py`（`pystray`）によるタスクトレイ常駐と、UI終了ボタン（`POST /api/shutdown` -> `server/heartbeat.py` の `request_shutdown()`）またはトレイメニューからの明示的シャットダウン（※ハートビート途絶による自動終了は無効化済み）
@@ -78,6 +78,8 @@ USBメモリやポータブルSSDでの持ち歩き運用（完全スタンド�
 - **テーマ属性**:
   - `data-scheme` は `tetheract-d`（既定）/ `tetheract-l` / `sumi` / `paper` の4種、`data-theme` はその明暗ベースを表す `sumi` / `paper` の2種のみ（`common.js` の `applyTheme()`）。
   - `washi` / `urusi` 等の旧名は存在しないため、CSSセレクタに使ってはならない。テーマ依存の色は `--accent-primary` / `--accent-rgb` / `--border-color` 等のテーマ変数で書く。
+- **確認モーダル・通知の統一**:
+  - ブラウザ標準の `window.confirm()` / `window.alert()` は使用禁止。確認ダイアログは `frontend/js/common.js` の `showConfirmModal(options)`（`#commonConfirmModal`）、通知は `showToast()` を使用する。
 
 ### セキュリティ規約 (Security)
 - **新規APIは既定でlocalhost専用**: すべての新規APIは既定で `127.0.0.1` / `localhost` 専用とし、LANアクセスを許可する場合は安全性を検証した上で `server/lan_access.py` のホワイトリストに明示追加すること（PC操作・ファイル削除・DB変更等のAPIはLAN公開厳禁）。
@@ -95,9 +97,11 @@ USBメモリやポータブルSSDでの持ち歩き運用（完全スタンド�
   - 複数行取得時に `SELECT` 句内でサブクエリを回さず、`LEFT JOIN` + `GROUP BY` で事前集計する。
 - **SQLite PRAGMA**:
   - WALモード、RAMキャッシュ（`cache_size`）、メモリマップドI/O（`mmap_size`）の設定を維持する。
+- **安全なスキーマ再構築マイグレーション**:
+  - `photos` 等の親テーブルを再構築する際は、`ON DELETE CASCADE` による子テーブル（`photo_tags`, `thumbnails`, `photo_links`）の連動削除を防ぐため、トランザクション外での `PRAGMA foreign_keys = OFF` と子テーブル一時退避の二重保護を徹底する。
 
 ### バージョン管理・自動カウントアップ規約 (SemVer: MAJOR.MINOR.PATCH)
-- **バージョン系列**: 改称に伴い v1.0.0（2026-10-31）から新系列として再出発した（v1.0.0 / v1.1.0 は公開済み）。旧系列（旧称 Photo Manager の v2.x〜v3.2.1）のタグ・リリースノートは履歴として残っているが、**比較・カウントアップの基準は新系列（v1.0.0 以降）のみ**とする。
+- **バージョン系列**: 改称に伴い v1.0.0（2026-10-31）から新系列として再出発した（v1.0.0〜v1.2.2 は公開済み）。旧系列（旧称 Photo Manager の v2.x〜v3.2.1）のタグ・リリースノートは履歴として残っているが、**比較・カウントアップの基準は新系列（v1.0.0 以降）のみ**とする。
 - **バージョニング方式**: 一般的なセマンティックバージョニング（`MAJOR.MINOR.PATCH`）を採用する。
 - **カウントアップ原則（検証・コミット時更新）**:
   - 通常の作業途中・微修正のたびに細かくバージョン番号を上げてはならない。

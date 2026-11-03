@@ -59,6 +59,8 @@ def test_lan_host_origin_cannot_call_localhost_destructive_apis():
     assert LOCAL.delete("/api/volumes/DEADBEEF", headers=foreign_lan).status_code == 403
     assert LOCAL.put("/api/volumes/DEADBEEF", json={"custom_name": "x"}, headers=foreign_lan).status_code == 403
     assert LOCAL.get("/api/volumes/DEADBEEF/status", headers=foreign_lan).status_code == 403
+    assert LOCAL.post("/api/volumes/DEADBEEF/loome", json={"drive_letter": "E:"}, headers=foreign_lan).status_code == 403
+    assert LOCAL.delete("/api/volumes/DEADBEEF/loome", headers=foreign_lan).status_code == 403
     assert LOCAL.post("/api/ai/tag-color-photos", json={"photo_ids": [1]}, headers=foreign_lan).status_code == 403
     assert LOCAL.options("/api/volumes/DEADBEEF", headers=foreign_lan).status_code == 403
 
@@ -91,6 +93,8 @@ def test_lan_whitelist_blocks_admin_apis():
         ("POST", "/api/shutdown"),
         ("POST", "/api/photos/batch-shift-date"),
         ("POST", "/api/storage/move-photos"),
+        ("POST", "/api/volumes/DEADBEEF/loome"),
+        ("DELETE", "/api/volumes/DEADBEEF/loome"),
         ("DELETE", "/api/tags/foo"),
         ("POST", "/api/photo/1/adjust"),
         ("POST", "/api/photo/1/open-file"),

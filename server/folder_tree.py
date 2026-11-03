@@ -30,10 +30,10 @@ from .database import (
     get_scan_roots,
 )
 from .database.folders import normalize_folder_path
+from .storage_manager import get_all_loome_roots, is_loome_root_path, is_path_in_storage
 from .volume_info import get_volume_info_for_drive
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-STORAGE_DIR = BASE_DIR / "storage"
 
 # GetDriveTypeW の戻り値
 _DRIVE_NO_ROOT_DIR = 1
@@ -233,26 +233,31 @@ def build_roots(quick_access: List[Dict[str, Any]]) -> Dict[str, Any]:
 
     # ショートカット（配下の写真総数は都度集計）
     shortcuts: List[Dict[str, Any]] = []
-    STORAGE_DIR.mkdir(parents=True, exist_ok=True)
-    storage_path = normalize_folder_path(str(STORAGE_DIR))
-    storage_total = sum(r["count"] for r in get_directory_counts_under(storage_path))
-    shortcuts.insert(0, {
-        "key": "storage",
-        "name": "storage (アプリ内ストレージ)",
-        "icon": "📦",
-        "path": storage_path,
-        "total": storage_total,
-        "has_managed": True,
-        "is_storage": True,
-        "is_storage_root": True,
-    })
+    loome_roots = get_all_loome_roots(force_refresh=True)
+    for lr in loome_roots:
+        l_path = normalize_folder_path(lr["path"])
+        l_vsn = lr.get("volume_serial")
+        l_total = sum(r["count"] for r in get_directory_counts_under(l_path, volume_serial=l_vsn))
+        shortcuts.append({
+            "key": lr["key"],
+            "name": lr["name"],
+            "icon": "📦",
+            "path": l_path,
+            "total": l_total,
+            "has_managed": True,
+            "is_storage": True,
+            "is_storage_root": True,
+            "is_primary_loome": bool(lr.get("is_primary")),
+            "volume_serial": l_vsn,
+        })
 
+    quick_items: List[Dict[str, Any]] = []
     for item in quick_access:
         if item.get("key") not in ("pictures", "documents", "desktop"):
             continue
         path = normalize_folder_path(item["path"])
         total = sum(r["count"] for r in get_directory_counts_under(path))
-        shortcuts.append({
+        quick_items.append({
             "key": item["key"],
             "name": item["name"],
             "icon": item.get("icon", "📁"),
@@ -260,9 +265,10 @@ def build_roots(quick_access: List[Dict[str, Any]]) -> Dict[str, Any]:
             "total": total,
             "has_managed": total > 0 or _has_scan_root_under(_key(path), scan_root_keys),
         })
-    # 表示順を固定（storage → ピクチャ → ドキュメント → デスクトップ）
-    order = {"storage": -1, "pictures": 0, "documents": 1, "desktop": 2}
-    shortcuts.sort(key=lambda s: order.get(s["key"], 9))
+    # 表示順を固定（Loome群 → ピクチャ → ドキュメント → デスクトップ）
+    order = {"pictures": 0, "documents": 1, "desktop": 2}
+    quick_items.sort(key=lambda s: order.get(s["key"], 9))
+    shortcuts.extend(quick_items)
 
     connected = _list_connected_drives()
     connected_by_letter = {d["letter"]: d for d in connected}
@@ -328,6 +334,7 @@ def build_roots(quick_access: List[Dict[str, Any]]) -> Dict[str, Any]:
             ),
             "total": total,
             "has_managed": has_managed,
+            "loome_enabled": bool(vol_meta and int(vol_meta.get("loome_enabled") or 0)),
             # 子ノード取得時のボリューム絞り込み条件
             "serial_mode": "match_or_null" if serial else "any",
         })
@@ -408,8 +415,7 @@ def list_children(
     parent = normalize_folder_path(path)
     base = parent.rstrip("\\/")
     base_key = base.lower()
-    storage_key = _key(str(STORAGE_DIR))
-    parent_is_storage = _is_under(base_key, storage_key)
+    parent_is_storage = is_path_in_storage(base, volume_serial=volume_serial)
 
     scan_root_keys = [_key(r) for r in get_scan_roots()]
     ignored_keys = [_key(p) for p in get_ignored_folders()]
@@ -475,7 +481,7 @@ def list_children(
         total_count = int(db_info["total"] or 0)
         sub_count = max(0, total_count - direct_count)
 
-        child_is_storage = parent_is_storage or _is_under(child_key, storage_key)
+        child_is_storage = parent_is_storage or is_path_in_storage(child_path, volume_serial=volume_serial)
 
         if any(_is_under(child_key, ig) for ig in ignored_keys):
             status = "ignored"
@@ -512,7 +518,7 @@ def list_children(
         }
         if child_is_storage:
             child_item["is_storage"] = True
-            child_item["is_storage_root"] = (child_key == storage_key)
+            child_item["is_storage_root"] = is_loome_root_path(child_path)
         result.append(child_item)
 
     result.sort(key=lambda c: _natural_sort_key(c["name"]))

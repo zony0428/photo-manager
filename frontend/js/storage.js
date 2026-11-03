@@ -1,14 +1,17 @@
 /**
- * Photo Manager - storage（アプリ内ストレージ）管理・D&D・フォルダ操作・リネーム機能
- * - 外部写真から storage へのコピー＆インポート
- * - storage 内でのサブフォルダ作成・リネーム・空フォルダ削除・外部エクスポート
- * - storage 内写真のサブフォルダ間移動（ポップオーバー・右クリック・左ツリーD&D）
- * - storage 内写真の単一リネーム＆一括連番リネーム（F2 ショートカット対応）
+ * Photo Manager - Loome 管理・D&D・フォルダ操作・リネーム機能
+ * - 外部写真から Loome へのコピー＆取り込み
+ * - 外部VSNドライブ直下への Loome 作成・登録解除
+ * - Loome 内でのサブフォルダ作成・リネーム・空フォルダ削除・外部エクスポート
+ * - Loome 内写真のサブフォルダ間移動（ポップオーバー・右クリック・左ツリーD&D）
+ * - Loome 内写真の単一リネーム＆一括連番リネーム（F2 ショートカット対応）
  */
 
 const storageState = {
-  storageRoot: null,         // GET /api/storage/folders で取得した storage ルートパス
-  folders: [],               // storage 内のフォルダ階層リスト
+  storageRoot: null,         // GET /api/storage/folders で取得した本体 Loome ルートパス
+  rootPath: null,            // 本体 Loome ルートパス互換プロパティ
+  storageRoots: [],          // 有効な全 Loome ルートパス配列（本体＋接続中外部ドライブ）
+  folders: [],               // Loome 内のフォルダ階層リスト
   renamePhotoIds: [],        // リネーム対象の photo_id 配列
   renameMode: 'single',      // 'single' | 'batch'
   singlePhotoExt: '',        // 単一リネーム時の拡張子（例: '.JPG'）
@@ -21,23 +24,27 @@ const storageState = {
 window._draggingPhotoIds = [];
 
 /**
- * 指定パスが storage（アプリ内ストレージ）配下かどうかを判定する
+ * 指定パスが Loome（または互換 storage）配下かどうかを判定する
  */
 function isStoragePath(path) {
   if (!path) return false;
   const norm = String(path).replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase();
-  if (storageState.storageRoot) {
-    const rootNorm = String(storageState.storageRoot).replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase();
+  const roots = Array.isArray(storageState.storageRoots) && storageState.storageRoots.length > 0
+    ? storageState.storageRoots
+    : (storageState.storageRoot ? [storageState.storageRoot] : []);
+  for (const r of roots) {
+    if (!r) continue;
+    const rootNorm = String(r).replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase();
     if (norm === rootNorm || norm.startsWith(rootNorm + '\\')) {
       return true;
     }
   }
-  return /(^|\\)storage(\\|$)/i.test(norm);
+  return /(^|\\)(storage|loome)(\\|$)/i.test(norm);
 }
 window.isStoragePath = isStoragePath;
 
 /**
- * 写真オブジェクトが storage 内の写真かどうかを判定する
+ * 写真オブジェクトが Loome 内の写真かどうかを判定する
  */
 function isPhotoInStorage(photo) {
   if (!photo) return false;
@@ -163,7 +170,7 @@ function getTargetStoragePhotoIdsForRename() {
    ========================================================================== */
 
 /**
- * storage 内のフォルダ階層一覧をサーバーから取得してキャッシュを更新する
+ * Loome 内のフォルダ階層一覧をサーバーから取得してキャッシュを更新する
  */
 async function fetchStorageFolders() {
   try {
@@ -172,18 +179,24 @@ async function fetchStorageFolders() {
     const data = await res.json();
     if (data.storage_root) {
       storageState.storageRoot = data.storage_root;
+      storageState.rootPath = data.storage_root;
+    }
+    if (Array.isArray(data.storage_roots)) {
+      storageState.storageRoots = data.storage_roots;
+    } else if (data.storage_root) {
+      storageState.storageRoots = [data.storage_root];
     }
     storageState.folders = Array.isArray(data.folders) ? data.folders : [];
     return storageState.folders;
   } catch (err) {
-    console.warn('storage フォルダ一覧の取得に失敗しました:', err);
+    console.warn('Loome フォルダ一覧の取得に失敗しました:', err);
     return storageState.folders || [];
   }
 }
 window.fetchStorageFolders = fetchStorageFolders;
 
 /**
- * 指定されたコンテナ群に storage フォルダ一覧を描画する
+ * 指定されたコンテナ群に Loome フォルダ一覧を描画する
  * @param {HTMLElement[]} containers 描画対象のDOM要素配列
  * @param {'import'|'move'} actionMode クリック時の動作モード
  */
@@ -204,15 +217,15 @@ async function renderStorageFolderListInContainers(containers, actionMode) {
       const item = document.createElement('div');
       item.className = 'submenu-folder-item';
       item.innerHTML = `
-        <span class="submenu-folder-name" title="storage (ルート)">storage (ルート)</span>
+        <span class="submenu-folder-name" title="Loome (直下)">Loome (直下)</span>
         <span class="submenu-folder-count">${actionMode === 'move' ? '移動' : '保存'}</span>
       `;
       item.addEventListener('click', (e) => {
         e.stopPropagation();
         if (actionMode === 'move') {
-          executeStorageMoveFromSelection('', 'storage (ルート)');
+          executeStorageMoveFromSelection('', 'Loome (直下)');
         } else {
-          executeStorageImportFromSelection('', 'storage (ルート)');
+          executeStorageImportFromSelection('', 'Loome (直下)');
         }
       });
       container.appendChild(item);
@@ -225,14 +238,14 @@ async function renderStorageFolderListInContainers(containers, actionMode) {
       const depth = Number(folder.depth || 0);
       item.style.paddingLeft = `${8 + depth * 14}px`;
 
-      const isRoot = !!folder.is_root || depth === 0 && (!folder.rel_path || folder.rel_path === '.');
-      const icon = '';
-      const displayName = isRoot ? 'storage (ルート)' : (folder.name || folder.rel_path || 'storage');
+      const isRoot = !!folder.is_root || (depth === 0 && (!folder.rel_path || folder.rel_path === '.'));
+      const icon = isRoot ? '📦 ' : '';
+      const displayName = folder.name || (isRoot ? 'Loome (直下)' : (folder.rel_path || 'Loome'));
       const targetDest = folder.path || folder.rel_path || '';
       const countText = folder.count !== undefined ? `${Number(folder.count)}枚` : '';
 
       item.innerHTML = `
-        <span class="submenu-folder-name" title="${escapeHtml(folder.rel_path || displayName)}">${icon} ${escapeHtml(displayName)}</span>
+        <span class="submenu-folder-name" title="${escapeHtml(folder.rel_path || displayName)}">${icon}${escapeHtml(displayName)}</span>
         <span class="submenu-folder-count">${escapeHtml(countText)}</span>
       `;
       item.addEventListener('click', (e) => {
@@ -316,43 +329,92 @@ window.updateStorageContextMenu = updateStorageContextMenu;
    ========================================================================== */
 
 /**
- * 外部写真を storage 指定フォルダへコピー＆インポートする
+ * storage ファイル操作中に /api/storage/status をポーリングして統合アクティビティ・ドックへ進捗を表示するヘルパー
+ */
+async function _withStorageProgressPolling(initialTitle, initialTotal, initialDetail, taskFn) {
+  let pollTimer = null;
+  let isPollingActive = true;
+  if (typeof setGlobalActivity === 'function') {
+    setGlobalActivity('storage', {
+      title: initialTitle,
+      countText: initialTotal > 0 ? `0 / ${initialTotal.toLocaleString()} 枚` : '',
+      percent: initialTotal > 0 ? 0 : null,
+      filename: initialDetail || '',
+      indeterminate: initialTotal <= 0,
+    });
+    pollTimer = setInterval(async () => {
+      if (!isPollingActive) return;
+      try {
+        const res = await fetch('/api/storage/status');
+        if (!isPollingActive || !res.ok) return;
+        const st = await res.json();
+        if (!isPollingActive || !st || !st.is_running) return;
+        const tot = Number(st.total || 0);
+        const cur = Number(st.current || 0);
+        const pct = typeof st.percent === 'number' ? st.percent : (tot > 0 ? Math.round((cur / tot) * 100) : null);
+        setGlobalActivity('storage', {
+          title: st.title || initialTitle,
+          countText: tot > 0 ? `${cur.toLocaleString()} / ${tot.toLocaleString()} 枚` : '',
+          percent: tot > 0 ? pct : null,
+          filename: st.current_file || initialDetail || '',
+          indeterminate: tot <= 0,
+        });
+      } catch (_) {}
+    }, 180);
+  }
+  try {
+    return await taskFn();
+  } finally {
+    isPollingActive = false;
+    if (pollTimer) clearInterval(pollTimer);
+    if (typeof clearGlobalActivity === 'function') {
+      clearGlobalActivity('storage');
+    }
+  }
+}
+
+/**
+ * 外部写真を Loome 指定フォルダへコピー＆インポートする
  */
 async function importPhotosToStorage(photoIds, destination, displayName = '') {
   const ids = Array.isArray(photoIds) ? photoIds : [];
   if (ids.length === 0) {
-    if (typeof showToast === 'function') showToast('インポートする写真が選択されていません', 'info');
+    if (typeof showToast === 'function') showToast('コピーする写真が選択されていません', 'info');
     return;
   }
 
   if (typeof closeContextMenu === 'function') closeContextMenu();
   if (typeof closeAllFloatingPopovers === 'function') closeAllFloatingPopovers();
 
-  if (typeof showToast === 'function') {
-    showToast(`${ids.length}枚の写真を storage へインポート中...`, 'info', 2000);
-  }
-
   try {
-    const res = await fetch('/api/storage/import-photos', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        photo_ids: ids,
-        destination: destination || '',
-      }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.detail || 'storage へのインポートに失敗しました');
-    }
+    const data = await _withStorageProgressPolling(
+      t('storage.importing', '写真をコピー取り込み中...'),
+      ids.length,
+      displayName || destination || 'Loome',
+      async () => {
+        const res = await fetch('/api/storage/import-photos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            photo_ids: ids,
+            destination: destination || '',
+          }),
+        });
+        const json = await res.json();
+        if (!res.ok) {
+          throw new Error(json.detail || 'Loome へのコピーに失敗しました');
+        }
+        return json;
+      }
+    );
 
-    const destLabel = displayName || data.destination_name || 'storage';
+    const destLabel = displayName || data.destination_name || 'Loome';
     const importedCount = Number(data.imported_count || 0);
     const skippedCount = Number(data.skipped_count || 0);
     const skipMsg = skippedCount > 0 ? `（スキップ: ${skippedCount}枚）` : '';
 
     if (typeof showToast === 'function') {
-      showToast(`${importedCount}枚の写真を「${destLabel}」へインポートしました${skipMsg}`, 'success', 4000);
+      showToast(`${importedCount}枚の写真を「${destLabel}」へコピーしました${skipMsg}`, 'success', 4000);
     }
 
     if (typeof clearSelection === 'function' && state.selectedPhotoIds && state.selectedPhotoIds.size > 0) {
@@ -374,16 +436,16 @@ async function importPhotosToStorage(photoIds, destination, displayName = '') {
       typeof fetchDuplicatesCount === 'function' ? fetchDuplicatesCount() : Promise.resolve(),
     ]).catch(() => {});
   } catch (err) {
-    console.error('storage インポートエラー:', err);
+    console.error('Loome コピーエラー:', err);
     if (typeof showToast === 'function') {
-      showToast(`${err.message || 'storage へのインポートに失敗しました'}`, 'error', 4000);
+      showToast(`${err.message || 'Loome へのコピーに失敗しました'}`, 'error', 4000);
     }
   }
 }
 window.importPhotosToStorage = importPhotosToStorage;
 
 /**
- * 選択中の外部写真を storage へインポートする
+ * 選択中の外部写真を Loome へインポートする
  */
 async function executeStorageImportFromSelection(destination, displayName = '') {
   const { externalPhotoIds } = getSelectedPhotosStorageBreakdown();
@@ -392,12 +454,12 @@ async function executeStorageImportFromSelection(destination, displayName = '') 
 }
 
 /**
- * storage 内の写真を別サブフォルダへ移動する
+ * Loome 内の写真を別サブフォルダへ移動する
  */
 async function movePhotosInStorage(photoIds, destination, displayName = '') {
   const ids = Array.isArray(photoIds) ? photoIds : [];
   if (ids.length === 0) {
-    if (typeof showToast === 'function') showToast('移動する storage 内の写真が選択されていません', 'info');
+    if (typeof showToast === 'function') showToast('移動する Loome 内の写真が選択されていません', 'info');
     return;
   }
 
@@ -405,20 +467,28 @@ async function movePhotosInStorage(photoIds, destination, displayName = '') {
   if (typeof closeAllFloatingPopovers === 'function') closeAllFloatingPopovers();
 
   try {
-    const res = await fetch('/api/storage/move-photos', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        photo_ids: ids,
-        destination: destination || '',
-      }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.detail || 'storage 内の移動に失敗しました');
-    }
+    const data = await _withStorageProgressPolling(
+      t('storage.moving', '写真を移動中...'),
+      ids.length,
+      displayName || destination || 'Loome',
+      async () => {
+        const res = await fetch('/api/storage/move-photos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            photo_ids: ids,
+            destination: destination || '',
+          }),
+        });
+        const json = await res.json();
+        if (!res.ok) {
+          throw new Error(json.detail || 'Loome 内の移動に失敗しました');
+        }
+        return json;
+      }
+    );
 
-    const destLabel = displayName || data.destination_name || 'storage';
+    const destLabel = displayName || data.destination_name || 'Loome';
     const movedCount = Number(data.moved_count || 0);
     const skippedCount = Number(data.skipped_count || 0);
     const skipMsg = skippedCount > 0 ? `（スキップ: ${skippedCount}枚）` : '';
@@ -443,16 +513,16 @@ async function movePhotosInStorage(photoIds, destination, displayName = '') {
       typeof fetchTimeline === 'function' ? fetchTimeline() : Promise.resolve(),
     ]).catch(() => {});
   } catch (err) {
-    console.error('storage 移動エラー:', err);
+    console.error('Loome 移動エラー:', err);
     if (typeof showToast === 'function') {
-      showToast(`${err.message || 'storage 内の移動に失敗しました'}`, 'error', 4000);
+      showToast(`${err.message || 'Loome 内の移動に失敗しました'}`, 'error', 4000);
     }
   }
 }
 window.movePhotosInStorage = movePhotosInStorage;
 
 /**
- * 選択中の storage 写真を指定フォルダへ移動する
+ * 選択中の Loome 写真を指定フォルダへ移動する
  */
 async function executeStorageMoveFromSelection(destination, displayName = '') {
   const { storagePhotoIds } = getSelectedPhotosStorageBreakdown();
@@ -461,8 +531,8 @@ async function executeStorageMoveFromSelection(destination, displayName = '') {
 }
 
 /**
- * 左サイドバーの storage フォルダへ写真カードがドラッグ＆ドロップされた際の処理
- * - storage 内の写真なら「移動 (move-photos)」
+ * 左サイドバーの Loome フォルダへ写真カードがドラッグ＆ドロップされた際の処理
+ * - Loome 内の写真なら「移動 (move-photos)」
  * - 外部フォルダの写真なら「インポート (import-photos)」
  */
 async function handleDropPhotosToStorageFolder(targetPath, targetName, explicitPhotoIds = null) {
@@ -497,7 +567,7 @@ async function handleDropPhotosToStorageFolder(targetPath, targetName, explicitP
 window.handleDropPhotosToStorageFolder = handleDropPhotosToStorageFolder;
 
 /**
- * エクスプローラーで storage フォルダを開く
+ * エクスプローラーで Loome フォルダを開く
  */
 async function openStorageFolderInExplorer(targetPath = '') {
   if (typeof closeContextMenu === 'function') closeContextMenu();
@@ -509,7 +579,7 @@ async function openStorageFolderInExplorer(targetPath = '') {
     pathToOpen = storageState.storageRoot || '';
   }
   if (!pathToOpen) {
-    if (typeof showToast === 'function') showToast('storage フォルダのパスを取得できませんでした', 'error');
+    if (typeof showToast === 'function') showToast('Loome フォルダのパスを取得できませんでした', 'error');
     return;
   }
 
@@ -524,10 +594,10 @@ async function openStorageFolderInExplorer(targetPath = '') {
       throw new Error(err.detail || 'フォルダを開けませんでした');
     }
     if (typeof showToast === 'function') {
-      showToast('エクスプローラーで storage フォルダを開きました', 'info', 2000);
+      showToast('エクスプローラーで Loome フォルダを開きました', 'info', 2000);
     }
   } catch (err) {
-    console.error('storage フォルダオープンエラー:', err);
+    console.error('Loome フォルダオープンエラー:', err);
     if (typeof showToast === 'function') {
       showToast(`${err.message || 'フォルダを開けませんでした'}`, 'error');
     }
@@ -536,7 +606,7 @@ async function openStorageFolderInExplorer(targetPath = '') {
 window.openStorageFolderInExplorer = openStorageFolderInExplorer;
 
 /* ==========================================================================
-   storage フォルダ操作（サブフォルダ作成・リネーム・エクスポート・空削除）
+   Loome フォルダ操作（サブフォルダ作成・リネーム・エクスポート・空削除）
    ========================================================================== */
 
 /**
@@ -559,7 +629,7 @@ function openStorageFolderModal(mode, targetPath, currentName = '') {
   if (!modal || !inputEl) {
     // フォールバック: ブラウザ標準 prompt
     if (mode === 'create') {
-      const name = window.prompt(`「${currentName || 'storage'}」内に作成する新しいサブフォルダ名を入力してください:`, '');
+      const name = window.prompt(`「${currentName || 'Loome'}」内に作成する新しいサブフォルダ名を入力してください:`, '');
       if (name && name.trim()) {
         submitCreateStorageSubfolder(targetPath, name.trim());
       }
@@ -574,7 +644,7 @@ function openStorageFolderModal(mode, targetPath, currentName = '') {
 
   if (mode === 'create') {
     if (titleEl) titleEl.textContent = '新規サブフォルダを作成';
-    if (subtitleEl) subtitleEl.textContent = `親フォルダ: ${currentName || 'storage (ルート)'}`;
+    if (subtitleEl) subtitleEl.textContent = `親フォルダ: ${currentName || 'Loome (直下)'}`;
     if (labelEl) labelEl.textContent = '新しいサブフォルダ名';
     inputEl.value = '';
     inputEl.placeholder = '例: 2026_北海道旅行, セレクト済み...';
@@ -740,28 +810,36 @@ async function submitRenameStorageFolder(folderPath, newName) {
 window.submitRenameStorageFolder = submitRenameStorageFolder;
 
 /**
- * storage フォルダを外部へ丸ごとエクスポートする (POST /api/storage/export-folder)
+ * Loome フォルダを外部へ丸ごとエクスポートする (POST /api/storage/export-folder)
  */
 async function exportStorageFolderToExternal(folderPath, folderName = '') {
   if (typeof closeFolderContextMenu === 'function') closeFolderContextMenu();
 
   if (typeof showToast === 'function') {
-    showToast(`「${folderName || 'storage'}」の書き出し先フォルダを選択してください...`, 'info', 3000);
+    showToast(`「${folderName || 'Loome'}」の書き出し先フォルダを選択してください...`, 'info', 3000);
   }
 
   try {
-    const res = await fetch('/api/storage/export-folder', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        folder_path: folderPath,
-        open_after: true,
-      }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.detail || 'フォルダのエクスポートに失敗しました');
-    }
+    const data = await _withStorageProgressPolling(
+      t('storage.exporting', '外部フォルダへエクスポート中...'),
+      0,
+      folderName || 'Loome',
+      async () => {
+        const res = await fetch('/api/storage/export-folder', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            folder_path: folderPath,
+            open_after: true,
+          }),
+        });
+        const json = await res.json();
+        if (!res.ok) {
+          throw new Error(json.detail || 'フォルダのエクスポートに失敗しました');
+        }
+        return json;
+      }
+    );
 
     if (data.status === 'cancelled') {
       if (typeof showToast === 'function') {
@@ -774,7 +852,7 @@ async function exportStorageFolderToExternal(folderPath, folderName = '') {
       showToast(`${data.exported_files || 0}個のファイルを「${data.exported_path || '外部フォルダ'}」へエクスポートしました`, 'success', 4500);
     }
   } catch (err) {
-    console.error('storage フォルダエクスポートエラー:', err);
+    console.error('Loome フォルダエクスポートエラー:', err);
     if (typeof showToast === 'function') {
       showToast(`${err.message || 'フォルダのエクスポートに失敗しました'}`, 'error', 4000);
     }
@@ -783,7 +861,7 @@ async function exportStorageFolderToExternal(folderPath, folderName = '') {
 window.exportStorageFolderToExternal = exportStorageFolderToExternal;
 
 /**
- * 空の storage サブフォルダを削除する (DELETE /api/storage/folders)
+ * 空の Loome サブフォルダを削除する (DELETE /api/storage/folders)
  */
 async function deleteEmptyStorageFolder(folderPath, folderName = '') {
   if (typeof closeFolderContextMenu === 'function') closeFolderContextMenu();
@@ -792,7 +870,7 @@ async function deleteEmptyStorageFolder(folderPath, folderName = '') {
   const ok = typeof showConfirmModal === 'function'
     ? await showConfirmModal({
         title: '空フォルダの削除',
-        subtitle: 'storage 内の空サブフォルダ削除',
+        subtitle: 'Loome 内の空サブフォルダ削除',
         icon: 'trash',
         headingPrefix: '空のサブフォルダ',
         targetName: folderName || folderPath,
@@ -842,13 +920,140 @@ async function deleteEmptyStorageFolder(folderPath, folderName = '') {
       await refreshFolderTree();
     }
   } catch (err) {
-    console.error('storage フォルダ削除エラー:', err);
+    console.error('Loome フォルダ削除エラー:', err);
     if (typeof showToast === 'function') {
       showToast(`${err.message || 'フォルダの削除に失敗しました'}`, 'error', 4000);
     }
   }
 }
 window.deleteEmptyStorageFolder = deleteEmptyStorageFolder;
+
+/**
+ * 接続中の外部ボリューム（ドライブ）直下に Loome (<ドライブ>:\Loome) を作成・登録する
+ */
+async function createLoomeOnVolume(volumeSerial, driveLetter = '', displayName = '') {
+  if (typeof closeFolderContextMenu === 'function') closeFolderContextMenu();
+  const vsn = String(volumeSerial || '').trim().toUpperCase();
+  if (!vsn) {
+    if (typeof showToast === 'function') showToast('ドライブのボリュームシリアル番号が取得できません', 'error');
+    return null;
+  }
+
+  const cleanDrive = String(driveLetter || '').trim().replace(/[\\/]+$/, '');
+  const loomePathPreview = cleanDrive ? `${cleanDrive}\\Loome` : 'ドライブ直下の Loome';
+  const targetTitle = displayName || cleanDrive || vsn;
+
+  const ok = typeof showConfirmModal === 'function'
+    ? await showConfirmModal({
+        title: 'Loome を作成',
+        subtitle: 'ドライブ直下にポータブル整理領域を作成',
+        icon: 'folder',
+        headingPrefix: 'ドライブ',
+        targetName: targetTitle,
+        headingSuffix: 'に Loome を作成しますか？',
+        subPath: loomePathPreview,
+        descriptionLines: [
+          `「${loomePathPreview}」フォルダを作成し、左サイドバー先頭に「📦 Loome」ショートカットとして登録します。`,
+          '本体の Loome と同様に、ドラッグ＆ドロップでのコピー・移動や F2 リネーム・サブフォルダ管理が行えます。',
+        ],
+        confirmText: 'Loome を作成',
+        confirmVariant: 'primary',
+      })
+    : true;
+  if (!ok) return null;
+
+  try {
+    const res = await fetch(`/api/volumes/${encodeURIComponent(vsn)}/loome`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ drive_letter: cleanDrive || null }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.detail || 'Loome の作成に失敗しました');
+    }
+
+    if (typeof showToast === 'function') {
+      showToast(`「${data.loome_path || loomePathPreview}」を Loome として登録しました`, 'success', 4000);
+    }
+
+    await fetchStorageFolders();
+    if (typeof refreshFolderTree === 'function') {
+      await refreshFolderTree();
+    }
+    const mediaModal = document.getElementById('managedMediaModal');
+    if (mediaModal && mediaModal.style.display !== 'none' && typeof openManagedMediaModal === 'function') {
+      await openManagedMediaModal();
+    }
+    return data;
+  } catch (err) {
+    console.error('外部ドライブ Loome 作成エラー:', err);
+    if (typeof showToast === 'function') {
+      showToast(`${err.message || 'Loome の作成に失敗しました'}`, 'error', 4000);
+    }
+    return null;
+  }
+}
+window.createLoomeOnVolume = createLoomeOnVolume;
+
+/**
+ * 外部ボリュームの Loome 登録を解除する（実フォルダや中の写真は削除しない）
+ */
+async function removeLoomeFromVolume(volumeSerial, displayName = '') {
+  if (typeof closeFolderContextMenu === 'function') closeFolderContextMenu();
+  const vsn = String(volumeSerial || '').trim().toUpperCase();
+  if (!vsn) return false;
+
+  const targetTitle = displayName || vsn;
+  const ok = typeof showConfirmModal === 'function'
+    ? await showConfirmModal({
+        title: 'Loome 登録の解除',
+        subtitle: '左サイドバーのショートカットから解除',
+        icon: 'unlink',
+        headingPrefix: '',
+        targetName: targetTitle,
+        headingSuffix: 'の Loome 登録を解除しますか？',
+        descriptionLines: [
+          '左サイドバー先頭のショートカット表示を解除します。',
+          '※ ドライブ内の Loome フォルダおよび写真ファイル自体は削除されません。',
+        ],
+        confirmText: '登録を解除',
+        confirmVariant: 'danger',
+      })
+    : true;
+  if (!ok) return false;
+
+  try {
+    const res = await fetch(`/api/volumes/${encodeURIComponent(vsn)}/loome`, {
+      method: 'DELETE',
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.detail || 'Loome 登録の解除に失敗しました');
+    }
+
+    if (typeof showToast === 'function') {
+      showToast(`「${targetTitle}」の Loome 登録を解除しました`, 'info', 3000);
+    }
+
+    await fetchStorageFolders();
+    if (typeof refreshFolderTree === 'function') {
+      await refreshFolderTree();
+    }
+    const mediaModal = document.getElementById('managedMediaModal');
+    if (mediaModal && mediaModal.style.display !== 'none' && typeof openManagedMediaModal === 'function') {
+      await openManagedMediaModal();
+    }
+    return true;
+  } catch (err) {
+    console.error('外部ドライブ Loome 解除エラー:', err);
+    if (typeof showToast === 'function') {
+      showToast(`${err.message || 'Loome 登録の解除に失敗しました'}`, 'error', 4000);
+    }
+    return false;
+  }
+}
+window.removeLoomeFromVolume = removeLoomeFromVolume;
 
 /* ==========================================================================
    写真ファイル名変更モーダル（単一リネーム ＆ 一括連番リネーム）+ F2 ショートカット
@@ -874,7 +1079,7 @@ function openStorageRenameModal(explicitPhotoIds = null) {
 
   if (targetIds.length === 0) {
     if (typeof showToast === 'function') {
-      showToast('storage（アプリ内ストレージ）内の写真のみファイル名を変更できます', 'info', 3000);
+      showToast('Loome 内の写真のみファイル名を変更できます', 'info', 3000);
     }
     return;
   }
@@ -905,7 +1110,7 @@ function openStorageRenameModal(explicitPhotoIds = null) {
     }
 
     if (titleEl) titleEl.textContent = 'ファイル名を変更';
-    if (subtitleEl) subtitleEl.textContent = 'storage 内の写真ファイル名を変更します（Enter で確定）';
+    if (subtitleEl) subtitleEl.textContent = 'Loome 内の写真ファイル名を変更します（Enter で確定）';
     if (singleSection) singleSection.style.display = 'block';
     if (batchSection) batchSection.style.display = 'none';
     if (submitBtn) submitBtn.textContent = '変更を保存 (Enter)';
@@ -941,7 +1146,7 @@ function openStorageRenameModal(explicitPhotoIds = null) {
     }
 
     if (titleEl) titleEl.textContent = `一括連番リネーム（${targetIds.length}枚）`;
-    if (subtitleEl) subtitleEl.textContent = '選択した storage 内の写真をルールに従って一括で連番リネームします';
+    if (subtitleEl) subtitleEl.textContent = '選択した Loome 内の写真をルールに従って一括で連番リネームします';
     if (singleSection) singleSection.style.display = 'none';
     if (batchSection) batchSection.style.display = 'block';
     if (submitBtn) submitBtn.textContent = `一括リネーム実行 (${targetIds.length}枚)`;
@@ -1104,20 +1309,28 @@ async function submitBatchPhotoRename(photoIds, namingRule, customPrefix, startN
   if (ids.length === 0) return;
 
   try {
-    const res = await fetch('/api/storage/batch-rename-photos', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        photo_ids: ids,
-        naming_rule: namingRule || 'date_seq',
-        custom_prefix: customPrefix || '',
-        start_number: Number(startNumber) || 1,
-      }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.detail || '一括連番リネームに失敗しました');
-    }
+    const data = await _withStorageProgressPolling(
+      t('storage.renaming', '一括リネーム中...'),
+      ids.length,
+      '',
+      async () => {
+        const res = await fetch('/api/storage/batch-rename-photos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            photo_ids: ids,
+            naming_rule: namingRule || 'date_seq',
+            custom_prefix: customPrefix || '',
+            start_number: Number(startNumber) || 1,
+          }),
+        });
+        const json = await res.json();
+        if (!res.ok) {
+          throw new Error(json.detail || '一括連番リネームに失敗しました');
+        }
+        return json;
+      }
+    );
 
     closeStorageRenameModal();
 
@@ -1335,6 +1548,26 @@ function initStorageFeatureEvents() {
       const target = state.contextFolderTarget;
       if (!target || target.isStorageRoot) return;
       deleteEmptyStorageFolder(target.path, target.name);
+    });
+  }
+
+  const folderCreateLoomeBtn = document.getElementById('folderMenuCreateLoome');
+  if (folderCreateLoomeBtn) {
+    folderCreateLoomeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const target = state.contextFolderTarget;
+      if (!target || !target.volumeSerial) return;
+      createLoomeOnVolume(target.volumeSerial, target.driveLetter || target.path, target.name);
+    });
+  }
+
+  const folderRemoveLoomeBtn = document.getElementById('folderMenuRemoveLoome');
+  if (folderRemoveLoomeBtn) {
+    folderRemoveLoomeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const target = state.contextFolderTarget;
+      if (!target || !target.volumeSerial) return;
+      removeLoomeFromVolume(target.volumeSerial, target.name);
     });
   }
 

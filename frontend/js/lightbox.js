@@ -275,14 +275,14 @@ function renderLightboxBracketBar(photo, initialMemberId = null) {
     stackPhotos.forEach((sp, idx) => {
       const pill = document.createElement('button');
       pill.className = 'bracket-pill bracket-pill-dup';
+      pill.dataset.photoId = String(sp.id);
       if (idx === activeIdx) pill.classList.add('active');
+      if (Number(sp.rating ?? 0) === -1) pill.classList.add('is-discarded');
 
       const rawDir = sp.directory_path || '';
       const folderParts = rawDir.split(/[\\/]/).filter(Boolean);
       const folderName = folderParts.length > 0 ? folderParts[folderParts.length - 1] : `コピー${idx + 1}`;
-      const isPri = Number(sp.is_stack_primary) === 1;
-      if (isPri) pill.classList.add('is-primary');
-      const labelText = isPri ? `[代表] ${folderName}` : folderName;
+      const labelText = folderName;
 
       pill.innerHTML = `
         <div class="bracket-pill-thumb">
@@ -293,7 +293,7 @@ function renderLightboxBracketBar(photo, initialMemberId = null) {
 
       const sizeStr = sp.file_size ? `${(sp.file_size / (1024 * 1024)).toFixed(2)}MB` : '';
       const resStr = (sp.width && sp.height) ? `${sp.width}×${sp.height}` : '';
-      pill.title = `${sp.file_name}\n保存先: ${sp.directory_path || '不明'}\n解像度: ${resStr || '-'}\nサイズ: ${sizeStr || '-'}${isPri ? '\n(代表マスター写真)' : ''}`;
+      pill.title = `${sp.file_name}\n保存先: ${sp.directory_path || '不明'}\n解像度: ${resStr || '-'}\nサイズ: ${sizeStr || '-'}`;
 
       pill.addEventListener('click', () => {
         selectLightboxStackMember(idx);
@@ -312,8 +312,9 @@ function renderLightboxBracketBar(photo, initialMemberId = null) {
     stackPhotos.forEach((sp, idx) => {
       const pill = document.createElement('button');
       pill.className = 'bracket-pill';
+      pill.dataset.photoId = String(sp.id);
       if (idx === activeIdx) pill.classList.add('active');
-      if (Number(sp.is_stack_primary) === 1) pill.classList.add('is-primary');
+      if (Number(sp.rating ?? 0) === -1) pill.classList.add('is-discarded');
 
       let labelText = '';
       let diffSec = 0;
@@ -359,8 +360,9 @@ function renderLightboxBracketBar(photo, initialMemberId = null) {
     stackPhotos.forEach((sp, idx) => {
       const pill = document.createElement('button');
       pill.className = 'bracket-pill';
+      pill.dataset.photoId = String(sp.id);
       if (idx === activeIdx) pill.classList.add('active');
-      if (Number(sp.is_stack_primary) === 1) pill.classList.add('is-primary');
+      if (Number(sp.rating ?? 0) === -1) pill.classList.add('is-discarded');
 
       const biasVal = sp.exposure_bias || 0.0;
       const sign = biasVal > 0 ? '+' : '';
@@ -762,29 +764,28 @@ function updateLightboxRating(rating) {
 }
 
 /**
- * ライトボックス上部「代表」バッジボタンの表示・点灯状態を更新する
+ * ライトボックス下部スタックセレクタの「棄」グレーアウト状態を即時同期する
+ */
+function syncLightboxBracketPillsRatingUI() {
+  if (!elements.lightboxBracketPills || !Array.isArray(state.currentLightboxStackPhotos)) return;
+  const pills = elements.lightboxBracketPills.querySelectorAll('.bracket-pill');
+  pills.forEach((pill, idx) => {
+    const sp = state.currentLightboxStackPhotos[idx];
+    if (sp) {
+      pill.classList.toggle('is-discarded', Number(sp.rating ?? 0) === -1);
+    }
+  });
+}
+window.syncLightboxBracketPillsRatingUI = syncLightboxBracketPillsRatingUI;
+
+/**
+ * ライトボックス上部「代表」バッジボタンは評価優先の自動表紙化に伴い常時非表示とする
  */
 function updateLightboxPrimaryBtn(photo) {
   const btn = elements.lightboxPrimaryBtn || document.getElementById('lightboxPrimaryBtn');
   if (!btn) return;
-
-  const parentPhoto = state.photos[state.currentPhotoIndex];
-  const hasStack = (state.currentLightboxStackPhotos && state.currentLightboxStackPhotos.length > 1)
-    || (parentPhoto && Array.isArray(parentPhoto.stack_photos) && parentPhoto.stack_photos.length > 1)
-    || (photo && Array.isArray(photo.stack_photos) && photo.stack_photos.length > 1);
-
-  if (!photo || !hasStack) {
-    btn.style.display = 'none';
-    btn.classList.remove('active');
-    return;
-  }
-
-  btn.style.display = 'inline-flex';
-  const isPrimary = Number(photo.is_stack_primary) === 1;
-  btn.classList.toggle('active', isPrimary);
-  btn.title = isPrimary
-    ? '現在のグループ代表写真です'
-    : 'クリックしてこの写真をグループの代表に設定';
+  btn.style.display = 'none';
+  btn.classList.remove('active');
 }
 
 /**

@@ -213,6 +213,33 @@ function openContextMenu(x, y) {
   const ctxCopyImgEl = document.getElementById('contextMenuCopyImageItem');
   if (ctxCopyImgEl) ctxCopyImgEl.style.display = count <= 1 ? 'flex' : 'none';
 
+  // 「2枚並べて比較 (V)」の有効/グレーアウト制御（スタック写真1枚 または 2枚選択時のみ有効）
+  const ctxCompareEl = document.getElementById('contextMenuCompareItem');
+  if (ctxCompareEl) {
+    let canCompare = false;
+    if (count === 2) {
+      canCompare = true;
+    } else if (count === 1) {
+      const selId = Array.from(state.selectedPhotoIds)[0];
+      const selPhoto = state.photos.find(p => p.id === selId);
+      if (selPhoto && Array.isArray(selPhoto.stack_photos) && selPhoto.stack_photos.length >= 2) {
+        canCompare = true;
+      }
+    }
+    ctxCompareEl.classList.toggle('disabled', !canCompare);
+    ctxCompareEl.title = canCompare
+      ? '2枚並べてピント・構図・露出を比較します (V)'
+      : '2枚の写真を選択中、またはスタック写真を選択しているときに比較できます';
+  }
+
+  // 「評価を設定」の有効/グレーアウト制御（スタック表示中にスタック写真が含まれる場合は変更不可）
+  const ctxRateEl = document.getElementById('contextMenuRateItem');
+  if (ctxRateEl) {
+    const hasStacked = doesSelectionContainStackedCard();
+    ctxRateEl.classList.toggle('disabled', hasStacked);
+    ctxRateEl.title = hasStacked ? 'スタック画像は変更できません' : '';
+  }
+
   // トーン調整ペースト項目の状態更新
   const ctxPasteToneEl = document.getElementById('contextMenuPasteTone');
   if (ctxPasteToneEl) {
@@ -293,6 +320,11 @@ function openFolderContextMenu(x, y, node) {
       : '';
     elements.folderContextMenuPath.title = `${folderPath}${isOffline ? '（ドライブ未接続）' : (isMissing ? '（実フォルダ消失）' : '')}${countBreakdown}`;
   }
+  const hasPhotos = total > 0 || !!node.hasManaged;
+  const headerUnlinkBtn = elements.folderContextHeaderUnlinkBtn || document.getElementById('folderContextHeaderUnlinkBtn');
+  if (headerUnlinkBtn) {
+    headerUnlinkBtn.style.display = (isMissing && !isOffline && hasPhotos) ? 'inline-flex' : 'none';
+  }
 
   // 補助関数: 要素の有効/無効化
   const setDisabled = (el, disabled, reason = '') => {
@@ -318,28 +350,25 @@ function openFolderContextMenu(x, y, node) {
 
     // ドライブ・ショートカットでは直下のみ再スキャンは隠す（配下スキャンを促す）
     setVisible(elements.folderMenuRescanDirect, !isRootKind);
-    // 配下再スキャンのラベル切り替え（未登録ドライブなら「配下をスキャンして管理に追加」）
+    // 子フォルダを含む再スキャンのラベル切り替え（未登録ドライブなら「配下をスキャンして管理に追加」）
     if (elements.folderMenuRescanRecursive) {
       const labelSpan = elements.folderMenuRescanRecursive.querySelector('span');
       if (labelSpan) {
         labelSpan.textContent = (isRootKind && total === 0 && !node.hasManaged)
           ? '配下をスキャンして管理に追加'
-          : '配下も含めて再スキャン';
+          : '再スキャン（子を含む）';
       }
     }
-    // 写真がある場合のみリフレッシュ・AIタグ・管理解除を表示
-    const hasPhotos = total > 0 || !!node.hasManaged;
-    setVisible(elements.folderMenuRefresh, hasPhotos && !isOffline);
+    // 写真がある場合のみAIタグ・管理解除を表示
     setVisible(elements.folderMenuAiTag, hasPhotos);
     setVisible(elements.folderMenuAiColorTag, hasPhotos);
     setVisible(elements.folderMenuUnmanage, hasPhotos);
     // ドライブ・ショートカット自体は「除外」できないので非表示
     setVisible(elements.folderMenuIgnoreFromManaged, !isRootKind);
 
-    // 未接続・消失時の無効化
+    // 未接続・消失時の無効化（消失フォルダはヘッダー横の「リンク削除」ボタンからリンク解除可能）
     setDisabled(elements.folderMenuRescanDirect, isMissing || isOffline, '実フォルダが存在しないか、ドライブが未接続のため再スキャンできません');
     setDisabled(elements.folderMenuRescanRecursive, isMissing || isOffline, '実フォルダが存在しないか、ドライブが未接続のため再スキャンできません');
-    setDisabled(elements.folderMenuRefresh, isMissing || isOffline, '未接続のためリフレッシュできません');
   } else if (status === 'unmanaged') {
     setVisible(elements.folderMenuManagedGroup, false);
     setVisible(elements.folderMenuUnmanagedGroup, true);
@@ -352,12 +381,15 @@ function openFolderContextMenu(x, y, node) {
     setDisabled(elements.folderMenuAddFromIgnored, isMissing || isOffline, '実フォルダが存在しないためスキャンできません');
   }
 
-  // storage（アプリ内ストレージ）専用メニュー項目の表示制御
+  // Loome 専用メニュー項目の表示制御
   const storageGroupEl = document.getElementById('folderMenuStorageGroup');
   const storageRenameEl = document.getElementById('folderMenuStorageRename');
   const storageDeleteEl = document.getElementById('folderMenuStorageDelete');
+  const removeLoomeEl = document.getElementById('folderMenuRemoveLoome');
+  const createLoomeEl = document.getElementById('folderMenuCreateLoome');
   const isStorage = !!node.isStorage;
   const isStorageRoot = !!node.isStorageRoot;
+  const isPrimaryLoome = node.isPrimaryLoome !== undefined ? !!node.isPrimaryLoome : !node.volumeSerial;
   if (storageGroupEl) {
     storageGroupEl.style.display = isStorage ? 'block' : 'none';
   }
@@ -366,6 +398,12 @@ function openFolderContextMenu(x, y, node) {
   }
   if (storageDeleteEl) {
     storageDeleteEl.style.display = (isStorage && !isStorageRoot) ? 'block' : 'none';
+  }
+  if (removeLoomeEl) {
+    removeLoomeEl.style.display = (isStorage && isStorageRoot && !isPrimaryLoome && !!node.volumeSerial) ? 'block' : 'none';
+  }
+  if (createLoomeEl) {
+    createLoomeEl.style.display = (kind === 'drive' && !isOffline && !!node.volumeSerial && !node.loomeEnabled) ? 'block' : 'none';
   }
 
   // エクスプローラーで開く
@@ -717,10 +755,30 @@ async function batchAddTagToSelection(tagName) {
 }
 
 /**
+ * 現在選択中（またはインスペクタ表示中）の写真にスタック画像が含まれているか判定
+ */
+function doesSelectionContainStackedCard() {
+  const stackedMode = typeof window.isEffectiveStacked === 'function' ? window.isEffectiveStacked() : state.isStacked;
+  if (!stackedMode) return false;
+  const ids = state.selectedPhotoIds && state.selectedPhotoIds.size > 0
+    ? Array.from(state.selectedPhotoIds)
+    : (state.activeInspectorPhotoId ? [state.activeInspectorPhotoId] : []);
+  return ids.some(pid => {
+    const p = state.photos.find(x => x.id === pid);
+    return p && ((p.stack_count && p.stack_count > 1) || (Array.isArray(p.stack_photos) && p.stack_photos.length > 1));
+  });
+}
+window.doesSelectionContainStackedCard = doesSelectionContainStackedCard;
+
+/**
  * 選択中の写真の評価を一括更新
  */
 async function batchRateSelection(rating) {
   if (state.selectedPhotoIds.size === 0) return;
+  if (doesSelectionContainStackedCard()) {
+    if (typeof showToast === 'function') showToast('スタック画像は変更できません', 'warning', 2000);
+    return;
+  }
 
   const photoIds = Array.from(state.selectedPhotoIds);
   const rateLabels = { 2: '優 (Ex)', 1: '良 (Gd)', 0: '可 (Fj)', '-1': '棄 (Dc)' };
@@ -754,6 +812,10 @@ async function batchRateSelection(rating) {
  * 一覧表示中: 選択中またはインスペクタ表示中の写真に評価を適用
  */
 async function applyRatingToSelection(rating) {
+  if (doesSelectionContainStackedCard()) {
+    if (typeof showToast === 'function') showToast('スタック画像は変更できません', 'warning', 2000);
+    return;
+  }
   if (state.selectedPhotoIds.size > 1) {
     await batchRateSelection(rating);
   } else if (state.selectedPhotoIds.size === 1) {
@@ -866,6 +928,25 @@ function initSelectionEvents() {
     elements.contextMenuClearSelection.addEventListener('click', () => {
       clearSelection();
       closeContextMenu();
+    });
+  }
+
+  // コンテキストメニュー: 評価を設定
+  document.querySelectorAll('.submenu-rate-option').forEach(opt => {
+    opt.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const ctxRateEl = document.getElementById('contextMenuRateItem');
+      if ((ctxRateEl && ctxRateEl.classList.contains('disabled')) || doesSelectionContainStackedCard()) return;
+      const rate = parseInt(opt.dataset.rating, 10);
+      closeContextMenu();
+      await applyRatingToSelection(rate);
+    });
+  });
+
+  // コンテキストメニュー: サムネイル取得・更新
+  if (elements.contextMenuRefreshThumbItem) {
+    elements.contextMenuRefreshThumbItem.addEventListener('click', () => {
+      refreshSelectedThumbnails();
     });
   }
 

@@ -37,6 +37,9 @@
    - 評価ボタン直下に常時表示の `#inspectorQuickExif`（撮影日時・解像度・機材名・露出ピル）を維持する。
 4. **下部フローティング選択バーの廃止維持**:
    - `#selectionFloatingBar` は常時非表示とし、一括操作は右クリックメニュー（`#contextMenu`）と右インスペクタで提供する。
+5. **ネイティブ `confirm()` / `alert()` の禁止 & カスタムモーダル統一（v1.2.2+）**:
+   - ブラウザ標準の `window.confirm()` および `window.alert()` はUIの一貫性を損なうため使用禁止とする。
+   - 確認ダイアログはすべて `frontend/js/common.js` の `showConfirmModal(options)`（`#commonConfirmModal`：対象名ハイライト、サブパス表示、`detailRows` 色分け内訳カード、`Enter` 確定 / `Esc` キャンセル、日英リアルタイム翻訳対応）を使用し、通知メッセージは `showToast()` に統一する。
 
 ---
 

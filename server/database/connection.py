@@ -156,13 +156,44 @@ DB_PATH = CACHE_DIR / "library.db"
 
 # スレッドローカルストレージ（スレッドごとのSQLite接続キャッシュ）
 _local_db = threading.local()
+_DB_COMMIT_SEQ: int = 0
+
+
+class _TrackedConnection(sqlite3.Connection):
+    """トランザクションコミット時に世代番号を自動インクリメントするSQLite接続"""
+
+    def commit(self) -> None:
+        global _DB_COMMIT_SEQ
+        was_in_tx = self.in_transaction
+        super().commit()
+        if was_in_tx:
+            _DB_COMMIT_SEQ += 1
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        global _DB_COMMIT_SEQ
+        was_in_tx = self.in_transaction
+        res = super().__exit__(exc_type, exc_val, exc_tb)
+        if exc_type is None and was_in_tx:
+            _DB_COMMIT_SEQ += 1
+        return res
+
+
+def get_db_commit_seq() -> int:
+    """データベースの書き込みコミット世代番号を返す"""
+    return _DB_COMMIT_SEQ
+
+
+def bump_db_commit_seq() -> None:
+    """キャッシュ無効化時に世代番号を明示インクリメントする"""
+    global _DB_COMMIT_SEQ
+    _DB_COMMIT_SEQ += 1
 
 
 def get_connection() -> sqlite3.Connection:
     """SQLite接続を取得し、行を辞書形式で扱えるように設定する（スレッドローカル再利用＋RAM常駐キャッシュチューニング済み）"""
     conn = getattr(_local_db, "connection", None)
     if conn is None:
-        conn = sqlite3.connect(str(DB_PATH), timeout=20, check_same_thread=False)
+        conn = sqlite3.connect(str(DB_PATH), timeout=20, check_same_thread=False, factory=_TrackedConnection)
         conn.row_factory = sqlite3.Row
         # 外部キー制約を必ず有効化（ON DELETE CASCADE によるサムネイル・タグの連動削除を保証）
         conn.execute("PRAGMA foreign_keys = ON")
@@ -202,4 +233,5 @@ def switch_database_path(new_path: Path) -> Path:
     old_path = DB_PATH
     close_thread_connection()
     DB_PATH = Path(new_path)
+    bump_db_commit_seq()
     return old_path

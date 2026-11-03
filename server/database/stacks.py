@@ -54,7 +54,7 @@ def recalculate_stacks(directory_path: Optional[str] = None, recursive: bool = T
                 SELECT p.id, pl.id AS link_id, pl.file_name, pl.file_path, p.file_size,
                        p.date_taken, p.subsec_time, p.exposure_bias,
                        p.f_number, p.focal_length, p.shutter_speed, p.camera_model,
-                       p.stack_id, p.is_stack_primary, p.stack_type,
+                       p.stack_id, p.is_stack_primary, p.stack_type, p.rating,
                        COALESCE(pl.paired_raw_path, p.paired_raw_path) AS paired_raw_path,
                        p.is_raw, p.raw_format, pl.volume_serial
                 FROM photo_links pl
@@ -64,7 +64,7 @@ def recalculate_stacks(directory_path: Optional[str] = None, recursive: bool = T
                 SELECT p.id, NULL AS link_id, p.file_name, p.file_path, p.file_size,
                        p.date_taken, p.subsec_time, p.exposure_bias,
                        p.f_number, p.focal_length, p.shutter_speed, p.camera_model,
-                       p.stack_id, p.is_stack_primary, p.stack_type, p.paired_raw_path,
+                       p.stack_id, p.is_stack_primary, p.stack_type, p.rating, p.paired_raw_path,
                        p.is_raw, p.raw_format, p.volume_serial
                 FROM photos p
                 WHERE p.directory_path = ? COLLATE NOCASE AND IFNULL(p.is_unlinked, 0) = 0
@@ -310,12 +310,20 @@ def recalculate_stacks(directory_path: Optional[str] = None, recursive: bool = T
                             is_bracket = len(set(biases)) > 1
                             stack_type = "bracket" if is_bracket else "burst"
 
-                            # 代表写真の選定: ブラケットなら±0に最も近いもの、連写なら1枚目（必ず実在する写真から選出）
+                            # 代表写真の選定: 評価（優=2 > 良=1 > 可=0 > 棄=-1）が最も高いコマを最優先とし、
+                            # 同評価の場合はブラケットなら±0に最も近いもの、連写なら1枚目（必ず実在する写真から選出）
                             if is_bracket:
-                                best_rep = min(online_reps, key=lambda p: abs(p.get("exposure_bias") or 0.0))
+                                best_rep = min(
+                                    online_reps,
+                                    key=lambda p: (-int(p.get("rating") or 0), abs(p.get("exposure_bias") or 0.0)),
+                                )
                                 primary_id = best_rep["id"]
                             else:
-                                primary_id = online_reps[0]["id"]
+                                best_rep = max(
+                                    enumerate(online_reps),
+                                    key=lambda kv: (int(kv[1].get("rating") or 0), -kv[0]),
+                                )[1]
+                                primary_id = best_rep["id"]
 
                             stack_id = primary_id
 
@@ -349,10 +357,17 @@ def recalculate_stacks(directory_path: Optional[str] = None, recursive: bool = T
                             is_bracket = len(set(biases)) > 1
                             stack_type = "bracket" if is_bracket else "burst"
                             if is_bracket:
-                                best_rep = min(group, key=lambda p: abs(p.get("exposure_bias") or 0.0))
+                                best_rep = min(
+                                    group,
+                                    key=lambda p: (-int(p.get("rating") or 0), abs(p.get("exposure_bias") or 0.0)),
+                                )
                                 primary_id = best_rep["id"]
                             else:
-                                primary_id = group[0]["id"]
+                                best_rep = max(
+                                    enumerate(group),
+                                    key=lambda kv: (int(kv[1].get("rating") or 0), -kv[0]),
+                                )[1]
+                                primary_id = best_rep["id"]
 
                             stack_id = primary_id
                             for rep in group:
@@ -540,7 +555,7 @@ def recalculate_duplicate_stacks() -> int:
                 """
                 SELECT id, file_name, file_path, file_size, width, height,
                        date_taken, camera_model, lens_model, f_number, shutter_speed, iso,
-                       exposure_bias, latitude, longitude, is_raw,
+                       exposure_bias, latitude, longitude, is_raw, rating,
                        stack_id, is_stack_primary, stack_type
                 FROM photos
                 WHERE date_taken = ? AND file_size = ? AND IFNULL(is_unlinked, 0) = 0
@@ -563,23 +578,9 @@ def recalculate_duplicate_stacks() -> int:
             for m in eligible_members:
                 m["_score"] = compute_photo_quality_score(m)
 
-            # 最高スコアを算出
-            max_score = max(m["_score"] for m in eligible_members)
-
-            # 既存代表の優先維持:
-            # すでに代表（is_stack_primary = 1 かつ stack_type = 'duplicate'）として設定されているメンバーが存在し、
-            # かつそのスコアが最高スコア（同点・実質差なし）である場合は、既存代表を尊重して維持する
-            # （リフレッシュ時にユーザーの手動代表選択がID順で勝手に戻る現象を防止）
-            existing_primary = next(
-                (m for m in eligible_members if m.get("is_stack_primary") == 1 and m.get("stack_type") == "duplicate"),
-                None
-            )
-            if existing_primary and existing_primary["_score"] >= max_score - 1e-4:
-                primary_id = existing_primary["id"]
-            else:
-                # 新規追加や品質差がある場合は、スコア降順（同点ならID昇順）で最高品質を代表に選出
-                eligible_members.sort(key=lambda x: (x["_score"], -x["id"]), reverse=True)
-                primary_id = eligible_members[0]["id"]
+            # 評価（優=2 > 良=1 > 可=0 > 棄=-1）最優先、同評価なら品質スコア降順（同点ならID昇順）で代表を選出
+            eligible_members.sort(key=lambda x: (int(x.get("rating") or 0), x["_score"], -x["id"]), reverse=True)
+            primary_id = eligible_members[0]["id"]
 
             for m in eligible_members:
                 m_id = m["id"]

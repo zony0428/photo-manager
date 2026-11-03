@@ -1,30 +1,34 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="ja" data-toolbar-pos="bottom">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Tetheract Photo Manager</title>
-  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=1.2.2">
-  <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32.png?v=1.2.2">
-  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png?v=1.2.2">
-  <link rel="apple-touch-icon" href="/icons/icon-192.png?v=1.2.2">
-  <link rel="manifest" href="/manifest.json?v=1.2.2">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=1.4.0">
+  <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32.png?v=1.4.0">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png?v=1.4.0">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png?v=1.4.0">
+  <link rel="manifest" href="/manifest.json?v=1.4.0">
   <meta name="theme-color" content="#191816">
   <link rel="stylesheet" href="/vendor/fonts/fonts.css">
-  <link rel="stylesheet" href="/css/style.css?v=1.2.2">
-  <link rel="stylesheet" href="/css/grid-lightbox.css?v=1.2.2">
-  <link rel="stylesheet" href="/css/selection-menu.css?v=1.2.2">
-  <link rel="stylesheet" href="/css/inspector.css?v=1.2.2">
-  <link rel="stylesheet" href="/css/modals-features.css?v=1.2.2">
-  <link rel="stylesheet" href="/css/lab-map.css?v=1.2.2">
-  <link rel="stylesheet" href="/css/histogram.css?v=1.2.2">
-  <link rel="stylesheet" href="/css/compare.css?v=1.2.2">
-  <link rel="stylesheet" href="/css/ui-unify.css?v=1.2.2">
+  <link rel="stylesheet" href="/css/style.css?v=1.4.0">
+  <link rel="stylesheet" href="/css/grid-lightbox.css?v=1.4.0">
+  <link rel="stylesheet" href="/css/selection-menu.css?v=1.4.0">
+  <link rel="stylesheet" href="/css/inspector.css?v=1.4.0">
+  <link rel="stylesheet" href="/css/modals-features.css?v=1.4.0">
+  <link rel="stylesheet" href="/css/lab-map.css?v=1.4.0">
+  <link rel="stylesheet" href="/css/histogram.css?v=1.4.0">
+  <link rel="stylesheet" href="/css/compare.css?v=1.4.0">
+  <link rel="stylesheet" href="/css/ui-unify.css?v=1.4.0">
   <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
   <script src="/vendor/leaflet/leaflet.js"></script>
   <script>
     // タスクバー・ブラウザのファビコンキャッシュを強制リフレッシュ ＆ 初回起動時のウィンドウサイズ初期調整
     (function() {
+      try {
+        const tbPos = localStorage.getItem('pm_toolbar_position') || 'bottom';
+        document.documentElement.setAttribute('data-toolbar-pos', tbPos === 'top' ? 'top' : 'bottom');
+      } catch (e) {}
       try {
         if (!sessionStorage.getItem('pm_window_maximized')) {
           const winMode = localStorage.getItem('pm_startup_window_mode') || 'maximized';
@@ -47,6 +51,47 @@
   </script>
 </head>
 <body>
+  <!-- 起動スプラッシュスクリーン ＆ DBマイグレーション進捗オーバーレイ -->
+  <div class="startup-splash-overlay" id="startupSplashOverlay" role="status" aria-live="polite">
+    <div class="startup-splash-frame">
+      <span class="splash-corner splash-corner-tl" aria-hidden="true"></span>
+      <span class="splash-corner splash-corner-tr" aria-hidden="true"></span>
+      <span class="splash-corner splash-corner-bl" aria-hidden="true"></span>
+      <span class="splash-corner splash-corner-br" aria-hidden="true"></span>
+
+      <div class="startup-splash-center">
+        <div class="startup-splash-lockup">
+          <div class="startup-splash-icon-box">
+            <canvas id="splashTetheractCanvas" class="splash-tetheract-canvas" width="220" height="220" aria-hidden="true"></canvas>
+          </div>
+          <div class="startup-splash-brand" aria-label="TETHERACT pm">
+            <span class="startup-splash-brand-main">TETHERACT</span>
+            <span class="startup-splash-brand-pm">pm</span>
+          </div>
+        </div>
+
+        <div class="startup-splash-divider" aria-hidden="true"></div>
+
+        <div class="startup-splash-tagline">
+          <span class="startup-splash-tagline-en">LOCAL &amp; PORTABLE PHOTO MANAGER</span>
+          <span class="startup-splash-tagline-dot" aria-hidden="true">&middot;</span>
+          <span class="startup-splash-tagline-ja" id="splashTaglineJa">保存先に縛られない、高速写真ビューア・選別ツール</span>
+        </div>
+
+        <div class="startup-splash-status-box" id="startupSplashStatusBox">
+          <div class="startup-splash-status-head">
+            <span class="startup-splash-status-msg" id="splashStatusMessage">ライブラリを準備しています...</span>
+            <span class="startup-splash-status-pct" id="splashStatusPercent"></span>
+          </div>
+          <div class="startup-splash-progress-track">
+            <div class="startup-splash-progress-fill" id="splashProgressFill" style="width: 18%;"></div>
+          </div>
+          <div class="startup-splash-status-detail" id="splashStatusDetail"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="app-layout">
     <!-- 上部メインツールバー（1段統合スリムバー） -->
     <header class="app-header unified-single-header">
@@ -61,13 +106,16 @@
 
         <div class="toolbar-divider" title="セパレータ"></div>
 
-        <div class="logo" title="Tetheract Photo Manager">
-          <img class="logo-app-icon" src="/icons/icon-192.png?v=1.2.2" width="24" height="24" alt="" aria-hidden="true">
+        <div class="logo" id="headerAppLogo" title="Tetheract Photo Manager">
+          <span class="logo-icon-wrap">
+            <img class="logo-app-icon" id="headerLogoStaticImg" src="/icons/icon-192.png?v=1.4.0" width="24" height="24" alt="" aria-hidden="true">
+            <canvas class="logo-app-icon-canvas" id="headerTetheractCanvas" width="72" height="72" aria-hidden="true"></canvas>
+          </span>
           <svg class="logo-lockup-svg" viewBox="64 8 248 48" width="134" height="26" fill="none" role="img" aria-label="TETHERACT pm">
             <text x="0" y="45.41" fill="var(--logo-text)" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif" font-size="44.38" font-weight="700" letter-spacing="2.8" textLength="269.4" lengthAdjust="spacingAndGlyphs" transform="translate(66, 0) scale(0.7071, 1)">TETHERACT</text>
             <text x="0" y="45.41" fill="var(--logo-pm)" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif" font-size="35.60" font-weight="600" letter-spacing="1.0" transform="translate(265, 0) scale(0.75, 1)">pm</text>
           </svg>
-          <span class="app-version" id="appVersion" title="v1.2.2 (最終更新: 2026-11-03 00:18)">v1.2.2</span>
+          <span class="app-version" id="appVersion" title="v1.4.0 (最終更新: 2026-11-04 00:30)">v1.4.0</span>
         </div>
 
         <!-- UI言語切替（日本語 JP ⇄ English EN） -->
@@ -76,82 +124,111 @@
           <span id="langToggleLabel">JP</span>
         </button>
 
-        <div class="toolbar-divider" title="セパレータ"></div>
+        <!-- 後方互換用の非表示タイトル要素 -->
+        <h1 class="view-title" id="viewTitle" style="display: none;">すべての写真</h1>
+      </div>
 
-        <!-- 現在の表示タイトル ＆ 枚数バッジ -->
-        <div class="header-view-status">
-          <h1 class="view-title" id="viewTitle">すべての写真</h1>
-          <span class="photos-count-badge" id="currentCountBadge">0 枚</span>
+      <!-- 中央ビューコントロール・グループ（センタリング配置） -->
+      <div class="header-center">
+        <div class="header-center-group">
+          <!-- 1. 表示対象（すべての写真 / 接続状態 / 未分類 / 重複）ドロップダウン ＆ 枚数バッジ -->
+          <div class="control-group header-scope-group">
+            <select id="headerScopeSelect" class="styled-select header-scope-select" aria-label="表示対象" title="表示対象（すべての写真 / 接続状態 / 未分類 / 重複）を切り替え">
+              <option value="all">すべての写真</option>
+              <option value="online">接続中の写真</option>
+              <option value="offline">未接続の写真</option>
+              <option value="unlinked">リンク消失の写真</option>
+              <option value="untagged">未分類の写真</option>
+              <option value="duplicates">重複のある写真</option>
+            </select>
+            <select id="headerAttrSelect" class="styled-select header-attr-select" aria-label="形式・状態フィルタ" title="ファイル形式・状態（RAW / RAW+JPEG / JPEG / 調整済 / XMPあり）を切り替え">
+              <option value="all">すべての形式</option>
+              <option value="raw">RAW</option>
+              <option value="raw_pair">RAW+JPEG</option>
+              <option value="jpeg">JPEG</option>
+              <option value="adjusted">調整済</option>
+              <option value="xmp">XMPあり</option>
+            </select>
+            <div class="rating-filter header-rating-filter" title="評価フィルタ（優・良・可・棄）">
+              <div class="rating-filter-toggles" id="headerRatingFilterToggles">
+                <button type="button" class="rating-toggle active" data-rating="2" title="評価「優」の写真を表示/非表示">優</button>
+                <button type="button" class="rating-toggle active" data-rating="1" title="評価「良」の写真を表示/非表示">良</button>
+                <button type="button" class="rating-toggle active" data-rating="0" title="評価「可」の写真を表示/非表示">可</button>
+                <button type="button" class="rating-toggle" data-rating="-1" title="評価「棄」の写真を表示/非表示">棄</button>
+              </div>
+            </div>
+            <span class="photos-count-badge" id="currentCountBadge" title="現在の表示枚数">0 枚</span>
+          </div>
+
+          <!-- 2. ソート順 -->
+          <div class="control-group">
+            <select id="sortBySelect" class="styled-select" aria-label="並び替え">
+              <option value="date_taken DESC">新しい順 (撮影日)</option>
+              <option value="date_taken ASC">古い順 (撮影日)</option>
+              <option value="rating DESC">評価の高い順</option>
+              <option value="file_name ASC">ファイル名順 (A → Z)</option>
+              <option value="file_name DESC">ファイル名順 (Z → A)</option>
+              <option value="file_size DESC">サイズが大きい順</option>
+              <option value="file_size ASC">サイズが小さい順</option>
+              <option value="focal_length ASC">焦点距離 (広角 → 望遠)</option>
+              <option value="focal_length DESC">焦点距離 (望遠 → 広角)</option>
+              <option value="f_number ASC">F値・絞り (開放 → 絞込)</option>
+              <option value="shutter_fast">シャッター速度 (高速 → 低速)</option>
+              <option value="shutter_slow">シャッター速度 (低速 → 高速)</option>
+              <option value="iso DESC">ISO感度 (高い順)</option>
+              <option value="iso ASC">ISO感度 (低い順)</option>
+            </select>
+          </div>
+
+          <div class="toolbar-divider" title="セパレータ"></div>
+
+          <!-- 3. 表示モード切替（グリッド / びっしり / マウント） -->
+          <div class="view-mode-group" title="レイアウト切り替え">
+            <button class="mode-btn active" data-mode="grid" title="均等グリッド (標準)">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+              <span class="mode-label">グリッド</span>
+            </button>
+            <button class="mode-btn" data-mode="masonry" title="びっしり敷き詰め (縦横比維持)">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="11"/><rect x="14" y="3" width="7" height="6"/><rect x="14" y="13" width="7" height="8"/><rect x="3" y="18" width="7" height="3"/></svg>
+              <span class="mode-label">びっしり</span>
+            </button>
+            <button class="mode-btn" data-mode="mount" title="スライドマウント (昔のフィルム枠)">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="2" ry="2"/><rect x="6" y="6" width="12" height="10" rx="1" ry="1"/></svg>
+              <span class="mode-label">マウント</span>
+            </button>
+          </div>
+
+          <!-- 4. スタック ON/OFF ＆ 5. 情報 ON/OFF -->
+          <template id="deprecatedHeaderSlideshow" style="display:none;">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            <span class="btn-label">スライドショー</span></template><!--
+          </button>
+
+          --><button id="toggleStackBtn" class="btn btn-icon-toggle header-compact-btn active" title="露出ブラケット・連写のスタック表示切り替え (ONで代表写真のみ表示、OFFで全枚数展開)">
+            <svg class="icon-stack" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+              <polyline points="2 17 12 22 22 17"/>
+              <polyline points="2 12 12 17 22 12"/>
+            </svg>
+            <span id="stackToggleLabel" class="btn-label">スタック</span>
+          </button>
+
+          <button id="toggleInfoBtn" class="btn btn-icon-toggle header-compact-btn active" title="情報表示切り替え (文字・メタ情報を隠して写真だけを鑑賞 / Iキー)">
+            <svg class="icon-eye" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            <span id="infoToggleLabel" class="btn-label">情報</span>
+          </button>
+
+          <!-- 6. サムネイルサイズスライダー -->
+          <div class="control-group thumbnail-slider-group">
+            <span class="control-label" title="サムネイルサイズ">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            </span>
+            <input type="range" id="thumbnailSizeSlider" min="140" max="420" value="230" step="10">
+          </div>
         </div>
       </div>
 
       <div class="header-right">
-        <!-- 表示モード切替（グリッド / びっしり / マウント） -->
-        <div class="view-mode-group" title="レイアウト切り替え">
-          <button class="mode-btn active" data-mode="grid" title="均等グリッド (標準)">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-            <span class="mode-label">グリッド</span>
-          </button>
-          <button class="mode-btn" data-mode="masonry" title="びっしり敷き詰め (縦横比維持)">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="11"/><rect x="14" y="3" width="7" height="6"/><rect x="14" y="13" width="7" height="8"/><rect x="3" y="18" width="7" height="3"/></svg>
-            <span class="mode-label">びっしり</span>
-          </button>
-          <button class="mode-btn" data-mode="mount" title="スライドマウント (昔のフィルム枠)">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="2" ry="2"/><rect x="6" y="6" width="12" height="10" rx="1" ry="1"/></svg>
-            <span class="mode-label">マウント</span>
-          </button>
-        </div>
-
-        <!-- スライドショー / スタック / 情報トグル -->
-        <button id="startSlideshowBtn" class="btn btn-icon-toggle header-compact-btn" title="表示中の写真でスライドショーを開始 (Spaceキーで一時停止/再開)">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-          <span class="btn-label">スライドショー</span>
-        </button>
-
-        <button id="toggleStackBtn" class="btn btn-icon-toggle header-compact-btn active" title="露出ブラケット・連写のスタック表示切り替え (ONで代表写真のみ表示、OFFで全枚数展開)">
-          <svg class="icon-stack" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
-            <polygon points="12 2 2 7 12 12 22 7 12 2"/>
-            <polyline points="2 17 12 22 22 17"/>
-            <polyline points="2 12 12 17 22 12"/>
-          </svg>
-          <span id="stackToggleLabel" class="btn-label">スタック</span>
-        </button>
-
-        <button id="toggleInfoBtn" class="btn btn-icon-toggle header-compact-btn active" title="情報表示切り替え (文字・メタ情報を隠して写真だけを鑑賞 / Iキー)">
-          <svg class="icon-eye" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-          <span id="infoToggleLabel" class="btn-label">情報</span>
-        </button>
-
-        <!-- サムネイルサイズスライダー -->
-        <div class="control-group thumbnail-slider-group">
-          <span class="control-label" title="サムネイルサイズ">
-            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-          </span>
-          <input type="range" id="thumbnailSizeSlider" min="140" max="420" value="230" step="10">
-        </div>
-
-        <!-- ソート順 -->
-        <div class="control-group">
-          <select id="sortBySelect" class="styled-select" aria-label="並び替え">
-            <option value="date_taken DESC">新しい順 (撮影日)</option>
-            <option value="date_taken ASC">古い順 (撮影日)</option>
-            <option value="rating DESC">評価の高い順</option>
-            <option value="file_name ASC">ファイル名順 (A → Z)</option>
-            <option value="file_name DESC">ファイル名順 (Z → A)</option>
-            <option value="file_size DESC">サイズが大きい順</option>
-            <option value="file_size ASC">サイズが小さい順</option>
-            <option value="focal_length ASC">焦点距離 (広角 → 望遠)</option>
-            <option value="focal_length DESC">焦点距離 (望遠 → 広角)</option>
-            <option value="f_number ASC">F値・絞り (開放 → 絞込)</option>
-            <option value="shutter_fast">シャッター速度 (高速 → 低速)</option>
-            <option value="shutter_slow">シャッター速度 (低速 → 高速)</option>
-            <option value="iso DESC">ISO感度 (高い順)</option>
-            <option value="iso ASC">ISO感度 (低い順)</option>
-          </select>
-        </div>
-
-        <div class="toolbar-divider" title="セパレータ"></div>
-
         <!-- スマホ連携・設定・ヘルプ・終了（定位置に常設） -->
         <button id="openMobileModalBtn" class="btn btn-secondary header-compact-btn" title="スマホ（Android）連携・モバイル画面 (/m) を開く">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
@@ -193,38 +270,38 @@
       <aside class="sidebar accordion-sidebar sidebar-two-stage" id="sidebar">
         <!-- 第1段階: 左端 垂直タブレール (Activity Bar) -->
         <nav class="sidebar-rail" id="sidebarRail" aria-label="サイドバー切替タブ">
-          <button type="button" class="rail-tab-btn active" data-section="quick" title="クイックアクセス・プリセット">
+          <button type="button" class="rail-tab-btn active" data-section="quick" title="Binder — 絞り込み条件セットの保存・呼び出し">
             <span class="rail-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span>
-            <span class="rail-tab-label">クイック</span>
+            <span class="rail-tab-label">Binder</span>
           </button>
-          <button type="button" class="rail-tab-btn" data-section="folder" title="フォルダツリー">
+          <button type="button" class="rail-tab-btn" data-section="folder" title="Folder — フォルダツリー・メディア管理">
             <span class="rail-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>
-            <span class="rail-tab-label">フォルダ</span>
+            <span class="rail-tab-label">Folder</span>
           </button>
-          <button type="button" class="rail-tab-btn" data-section="tags" title="タグ (アルバム)・カラー">
+          <button type="button" class="rail-tab-btn" data-section="tags" title="Tag — タグ・カラーフィルタ">
             <span class="rail-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="10" y="10" width="7.5" height="7.5"/><line x1="3.6" y1="3.6" x2="10" y2="10"/><line x1="20.4" y1="3.6" x2="17.5" y2="10"/><line x1="20.4" y1="20.4" x2="17.5" y2="17.5"/><line x1="3.6" y1="20.4" x2="10" y2="17.5"/></svg></span>
-            <span class="rail-tab-label">タグ</span>
+            <span class="rail-tab-label">Tag</span>
           </button>
-          <button type="button" class="rail-tab-btn" data-section="location" title="ジオタグ・制覇マップ">
+          <button type="button" class="rail-tab-btn" data-section="location" title="Place — 撮影地・制覇マップ">
             <span class="rail-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M19.5 9.5c0 5.5-7.5 10.5-7.5 10.5S4.5 15 4.5 9.5a7.5 7.5 0 0 1 15 0z"/><circle cx="12" cy="9.5" r="2.6"/><path d="M17.9 19a7.5 2 0 1 1-11.8 0"/></svg></span>
-            <span class="rail-tab-label">ジオタグ</span>
+            <span class="rail-tab-label">Place</span>
           </button>
-          <button type="button" class="rail-tab-btn" data-section="timeline" title="タイムライン (撮影年月)">
+          <button type="button" class="rail-tab-btn" data-section="timeline" title="Historia — 撮影年月・カレンダー">
             <span class="rail-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span>
-            <span class="rail-tab-label">年月</span>
+            <span class="rail-tab-label">Historia</span>
           </button>
-          <button type="button" class="rail-tab-btn" data-section="camera" title="カメラ・レンズ">
+          <button type="button" class="rail-tab-btn" data-section="camera" title="Gear — カメラ・レンズ">
             <span class="rail-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></span>
-            <span class="rail-tab-label">機材</span>
+            <span class="rail-tab-label">Gear</span>
           </button>
-          <button type="button" class="rail-tab-btn" data-section="lab" title="ラボ (カルテ・スマート抽出)">
+          <button type="button" class="rail-tab-btn" data-section="lab" title="Lab — 撮影カルテ・スマート抽出">
             <span class="rail-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v7.31"/><path d="M14 9.3V1.99"/><path d="M8.5 2h7"/><path d="M14 9.3a6.5 6.5 0 1 1-4 0"/><path d="M5.52 16h12.96"/></svg></span>
-            <span class="rail-tab-label">ラボ</span>
+            <span class="rail-tab-label">Lab</span>
           </button>
           <div class="rail-spacer"></div>
-          <button type="button" class="rail-tab-btn rail-tab-search" data-section="search" title="ファイル名検索">
+          <button type="button" class="rail-tab-btn rail-tab-search" data-section="search" title="Search — ファイル名検索">
             <span class="rail-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
-            <span class="rail-tab-label">検索</span>
+            <span class="rail-tab-label">Search</span>
           </button>
         </nav>
         <div class="sidebar-rail-resizer" id="sidebarRailResizer" title="ドラッグでアイコンバーを拡大・縮小（ダブルクリックで標準サイズに戻す）"></div>
@@ -240,7 +317,7 @@
         </div>
 
         <!-- 常設グローバルフィルタ（種別フィルタ ＋ 評価フィルタ） -->
-        <div class="sidebar-persistent-filters" id="sidebarPersistentFilters">
+        <div class="sidebar-persistent-filters" id="sidebarPersistentFilters" style="display: none;">
           <div class="attr-filter" id="attrFilterGroup">
             <div class="attr-filter-toggles" id="attrFilterToggles">
               <button type="button" class="attr-toggle active" data-attr="all" title="すべての形式・状態の写真を表示">すべて</button>
@@ -268,47 +345,51 @@
 
         <!-- アコーディオン本体コンテナ -->
         <div class="sidebar-accordion" id="sidebarAccordion">
-          <!-- セクション 1: クイックアクセス -->
+          <!-- セクション 1: Binder (絞り込み条件セット) -->
           <div class="accordion-item is-open" data-section="quick" id="accordionItem-quick">
             <div class="accordion-header" data-section="quick">
               <span class="accordion-arrow">▶</span>
               <span class="accordion-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span>
-              <span class="accordion-title">クイックアクセス</span>
+              <span class="accordion-title">Binder</span>
+              <span class="badge-sub">条件セット保存</span>
             </div>
             <div class="accordion-body">
-              <ul class="nav-list">
-                <li class="nav-item active" data-filter-type="all">
+              <ul class="nav-list" style="display: none;">
+                <li class="nav-item active" id="allPhotosNavItem" data-filter-type="all" title="接続中・未接続・リンク消失のすべてを表示">
                   <span class="nav-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></span>
                   <span class="nav-text">すべての写真</span>
                   <span class="nav-count" id="totalPhotosCount">0</span>
                 </li>
+                <li class="nav-item conn-sub-item is-conn-on" id="onlineOnlyNavItem" data-connection="online" title="クリックで「接続中の写真」のみ表示（左端インジケーターで個別ON/OFF）">
+                  <span class="nav-icon conn-toggle-hit" title="クリックで「接続中の写真」のON/OFFを個別に切り替え"><span class="conn-dot conn-dot-online"></span></span>
+                  <span class="nav-text">接続中の写真</span>
+                  <span class="nav-count" id="onlinePhotosCount">0</span>
+                </li>
+                <li class="nav-item conn-sub-item is-conn-on" id="offlineOnlyNavItem" data-connection="offline" title="クリックで「未接続の写真」のみ表示（左端インジケーターで個別ON/OFF）">
+                  <span class="nav-icon conn-toggle-hit" title="クリックで「未接続の写真」のON/OFFを個別に切り替え"><span class="conn-dot conn-dot-offline"></span></span>
+                  <span class="nav-text">未接続の写真</span>
+                  <span class="nav-count" id="offlinePhotosCount">0</span>
+                </li>
+                <li class="nav-item conn-sub-item is-conn-on" id="unlinkedOnlyNavItem" data-connection="unlinked" title="クリックで「リンク消失の写真」のみ表示（左端インジケーターで個別ON/OFF）">
+                  <span class="nav-icon conn-toggle-hit" title="クリックで「リンク消失の写真」のON/OFFを個別に切り替え"><span class="conn-dot conn-dot-unlinked"></span></span>
+                  <span class="nav-text">リンク消失の写真</span>
+                  <span class="nav-count" id="unlinkedPhotosCount">0</span>
+                </li>
+                <li class="nav-divider" aria-hidden="true"></li>
                 <li class="nav-item" data-filter-type="untagged" id="untaggedNavItem">
                   <span class="nav-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="10" y="10" width="7.5" height="7.5"/><line x1="3.6" y1="3.6" x2="10" y2="10"/><line x1="20.4" y1="3.6" x2="17.5" y2="10"/><line x1="20.4" y1="20.4" x2="17.5" y2="17.5"/><line x1="3.6" y1="20.4" x2="10" y2="17.5"/></svg></span>
                   <span class="nav-text">未分類の写真</span>
                   <span class="nav-count" id="untaggedPhotosCount">0</span>
                 </li>
-                <li class="nav-item" id="onlineOnlyNavItem" data-connection="online">
-                  <span class="nav-icon"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#10b981;vertical-align:middle;"></span></span>
-                  <span class="nav-text">接続中の写真</span>
-                </li>
-                <li class="nav-item" id="offlineOnlyNavItem" data-connection="offline">
-                  <span class="nav-icon"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--text-muted, #8c8881);opacity:0.6;vertical-align:middle;"></span></span>
-                  <span class="nav-text">未接続の写真</span>
-                </li>
-                <li class="nav-item" id="unlinkedOnlyNavItem" data-connection="unlinked" style="display: none;">
-                  <span class="nav-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span>
-                  <span class="nav-text">リンク消失の写真</span>
-                  <span class="nav-count badge-warning" id="unlinkedPhotosCount">0</span>
-                </li>
-                <li class="nav-item" id="duplicatesOnlyNavItem" data-filter-type="duplicates" style="display: none;">
+                <li class="nav-item" id="duplicatesOnlyNavItem" data-filter-type="duplicates">
                   <span class="nav-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span>
                   <span class="nav-text">重複のある写真</span>
-                  <span class="nav-count badge-info" id="duplicatePhotosCount">0</span>
+                  <span class="nav-count" id="duplicatePhotosCount">0</span>
                 </li>
               </ul>
 
               <!-- フィルタプリセット: 現在の絞り込み条件 & 保存フォーム -->
-              <div class="preset-create-section" style="margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-soft);">
+              <div class="preset-create-section" style="margin-top: 0; padding-top: 2px;">
                 <div class="section-title" style="padding: 0 4px; margin-bottom: 6px;">
                   <span>現在の絞り込み条件</span>
                 </div>
@@ -325,7 +406,7 @@
               </div>
 
               <!-- フィルタプリセット: 保存済みセット一覧 -->
-              <div class="preset-list-section" style="margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border-soft);">
+              <div class="preset-list-section" style="margin-top: 12px; padding-top: 2px;">
                 <div class="section-title" style="padding: 0 4px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;">
                   <span>保存済みセット</span>
                   <span class="badge-sub" id="presetCountBadge">0件</span>
@@ -337,12 +418,13 @@
             </div>
           </div>
 
-          <!-- セクション 2: フォルダ -->
+          <!-- セクション 2: Folder -->
           <div class="accordion-item" data-section="folder" id="accordionItem-folder">
             <div class="accordion-header" data-section="folder">
               <span class="accordion-arrow">▶</span>
               <span class="accordion-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>
-              <span class="accordion-title">フォルダ</span>
+              <span class="accordion-title">Folder</span>
+              <span class="badge-sub">フォルダ・メディア</span>
             </div>
             <div class="accordion-body">
               <!-- フォルダツリー操作ツールバー -->
@@ -411,12 +493,13 @@
             </div>
           </div>
 
-          <!-- セクション 3: タグ (アルバム) -->
+          <!-- セクション 3: Tag -->
           <div class="accordion-item" data-section="tags" id="accordionItem-tags">
             <div class="accordion-header" data-section="tags">
               <span class="accordion-arrow">▶</span>
               <span class="accordion-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="10" y="10" width="7.5" height="7.5"/><line x1="3.6" y1="3.6" x2="10" y2="10"/><line x1="20.4" y1="3.6" x2="17.5" y2="10"/><line x1="20.4" y1="20.4" x2="17.5" y2="17.5"/><line x1="3.6" y1="20.4" x2="10" y2="17.5"/></svg></span>
-              <span class="accordion-title">タグ (アルバム)</span>
+              <span class="accordion-title">Tag</span>
+              <span class="badge-sub">タグ・カラー</span>
             </div>
             <div class="accordion-body">
               <!-- カラータグ・エキスパンダ (最上部配置・デフォルト閉じ) -->
@@ -466,12 +549,13 @@
             </div>
           </div>
 
-          <!-- セクション 4: ジオタグ -->
+          <!-- セクション 4: Place -->
           <div class="accordion-item" data-section="location" id="accordionItem-location">
             <div class="accordion-header" data-section="location">
               <span class="accordion-arrow">▶</span>
               <span class="accordion-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M19.5 9.5c0 5.5-7.5 10.5-7.5 10.5S4.5 15 4.5 9.5a7.5 7.5 0 0 1 15 0z"/><circle cx="12" cy="9.5" r="2.6"/><path d="M17.9 19a7.5 2 0 1 1-11.8 0"/></svg></span>
-              <span class="accordion-title">ジオタグ</span>
+              <span class="accordion-title">Place</span>
+              <span class="badge-sub">撮影地・マップ</span>
             </div>
             <div class="accordion-body">
               <div class="location-toolbar" id="locationToolbar">
@@ -502,13 +586,13 @@
             </div>
           </div>
 
-          <!-- セクション 5: タイムライン -->
+          <!-- セクション 5: Historia -->
           <div class="accordion-item" data-section="timeline" id="accordionItem-timeline">
             <div class="accordion-header" data-section="timeline">
               <span class="accordion-arrow">▶</span>
               <span class="accordion-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span>
-              <span class="accordion-title">タイムライン</span>
-              <span class="badge-sub" title="年・月・日をクリックしてOR条件で絞り込み可能">複数選択可</span>
+              <span class="accordion-title">Historia</span>
+              <span class="badge-sub" title="年・月・日をクリックしてOR条件で絞り込み可能">撮影年月・カレンダー</span>
             </div>
             <div class="accordion-body">
               <div class="location-toolbar" id="timelineToolbar">
@@ -545,13 +629,13 @@
             </div>
           </div>
 
-          <!-- セクション 6: カメラ・レンズ -->
+          <!-- セクション 6: Gear -->
           <div class="accordion-item" data-section="camera" id="accordionItem-camera">
             <div class="accordion-header" data-section="camera">
               <span class="accordion-arrow">▶</span>
               <span class="accordion-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></span>
-              <span class="accordion-title">カメラ・レンズ</span>
-              <span class="badge-sub">排他検索可</span>
+              <span class="accordion-title">Gear</span>
+              <span class="badge-sub">カメラ・レンズ</span>
             </div>
             <div class="accordion-body">
               <div class="location-toolbar" id="cameraToolbar">
@@ -573,12 +657,12 @@
             </div>
           </div>
 
-          <!-- セクション 7: ラボ（実験室：分析・発掘・特殊抽出） -->
+          <!-- セクション 7: Lab（実験室：分析・発掘・特殊抽出） -->
           <div class="accordion-item" data-section="lab" id="accordionItem-lab">
             <div class="accordion-header" data-section="lab">
               <span class="accordion-arrow">▶</span>
               <span class="accordion-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v7.31"/><path d="M14 9.3V1.99"/><path d="M8.5 2h7"/><path d="M14 9.3a6.5 6.5 0 1 1-4 0"/><path d="M5.52 16h12.96"/></svg></span>
-              <span class="accordion-title">ラボ</span>
+              <span class="accordion-title">Lab</span>
               <span class="badge-sub">分析・発掘</span>
             </div>
             <div class="accordion-body">
@@ -633,12 +717,13 @@
             </div>
           </div>
 
-          <!-- セクション 8: ファイル名検索（最下部配置） -->
+          <!-- セクション 8: Search（最下部配置） -->
           <div class="accordion-item" data-section="search" id="accordionItem-search">
             <div class="accordion-header" data-section="search">
               <span class="accordion-arrow">▶</span>
               <span class="accordion-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
-              <span class="accordion-title">ファイル名検索</span>
+              <span class="accordion-title">Search</span>
+              <span class="badge-sub">ファイル名検索</span>
             </div>
             <div class="accordion-body">
               <div class="sidebar-search-box">
@@ -687,9 +772,14 @@
               <span class="warning-banner-desc" id="warningBannerDesc">USBメモリ等の外部ドライブが抜かれているか、フォルダが移動・削除された可能性があります。（保存済みサムネイルをキャッシュから表示中）</span>
             </div>
           </div>
-          <button class="warning-banner-btn" id="warningBannerReloadBtn" title="接続状態を再確認">
-            <span class="btn-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg></span> 再確認
-          </button>
+          <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+            <button type="button" class="warning-banner-btn" id="warningBannerUnlinkBtn" style="display: none;" title="この消失フォルダ内の写真リンクを削除します（他メディアにリンクが無い写真は『リンク消失の写真』へ移行、サムネイル・タグは保持）">
+              リンク削除
+            </button>
+            <button class="warning-banner-btn" id="warningBannerReloadBtn" title="接続状態を再確認">
+              <span class="btn-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg></span> 再確認
+            </button>
+          </div>
         </div>
 
         <!-- 写真グリッドコンテナ -->
@@ -1060,17 +1150,24 @@
       </aside>
     </div>
 
-    <!-- グローバル・スキャン進捗フッター (常時視認・リアルタイム進捗ステータスバー) -->
-    <footer class="global-scan-banner global-scan-footer" id="globalScanBanner" style="display: none;">
+    <!-- 統合アクティビティ・ドック (スキャン・AI推論・ファイル操作・フォルダ読込のリアルタイム進捗) -->
+    <footer class="global-scan-banner global-scan-footer unified-activity-dock" id="globalScanBanner" style="display: none;" role="status" aria-live="polite">
       <div class="global-scan-content">
-        <div class="global-scan-info">
-          
-          <span class="global-scan-title" id="globalScanTitle">スキャン中...</span>
-          <span class="global-scan-count" id="globalScanCount">0 / 0</span>
-          <span class="global-scan-filename" id="globalScanFilename"></span>
-        </div>
-        <div class="global-scan-track">
-          <div class="global-scan-fill" id="globalScanFill" style="width: 0%;"></div>
+        <div class="global-scan-main-col">
+          <div class="global-scan-info">
+            <span class="global-scan-title" id="globalScanTitle">処理中...</span>
+            <div class="global-scan-meta">
+              <span class="global-scan-count" id="globalScanCount"></span>
+              <span class="global-scan-percent" id="globalScanPercent"></span>
+              <button type="button" class="btn btn-secondary btn-xs global-activity-cancel-btn" id="globalActivityCancelBtn" style="display: none;">中断</button>
+            </div>
+          </div>
+          <div class="global-scan-track" id="globalScanTrack">
+            <div class="global-scan-fill" id="globalScanFill" style="width: 0%;"></div>
+          </div>
+          <div class="global-scan-subrow">
+            <span class="global-scan-filename" id="globalScanFilename"></span>
+          </div>
         </div>
       </div>
     </footer>
@@ -1227,7 +1324,7 @@
               <li>3 または X キー：棄 (Rj) — ピンボケや目つぶりなどのボツ写真（一覧から自動で隠れ、次の写真へ移動します）</li>
               <li>0 または 4 キー：可 (Nm) — 評価なし（初期状態）に戻す</li>
             </ul>
-            <p class="help-tip">「棄」にした写真を見返すには：ファイル自体は削除されていません。左メニュー最上部の評価フィルタにある「棄」ボタンをクリックして点灯させると再表示され、0キーで元の状態に戻せます。また、そのすぐ上にある種別フィルタ（すべて / RAW / 調整済 / 詳細...）で、RAWのみ・JPEGのみ・RAW+JPGペア・XMPありの写真だけを絞り込めます。</p>
+            <p class="help-tip">「棄」にした写真を見返すには：ファイル自体は削除されていません。メインツールバー（フッター／ヘッダー）中央の評価フィルタにある「棄」ボタンをクリックして点灯させると再表示され、0キーで元の状態に戻せます。また、すぐ左隣にある形式・状態プルダウン（すべての形式 / RAW / RAW+JPEG / JPEG / 調整済 / XMPあり）や表示対象プルダウン（すべての写真 / 接続中の写真 / 未接続の写真 / リンク消失の写真 / 未分類の写真 / 重複のある写真）を組み合わせて絞り込めます。</p>
           </div>
 
           <div class="help-card" style="margin-top: 14px;">
@@ -1245,7 +1342,8 @@
           <div class="help-card" style="margin-top: 14px;">
             <h4>5. 複数の写真をまとめて操作する・絞り込み検索</h4>
             <p>複数選択：Ctrl + クリックで追加選択、Shift + クリックで範囲選択、Ctrl + A で全選択できます。複数枚を選ぶと、右インスペクタの一括編集パネルや右クリックメニューから、まとめて評価付け・タグ付け・回転・テイクアウト・日時シフト補正が行えます。</p>
-            <p>写真を探す：左サイドバーの「年月（複数年のOR選択・ミニカレンダー・拡大カレンダー）」「機材（カメラ ＞ レンズ階層ツリーと [+] 含む / [-] 除外検索）」「ラボ」、および一番下の「検索」で絞り込めます。フィルタ適用中は写真グリッドを一切上下にずらさず、画面下部にフローティングのフィルタフッターバーが現れ、条件が自然な日本語文（「または」「かつ」「除く」）として表示されます。フッター内の条件ピルを左クリックするとその場で条件の変更・追加ポップオーバーが開き、右クリックで含む[+]⇔除外[-]を反転、タグ条件の接続詞（「または」「かつ」）をクリックでAND⇔OR切替、×で個別解除、「すべて解除」で全解除できます。</p>
+            <p>写真を探す：左サイドバーの「Binder（条件セット保存）」「Folder（フォルダ・メディア）」「Tag（タグ・カラー）」「Place（撮影地・マップ）」「Historia（撮影年月・カレンダー）」「Gear（カメラ・レンズ）」「Lab（分析・発掘）」、および一番下の「Search（ファイル名検索）」で絞り込めます。フィルタ適用中は写真グリッドを一切上下にずらさず、画面下部にフローティングのフィルタフッターバーが現れ、条件が自然な日本語文（「または」「かつ」「除く」）として表示されます。フッター内の条件ピルを左クリックするとその場で条件の変更・追加ポップオーバーが開き、右クリックで含む[+]⇔除外[-]を反転、タグ条件の接続詞（「または」「かつ」）をクリックでAND⇔OR切替、×で個別解除、「すべて解除」で全解除できます。</p>
+            <p>メインツールバー（フッター／ヘッダー切替対応）：既定で画面下部に配置されるメインツールバー（設定モーダルから「下部（フッター）」と「上部（ヘッダー）」を切り替え可能）の中央には、3つの基本フィルタ（表示対象プルダウン・形式/状態プルダウン・優良可棄トグル）と合算枚数バッジ、並び順、表示レイアウト、スタック/情報切替、サムネイルサイズスライダーが集約されています。</p>
           </div>
         </div>
 
@@ -1311,11 +1409,11 @@
           </div>
 
           <div class="help-card" style="margin-top: 14px;">
-            <h4>7. プリセット保存・外部ソフト連携・storage管理・DBメンテナンス</h4>
+            <h4>7. プリセット保存・外部ソフト連携・Loome管理・DBメンテナンス</h4>
             <p>プリセット保存：よく使う絞り込み条件は、左サイドバー「クイック」下部の保存フォームで名前を付けて保存し、ワンクリックで呼び出せます。</p>
             <p>外部ソフト連携とサムネイル更新：右インスペクタ上部のアイコンからエクスプローラーで保存先を開いたり、既定のソフトでファイルを開けます。外部ソフトで編集したあとは、右クリックメニューの「サムネイルを更新」で表示を最新化できます。</p>
             <p>設定とDBメンテナンス：画面右上の「設定」ボタンから、起動時のウィンドウサイズやタグの名前順ルールの変更、世代バックアップ付きデータベース最適化（VACUUM）が行えます。</p>
-            <p>storage（アプリ内ストレージ）管理：左サイドバー「フォルダ」先頭の「storage」には、外部フォルダの写真を「storageへインポート」（またはドラッグ＆ドロップ）でコピー取り込みできます。storage内ではサブフォルダ作成・移動・ファイル名変更（F2キーで単一または一括連番リネーム）・外部エクスポートが行え、同名のサイドカーファイル（.xmp等）やペアRAWも自動で追従します。</p>
+            <p>Loome 管理：左サイドバー「フォルダ」先頭の「Loome」には、外部フォルダの写真を「Loomeへコピー」（またはドラッグ＆ドロップ）でコピー取り込みできます。また、接続中のドライブを右クリックして「このドライブに Loome を作成...」（または「登録メディア管理」の「Loome を作成」）を実行すると、外付けSSD・USBメモリ直下にも専用 Loome を追加できます。Loome内ではサブフォルダ作成・移動・ファイル名変更（F2キーで単一または一括連番リネーム）・外部エクスポートが行え、同名のサイドカーファイル（.xmp等）やペアRAWも自動で追従します。</p>
           </div>
         </div>
 
@@ -1869,6 +1967,18 @@
               <option value="tetheract-l">Tetheract L（ライト：アンバー＆ソフトモノトーン）</option>
               <option value="sumi">夜墨 / Sumi（ダーク：銀墨 × 朱色）</option>
               <option value="paper">和紙 / Paper（ライト：生成り和紙 × 朱色）</option>
+            </select>
+          </div>
+
+          <!-- ツールバーの配置（フッター / ヘッダー）設定 -->
+          <div style="background: var(--bg-secondary, rgba(255,255,255,0.04)); border: 1px solid var(--border-soft, rgba(255,255,255,0.1)); border-radius: var(--radius-sm, 4px); padding: 12px; display: flex; flex-direction: column; gap: 8px;">
+            <div>
+              <div style="font-weight: 600; color: var(--text-main, #eceae4);">ツールバーの配置</div>
+              <div style="font-size: 0.76rem; color: var(--text-dim, #64748b); margin-top: 2px;">メインツールバーを画面下部（フッター）または上部（ヘッダー）に配置します</div>
+            </div>
+            <select id="settingToolbarPositionSelect" class="styled-select" style="width: 100%;">
+              <option value="bottom">下部（フッター表示・上部ヘッダーなし）</option>
+              <option value="top">上部（ヘッダー表示）</option>
             </select>
           </div>
 
@@ -2476,13 +2586,13 @@
     </div>
   </div>
 
-  <!-- storage ファイル名変更（単一＆一括連番リネーム）モーダル -->
+  <!-- Loome ファイル名変更（単一＆一括連番リネーム）モーダル -->
   <div class="modal-backdrop" id="storageRenameModal" style="display: none;">
     <div class="modal-card storage-rename-modal-card" style="max-width: 520px;">
       <div class="modal-header">
         <div class="modal-header-title">
           <h2 id="storageRenameModalTitle">ファイル名を変更</h2>
-          <span class="modal-subtitle" id="storageRenameModalSubtitle">storage 内の写真ファイル名を変更します</span>
+          <span class="modal-subtitle" id="storageRenameModalSubtitle">Loome 内の写真ファイル名を変更します</span>
         </div>
         <button class="modal-close-btn" id="closeStorageRenameModalBtn">&times;</button>
       </div>
@@ -2547,13 +2657,13 @@
     </div>
   </div>
 
-  <!-- storage サブフォルダ作成 / フォルダ名変更モーダル -->
+  <!-- Loome サブフォルダ作成 / フォルダ名変更モーダル -->
   <div class="modal-backdrop" id="storageFolderModal" style="display: none;">
     <div class="modal-card storage-folder-modal-card" style="max-width: 440px;">
       <div class="modal-header">
         <div class="modal-header-title">
           <h2 id="storageFolderModalTitle">新規サブフォルダを作成</h2>
-          <span class="modal-subtitle" id="storageFolderModalSubtitle">storage 内に新しいサブフォルダを作成します</span>
+          <span class="modal-subtitle" id="storageFolderModalSubtitle">Loome 内に新しいサブフォルダを作成します</span>
         </div>
         <button class="modal-close-btn" id="closeStorageFolderModalBtn">&times;</button>
       </div>
@@ -2651,6 +2761,31 @@
     <div class="context-menu-header">
       <span id="contextMenuSelectedCount">1枚選択中</span>
     </div>
+    <!-- 1. 閲覧・比較 -->
+    <div class="context-menu-item" id="contextMenuPreviewItem">
+      <div class="menu-item-content">
+        <span>ライトボックスで開く</span>
+      </div>
+    </div>
+    <div class="context-menu-item" id="contextMenuCompareItem">
+      <div class="menu-item-content">
+        <span>2枚並べて比較 (V)</span>
+      </div>
+    </div>
+    <div class="context-menu-divider"></div>
+    <!-- 2. 評価・タグ・調整と回転 -->
+    <div class="context-menu-item has-submenu" id="contextMenuRateItem">
+      <div class="menu-item-content">
+        <span>評価を設定</span>
+        <span class="submenu-arrow">▶</span>
+      </div>
+      <div class="context-submenu rate-submenu">
+        <div class="submenu-rate-option" data-rating="2">優</div>
+        <div class="submenu-rate-option" data-rating="1">良</div>
+        <div class="submenu-rate-option" data-rating="0">可（解除）</div>
+        <div class="submenu-rate-option" data-rating="-1">棄</div>
+      </div>
+    </div>
     <div class="context-menu-item has-submenu" id="contextMenuTagItem">
       <div class="menu-item-content">
         <span>タグを付ける</span>
@@ -2667,11 +2802,24 @@
         </div>
       </div>
     </div>
-    <div class="context-menu-item" id="contextMenuAiColorTagItem" title="選択中の写真の主要カラー（12色）のみをAIで再判定します">
+    <div class="context-menu-item has-submenu" id="contextMenuAdjustRotateItem">
       <div class="menu-item-content">
-        <span id="contextMenuAiColorTagLabel">AIカラータグを再判定</span>
+        <span>調整と回転</span>
+        <span class="submenu-arrow">▶</span>
+      </div>
+      <div class="context-submenu rotate-submenu">
+        <div class="submenu-item" id="contextMenuRotateRight">↻ 右へ回転 (R)</div>
+        <div class="submenu-item" id="contextMenuRotateLeft">↺ 左へ回転 (L)</div>
+        <div class="submenu-item" id="contextMenuCrop">切り抜き・微調整 (C)</div>
+        <div class="context-menu-divider" style="margin: 4px 0;"></div>
+        <div class="submenu-item" id="contextMenuCopyTone" title="明るさ・コントラスト・彩度の設定値をコピーします (Ctrl+Shift+C)">トーン調整をコピー</div>
+        <div class="submenu-item" id="contextMenuPasteTone" title="コピーしたトーン調整（明るさ・コントラスト・彩度）を選択写真に一括ペーストします (Ctrl+Shift+V)">トーン調整をペースト</div>
+        <div class="context-menu-divider" style="margin: 4px 0;"></div>
+        <div class="submenu-item" id="contextMenuResetAdjust">↺ 回転・調整をリセット</div>
       </div>
     </div>
+    <div class="context-menu-divider"></div>
+    <!-- 3. 書き出し・コピー・storageファイル操作 -->
     <div class="context-menu-item has-submenu" id="contextMenuImportItem">
       <div class="menu-item-content">
         <span title="選択した写真を加工・リサイズ出力、またはベタ焼きHTMLとして書き出します">テイクアウト</span>
@@ -2714,20 +2862,25 @@
         </details>
       </div>
     </div>
-    <!-- storage へインポート（外部写真選択時） -->
+    <div class="context-menu-item" id="contextMenuCopyImageItem" title="選択中の写真（非破壊調整反映済み）をクリップボードへ画像コピーします (Ctrl+C)">
+      <div class="menu-item-content">
+        <span id="contextMenuCopyImageLabel">画像をクリップボードにコピー (Ctrl+C)</span>
+      </div>
+    </div>
+    <!-- Loome へコピー（外部写真選択時） -->
     <div class="context-menu-item has-submenu" id="contextMenuStorageImportItem" style="display: none;">
       <div class="menu-item-content">
-        <span title="選択した写真をアプリ内の storage フォルダへコピー＆インポートします">storageへインポート</span>
+        <span title="選択した写真を Loome フォルダへコピー＆取り込みます">Loomeへコピー</span>
         <span class="submenu-arrow">▶</span>
       </div>
       <div class="context-submenu" id="contextStorageImportSubmenu">
         <div class="submenu-create-input">
           <input type="text" id="contextNewStorageImportFolderInput" placeholder="新規フォルダ名..." autocomplete="off">
-          <button class="btn btn-primary btn-xs" id="contextConfirmNewStorageImportFolderBtn" title="storage内にフォルダを作成してインポート">作成&amp;インポート</button>
+          <button class="btn btn-primary btn-xs" id="contextConfirmNewStorageImportFolderBtn" title="Loome内にフォルダを作成してコピー">作成&amp;コピー</button>
         </div>
-        <div class="context-import-action" id="contextOpenStorageImportFolderBtn" title="エクスプローラーでstorageフォルダを開きます">
+        <div class="context-import-action" id="contextOpenStorageImportFolderBtn" title="エクスプローラーでLoomeフォルダを開きます">
           
-          <span class="context-import-action-text">storageフォルダを開く</span>
+          <span class="context-import-action-text">Loomeフォルダを開く</span>
           <span class="context-import-action-arrow">↗</span>
         </div>
         <div class="context-menu-divider" style="margin: 4px 0;"></div>
@@ -2736,20 +2889,20 @@
         </div>
       </div>
     </div>
-    <!-- storage 内で移動（storage内写真選択時） -->
+    <!-- Loome 内で移動（Loome内写真選択時） -->
     <div class="context-menu-item has-submenu" id="contextMenuStorageMoveItem" style="display: none;">
       <div class="menu-item-content">
-        <span title="storage 内の写真を別サブフォルダへ移動します">storage内で移動</span>
+        <span title="Loome 内の写真を別サブフォルダへ移動します">Loome内で移動</span>
         <span class="submenu-arrow">▶</span>
       </div>
       <div class="context-submenu" id="contextStorageMoveSubmenu">
         <div class="submenu-create-input">
           <input type="text" id="contextNewStorageMoveFolderInput" placeholder="新規フォルダ名..." autocomplete="off">
-          <button class="btn btn-primary btn-xs" id="contextConfirmNewStorageMoveFolderBtn" title="storage内にフォルダを作成して移動">作成&amp;移動</button>
+          <button class="btn btn-primary btn-xs" id="contextConfirmNewStorageMoveFolderBtn" title="Loome内にフォルダを作成して移動">作成&amp;移動</button>
         </div>
-        <div class="context-import-action" id="contextOpenStorageMoveFolderBtn" title="エクスプローラーでstorageフォルダを開きます">
+        <div class="context-import-action" id="contextOpenStorageMoveFolderBtn" title="エクスプローラーでLoomeフォルダを開きます">
           
-          <span class="context-import-action-text">storageフォルダを開く</span>
+          <span class="context-import-action-text">Loomeフォルダを開く</span>
           <span class="context-import-action-arrow">↗</span>
         </div>
         <div class="context-menu-divider" style="margin: 4px 0;"></div>
@@ -2758,66 +2911,31 @@
         </div>
       </div>
     </div>
-    <!-- storage ファイル名変更 / 一括連番リネーム（storage内写真選択時） -->
+    <!-- Loome ファイル名変更 / 一括連番リネーム（Loome内写真選択時） -->
     <div class="context-menu-item" id="contextMenuStorageRenameItem" style="display: none;">
       <div class="menu-item-content">
         <span id="contextMenuStorageRenameLabel">ファイル名を変更 (F2)</span>
       </div>
     </div>
-    <div class="context-menu-item has-submenu" id="contextMenuRateItem">
-      <div class="menu-item-content">
-        <span>評価を設定</span>
-        <span class="submenu-arrow">▶</span>
-      </div>
-      <div class="context-submenu rate-submenu">
-        <div class="submenu-rate-option" data-rating="2">優</div>
-        <div class="submenu-rate-option" data-rating="1">良</div>
-        <div class="submenu-rate-option" data-rating="0">可（解除）</div>
-        <div class="submenu-rate-option" data-rating="-1">棄</div>
-      </div>
-    </div>
-    <div class="context-menu-item has-submenu" id="contextMenuAdjustRotateItem">
-      <div class="menu-item-content">
-        <span>調整と回転</span>
-        <span class="submenu-arrow">▶</span>
-      </div>
-      <div class="context-submenu rotate-submenu">
-        <div class="submenu-item" id="contextMenuRotateRight">↻ 右へ回転 (R)</div>
-        <div class="submenu-item" id="contextMenuRotateLeft">↺ 左へ回転 (L)</div>
-        <div class="submenu-item" id="contextMenuCrop">切り抜き・微調整 (C)</div>
-        <div class="context-menu-divider" style="margin: 4px 0;"></div>
-        <div class="submenu-item" id="contextMenuCopyTone" title="明るさ・コントラスト・彩度の設定値をコピーします (Ctrl+Shift+C)">トーン調整をコピー</div>
-        <div class="submenu-item" id="contextMenuPasteTone" title="コピーしたトーン調整（明るさ・コントラスト・彩度）を選択写真に一括ペーストします (Ctrl+Shift+V)">トーン調整をペースト</div>
-        <div class="context-menu-divider" style="margin: 4px 0;"></div>
-        <div class="submenu-item" id="contextMenuResetAdjust">↺ 回転・調整をリセット</div>
-      </div>
-    </div>
-    <div class="context-menu-item" id="contextMenuCopyImageItem" title="選択中の写真（非破壊調整反映済み）をクリップボードへ画像コピーします (Ctrl+C)">
-      <div class="menu-item-content">
-        <span id="contextMenuCopyImageLabel">画像をクリップボードにコピー (Ctrl+C)</span>
-      </div>
-    </div>
+    <div class="context-menu-divider"></div>
+    <!-- 4. 補正・再判定・サムネイル更新 -->
     <div class="context-menu-item" id="contextMenuShiftDateItem" title="選択中の写真の撮影日時（DB）を一括でプラス・マイナス補正します">
       <div class="menu-item-content">
         <span>撮影日時を一括補正...</span>
       </div>
     </div>
-    <div class="context-menu-divider"></div>
+    <div class="context-menu-item" id="contextMenuAiColorTagItem" title="選択中の写真の主要カラー（12色）のみをAIで再判定します">
+      <div class="menu-item-content">
+        <span id="contextMenuAiColorTagLabel">AIカラータグを再判定</span>
+      </div>
+    </div>
     <div class="context-menu-item" id="contextMenuRefreshThumbItem">
       <div class="menu-item-content">
         <span id="contextMenuRefreshThumbLabel">サムネイルを更新</span>
       </div>
     </div>
-    <div class="context-menu-item" id="contextMenuPreviewItem">
-      <div class="menu-item-content">
-        <span>プレビューを開く</span>
-      </div>
-    </div>
-    <div class="context-menu-item text-danger" id="contextMenuDeleteItem" style="color: var(--danger, #ef4444);">
-      <div class="menu-item-content">
-        <span>ライブラリから削除</span>
-      </div>
-    </div>
+    <div class="context-menu-divider"></div>
+    <!-- 5. 選択解除 -->
     <div class="context-menu-item" id="contextMenuClearSelection">
       <div class="menu-item-content">
         <span>選択を解除</span>
@@ -2827,11 +2945,12 @@
 
   <!-- フォルダ専用 右クリックコンテキストメニュー -->
   <div class="context-menu folder-context-menu" id="folderContextMenu" style="display: none;">
-    <div class="context-menu-header">
+    <div class="context-menu-header folder-context-header-row">
       <span id="folderContextMenuPath" class="folder-context-header-text">フォルダ</span>
+      <button type="button" class="folder-context-header-unlink-btn" id="folderContextHeaderUnlinkBtn" style="display: none;" title="この消失フォルダ内の写真リンクを削除します（他メディアにリンクが無い写真は『リンク消失の写真』へ移行、サムネイル・タグは保持）">リンク削除</button>
     </div>
     
-    <!-- storage（アプリ内ストレージ）専用メニュー項目 -->
+    <!-- Loome 専用メニュー項目 -->
     <div class="folder-menu-group" id="folderMenuStorageGroup" style="display: none;">
       <div class="context-menu-item" id="folderMenuStorageCreateSub">
         <div class="menu-item-content">
@@ -2853,24 +2972,24 @@
           <span>空フォルダを削除</span>
         </div>
       </div>
+      <div class="context-menu-item text-danger" id="folderMenuRemoveLoome" style="display: none; color: var(--danger, #ef4444);">
+        <div class="menu-item-content">
+          <span>Loome 登録を解除</span>
+        </div>
+      </div>
       <div class="context-menu-divider"></div>
     </div>
 
     <!-- 管理中フォルダ用メニュー項目 -->
     <div class="folder-menu-group" id="folderMenuManagedGroup">
-      <div class="context-menu-item" id="folderMenuRescanDirect">
+      <div class="context-menu-item" id="folderMenuRescanDirect" title="このフォルダ直下の写真を再スキャンし、移動・削除された写真のリンクも整理します">
         <div class="menu-item-content">
-          <span>このフォルダを再スキャン（直下のみ）</span>
+          <span>再スキャン</span>
         </div>
       </div>
-      <div class="context-menu-item" id="folderMenuRescanRecursive">
+      <div class="context-menu-item" id="folderMenuRescanRecursive" title="子フォルダも含めて再スキャンし、移動・削除された写真のリンクも整理します">
         <div class="menu-item-content">
-          <span>配下も含めて再スキャン</span>
-        </div>
-      </div>
-      <div class="context-menu-item" id="folderMenuRefresh" title="配下の写真を再スキャンし、移動・削除された写真をライブラリから削除します">
-        <div class="menu-item-content">
-          <span>リフレッシュ（再スキャン＋消失写真のDB削除）</span>
+          <span>再スキャン（子を含む）</span>
         </div>
       </div>
       <div class="context-menu-item" id="folderMenuAiTag" title="このフォルダ配下の写真にAIタグを自動付与します">
@@ -2924,6 +3043,11 @@
     </div>
 
     <div class="context-menu-divider"></div>
+    <div class="context-menu-item" id="folderMenuCreateLoome" style="display: none;">
+      <div class="menu-item-content">
+        <span>📦 このドライブに Loome を作成...</span>
+      </div>
+    </div>
     <div class="context-menu-item" id="folderMenuRenameVolume" style="display: none;">
       <div class="menu-item-content">
         <span>メディアの識別名（ニックネーム）を設定...</span>
@@ -2936,23 +3060,23 @@
     </div>
   </div>
 
-  <script src="/js/common.js?v=1.2.2"></script>
-  <script src="/js/selection.js?v=1.2.2"></script>
-  <script src="/js/inspector.js?v=1.2.2"></script>
-  <script src="/js/lightbox.js?v=1.2.2"></script>
-  <script src="/js/adjust.js?v=1.2.2"></script>
-  <script src="/js/histogram.js?v=1.2.2"></script>
-  <script src="/js/compare.js?v=1.2.2"></script>
-  <script src="/js/takeout.js?v=1.2.2"></script>
-  <script src="/js/presets.js?v=1.2.2"></script>
-  <script src="/js/slideshow.js?v=1.2.2"></script>
-  <script src="/js/location_tree.js?v=1.2.2"></script>
-  <script src="/js/folder_tree.js?v=1.2.2"></script>
-  <script src="/js/location_map.js?v=1.2.2"></script>
-  <script src="/js/lab.js?v=1.2.2"></script>
-  <script src="/js/sidebar_filters.js?v=1.2.2"></script>
-  <script src="/js/storage.js?v=1.2.2"></script>
-  <script src="/js/app.js?v=1.2.2"></script>
-  <script src="/js/i18n.js?v=1.2.2"></script>
+  <script src="/js/common.js?v=1.4.0"></script>
+  <script src="/js/selection.js?v=1.4.0"></script>
+  <script src="/js/inspector.js?v=1.4.0"></script>
+  <script src="/js/lightbox.js?v=1.4.0"></script>
+  <script src="/js/adjust.js?v=1.4.0"></script>
+  <script src="/js/histogram.js?v=1.4.0"></script>
+  <script src="/js/compare.js?v=1.4.0"></script>
+  <script src="/js/takeout.js?v=1.4.0"></script>
+  <script src="/js/presets.js?v=1.4.0"></script>
+  <script src="/js/slideshow.js?v=1.4.0"></script>
+  <script src="/js/location_tree.js?v=1.4.0"></script>
+  <script src="/js/folder_tree.js?v=1.4.0"></script>
+  <script src="/js/location_map.js?v=1.4.0"></script>
+  <script src="/js/lab.js?v=1.4.0"></script>
+  <script src="/js/sidebar_filters.js?v=1.4.0"></script>
+  <script src="/js/storage.js?v=1.4.0"></script>
+  <script src="/js/app.js?v=1.4.0"></script>
+  <script src="/js/i18n.js?v=1.4.0"></script>
 </body>
 </html>

@@ -1033,11 +1033,31 @@ body.resizing .sidebar-rail-resizer::before {
   height: 44px;
   min-height: 44px;
   padding: 0 10px;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
-  flex-wrap: nowrap;
+  flex-shrink: 0;
+}
+
+/* ツールバー下部（フッター）配置モード */
+[data-toolbar-pos="bottom"] .app-layout > .main-body {
+  order: 1;
+}
+
+[data-toolbar-pos="bottom"] .app-layout > .app-header.unified-single-header {
+  order: 3;
+  border-bottom: none;
+  border-top: 1px solid var(--border-color);
+}
+
+[data-toolbar-pos="bottom"] .header-system-dropdown {
+  top: auto !important;
+  bottom: calc(100% + 6px) !important;
+}
+
+[data-toolbar-pos="bottom"] #globalScanBanner.unified-activity-dock {
+  bottom: 58px !important;
 }
 
 .unified-single-header .header-left {
@@ -1045,8 +1065,30 @@ body.resizing .sidebar-rail-resizer::before {
   align-items: center;
   gap: 8px;
   min-width: 0;
-  flex: 1 1 auto;
+  justify-self: start;
   overflow: hidden;
+}
+
+.unified-single-header .header-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  justify-self: center;
+}
+
+.unified-single-header .header-center-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+}
+
+.unified-single-header .header-scope-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 .unified-single-header .header-right {
@@ -1054,6 +1096,7 @@ body.resizing .sidebar-rail-resizer::before {
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
+  justify-self: end;
 }
 
 /* 左上：現在の表示タイトル ＋ 枚数バッジ */
@@ -1083,11 +1126,16 @@ body.resizing .sidebar-rail-resizer::before {
   line-height: 1.2;
 }
 
+.unified-single-header .photos-count-badge,
 .header-view-status .photos-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
   font-size: 0.72rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  padding: 1px 7px;
+  padding: 0 8px;
   border-radius: 999px !important;
   background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
@@ -1158,6 +1206,7 @@ body.resizing .sidebar-rail-resizer::before {
   width: 68px;
 }
 
+.unified-single-header #headerScopeSelect, .unified-single-header #headerAttrSelect,
 .unified-single-header #sortBySelect {
   height: 28px !important;
   min-height: 28px !important;
@@ -1168,8 +1217,43 @@ body.resizing .sidebar-rail-resizer::before {
   box-sizing: border-box !important;
 }
 
+.unified-single-header #headerScopeSelect {
+  font-weight: 600;
+  max-width: 142px;
+}
+
+.unified-single-header #headerAttrSelect {
+  max-width: 122px;
+}
+
+.unified-single-header #headerAttrSelect.is-filtered {
+  border-color: var(--accent-primary) !important;
+  color: var(--text-main) !important;
+  font-weight: 600;
+}
+
+.unified-single-header .header-rating-filter {
+  height: 28px !important;
+  min-height: 28px !important;
+  padding: 2px !important;
+  box-sizing: border-box !important;
+  flex-shrink: 0;
+}
+
+.unified-single-header .header-rating-filter .rating-toggle {
+  height: 22px !important;
+  min-height: 22px !important;
+  padding: 0 8px !important;
+  font-size: 0.75rem !important;
+  line-height: 1 !important;
+  box-sizing: border-box !important;
+}
+
+.unified-single-header .unused-placeholder {
+}
+
 /* 画面幅が狭い時（1360px以下）は再生・スタック・情報・レイアウトのテキストラベルを自動でアイコン化して1行維持 */
-@media (max-width: 1380px) {
+@media (max-width: 1560px) {
   .unified-single-header .header-compact-btn .btn-label,
   .unified-single-header .view-mode-group .mode-label {
     display: none !important;

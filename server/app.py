@@ -56,6 +56,7 @@ from .database import (
     get_missing_photos_count,
     unlink_missing_photos_in_folder,
     get_unlinked_photos_count,
+    get_connection_counts,
     purge_unlinked_photos,
     get_duplicate_photos_count,
     get_thumbnail as db_get_thumbnail,
@@ -100,6 +101,9 @@ from .database import (
     create_filter_preset,
     update_filter_preset,
     delete_filter_preset,
+    get_startup_status,
+    set_startup_status,
+    get_db_commit_seq,
 )
 from .scanner import (
     scan_directory,
@@ -110,6 +114,7 @@ from .scanner import (
     compute_thumbnail_hash,
     extract_metadata,
     resolve_portable_path,
+    resolve_drive_online_path,
     is_raw_file,
     extract_raw_full_preview,
     check_folder_diff,
@@ -128,6 +133,9 @@ from .storage_manager import (
     is_path_in_storage,
     is_photo_in_storage,
     resolve_storage_target_dir,
+    resolve_storage_target_with_root,
+    enable_volume_loome,
+    disable_volume_loome,
     get_storage_folders,
     create_storage_subfolder,
     rename_storage_subfolder,
@@ -137,6 +145,7 @@ from .storage_manager import (
     rename_photo_in_storage,
     batch_rename_photos_in_storage,
     export_storage_folder,
+    get_storage_task_status,
 )
 from .heartbeat import (
     record_heartbeat,
@@ -185,8 +194,7 @@ logger = logging.getLogger("photo_manager.app")
 # プロジェクトルートディレクトリ
 BASE_DIR = Path(__file__).resolve().parent.parent
 FRONTEND_DIR = BASE_DIR / "frontend"
-UPLOAD_DIR = BASE_DIR / "storage"
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+UPLOAD_DIR = STORAGE_DIR
 IMPORT_DIR = BASE_DIR / "take_out"
 IMPORT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -197,12 +205,17 @@ _mobile_sync_event: Dict[str, int] = {"seq": 0, "applied_count": 0}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """起動時にDBを初期化し、旧carryからstorageへの移行・リンク切れ写真整理・無効な(0,0)GPSエラー整理を行い、単体モバイルHTMLを最新化する"""
+    """起動時にDBを初期化し、旧carryからstorage/Loomeへの移行・リンク切れ写真整理・無効な(0,0)GPSエラー整理を行い、単体モバイルHTMLを最新化する"""
+    set_startup_status(is_ready=False, phase="init", message="データベースを初期化中...", detail="キャッシュとスキーマを確認しています", percent=10)
     initialize_database()
+    set_startup_status(is_ready=False, phase="storage", message="Loomeを確認中...", detail="Loome フォルダの整合性を確認しています", percent=88)
     migrate_carry_to_storage()
-    cleanup_missing_upload_photos(UPLOAD_DIR)
+    active_loome_dir = ensure_storage_dir()
+    cleanup_missing_upload_photos(active_loome_dir)
     cleanup_invalid_zero_gps()
+    set_startup_status(is_ready=False, phase="mobile", message="モバイル同期バンドルを準備中...", detail="Tetheract_Mobile.html を確認しています", percent=95)
     ensure_standalone_mobile_html()
+    set_startup_status(is_ready=True, phase="ready", message="準備完了", detail="", percent=100)
 
     # 既存DBで lens_model が未設定の一眼カメラ写真（Panasonic MakerNote / XMP等）をバックグラウンドで自動補完
     # ※起動直後の「すべての写真」読み込みとディスクI/O・GILが競合しないよう15秒遅延させ、かつ一度チェック済みの環境ではスキップする
@@ -350,6 +363,7 @@ class ScanRequest(BaseModel):
     cleanup_orphans: bool = False
     recursive: bool = True
     auto_ai_tag: bool = False
+    volume_serial: Optional[str] = None
 
 
 class AITagFolderRequest(BaseModel):
@@ -524,6 +538,18 @@ def api_shutdown():
     return {"status": "shutting_down"}
 
 
+@app.get("/api/startup/status")
+def api_startup_status():
+    """起動時・DBマイグレーションの進捗状態を返す"""
+    return get_startup_status()
+
+
+@app.get("/api/storage/status")
+def api_storage_task_status():
+    """現在実行中の storage ファイル操作（インポート・移動・リネーム・エクスポート）の進捗状態を返す"""
+    return get_storage_task_status()
+
+
 @app.get("/api/photos/missing")
 def api_get_missing_photos():
     """実ファイルが削除・移動されて見つからない写真一覧を取得する"""
@@ -543,6 +569,9 @@ def api_get_missing_photos_count():
 @app.get("/api/photos/unlinked-count")
 def api_get_unlinked_photos_count():
     """実体パスとの紐付けが外れた（リンク消失）写真の件数を取得する"""
+    counts = get_connection_counts()
+    if isinstance(counts, dict):
+        return {"count": counts["unlinked_count"], **counts}
     count = get_unlinked_photos_count()
     return {"count": count}
 
@@ -552,6 +581,9 @@ def api_get_duplicates_count():
     """ライブラリ全体で他フォルダに重複（同一撮影日時＋サイズ）が存在する写真の件数を取得する"""
     count = get_duplicate_photos_count()
     return {"count": count}
+
+
+_API_PHOTOS_RESPONSE_CACHE: Dict[Tuple, Tuple[float, Response]] = {}
 
 
 @app.get("/api/photos")
@@ -578,6 +610,7 @@ def api_get_photos(
     exclude_folder: Optional[str] = None,
     missing_only: bool = False,
     unlinked_only: bool = False,
+    include_unlinked: bool = False,
     duplicates_only: bool = False,
     country: Optional[str] = None,
     state: Optional[str] = None,
@@ -597,6 +630,20 @@ def api_get_photos(
         for p in photos:
             p["is_storage"] = is_photo_in_storage(p)
         return _fast_json({"photos": photos, "count": len(photos)})
+
+    now_req_ts = time.monotonic()
+    resp_cache_key = (
+        get_db_commit_seq(),
+        folder, volume_serial, serial_mode, year_month, year_months, dates,
+        cameras, exclude_cameras, excluded_cameras, lenses, exclude_lenses, excluded_lenses,
+        ratings, search, include_tags, exclude_tags, untagged, sort_by, stacked,
+        exclude_folder, unlinked_only, include_unlinked, duplicates_only,
+        country, state, city, no_location, lab_filter, on_this_day,
+        focal_range, aperture_range, attr_filter, tag_and_roots, tag_group_op,
+    )
+    cached_resp = _API_PHOTOS_RESPONSE_CACHE.get(resp_cache_key)
+    if cached_resp and (now_req_ts - cached_resp[0]) <= _PHOTO_DIR_SCAN_TTL:
+        return cached_resp[1]
 
     inc_list = [t.strip() for t in include_tags.split(",") if t.strip()] if include_tags else None
     exc_list = [t.strip() for t in exclude_tags.split(",") if t.strip()] if exclude_tags else None
@@ -631,6 +678,7 @@ def api_get_photos(
         stacked=stacked,
         exclude_folder=exclude_folder,
         unlinked_only=unlinked_only,
+        include_unlinked=include_unlinked,
         duplicates_only=duplicates_only,
         country=country,
         state=state,
@@ -661,15 +709,18 @@ def api_get_photos(
     if uncached_dir_keys:
         def _scan_one_dir(dk: Tuple[str, Optional[str]]):
             d_path, v_ser = dk
-            resolved_dir, is_dir_online = resolve_portable_path(d_path, expected_serial=v_ser)
-            is_dir_storage = is_path_in_storage(d_path)
+            resolved_dir, is_dir_online = resolve_drive_online_path(d_path, expected_serial=v_ser)
+            is_dir_storage = is_path_in_storage(d_path, volume_serial=v_ser)
             f_set = None
             if is_dir_online and resolved_dir:
-                try:
-                    with os.scandir(str(resolved_dir)) as it:
-                        f_set = {entry.name.lower() for entry in it}
-                except Exception as e:
-                    logger.warning(f"ディレクトリスキャンキャッシュ取得失敗 ({resolved_dir}): {e}")
+                if resolved_dir.exists():
+                    try:
+                        with os.scandir(str(resolved_dir)) as it:
+                            f_set = {entry.name.lower() for entry in it}
+                    except Exception as e:
+                        logger.warning(f"ディレクトリスキャンキャッシュ取得失敗 ({resolved_dir}): {e}")
+                else:
+                    f_set = set()
             return dk, (now_ts, resolved_dir, is_dir_online, is_dir_storage, f_set)
 
         if len(uncached_dir_keys) > 4:
@@ -683,6 +734,11 @@ def api_get_photos(
                 _PHOTO_DIR_SCAN_CACHE[dk] = entry_val
 
     for p in photos:
+        if p.get("is_unlinked"):
+            p["is_offline"] = False
+            p["is_missing"] = False
+            p["is_storage"] = False
+            continue
         dir_path = p.get("directory_path")
         dir_key = (dir_path, p.get("volume_serial") or None) if dir_path else None
         cached = _PHOTO_DIR_SCAN_CACHE.get(dir_key) if dir_key else None
@@ -698,7 +754,9 @@ def api_get_photos(
         p["is_storage"] = is_dir_storage
         if not is_offline:
             fname = p.get("file_name") or os.path.basename(p.get("file_path", ""))
-            if file_set is not None and fname and fname.lower() in file_set:
+            if file_set is not None:
+                p["is_missing"] = not (bool(fname) and fname.lower() in file_set)
+            elif fname and False:
                 p["is_missing"] = False
             else:
                 f_path, is_f_online = resolve_portable_path(
@@ -709,7 +767,15 @@ def api_get_photos(
         else:
             p["is_missing"] = False
 
-    return _fast_json({"photos": photos, "count": len(photos)})
+    resp = _fast_json({"photos": photos, "count": len(photos)})
+    if len(_API_PHOTOS_RESPONSE_CACHE) >= 12:
+        try:
+            oldest_key = next(iter(_API_PHOTOS_RESPONSE_CACHE))
+            _API_PHOTOS_RESPONSE_CACHE.pop(oldest_key, None)
+        except StopIteration:
+            pass
+    _API_PHOTOS_RESPONSE_CACHE[resp_cache_key] = (now_req_ts, resp)
+    return resp
 
 
 @app.get("/api/photo/{photo_id}")
@@ -725,6 +791,9 @@ def api_get_photo_detail(photo_id: int):
         _, is_dir_online = resolve_portable_path(dir_path, expected_serial=vol_serial)
         photo["is_offline"] = not is_dir_online
     photo["is_storage"] = is_photo_in_storage(photo)
+    if photo.get("is_unlinked"):
+        photo["is_offline"] = False
+        photo["is_storage"] = False
 
     # XMPサイドカー情報の付与
     file_path_str = photo.get("file_path")
@@ -936,7 +1005,8 @@ def api_get_tags():
     tags = get_all_tags_summary()
     untagged_count = get_untagged_count()
     total_count = get_total_photos_count()
-    return _fast_json({"tags": tags, "untagged_count": untagged_count, "total_count": total_count})
+    conn_counts = get_connection_counts()
+    return _fast_json({"tags": tags, "untagged_count": untagged_count, "total_count": total_count, **conn_counts})
 
 
 @app.delete("/api/tags/{tag:path}")
@@ -2073,8 +2143,8 @@ class FolderDiffRequest(BaseModel):
 def api_check_folder_diff(req: FolderDiffRequest):
     """フォルダ直下の実ファイルとDBレコードの高速差分（追加・削除・変更）を判定する"""
     try:
-        target_path, is_online = resolve_portable_path(req.folder_path, expected_serial=req.volume_serial)
-        if not is_online:
+        target_path, is_drive_online = resolve_drive_online_path(req.folder_path, expected_serial=req.volume_serial)
+        if not is_drive_online:
             return {"status": "ok", "has_changes": False, "is_offline": True, "added": 0, "deleted": 0, "modified": 0}
         diff = check_folder_diff(str(target_path), volume_serial=req.volume_serial)
         return {"status": "ok", **diff}
@@ -2408,6 +2478,37 @@ def api_update_volume_name(volume_serial: str, req: UpdateVolumeNameRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class EnableVolumeLoomeRequest(BaseModel):
+    drive_letter: Optional[str] = None
+
+
+@app.post("/api/volumes/{volume_serial}/loome")
+def api_enable_volume_loome(volume_serial: str, req: Optional[EnableVolumeLoomeRequest] = None):
+    """接続中の指定ボリューム（ドライブ）直下に Loome フォルダを作成し、外部 Loome として登録する"""
+    try:
+        drive_letter = req.drive_letter if req else None
+        res = enable_volume_loome(volume_serial, drive_letter=drive_letter)
+        clear_folders_fs_cache()
+        return res
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/volumes/{volume_serial}/loome")
+def api_disable_volume_loome(volume_serial: str):
+    """指定ボリュームの Loome 登録を解除する（実フォルダおよび写真ファイルは削除しない）"""
+    try:
+        res = disable_volume_loome(volume_serial)
+        clear_folders_fs_cache()
+        return res
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 def _get_windows_quick_access() -> list:
     """Windowsの主要な特殊フォルダ（よく使う場所）の正確なパスを取得する"""
     home = Path.home()
@@ -2727,7 +2828,12 @@ def api_get_scan_status():
 def api_scan_folder(req: ScanRequest):
     """指定されたフォルダをスキャンしてインデックスを更新する（指紋不一致時は403でブロック）"""
     try:
-        result = scan_directory(req.folder_path, cleanup_orphans=req.cleanup_orphans, recursive=req.recursive)
+        result = scan_directory(
+            req.folder_path,
+            cleanup_orphans=req.cleanup_orphans,
+            recursive=req.recursive,
+            volume_serial=req.volume_serial,
+        )
         if getattr(req, "auto_ai_tag", False):
             from .ai import get_ai_worker
             get_ai_worker().start_tagging(folder_path=req.folder_path)
@@ -2754,19 +2860,18 @@ class PhotoUploadRequest(BaseModel):
 
 @app.post("/api/upload")
 def api_upload_photos(req: PhotoUploadRequest):
-    """ブラウザからのドラッグ＆ドロップまたはファイル選択で直接 storage へ写真・付随サイドカーを追加する (Base64方式)"""
-    STORAGE_DIR.mkdir(parents=True, exist_ok=True)
-    add_scan_root(str(STORAGE_DIR))
-
+    """ブラウザからのドラッグ＆ドロップまたはファイル選択で直接 Loome へ写真・付随サイドカーを追加する (Base64方式)"""
     dest_spec = req.destination or req.target_folder
     try:
-        if not dest_spec or not str(dest_spec).strip():
-            target_dir = STORAGE_DIR
-        else:
-            target_dir = resolve_storage_target_dir(dest_spec, must_exist=False)
+        target_dir, active_root = resolve_storage_target_with_root(dest_spec, must_exist=False)
         target_dir.mkdir(parents=True, exist_ok=True)
+        add_scan_root(str(active_root))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+    from .volume_info import get_volume_info
+    vol_info = get_volume_info(str(target_dir))
+    upload_vsn = vol_info["serial"] if vol_info else None
 
     saved_photos = []
     saved_sidecars = []
@@ -2823,6 +2928,8 @@ def api_upload_photos(req: PhotoUploadRequest):
 
             # メタデータ抽出 & DB登録
             meta = extract_metadata(dest_path)
+            if upload_vsn:
+                meta["volume_serial"] = upload_vsn
             upsert_photo(meta)
             saved_photos.append(dest_path.name)
         except Exception as e:

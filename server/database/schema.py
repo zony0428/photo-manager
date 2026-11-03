@@ -31,6 +31,41 @@ from .tags import (
 
 logger = logging.getLogger(__name__)
 
+# 起動・DBマイグレーション進捗状態（スプラッシュ画面・ステータスポーリング用）
+_startup_status: Dict[str, Any] = {
+    "is_ready": False,
+    "phase": "starting",
+    "message": "ライブラリを初期化しています...",
+    "detail": "",
+    "percent": -1,
+}
+
+
+def get_startup_status() -> Dict[str, Any]:
+    """起動・DBマイグレーションの現在ステータスを返す"""
+    return dict(_startup_status)
+
+
+def set_startup_status(
+    *,
+    is_ready: Any = None,
+    phase: Any = None,
+    message: Any = None,
+    detail: Any = None,
+    percent: Any = None,
+) -> None:
+    """起動・DBマイグレーションのステータスを更新する"""
+    if is_ready is not None:
+        _startup_status["is_ready"] = bool(is_ready)
+    if phase is not None:
+        _startup_status["phase"] = str(phase)
+    if message is not None:
+        _startup_status["message"] = str(message)
+    if detail is not None:
+        _startup_status["detail"] = str(detail)
+    if percent is not None:
+        _startup_status["percent"] = int(percent)
+
 
 def _create_photos_indexes(cursor) -> None:
     """photos / photo_links / photo_tags / thumbnails の全インデックスとトリガーを構築する"""
@@ -69,6 +104,7 @@ def _create_photos_indexes(cursor) -> None:
     cursor.execute("DROP INDEX IF EXISTS idx_photo_tags_tag")
     cursor.execute("DROP INDEX IF EXISTS idx_photo_tags_photo")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_photo_tags_source ON photo_tags(source)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_thumbnails_dims ON thumbnails(photo_id, width, height)")
 
     # photos 行削除時に photo_links / photo_tags / thumbnails を確実に連動削除するトリガー
     cursor.execute(
@@ -86,6 +122,7 @@ def _create_photos_indexes(cursor) -> None:
 
 def initialize_database() -> None:
     """データベースの初期テーブル構造を作成する"""
+    set_startup_status(is_ready=False, phase="schema", message="データベース構造を確認しています...", detail="", percent=10)
     with get_connection() as conn:
         conn.execute("PRAGMA journal_mode = WAL")
         cursor = conn.cursor()
@@ -260,7 +297,7 @@ def initialize_database() -> None:
         # タグ定義テーブル（写真にまだ1枚も付与されていない空の親タグ・新規タグをツリー保持し、固有キー・ショート名・ピン留めを管理）
         _ensure_tag_definitions_table(cursor)
 
-        # ボリューム情報管理テーブル（VSNをキーにラベル・ユーザー識別名を管理）
+        # ボリューム情報管理テーブル（VSNをキーにラベル・ユーザー識別名・Loome有効状態を管理）
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS volumes (
@@ -268,6 +305,7 @@ def initialize_database() -> None:
                 volume_label  TEXT NOT NULL DEFAULT '',
                 custom_name   TEXT NOT NULL DEFAULT '',
                 drive_letter  TEXT,
+                loome_enabled INTEGER NOT NULL DEFAULT 0,
                 last_seen_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """
@@ -276,6 +314,8 @@ def initialize_database() -> None:
         existing_vol_cols = {row["name"] for row in cursor.fetchall()}
         if "custom_name" not in existing_vol_cols:
             cursor.execute("ALTER TABLE volumes ADD COLUMN custom_name TEXT NOT NULL DEFAULT ''")
+        if "loome_enabled" not in existing_vol_cols:
+            cursor.execute("ALTER TABLE volumes ADD COLUMN loome_enabled INTEGER NOT NULL DEFAULT 0")
 
         # サムネイル BLOB 格納テーブル（photo_id INTEGER PRIMARY KEY による ROWID 直結構造）
         cursor.execute(
@@ -403,6 +443,7 @@ def initialize_database() -> None:
         # --- マイグレーション: 理想データ構造（photos 重複排除 + photo_links + ROWID直結 thumbnails + WITHOUT ROWID photo_tags） ---
         cursor.execute("SELECT 1 FROM migrations WHERE name = 'ideal_photo_links_v1'")
         if not cursor.fetchone():
+            set_startup_status(phase="migration_links", message="データベースを最新構造へ移行・安全バックアップ中...", detail="ideal_photo_links_v1", percent=45)
             _migrate_ideal_photo_links_v1(cursor, conn)
             cursor.execute("INSERT INTO migrations (name) VALUES ('ideal_photo_links_v1')")
             conn.commit()
@@ -416,6 +457,7 @@ def initialize_database() -> None:
         # --- マイグレーション: v1.2.0 初版DDL再構築時の CASCADE DELETE で消失した photo_tags / thumbnails を事前バックアップから自動復元 ---
         cursor.execute("SELECT 1 FROM migrations WHERE name = 'restore_cascaded_tags_and_thumbs_v1'")
         if not cursor.fetchone():
+            set_startup_status(phase="migration_restore", message="タグ・サムネイル整合性を検証・復元中...", detail="restore_cascaded_tags_and_thumbs_v1", percent=70)
             _restore_cascaded_tags_and_thumbs_from_backup(cursor, conn)
             cursor.execute("INSERT INTO migrations (name) VALUES ('restore_cascaded_tags_and_thumbs_v1')")
             conn.commit()
@@ -428,6 +470,8 @@ def initialize_database() -> None:
 
         # 起動時の常時安全パージ: photosテーブルに存在しない孤立サムネイルを確実に削除
         cursor.execute("DELETE FROM thumbnails WHERE photo_id NOT IN (SELECT id FROM photos)")
+        # リンク消失写真 (is_unlinked = 1) に残存していた旧 volume_serial をクリア
+        cursor.execute("UPDATE photos SET volume_serial = NULL WHERE is_unlinked = 1 AND volume_serial IS NOT NULL")
         conn.commit()
 
         # ドライブ直下などの無効なスキャンルートを安全に削除
@@ -456,6 +500,7 @@ def initialize_database() -> None:
         # クエリオプティマイザのインデックス統計を最新化
         cursor.execute("PRAGMA optimize")
         conn.commit()
+        set_startup_status(is_ready=True, phase="ready", message="準備完了", detail="", percent=100)
 
 
 def _upgrade_legacy_schema_ddl(cursor, conn) -> bool:

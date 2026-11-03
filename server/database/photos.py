@@ -146,6 +146,7 @@ def _sync_photo_links_state(
             UPDATE photos
             SET link_count = 0,
                 is_unlinked = 1,
+                volume_serial = NULL,
                 stack_id = NULL,
                 is_stack_primary = 1,
                 stack_type = NULL,
@@ -815,6 +816,7 @@ def get_photos(
     limit: int = 0,
     exclude_folder: Optional[str] = None,
     unlinked_only: bool = False,
+    include_unlinked: bool = False,
     duplicates_only: bool = False,
     country: Optional[str] = None,
     state: Optional[str] = None,
@@ -831,6 +833,8 @@ def get_photos(
     serial_mode: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """条件に合致する写真一覧を取得する（photo_links 対応：複数メディア間でユニーク写真を1行管理しつつ、フォルダ/メディア指定時は該当リンクのパスを返却）"""
+    if ratings == [-1]:
+        stacked = False
     if ratings is None:
         ratings = [0, 1, 2]
     query = """
@@ -843,8 +847,8 @@ def get_photos(
                CASE WHEN t.photo_id IS NOT NULL THEN 1 ELSE 0 END AS has_thumbnail,
                CASE WHEN COALESCE(p.link_count, 1) > 1 THEN p.link_count ELSE 1 END AS duplicate_count
         FROM photos p
-        LEFT JOIN volumes v ON p.volume_serial = v.volume_serial
-        LEFT JOIN thumbnails t ON p.id = t.photo_id
+        LEFT JOIN volumes v ON p.volume_serial = v.volume_serial AND COALESCE(p.is_unlinked, 0) = 0
+        LEFT JOIN thumbnails t INDEXED BY idx_thumbnails_dims ON p.id = t.photo_id
         WHERE p.rating IN ({})
     """.format(','.join(['?'] * len(ratings)))
     params: List[Any] = list(ratings)
@@ -853,7 +857,10 @@ def get_photos(
     if unlinked_only:
         query += " AND p.is_unlinked = 1"
     else:
-        query += " AND (p.is_unlinked IS NULL OR p.is_unlinked = 0)"
+        s_mode_chk = (serial_mode or "").strip().lower()
+        has_link_chk = bool(folder or (volume_serial and volume_serial.strip()) or s_mode_chk == "null")
+        if not (include_unlinked and not has_link_chk and not duplicates_only):
+            query += " AND (p.is_unlinked IS NULL OR p.is_unlinked = 0)"
 
     # 重複写真（複数メディア/複数フォルダにリンクを持つ写真）のみ
     if duplicates_only:
@@ -1264,7 +1271,14 @@ def get_photos(
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.row_factory = None
-        cursor.execute(query, params)
+        try:
+            cursor.execute(query, params)
+        except sqlite3.OperationalError as oe:
+            if "idx_thumbnails_dims" in str(oe):
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_thumbnails_dims ON thumbnails(photo_id, width, height)")
+                cursor.execute(query, params)
+            else:
+                raise
         col_names = [d[0] for d in cursor.description]
         rows = cursor.fetchall()
         photos = [dict(zip(col_names, row)) for row in rows]
@@ -1314,35 +1328,67 @@ def get_photos(
                 import time as _time
                 now_ts = _time.monotonic()
                 unique_dir_keys = {
-                    (p.get("directory_path"), p.get("volume_serial") or "")
+                    (p.get("directory_path"), p.get("volume_serial") or None)
                     for p in photos
                     if p.get("directory_path")
                 }
+                uncached_xmp_dirs = []
                 for d_path, v_ser in unique_dir_keys:
                     cache_key = (d_path, v_ser)
                     cached = _PHOTO_DIR_SCAN_CACHE.get(cache_key)
                     if cached and (now_ts - cached[0]) <= _PHOTO_DIR_SCAN_TTL:
-                        dir_files_map[cache_key] = cached[4]
+                        dir_files_map[cache_key] = {n for n in (cached[4] or ()) if n.endswith(".xmp")}
                     else:
-                        resolved_dir, is_online = resolve_portable_path(d_path, expected_serial=v_ser or None)
+                        uncached_xmp_dirs.append(cache_key)
+
+                if uncached_xmp_dirs:
+                    from ..storage_manager import is_path_in_storage
+
+                    def _scan_dir_for_xmp(ck: Tuple[str, Optional[str]]):
+                        dp, vs = ck
+                        resolved_dir, is_online = resolve_portable_path(dp, expected_serial=vs or None)
+                        is_stor = is_path_in_storage(dp, volume_serial=vs)
                         if is_online and resolved_dir:
                             try:
                                 with os.scandir(str(resolved_dir)) as it:
-                                    dir_files_map[cache_key] = {entry.name.lower() for entry in it}
+                                    all_f = {entry.name.lower() for entry in it}
+                                    xmp_f = {n for n in all_f if n.endswith(".xmp")}
+                                    return ck, xmp_f, (now_ts, resolved_dir, True, is_stor, all_f)
                             except Exception as e:
                                 logger.debug(f"XMP判定用ディレクトリスキャン失敗 ({resolved_dir}): {e}")
-                                dir_files_map[cache_key] = None
-                        else:
-                            dir_files_map[cache_key] = None
+                                return ck, set(), (now_ts, resolved_dir, True, is_stor, set())
+                        return ck, set(), (now_ts, resolved_dir, False, is_stor, None)
+
+                    if len(uncached_xmp_dirs) > 4:
+                        from concurrent.futures import ThreadPoolExecutor
+                        with ThreadPoolExecutor(max_workers=8) as pool:
+                            for ck, xmp_f, cache_entry in pool.map(_scan_dir_for_xmp, uncached_xmp_dirs):
+                                dir_files_map[ck] = xmp_f
+                                _PHOTO_DIR_SCAN_CACHE[ck] = cache_entry
+                    else:
+                        for ck in uncached_xmp_dirs:
+                            _, xmp_f, cache_entry = _scan_dir_for_xmp(ck)
+                            dir_files_map[ck] = xmp_f
+                            _PHOTO_DIR_SCAN_CACHE[ck] = cache_entry
             except Exception as e:
                 logger.debug(f"XMP判定キャッシュ準備スキップ: {e}")
 
             for p in photos:
                 p["original_date_taken"] = p.get("original_date_taken")
                 p["file_path"] = _strip_vsn_prefix_raw(p.get("file_path"))
+                if p.get("is_unlinked"):
+                    p["volume_serial"] = None
+                    p["volume_label"] = None
+                    p["volume_custom_name"] = ""
+                    p["volume_drive"] = None
+                    p["has_xmp"] = False
+                    continue
                 d_path = p.get("directory_path")
-                v_ser = p.get("volume_serial") or ""
+                v_ser = p.get("volume_serial") or None
                 f_set = dir_files_map.get((d_path, v_ser)) if d_path else None
+                if not f_set:
+                    p["has_xmp"] = False
+                    continue
                 p["has_xmp"] = _has_xmp_sidecar_fast(
                     p.get("file_path"),
                     p.get("paired_raw_path"),
@@ -1452,6 +1498,53 @@ def get_photos(
         return photos
 
 
+def _sync_stack_primary_by_rating(cursor, stack_ids: List[int]) -> None:
+    """
+    指定された stack_id 群について、メンバーの評価（優=2 > 良=1 > 可=0 > 棄=-1）に基づき
+    代表写真（is_stack_primary = 1）を自動再選出する。
+    同評価の場合はブラケットなら ±0.0 EV に最も近いコマ、連写・重複なら先頭コマを代表とする。
+    """
+    unique_sids = list({int(sid) for sid in stack_ids if sid is not None})
+    for sid in unique_sids:
+        cursor.execute(
+            """
+            SELECT id, rating, exposure_bias, stack_type, is_raw, paired_raw_path
+            FROM photos
+            WHERE stack_id = ? AND IFNULL(is_unlinked, 0) = 0
+            ORDER BY date_taken ASC, subsec_time ASC, id ASC
+            """,
+            (sid,),
+        )
+        members = [dict(r) for r in cursor.fetchall()]
+        if not members:
+            continue
+        candidates = [
+            m for m in members
+            if not (m.get("is_raw") and m.get("paired_raw_path"))
+        ] or members
+        stack_type = candidates[0].get("stack_type") or ""
+        if stack_type == "bracket":
+            best = min(
+                enumerate(candidates),
+                key=lambda kv: (-int(kv[1].get("rating") or 0), abs(float(kv[1].get("exposure_bias") or 0.0)), kv[0]),
+            )[1]
+        else:
+            best = max(
+                enumerate(candidates),
+                key=lambda kv: (int(kv[1].get("rating") or 0), -kv[0]),
+            )[1]
+        new_pri_id = best["id"]
+        cursor.execute(
+            """
+            UPDATE photos
+            SET stack_id = ?,
+                is_stack_primary = CASE WHEN id = ? THEN 1 ELSE 0 END
+            WHERE stack_id = ?
+            """,
+            (new_pri_id, new_pri_id, sid),
+        )
+
+
 def batch_update_rating(photo_ids: List[int], rating: int) -> int:
     """複数の写真の評価を一括更新する（-1:棄, 0:可, 1:良, 2:優）"""
     if not photo_ids:
@@ -1459,15 +1552,23 @@ def batch_update_rating(photo_ids: List[int], rating: int) -> int:
     with get_connection() as conn:
         cursor = conn.cursor()
         updated = 0
+        affected_stack_ids = []
         chunk_size = 500
         for i in range(0, len(photo_ids), chunk_size):
             chunk = photo_ids[i:i + chunk_size]
             placeholders = ",".join(["?"] * len(chunk))
             cursor.execute(
+                f"SELECT DISTINCT stack_id FROM photos WHERE id IN ({placeholders}) AND stack_id IS NOT NULL",
+                chunk,
+            )
+            affected_stack_ids.extend(r["stack_id"] for r in cursor.fetchall() if r["stack_id"] is not None)
+            cursor.execute(
                 f"UPDATE photos SET rating = ?, updated_at = CURRENT_TIMESTAMP WHERE id IN ({placeholders})",
                 [rating] + chunk,
             )
             updated += cursor.rowcount
+        if affected_stack_ids:
+            _sync_stack_primary_by_rating(cursor, affected_stack_ids)
         conn.commit()
         return updated
 
@@ -1476,7 +1577,10 @@ def get_total_photos_count() -> int:
     """ライブラリに登録されている全写真の物理総数を返す"""
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) as count FROM photos")
+        cursor.execute(
+            "SELECT COUNT(*) as count FROM photos "
+            "WHERE NOT (COALESCE(is_raw, 0) = 1 AND paired_raw_path IS NOT NULL AND paired_raw_path != '')"
+        )
         row = cursor.fetchone()
         return row["count"] if row else 0
 
@@ -1492,7 +1596,7 @@ def get_photo_by_id(photo_id: int) -> Optional[Dict[str, Any]]:
                    COALESCE(v.custom_name, '') AS volume_custom_name,
                    v.drive_letter AS volume_drive
             FROM photos p
-            LEFT JOIN volumes v ON p.volume_serial = v.volume_serial
+            LEFT JOIN volumes v ON p.volume_serial = v.volume_serial AND COALESCE(p.is_unlinked, 0) = 0
             WHERE p.id = ?
             """,
             (photo_id,),
@@ -1503,11 +1607,18 @@ def get_photo_by_id(photo_id: int) -> Optional[Dict[str, Any]]:
         photo = dict(row)
         photo["file_path"] = _strip_vsn_prefix_raw(photo.get("file_path"))
         photo["original_date_taken"] = row["original_date_taken"] if "original_date_taken" in row.keys() else None
-        photo["has_xmp"] = _has_xmp_sidecar_fast(
-            photo.get("file_path"),
-            photo.get("paired_raw_path"),
-            volume_serial=photo.get("volume_serial"),
-        )
+        if photo.get("is_unlinked"):
+            photo["volume_serial"] = None
+            photo["volume_label"] = None
+            photo["volume_custom_name"] = ""
+            photo["volume_drive"] = None
+            photo["has_xmp"] = False
+        else:
+            photo["has_xmp"] = _has_xmp_sidecar_fast(
+                photo.get("file_path"),
+                photo.get("paired_raw_path"),
+                volume_serial=photo.get("volume_serial"),
+            )
         cursor.execute("SELECT tag, source, confidence FROM photo_tags WHERE photo_id = ? ORDER BY tag ASC", (photo_id,))
         tag_rows = cursor.fetchall()
         photo["tags"] = [r["tag"] for r in tag_rows]
@@ -1569,15 +1680,21 @@ def get_duplicate_photos_count() -> int:
 
 
 def update_rating(photo_id: int, rating: int) -> bool:
-    """評価を更新する（-1:棄, 0:可, 1:良, 2:優）"""
+    """評価を更新する（-1:棄, 0:可, 1:良, 2:優）。スタック所属時は評価優先で代表写真を自動再選出する。"""
     with get_connection() as conn:
         cursor = conn.cursor()
+        cursor.execute("SELECT stack_id FROM photos WHERE id = ?", (photo_id,))
+        row = cursor.fetchone()
+        stack_id = row["stack_id"] if row else None
         cursor.execute(
             "UPDATE photos SET rating = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (rating, photo_id),
         )
+        changed = cursor.rowcount > 0
+        if stack_id is not None:
+            _sync_stack_primary_by_rating(cursor, [stack_id])
         conn.commit()
-        return cursor.rowcount > 0
+        return changed
 
 
 def _parse_photo_datetime(dt_str: Optional[str]) -> Optional[datetime]:
@@ -2722,77 +2839,16 @@ def cleanup_missing_photos_in_folder(
     volume_serial: Optional[str] = None,
 ) -> int:
     """
-    指定フォルダのファイル存在チェックを行い、実ファイルが消えているリンクを photo_links から削除する。
-    他メディア・他フォルダに有効なリンクが残っている写真は残存リンクを代表にして保護し、
-    有効なリンクが0本になった写真のみ DB（photos・photo_tags・thumbnails）から削除する。
+    指定フォルダのファイル存在チェックを行い、実ファイルが消えているリンクを photo_links から解除する。
+    - 他メディア・他フォルダに有効なリンクが残っている写真は残存リンクを代表にして通常表示（is_unlinked = 0）を維持する。
+    - 有効なリンクが0本になった写真は DB から物理削除せず、is_unlinked = 1（「リンク消失の写真」リスト）へ移行して
+      明示的にパージされるまでサムネイル・タグ・評価を保持する。
     """
-    from ..scanner import resolve_portable_path
-    norm_win = os.path.normpath(directory_path).rstrip("\\/")
-    sql_frag, sql_params = _build_folder_missing_filter(
-        directory_path,
+    return unlink_missing_photos_in_folder(
+        directory_path=directory_path,
         recursive=recursive,
         volume_serial=volume_serial,
-        column_name="pl.directory_path",
-        vsn_column="pl.volume_serial",
     )
-    if volume_serial and volume_serial.strip():
-        vsn_sql, vsn_params = _vsn_in_sql("pl.volume_serial", volume_serial.strip())
-        sql_frag = f"({sql_frag}) AND ({vsn_sql} OR pl.volume_serial = '')"
-        sql_params.extend(vsn_params)
-
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            f"""
-            SELECT pl.id AS link_id, pl.photo_id, pl.file_path, pl.directory_path, pl.volume_serial
-            FROM photo_links pl
-            WHERE {sql_frag}
-            """,
-            sql_params,
-        )
-        rows = cursor.fetchall()
-        missing_link_ids: List[int] = []
-        affected_photo_ids: set = set()
-        for r in rows:
-            v_ser = r["volume_serial"] or None
-            _, is_dir_online = resolve_portable_path(r["directory_path"], expected_serial=v_ser)
-            if not is_dir_online:
-                continue
-            f_path, _ = resolve_portable_path(r["file_path"], expected_serial=v_ser)
-            if not os.path.exists(str(f_path)):
-                missing_link_ids.append(r["link_id"])
-                affected_photo_ids.add(r["photo_id"])
-
-        if missing_link_ids:
-            for i in range(0, len(missing_link_ids), 500):
-                chunk = missing_link_ids[i:i + 500]
-                placeholders = ",".join(["?"] * len(chunk))
-                cursor.execute(f"DELETE FROM photo_links WHERE id IN ({placeholders})", chunk)
-
-            zero_link_photo_ids: List[int] = []
-            for pid in affected_photo_ids:
-                rem = _sync_photo_links_state(cursor, pid)
-                if rem == 0:
-                    zero_link_photo_ids.append(pid)
-
-            if zero_link_photo_ids:
-                for i in range(0, len(zero_link_photo_ids), 500):
-                    chunk = zero_link_photo_ids[i:i + 500]
-                    placeholders = ",".join(["?"] * len(chunk))
-                    cursor.execute(f"DELETE FROM photo_tags WHERE photo_id IN ({placeholders})", chunk)
-                    cursor.execute(f"DELETE FROM thumbnails WHERE photo_id IN ({placeholders})", chunk)
-                    cursor.execute(f"DELETE FROM photos WHERE id IN ({placeholders})", chunk)
-
-            conn.commit()
-
-            try:
-                from .stacks import recalculate_stacks
-                recalculate_stacks(norm_win, recursive=recursive)
-            except Exception as stack_err:
-                print(f"[WARN] スタック修復エラー（削除自体は完了）: {stack_err}")
-
-            return len(missing_link_ids)
-        return 0
 
 
 def cleanup_missing_upload_photos(upload_dir: Path) -> int:
@@ -2975,7 +3031,7 @@ def get_missing_photos(limit: int = 0) -> List[Dict[str, Any]]:
     実ファイルが削除または移動されて見つからない写真リンクを抽出して返す。
     未接続（オフライン）の外部ドライブ・別SDカードのリンクは除外され、安全に保護される。
     """
-    from ..scanner import resolve_portable_path
+    from ..scanner import resolve_portable_path, resolve_drive_online_path
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -2995,7 +3051,7 @@ def get_missing_photos(limit: int = 0) -> List[Dict[str, Any]]:
             FROM photo_links pl
             INNER JOIN photos p ON pl.photo_id = p.id
             LEFT JOIN volumes v ON pl.volume_serial = v.volume_serial
-            LEFT JOIN thumbnails t ON p.id = t.photo_id
+            LEFT JOIN thumbnails t INDEXED BY idx_thumbnails_dims ON p.id = t.photo_id
             WHERE p.rating IN (0, 1, 2)
               AND (p.is_unlinked IS NULL OR p.is_unlinked = 0)
             ORDER BY p.date_taken DESC, pl.file_name ASC
@@ -3015,9 +3071,9 @@ def get_missing_photos(limit: int = 0) -> List[Dict[str, Any]]:
             v_ser = r["link_volume_serial"] or ""
             cache_key = (d_path, v_ser)
             if cache_key not in dir_online_cache:
-                resolved_dir, is_online = resolve_portable_path(d_path, expected_serial=v_ser or None)
-                dir_online_cache[cache_key] = is_online
-                if is_online and resolved_dir:
+                resolved_dir, is_drive_online = resolve_drive_online_path(d_path, expected_serial=v_ser or None)
+                dir_online_cache[cache_key] = is_drive_online
+                if is_drive_online and resolved_dir and resolved_dir.exists():
                     try:
                         with os.scandir(str(resolved_dir)) as it:
                             dir_files_cache[cache_key] = {entry.name.lower() for entry in it}
@@ -3081,7 +3137,12 @@ def unlink_missing_photos_in_folder(
     - すべてのリンクが失われた（残りリンク0本になった）写真のみ is_unlinked = 1, link_count = 0 として
       「リンク消失の写真」リストへ移行し、明示的にパージされるまでサムネイル・タグ・評価を保持する。
     """
-    from ..scanner import resolve_portable_path
+    from ..scanner import resolve_drive_online_path, clear_online_cache
+    from .folders import clear_folders_fs_cache
+
+    clear_online_cache()
+    clear_folders_fs_cache()
+
     sql_frag, sql_params = _build_folder_missing_filter(
         directory_path,
         recursive=recursive,
@@ -3110,11 +3171,10 @@ def unlink_missing_photos_in_folder(
         affected_photo_ids: List[int] = []
         seen_pids: set = set()
         for r in rows:
-            v_ser = r["volume_serial"] or None
-            _, is_dir_online = resolve_portable_path(r["directory_path"], expected_serial=v_ser)
-            if not is_dir_online:
+            v_ser = r["volume_serial"] or volume_serial or None
+            f_path, is_drive_online = resolve_drive_online_path(r["file_path"], expected_serial=v_ser)
+            if not is_drive_online:
                 continue
-            f_path, _ = resolve_portable_path(r["file_path"], expected_serial=v_ser)
             if not os.path.exists(str(f_path)):
                 missing_link_ids.append(r["link_id"])
                 pid = r["photo_id"]
@@ -3122,7 +3182,31 @@ def unlink_missing_photos_in_folder(
                     seen_pids.add(pid)
                     affected_photo_ids.append(pid)
 
-        if missing_link_ids:
+        # 対象ディレクトリ自体がOS上で削除済みの場合、scan_roots に残っている孤立ルートも掃除する
+        norm_win = os.path.normpath(directory_path).rstrip("\\/")
+        resolved_target_dir, is_target_drive_online = resolve_drive_online_path(
+            directory_path, expected_serial=volume_serial or None
+        )
+        removed_scan_roots = False
+        if is_target_drive_online:
+            cursor.execute("SELECT folder_path FROM scan_roots")
+            norm_win_lower = norm_win.lower()
+            for sr_row in cursor.fetchall():
+                sr_raw = sr_row["folder_path"]
+                sr_norm = os.path.normpath(sr_raw).rstrip("\\/")
+                sr_lower = sr_norm.lower()
+                is_match = (sr_lower == norm_win_lower) or (
+                    recursive and sr_lower.startswith(norm_win_lower + "\\")
+                )
+                if is_match:
+                    sr_resolved, sr_online = resolve_drive_online_path(
+                        sr_norm, expected_serial=volume_serial or None
+                    )
+                    if sr_online and not sr_resolved.exists():
+                        cursor.execute("DELETE FROM scan_roots WHERE folder_path = ?", (sr_raw,))
+                        removed_scan_roots = True
+
+        if missing_link_ids or removed_scan_roots:
             for i in range(0, len(missing_link_ids), 500):
                 chunk = missing_link_ids[i:i + 500]
                 placeholders = ",".join(["?"] * len(chunk))
@@ -3132,13 +3216,15 @@ def unlink_missing_photos_in_folder(
                 _sync_photo_links_state(cursor, pid)
 
             conn.commit()
+            invalidate_fast_cache()
+            clear_folders_fs_cache()
 
-            try:
-                from .stacks import recalculate_stacks
-                norm_win = os.path.normpath(directory_path).rstrip("\\/")
-                recalculate_stacks(norm_win, recursive=recursive)
-            except Exception as stack_err:
-                logger.warning(f"スタック修復スキップ: {stack_err}")
+            if missing_link_ids:
+                try:
+                    from .stacks import recalculate_stacks
+                    recalculate_stacks(norm_win, recursive=recursive)
+                except Exception as stack_err:
+                    logger.warning(f"スタック修復スキップ: {stack_err}")
 
             return len(missing_link_ids)
         return 0
@@ -3148,9 +3234,61 @@ def get_unlinked_photos_count() -> int:
     """すべてのリンクが失われた（リンク消失: is_unlinked = 1）写真の件数を高速に取得する"""
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) AS cnt FROM photos WHERE is_unlinked = 1")
+        cursor.execute(
+            "SELECT COUNT(*) AS cnt FROM photos "
+            "WHERE is_unlinked = 1 AND NOT (COALESCE(is_raw, 0) = 1 AND paired_raw_path IS NOT NULL AND paired_raw_path != '')"
+        )
         row = cursor.fetchone()
         return row["cnt"] if row else 0
+
+
+def get_connection_counts() -> Dict[str, int]:
+    """全写真（ペア済みRAW従属コマを除く）の「接続中」「未接続」「リンク消失」「合計」の件数を高速集計して返す"""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT COALESCE(is_unlinked, 0) AS unlinked,
+                   COALESCE(volume_serial, '') AS vsn,
+                   COALESCE(directory_path, '') AS dir_path,
+                   COUNT(*) AS cnt
+            FROM photos
+            WHERE NOT (COALESCE(is_raw, 0) = 1 AND paired_raw_path IS NOT NULL AND paired_raw_path != '')
+            GROUP BY COALESCE(is_unlinked, 0), COALESCE(volume_serial, ''), COALESCE(directory_path, '')
+            """
+        )
+        rows = cursor.fetchall()
+
+    from ..storage_manager import STORAGE_DIR
+    from ..scanner import resolve_drive_online_path
+    storage_norm = str(STORAGE_DIR).replace("/", "\\").lower()
+
+    online_count = 0
+    offline_count = 0
+    unlinked_count = 0
+
+    for row in rows:
+        cnt = int(row["cnt"] or 0)
+        if int(row["unlinked"] or 0) == 1:
+            unlinked_count += cnt
+            continue
+        dir_p = row["dir_path"] or ""
+        vsn = (row["vsn"] or "").strip() or None
+        norm_dir = dir_p.replace("/", "\\").lower()
+        if dir_p and (norm_dir == storage_norm or norm_dir.startswith(storage_norm + "\\")):
+            online_count += cnt
+        elif dir_p and resolve_drive_online_path(dir_p, expected_serial=vsn)[1]:
+            online_count += cnt
+        else:
+            offline_count += cnt
+
+    total_count = online_count + offline_count + unlinked_count
+    return {
+        "total_count": total_count,
+        "online_count": online_count,
+        "offline_count": offline_count,
+        "unlinked_count": unlinked_count,
+    }
 
 
 def purge_unlinked_photos(photo_ids: Optional[List[int]] = None) -> int:

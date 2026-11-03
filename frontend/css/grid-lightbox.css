@@ -868,6 +868,17 @@
   pointer-events: auto;
 }
 
+.photo-card:hover .card-rating-bar.is-stack-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.card-rating-bar-btn.disabled {
+  opacity: 0.45;
+  cursor: not-allowed !important;
+  filter: grayscale(100%);
+}
+
 .card-rating-bar-btn {
   font-size: 0.68rem;
   font-weight: 700;

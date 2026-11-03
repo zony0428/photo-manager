@@ -91,7 +91,33 @@ async function initializeApp() {
   setupEventListeners();
   initUserSettings();
   initHeartbeat();
-  await refreshAll();
+  if (typeof updateStartupSplash === 'function') {
+    try {
+      const stRes = await fetch('/api/startup/status');
+      if (stRes.ok) {
+        const st = await stRes.json();
+        if (st && st.message) {
+          updateStartupSplash({
+            message: st.message,
+            percent: st.percent || 35,
+            detail: st.detail || '',
+          });
+        }
+      }
+    } catch (_) {}
+    updateStartupSplash({
+      message: t('splash.loading_library', 'ライブラリを読み込み中...'),
+      percent: 55,
+      detail: t('splash.loading_library_detail', '写真とタグのインデックスを取得しています'),
+    });
+  }
+  try {
+    await refreshAll();
+  } finally {
+    if (typeof dismissStartupSplash === 'function') {
+      dismissStartupSplash();
+    }
+  }
 }
 
 
@@ -104,14 +130,24 @@ async function fetchUnlinkedCount() {
     if (!res.ok) return;
     const data = await res.json();
     const count = data.count || 0;
+    if (data.total_count !== undefined && elements.totalPhotosCount) {
+      elements.totalPhotosCount.textContent = data.total_count;
+    }
+    if (data.online_count !== undefined && elements.onlinePhotosCount) {
+      elements.onlinePhotosCount.textContent = data.online_count;
+    }
+    if (data.offline_count !== undefined && elements.offlinePhotosCount) {
+      elements.offlinePhotosCount.textContent = data.offline_count;
+    }
 
-    // クイックアクセスのバッジ更新
+    // クイックアクセスのバッジ更新（0件でもメニュー自体は常時表示してアクセス可能にする）
     if (elements.unlinkedOnlyNavItem) {
-      elements.unlinkedOnlyNavItem.style.display = count > 0 ? 'flex' : 'none';
+      elements.unlinkedOnlyNavItem.style.display = 'flex';
     }
     if (elements.unlinkedPhotosCount) {
       elements.unlinkedPhotosCount.textContent = count;
-      elements.unlinkedPhotosCount.style.display = count > 0 ? 'inline-block' : 'none';
+      elements.unlinkedPhotosCount.style.display = 'inline-block';
+      elements.unlinkedPhotosCount.classList.toggle('badge-warning', count > 0);
     }
 
     // フォルダツリー下部のリンク情報なしナビ項目の更新
@@ -137,13 +173,23 @@ async function fetchDuplicatesCount() {
     if (!res.ok) return;
     const data = await res.json();
     const count = data.count || 0;
+    if (data.total_count !== undefined && elements.totalPhotosCount) {
+      elements.totalPhotosCount.textContent = data.total_count;
+    }
+    if (data.online_count !== undefined && elements.onlinePhotosCount) {
+      elements.onlinePhotosCount.textContent = data.online_count;
+    }
+    if (data.offline_count !== undefined && elements.offlinePhotosCount) {
+      elements.offlinePhotosCount.textContent = data.offline_count;
+    }
 
     if (elements.duplicatesOnlyNavItem) {
-      elements.duplicatesOnlyNavItem.style.display = count > 0 ? 'flex' : 'none';
+      elements.duplicatesOnlyNavItem.style.display = 'flex';
     }
     if (elements.duplicatePhotosCount) {
       elements.duplicatePhotosCount.textContent = count;
-      elements.duplicatePhotosCount.style.display = count > 0 ? 'inline-block' : 'none';
+      elements.duplicatePhotosCount.style.display = 'inline-block';
+      elements.duplicatePhotosCount.classList.toggle('badge-info', count > 0);
     }
   } catch (err) {
     console.warn('[WARN] fetchDuplicatesCount エラー:', err);
@@ -162,6 +208,10 @@ async function refreshAll() {
     fetchTags(),
   ]);
 
+  if (typeof dismissStartupSplash === 'function') {
+    dismissStartupSplash();
+  }
+
   // 2. 写真グリッドの初期描画完了後、サイドバーのフォルダツリー・タイムライン等を取得する
   await Promise.all([
     fetchTimeline(),
@@ -174,10 +224,34 @@ async function refreshAll() {
   ]);
 }
 
+let _fetchPhotosAbortController = null;
+let _fetchPhotosSeq = 0;
+
 /**
  * 写真一覧の取得 (タグの排他検索・複数年月OR・カメラ機種ORパラメータ対応)
  */
 async function fetchPhotos() {
+  const mySeq = ++_fetchPhotosSeq;
+  if (_fetchPhotosAbortController) {
+    try { _fetchPhotosAbortController.abort(); } catch (_) {}
+  }
+  const abortController = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+  _fetchPhotosAbortController = abortController;
+
+  let fetchActivityTimer = null;
+  if (typeof setGlobalActivity === 'function') {
+    fetchActivityTimer = setTimeout(() => {
+      if (mySeq !== _fetchPhotosSeq) return;
+      const targetName = (state.currentFilter && (state.currentFilter.titleText || state.currentFilter.value)) || '';
+      setGlobalActivity('fetch', {
+        title: t('activity.loading_photos', '写真を読み込み中...'),
+        countText: '',
+        percent: null,
+        filename: targetName,
+        indeterminate: true,
+      });
+    }, 150);
+  }
   try {
     const params = new URLSearchParams();
     if (state.currentFilter.type === 'folder' && state.currentFilter.value) {
@@ -308,25 +382,45 @@ async function fetchPhotos() {
       }
     }
 
+    syncStackToggleButtonUI();
     params.append('sort_by', state.sortBy);
-    params.append('stacked', state.isStacked ? 'true' : 'false');
+    params.append('stacked', isEffectiveStacked() ? 'true' : 'false');
 
     if (state.connectionFilter === 'missing') {
       params.append('missing_only', 'true');
+    } else if (state.connectionFilter !== 'duplicates') {
+      const connSet = (state.connectionStates instanceof Set && state.connectionStates.size > 0)
+        ? state.connectionStates
+        : new Set(['online', 'offline', 'unlinked']);
+      const hasFolderOrVol = Boolean(state.currentFilter && (state.currentFilter.type === 'folder' || state.currentFilter.type === 'folder_exclude' || state.currentFilter.volumeSerial));
+      if (state.connectionFilter === 'unlinked' || (connSet.size === 1 && connSet.has('unlinked') && !hasFolderOrVol)) {
+        params.append('unlinked_only', 'true');
+      } else if (connSet.has('unlinked') && !hasFolderOrVol) {
+        params.append('include_unlinked', 'true');
+      }
     } else if (state.connectionFilter === 'unlinked') {
       params.append('unlinked_only', 'true');
     } else if (state.connectionFilter === 'duplicates') {
       params.append('duplicates_only', 'true');
     }
 
-    const response = await fetch(`/api/photos?${params.toString()}`);
+    const response = await fetch(`/api/photos?${params.toString()}`, abortController ? { signal: abortController.signal } : undefined);
+    if (mySeq !== _fetchPhotosSeq) return;
 
     if (!response.ok) throw new Error('写真の取得に失敗しました');
     const data = await response.json();
+    if (mySeq !== _fetchPhotosSeq) return;
 
     // 接続状態フィルタ（接続中のみ / 未接続のみ / 見つからない写真 / リンク消失）
     if (state.connectionFilter === 'online') {
       state.photos = data.photos.filter(p => !p.is_offline && !p.is_missing && !p.is_unlinked);
+    } else if (state.connectionFilter === 'custom_conn' || (state.connectionFilter === 'all' && state.connectionStates instanceof Set && state.connectionStates.size < 3)) {
+      const connSet = state.connectionStates;
+      state.photos = data.photos.filter(p => {
+        if (p.is_unlinked) return connSet.has('unlinked');
+        if (p.is_offline) return connSet.has('offline');
+        return !p.is_missing && connSet.has('online');
+      });
     } else if (state.connectionFilter === 'offline') {
       state.photos = data.photos.filter(p => p.is_offline);
     } else if (state.connectionFilter === 'missing') {
@@ -343,10 +437,17 @@ async function fetchPhotos() {
 
     // リンク消失写真一括消去ボタンの表示切替
     if (elements.purgeUnlinkedBtn) {
-      elements.purgeUnlinkedBtn.style.display = (state.connectionFilter === 'unlinked' && state.photos.length > 0) ? 'inline-flex' : 'none';
+      const isUnlinkedOnlyView = state.connectionFilter === 'unlinked' || (state.connectionStates instanceof Set && state.connectionStates.size === 1 && state.connectionStates.has('unlinked'));
+      elements.purgeUnlinkedBtn.style.display = (isUnlinkedOnlyView && state.photos.length > 0) ? 'inline-flex' : 'none';
     }
   } catch (error) {
+    if (error && error.name === 'AbortError') return;
     console.error('写真読み込みエラー:', error);
+  } finally {
+    if (fetchActivityTimer) clearTimeout(fetchActivityTimer);
+    if (mySeq === _fetchPhotosSeq && typeof clearGlobalActivity === 'function') {
+      clearGlobalActivity('fetch');
+    }
   }
 }
 
@@ -361,6 +462,22 @@ function applyTagsSummaryData(data) {
   }
   if (elements.totalPhotosCount && data.total_count !== undefined) {
     elements.totalPhotosCount.textContent = data.total_count;
+  }
+  if (elements.onlinePhotosCount && data.online_count !== undefined) {
+    elements.onlinePhotosCount.textContent = data.online_count;
+  }
+  if (elements.offlinePhotosCount && data.offline_count !== undefined) {
+    elements.offlinePhotosCount.textContent = data.offline_count;
+  }
+  if (elements.unlinkedPhotosCount && data.unlinked_count !== undefined) {
+    elements.unlinkedPhotosCount.textContent = data.unlinked_count;
+    elements.unlinkedPhotosCount.classList.toggle('badge-warning', data.unlinked_count > 0);
+  }
+  if (elements.folderTreeUnlinkedSection && data.unlinked_count !== undefined) {
+    elements.folderTreeUnlinkedSection.style.display = data.unlinked_count > 0 ? 'block' : 'none';
+  }
+  if (elements.folderTreeUnlinkedCount && data.unlinked_count !== undefined) {
+    elements.folderTreeUnlinkedCount.textContent = data.unlinked_count;
   }
   renderTagList();
 
@@ -492,7 +609,10 @@ function createPhotoCard(photo, index) {
   }
 
   // オフライン写真はカード全体をデサチュレーション表示（テキストバッジ不要）
-  if (photo.is_offline) {
+  if (photo.is_unlinked) {
+    card.classList.add('is-unlinked');
+    card.title = '実体パス未登録（リンク消失） — サムネイルプレビューで表示中';
+  } else if (photo.is_offline) {
     card.classList.add('is-offline');
     const volLabelOrId = photo.volume_custom_name || photo.volume_label || (photo.volume_serial && photo.volume_serial.length === 8 ? `ID:${photo.volume_serial.slice(0, 4)}-${photo.volume_serial.slice(4)}` : photo.volume_serial || '');
     const volName = volLabelOrId ? `（メディア: ${volLabelOrId}）` : '';
@@ -520,8 +640,18 @@ function createPhotoCard(photo, index) {
     ratingIconHtml = '<span class="card-rating-icon rating-discard">棄</span>';
   }
 
-  // ホバー時評価バーの生成
-  const ratingBarHtml = `
+  const isStackedCard = isEffectiveStacked() && Boolean((photo.stack_count && photo.stack_count > 1) || (photo.stack_photos && photo.stack_photos.length > 1));
+
+  // ホバー時評価バーの生成（スタック表示中はグレーアウトして変更不可にする）
+  const ratingBarHtml = isStackedCard
+    ? `
+    <div class="card-rating-bar is-stack-disabled" title="スタック画像は変更できません">
+      <span class="card-rating-bar-btn disabled${photo.rating === 2 ? ' active' : ''}" data-rating="2" title="スタック画像は変更できません">優</span>
+      <span class="card-rating-bar-btn disabled${photo.rating === 1 ? ' active' : ''}" data-rating="1" title="スタック画像は変更できません">良</span>
+      <span class="card-rating-bar-btn disabled${photo.rating === -1 ? ' active' : ''}" data-rating="-1" title="スタック画像は変更できません">棄</span>
+    </div>
+  `
+    : `
     <div class="card-rating-bar">
       <span class="card-rating-bar-btn${photo.rating === 2 ? ' active' : ''}" data-rating="2">優</span>
       <span class="card-rating-bar-btn${photo.rating === 1 ? ' active' : ''}" data-rating="1">良</span>
@@ -565,7 +695,7 @@ function createPhotoCard(photo, index) {
 
   // スタックバッジHTML (ブラケット / 連写 / 重複)
   let stackBadgeHtml = '';
-  if (state.isStacked && photo.stack_count > 1) {
+  if (isEffectiveStacked() && photo.stack_count > 1) {
     if (photo.stack_type === 'duplicate') {
       stackBadgeHtml = `<span class="stack-badge stack-badge-dup" data-photo-id="${photo.id}" title="重複写真 ${photo.stack_count}枚 (他フォルダにコピーあり・クリックで一覧表示)">重複 ${photo.stack_count}</span>`;
     } else {
@@ -599,6 +729,7 @@ function createPhotoCard(photo, index) {
     ${mountTopHtml}
     <div class="card-thumb-wrapper">
       <div class="card-select-checkbox" title="選択 (Ctrl/Shiftクリック対応)">✓</div>
+      ${photo.is_unlinked ? `<span class="unlinked-card-badge" title="実体パス未登録（リンク消失）"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/><line x1="3" y1="3" x2="21" y2="21"/></svg></span>` : ''}
       ${hasDuplicates ? `<div class="thumb-corner-cut" title="他フォルダに重複コピーあり (計 ${photo.duplicate_count} 箇所)"></div>` : ''}
       ${formatBadgeHtml}
       <img class="card-thumb-img" src="${getThumbnailUrl(photo)}" alt="${escapeHtml(photo.file_name)}" loading="lazy" onload="onThumbImageLoad(this)">
@@ -633,12 +764,14 @@ function createPhotoCard(photo, index) {
  */
 function updateFolderWarningBanner() {
   if (!elements.folderWarningBanner) return;
+  const unlinkBtn = elements.warningBannerUnlinkBtn || document.getElementById('warningBannerUnlinkBtn');
 
   if (state.currentFilter.type === 'folder' && state.currentFilter.isOffline) {
     if (elements.warningBannerDesc) {
       const targetLabel = state.currentFilter.value || state.currentFilter.titleText || '選択中のメディア';
       elements.warningBannerDesc.textContent = `メディアまたは実フォルダ（${targetLabel}）が現在未接続です。（保存済みサムネイルをキャッシュから表示中）`;
     }
+    if (unlinkBtn) unlinkBtn.style.display = 'none';
     elements.folderWarningBanner.style.display = 'flex';
     return;
   }
@@ -647,12 +780,14 @@ function updateFolderWarningBanner() {
     const matched = (state.rawFoldersData || []).find(f => (f.directory_path || '').replace(/\\/g, '/').toLowerCase() === curNorm);
     if (matched && matched.is_missing) {
       if (elements.warningBannerDesc) {
-        elements.warningBannerDesc.textContent = `実フォルダ（${state.currentFilter.value}）が存在しないか、ドライブが未接続です。（保存済みサムネイルをキャッシュから表示中）`;
+        elements.warningBannerDesc.textContent = `実フォルダ（${state.currentFilter.value}）が存在しないか、削除・移動されています。（保存済みサムネイルをキャッシュから表示中）`;
       }
+      if (unlinkBtn) unlinkBtn.style.display = 'inline-flex';
       elements.folderWarningBanner.style.display = 'flex';
       return;
     }
   }
+  if (unlinkBtn) unlinkBtn.style.display = 'none';
   elements.folderWarningBanner.style.display = 'none';
 }
 
@@ -963,6 +1098,7 @@ function setTagFilterModeDirect(tagPath, mode) {
   if (!tagPath) return;
   state.untaggedOnly = false;
   if (elements.untaggedNavItem) elements.untaggedNavItem.classList.remove('active');
+  state.connectionStates = new Set(['online', 'offline', 'unlinked']);
 
   const isColor = typeof COLOR_TAG_MAP !== 'undefined' && (tagPath in COLOR_TAG_MAP);
   if (isColor) {
@@ -1203,7 +1339,8 @@ function renderActiveFilterChips() {
       document.querySelectorAll('.sidebar .nav-item, .sidebar .folder-tree-item').forEach(el => {
         el.classList.remove('active', 'active-exclude');
       });
-      if (typeof window.syncFolderTreeFilterStates === 'function') {
+      updateConnectionFilterUI();
+  if (typeof window.syncFolderTreeFilterStates === 'function') {
         window.syncFolderTreeFilterStates();
       }
       if (typeof window.syncSidebarMediaActiveStates === 'function') {
@@ -2562,15 +2699,21 @@ function renderActiveFilterChips() {
       extraClass: 'chip-tag-include',
       onRemove: () => clearAllTagFilters(),
       onClick: () => {
-        if (typeof window.openSidebarSection === 'function') window.openSidebarSection('quick');
-        setTimeout(() => flashAndScrollToElement(document.getElementById('untaggedNavItem')), 80);
+        const scopeSel = elements.headerScopeSelect || document.getElementById('headerScopeSelect');
+        if (scopeSel) scopeSel.focus();
       },
     }));
     appendClause(clause);
   }
 
   if (state.connectionFilter && state.connectionFilter !== 'all') {
+    const connSetForChip = (state.connectionStates instanceof Set) ? state.connectionStates : new Set(['online', 'offline', 'unlinked']);
+    const customConnParts = [];
+    if (connSetForChip.has('online')) customConnParts.push('接続中');
+    if (connSetForChip.has('offline')) customConnParts.push('未接続');
+    if (connSetForChip.has('unlinked')) customConnParts.push('リンク消失');
     const connLabels = {
+      custom_conn: customConnParts.join('・') || '接続状態指定',
       online: '接続中のみ',
       offline: '未接続のみ',
       duplicates: '重複のある写真',
@@ -2706,7 +2849,7 @@ function renderActiveFilterChips() {
 
   // 垂直タブレール (.rail-tab-btn) へのフィルタ適用インジケータ同期
   const sectionFilterMap = {
-    quick: Boolean(state.untaggedOnly || (state.connectionFilter && state.connectionFilter !== 'all') || (state.currentFilter && state.currentFilter.type === 'duplicates')),
+    quick: Boolean(state.activePresetId),
     folder: Boolean(state.currentFilter && (state.currentFilter.type === 'folder' || state.currentFilter.type === 'folder_exclude' || state.currentFilter.type === 'unlinked')),
     tags: Boolean(state.tagFilters && state.tagFilters.size > 0),
     location: Boolean(state.activeLocation),
@@ -2759,6 +2902,37 @@ window.renderFilterChips = renderActiveFilterChips;
 window.renderActiveFilterChips = renderActiveFilterChips;
 
 /**
+ * 評価フィルタが「棄 (-1)」のみ選択されているか判定
+ */
+function isDiscardOnlyFilter() {
+  return Boolean(state.ratingFilter && state.ratingFilter.size === 1 && state.ratingFilter.has(-1));
+}
+
+/**
+ * 実効的なスタック表示ON/OFF判定（「棄」単体フィルタ時は自動でスタック表示を解除）
+ */
+function isEffectiveStacked() {
+  if (isDiscardOnlyFilter()) return false;
+  return Boolean(state.isStacked);
+}
+window.isEffectiveStacked = isEffectiveStacked;
+
+/**
+ * ヘッダーの「スタック」切替ボタンの有効/無効およびアクティブ表示を同期
+ */
+function syncStackToggleButtonUI() {
+  if (!elements.toggleStackBtn) return;
+  const discardOnly = isDiscardOnlyFilter();
+  elements.toggleStackBtn.classList.toggle('active', isEffectiveStacked());
+  elements.toggleStackBtn.disabled = discardOnly;
+  elements.toggleStackBtn.style.opacity = discardOnly ? '0.45' : '';
+  elements.toggleStackBtn.title = discardOnly
+    ? '「棄」フィルタ表示中はスタック表示が自動解除されます'
+    : '露出ブラケット・連写のスタック表示切り替え (ONで束ねて表示、OFFで全枚数展開)';
+}
+window.syncStackToggleButtonUI = syncStackToggleButtonUI;
+
+/**
  * 評価フィルタトグル同期関数
  */
 function updateRatingFilterUI() {
@@ -2766,6 +2940,7 @@ function updateRatingFilterUI() {
     const rv = parseInt(btn.dataset.rating, 10);
     btn.classList.toggle('active', state.ratingFilter.has(rv));
   });
+  syncStackToggleButtonUI();
 }
 
 /**
@@ -2776,6 +2951,11 @@ function syncAttrFilterButtons() {
   document.querySelectorAll('#attrFilterToggles .attr-toggle, .attr-toggle[data-attr]').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.attr === cur);
   });
+  const headerAttrSel = elements.headerAttrSelect || document.getElementById('headerAttrSelect');
+  if (headerAttrSel) {
+    headerAttrSel.value = ['all', 'raw', 'raw_pair', 'jpeg', 'adjusted', 'xmp'].includes(cur) ? cur : 'all';
+    headerAttrSel.classList.toggle('is-filtered', cur !== 'all');
+  }
   const subSelect = elements.attrSubFilterSelect || document.getElementById('attrSubFilterSelect');
   if (subSelect) {
     if (['jpeg', 'raw_pair', 'xmp'].includes(cur)) {
@@ -2881,12 +3061,214 @@ function updateConnectionFilterUI() {
   if (unlinkedNav) unlinkedNav.classList.toggle('active', state.connectionFilter === 'unlinked');
   if (folderTreeUnlinked) folderTreeUnlinked.classList.toggle('active', state.connectionFilter === 'unlinked');
   if (dupNav) dupNav.classList.toggle('active', state.connectionFilter === 'duplicates');
+
+  const allNav = elements.allPhotosNavItem || document.getElementById('allPhotosNavItem');
+  const connSet = (state.connectionStates instanceof Set && state.connectionStates.size > 0)
+    ? state.connectionStates
+    : new Set(['online', 'offline', 'unlinked']);
+  const isDup = (state.connectionFilter === 'duplicates');
+  const isAllThree = !isDup && connSet.size === 3;
+  const isTopAllContext = (!state.currentFilter || state.currentFilter.type === 'all') && !state.untaggedOnly && !isDup;
+
+  if (allNav) {
+    allNav.classList.toggle('active', isTopAllContext && isAllThree);
+  }
+
+  [
+    { el: onlineNav, key: 'online' },
+    { el: offlineNav, key: 'offline' },
+    { el: unlinkedNav, key: 'unlinked' },
+  ].forEach(({ el, key }) => {
+    if (!el) return;
+    const isOn = !isDup && connSet.has(key);
+    const isSingle = !isDup && connSet.size === 1 && connSet.has(key);
+    el.classList.toggle('is-conn-on', isOn);
+    el.classList.toggle('is-conn-off', !isOn);
+    el.classList.toggle('active', isSingle);
+  });
+  if (folderTreeUnlinked) {
+    folderTreeUnlinked.classList.toggle('active', !isDup && connSet.size === 1 && connSet.has('unlinked'));
+  }
+  syncHeaderScopeSelect();
+  syncAttrFilterButtons();
+  updateRatingFilterUI();
 }
+
+/**
+ * ヘッダーの表示対象（スコープ）ドロップダウン（#headerScopeSelect）を現在の state と同期する
+ */
+function syncHeaderScopeSelect() {
+  const sel = elements.headerScopeSelect || document.getElementById('headerScopeSelect');
+  if (!sel) return;
+  let targetVal = 'all';
+  if (state.untaggedOnly) {
+    targetVal = 'untagged';
+  } else if (state.connectionFilter === 'duplicates') {
+    targetVal = 'duplicates';
+  } else if (state.connectionFilter === 'online') {
+    targetVal = 'online';
+  } else if (state.connectionFilter === 'offline') {
+    targetVal = 'offline';
+  } else if (state.connectionFilter === 'unlinked' || state.connectionFilter === 'missing') {
+    targetVal = 'unlinked';
+  }
+  if (sel.value !== targetVal) {
+    sel.value = targetVal;
+  }
+}
+window.syncHeaderScopeSelect = syncHeaderScopeSelect;
+
+/**
+ * ヘッダーの表示対象（スコープ）ドロップダウン（#headerScopeSelect）変更時の適用処理
+ */
+function applyHeaderScopeFilter(scopeValue) {
+  const val = scopeValue || 'all';
+  if (val === 'untagged') {
+    state.untaggedOnly = true;
+    state.tagFilters.clear();
+    if (state.tagAndRoots) state.tagAndRoots.clear();
+    state.tagInterGroupMode = 'and';
+    state.connectionFilter = 'all';
+    state.connectionStates = new Set(['online', 'offline', 'unlinked']);
+    state.onlineOnly = false;
+    if (!state.currentFilter || state.currentFilter.type === 'all' || state.currentFilter.type === 'untagged') {
+      state.currentFilter = { type: 'untagged', value: null, titleText: '未分類の写真' };
+      if (elements.viewTitle) elements.viewTitle.textContent = '未分類の写真';
+    }
+    if (elements.untaggedNavItem) elements.untaggedNavItem.classList.add('active');
+    updateConnectionFilterUI();
+    renderTagList();
+    fetchPhotos();
+    return;
+  }
+
+  if (state.untaggedOnly) {
+    state.untaggedOnly = false;
+    if (elements.untaggedNavItem) elements.untaggedNavItem.classList.remove('active');
+    if (state.currentFilter && state.currentFilter.type === 'untagged') {
+      state.currentFilter = { type: 'all', value: null, titleText: 'すべての写真' };
+    }
+    renderTagList();
+  }
+
+  if (val === 'all') {
+    state.connectionStates = new Set(['online', 'offline', 'unlinked']);
+    _syncConnectionFilterAndTitleFromSet();
+  } else if (val === 'online' || val === 'offline' || val === 'unlinked') {
+    state.connectionStates = new Set([val]);
+    _syncConnectionFilterAndTitleFromSet();
+  } else if (val === 'duplicates') {
+    state.connectionFilter = 'duplicates';
+    state.onlineOnly = false;
+    if (elements.viewTitle) elements.viewTitle.textContent = '重複のある写真';
+  }
+  updateConnectionFilterUI();
+  fetchPhotos();
+}
+window.applyHeaderScopeFilter = applyHeaderScopeFilter;
 
 /**
  * 接続状態フィルタの切替（トグル）
  */
+function _syncConnectionFilterAndTitleFromSet() {
+  const connSet = (state.connectionStates instanceof Set && state.connectionStates.size > 0)
+    ? state.connectionStates
+    : new Set(['online', 'offline', 'unlinked']);
+  state.connectionStates = connSet;
+
+  if (connSet.size >= 3) {
+    state.connectionFilter = 'all';
+    state.onlineOnly = false;
+    if (!state.currentFilter || state.currentFilter.type === 'all') {
+      elements.viewTitle.textContent = 'すべての写真';
+    }
+  } else if (connSet.size === 1) {
+    const onlyKey = Array.from(connSet)[0];
+    state.connectionFilter = onlyKey;
+    state.onlineOnly = (onlyKey === 'online');
+    if (onlyKey === 'online') {
+      elements.viewTitle.textContent = '接続中の写真';
+    } else if (onlyKey === 'offline') {
+      elements.viewTitle.textContent = '未接続の写真';
+    } else if (onlyKey === 'unlinked') {
+      elements.viewTitle.textContent = 'リンク消失の写真（実体パス未登録）';
+    }
+  } else {
+    state.connectionFilter = 'custom_conn';
+    state.onlineOnly = false;
+    const parts = [];
+    if (connSet.has('online')) parts.push('接続中');
+    if (connSet.has('offline')) parts.push('未接続');
+    if (connSet.has('unlinked')) parts.push('リンク消失');
+    if (!state.currentFilter || state.currentFilter.type === 'all') {
+      elements.viewTitle.textContent = `${parts.join('・')}の写真`;
+    }
+  }
+}
+
+/**
+ * 左端インジケータークリックによる個別ON/OFFトグル（方式2）
+ */
+function toggleConnectionStateItem(key) {
+  if (!(state.connectionStates instanceof Set) || state.connectionStates.size === 0 || state.connectionFilter === 'duplicates') {
+    state.connectionStates = new Set(['online', 'offline', 'unlinked']);
+  }
+  if (state.connectionStates.has(key)) {
+    state.connectionStates.delete(key);
+    if (state.connectionStates.size === 0) {
+      state.connectionStates = new Set(['online', 'offline', 'unlinked']);
+    }
+  } else {
+    state.connectionStates.add(key);
+  }
+  _syncConnectionFilterAndTitleFromSet();
+  updateConnectionFilterUI();
+  fetchPhotos();
+}
+window.toggleConnectionStateItem = toggleConnectionStateItem;
+
 function setConnectionFilter(type) {
+  if (type === 'all') {
+    state.connectionStates = new Set(['online', 'offline', 'unlinked']);
+    _syncConnectionFilterAndTitleFromSet();
+    updateConnectionFilterUI();
+    fetchPhotos();
+    return;
+  }
+  if (type === 'online' || type === 'offline' || type === 'unlinked' || type === 'missing') {
+    const normKey = type === 'missing' ? 'unlinked' : type;
+    const isAlreadySingle = state.connectionFilter !== 'duplicates'
+      && state.connectionStates instanceof Set
+      && state.connectionStates.size === 1
+      && state.connectionStates.has(normKey);
+    if (isAlreadySingle) {
+      state.connectionStates = new Set(['online', 'offline', 'unlinked']);
+    } else {
+      state.connectionStates = new Set([normKey]);
+    }
+    _syncConnectionFilterAndTitleFromSet();
+    updateConnectionFilterUI();
+    fetchPhotos();
+    return;
+  }
+  if (state.connectionFilter === type) {
+    state.connectionFilter = 'all';
+    state.connectionStates = new Set(['online', 'offline', 'unlinked']);
+    if (state.currentFilter.type === 'all') {
+      elements.viewTitle.textContent = 'すべての写真';
+    }
+  } else {
+    state.connectionFilter = type;
+    if (type === 'duplicates') {
+      elements.viewTitle.textContent = '重複のある写真';
+    }
+  }
+  state.onlineOnly = (state.connectionFilter === 'online');
+  updateConnectionFilterUI();
+  fetchPhotos();
+}
+
+function _legacySetConnectionFilterUnused(type) {
   if (state.connectionFilter === type) {
     state.connectionFilter = 'all';
     if (state.currentFilter.type === 'all') {
@@ -2980,6 +3362,7 @@ function resetAllFilters() {
   localStorage.setItem('pm_tag_source_filter', 'manual');
 
   if (elements.untaggedNavItem) elements.untaggedNavItem.classList.remove('active');
+  state.connectionStates = new Set(['online', 'offline', 'unlinked']);
   updateConnectionFilterUI();
   renderTagList();
   updateCameraActiveClasses();
@@ -3007,6 +3390,9 @@ function updateViewHeader() {
     ? `${state.photos.length}+ 枚 (表示上限)`
     : `${state.photos.length} 枚`;
   elements.currentCountBadge.textContent = countText;
+  syncHeaderScopeSelect();
+  syncAttrFilterButtons();
+  updateRatingFilterUI();
 
   // 適用中フィルタチップの描画
   renderActiveFilterChips();
@@ -3079,6 +3465,7 @@ function setFilter(type, value, titleText, options = {}) {
     }
   });
 
+  updateConnectionFilterUI();
   if (typeof window.syncFolderTreeFilterStates === 'function') {
     window.syncFolderTreeFilterStates();
   }
@@ -3087,6 +3474,9 @@ function setFilter(type, value, titleText, options = {}) {
   }
   updateTimelineActiveClasses();
   updateCameraActiveClasses();
+  if (typeof pulseHeaderTetheract === 'function') {
+    pulseHeaderTetheract(780);
+  }
   fetchPhotos();
 }
 
@@ -3191,6 +3581,120 @@ function removePhotoFromView(photoId) {
 }
 
 /**
+ * スタックメンバー配列から評価優先（優 > 良 > 可 > 棄）で表紙となる代表写真を自動選出する
+ */
+function electBestStackMember(stackPhotos, stackType) {
+  if (!Array.isArray(stackPhotos) || stackPhotos.length === 0) return null;
+  const candidates = stackPhotos.filter(sp => !(sp.is_raw && sp.paired_raw_path));
+  const list = candidates.length > 0 ? candidates : stackPhotos;
+  const isBracket = (stackType === 'bracket');
+  let best = list[0];
+  let bestIdx = 0;
+  for (let i = 1; i < list.length; i++) {
+    const cur = list[i];
+    const rBest = Number(best.rating ?? 0);
+    const rCur = Number(cur.rating ?? 0);
+    if (rCur > rBest) {
+      best = cur;
+      bestIdx = i;
+    } else if (rCur === rBest && isBracket) {
+      const biasBest = Math.abs(Number(best.exposure_bias || 0));
+      const biasCur = Math.abs(Number(cur.exposure_bias || 0));
+      if (biasCur < biasBest - 1e-4) {
+        best = cur;
+        bestIdx = i;
+      }
+    }
+  }
+  return best;
+}
+window.electBestStackMember = electBestStackMember;
+
+/**
+ * スタック内の写真の評価変更後に、表紙（代表写真）を自動再計算してグリッド・状態を同期する
+ */
+function syncStackCoverAfterRatingChange(ratedPhotoId) {
+  const gridIdx = state.photos.findIndex(p =>
+    p.id === ratedPhotoId || (Array.isArray(p.stack_photos) && p.stack_photos.some(sp => sp.id === ratedPhotoId))
+  );
+  if (gridIdx === -1) return { isStackMember: false, coverPhotoId: ratedPhotoId, coverRating: null };
+
+  const gridPhoto = state.photos[gridIdx];
+  const stackPhotos = gridPhoto.stack_photos;
+  if (!isEffectiveStacked() || !Array.isArray(stackPhotos) || stackPhotos.length <= 1) {
+    return { isStackMember: false, coverPhotoId: gridPhoto.id, coverRating: gridPhoto.rating ?? 0 };
+  }
+
+  const bestMember = electBestStackMember(stackPhotos, gridPhoto.stack_type);
+  if (!bestMember) {
+    return { isStackMember: false, coverPhotoId: gridPhoto.id, coverRating: gridPhoto.rating ?? 0 };
+  }
+
+  const oldPrimaryId = gridPhoto.id;
+  const newPrimaryId = bestMember.id;
+
+  stackPhotos.forEach(sp => {
+    sp.stack_id = newPrimaryId;
+    sp.is_stack_primary = (sp.id === newPrimaryId) ? 1 : 0;
+  });
+  if (Array.isArray(state.currentLightboxStackPhotos)) {
+    state.currentLightboxStackPhotos.forEach(sp => {
+      if (stackPhotos.some(m => m.id === sp.id)) {
+        sp.stack_id = newPrimaryId;
+        sp.is_stack_primary = (sp.id === newPrimaryId) ? 1 : 0;
+      }
+    });
+  }
+
+  if (newPrimaryId !== oldPrimaryId) {
+    const newGridPhoto = {
+      ...gridPhoto,
+      ...bestMember,
+      stack_id: newPrimaryId,
+      is_stack_primary: 1,
+      stack_photos: stackPhotos,
+      stack_count: gridPhoto.stack_count || stackPhotos.length,
+      stack_type: gridPhoto.stack_type,
+      duplicate_count: gridPhoto.duplicate_count,
+    };
+    state.photos[gridIdx] = newGridPhoto;
+
+    if (elements.photoGrid && typeof createPhotoCard === 'function') {
+      const oldCard = elements.photoGrid.querySelector(`.photo-card[data-photo-id="${oldPrimaryId}"], .photo-card[data-index="${gridIdx}"]`);
+      if (oldCard) {
+        const newCard = createPhotoCard(newGridPhoto, gridIdx);
+        oldCard.replaceWith(newCard);
+      }
+    }
+
+    if (elements.filmstrip && elements.filmstrip.children[gridIdx]) {
+      const stripItem = elements.filmstrip.children[gridIdx];
+      const img = stripItem.querySelector('img');
+      if (img) {
+        img.src = getThumbnailUrl(newGridPhoto);
+        img.alt = newGridPhoto.file_name || '';
+      }
+    }
+
+    if (state.selectedPhotoIds && state.selectedPhotoIds.has(oldPrimaryId)) {
+      state.selectedPhotoIds.delete(oldPrimaryId);
+      state.selectedPhotoIds.add(newPrimaryId);
+      updateCardSelectionClasses();
+    }
+  } else {
+    gridPhoto.rating = bestMember.rating ?? 0;
+    updateCardRatingDirectly(gridPhoto.id, gridPhoto.rating);
+  }
+
+  return {
+    isStackMember: true,
+    coverPhotoId: newPrimaryId,
+    coverRating: Number(bestMember.rating ?? 0),
+  };
+}
+window.syncStackCoverAfterRatingChange = syncStackCoverAfterRatingChange;
+
+/**
  * 評価の更新 (API送信)
  */
 async function updatePhotoRating(photoId, newRating) {
@@ -3213,11 +3717,14 @@ async function updatePhotoRating(photoId, newRating) {
       if (sm) sm.rating = newRating;
     }
 
-    // プレビュー中ならライトボックス側の評価も更新
+    // プレビュー中ならライトボックス側の評価および下部スタックセレクタも更新
     const curLight = getCurrentLightboxPhoto();
     if (curLight && curLight.id === photoId) {
       curLight.rating = newRating;
       updateLightboxRating(newRating);
+    }
+    if (typeof window.syncLightboxBracketPillsRatingUI === 'function') {
+      window.syncLightboxBracketPillsRatingUI();
     }
 
     // インスペクタで表示中の写真なら、インスペクタ内の評価ボタンactive状態も即時更新
@@ -3228,14 +3735,18 @@ async function updatePhotoRating(photoId, newRating) {
       });
     }
 
-    // グリッド上の写真カードDOMを直接更新（超高速・チラつきなし）
-    updateCardRatingDirectly(photoId, newRating);
+    // スタック表示中は評価優先で表紙（代表）を自動再選出、単体時は写真カードDOMを直接更新
+    const syncRes = syncStackCoverAfterRatingChange(photoId);
+    if (!syncRes.isStackMember) {
+      updateCardRatingDirectly(photoId, newRating);
+    }
 
-    // 新しい評価が評価フィルタに含まれない場合（既定では「棄」）は、その写真だけを一覧から除去する。
-    // フィルタに含まれる場合は上記のDOM部分更新のみで、グリッドの全再描画は行わない。
-    const isFilteredOut = state.ratingFilter && state.ratingFilter.size > 0 && !state.ratingFilter.has(newRating);
+    // 新しい評価（スタック時は表紙の最高評価）が評価フィルタに含まれない場合は一覧から除去する
+    const effectiveRating = syncRes.isStackMember ? syncRes.coverRating : newRating;
+    const effectiveCardId = syncRes.isStackMember ? syncRes.coverPhotoId : photoId;
+    const isFilteredOut = state.ratingFilter && state.ratingFilter.size > 0 && !state.ratingFilter.has(effectiveRating);
     if (isFilteredOut) {
-      removePhotoFromView(photoId);
+      removePhotoFromView(effectiveCardId);
     }
 
     const response = await fetch(`/api/photo/${photoId}/rate`, {
@@ -3422,7 +3933,7 @@ function initSidebarAccordion() {
   window.openFilterDrawer = (tabName) => window.openSidebarSection(tabName);
   window.closeFilterDrawer = () => {};
   window.toggleFilterDrawer = (tabName) => window.toggleSidebarSection(tabName);
-  window.isFilterDrawerOpen = () => true;
+  window.isFilterDrawerOpen = () => false;
   window.switchSidebarTab = (tabName) => window.openSidebarSection(tabName);
 }
 
@@ -3513,11 +4024,19 @@ function setupEventListeners() {
     });
   }
 
-  // フォルダツリーの再読込（ドライブの抜き差し後など）
+  // フォルダツリーの再読込（ドライブの抜き差し後やファイル削除後の再確認）
   const reloadFolderTreeBtn = document.getElementById('reloadFolderTreeBtn');
   if (reloadFolderTreeBtn) {
-    reloadFolderTreeBtn.addEventListener('click', () => {
-      fetchFolders();
+    reloadFolderTreeBtn.addEventListener('click', async () => {
+      await fetchFolders();
+      if (state.currentFilter.type === 'folder' && state.currentFilter.value && !state.currentFilter.isOffline) {
+        _dismissedFolderDiffSignatures.clear();
+        const folderName = state.currentFilter.value.split(/[\\/]/).filter(Boolean).pop() || state.currentFilter.value;
+        checkAndPromptFolderRefresh(state.currentFilter.value, folderName, {
+          volumeSerial: state.currentFilter.volumeSerial || null,
+          isOffline: false,
+        });
+      }
     });
   }
 
@@ -3782,6 +4301,13 @@ function setupEventListeners() {
     fetchPhotos();
   });
 
+  // 表示対象（スコープ）変更
+  if (elements.headerScopeSelect) {
+    elements.headerScopeSelect.addEventListener('change', (e) => {
+      applyHeaderScopeFilter(e.target.value);
+    });
+  }
+
   // ソート順変更
   elements.sortBySelect.addEventListener('change', (e) => {
     state.sortBy = e.target.value;
@@ -3806,6 +4332,15 @@ function setupEventListeners() {
     });
   });
 
+  const headerAttrSel = elements.headerAttrSelect || document.getElementById('headerAttrSelect');
+  if (headerAttrSel) {
+    headerAttrSel.addEventListener('change', (e) => {
+      state.attrFilter = e.target.value || 'all';
+      syncAttrFilterButtons();
+      fetchPhotos();
+    });
+  }
+
   const attrSubSelect = elements.attrSubFilterSelect || document.getElementById('attrSubFilterSelect');
   if (attrSubSelect) {
     attrSubSelect.addEventListener('change', (e) => {
@@ -3815,13 +4350,34 @@ function setupEventListeners() {
   }
 
   if (elements.onlineOnlyNavItem) {
-    elements.onlineOnlyNavItem.addEventListener('click', () => setConnectionFilter('online'));
+    elements.onlineOnlyNavItem.addEventListener('click', (e) => {
+      if (e.target.closest('.conn-toggle-hit')) {
+        e.stopPropagation();
+        toggleConnectionStateItem('online');
+      } else {
+        setConnectionFilter('online');
+      }
+    });
   }
   if (elements.offlineOnlyNavItem) {
-    elements.offlineOnlyNavItem.addEventListener('click', () => setConnectionFilter('offline'));
+    elements.offlineOnlyNavItem.addEventListener('click', (e) => {
+      if (e.target.closest('.conn-toggle-hit')) {
+        e.stopPropagation();
+        toggleConnectionStateItem('offline');
+      } else {
+        setConnectionFilter('offline');
+      }
+    });
   }
   if (elements.unlinkedOnlyNavItem) {
-    elements.unlinkedOnlyNavItem.addEventListener('click', () => setConnectionFilter('unlinked'));
+    elements.unlinkedOnlyNavItem.addEventListener('click', (e) => {
+      if (e.target.closest('.conn-toggle-hit')) {
+        e.stopPropagation();
+        toggleConnectionStateItem('unlinked');
+      } else {
+        setConnectionFilter('unlinked');
+      }
+    });
   }
   if (elements.folderTreeUnlinkedItem) {
     elements.folderTreeUnlinkedItem.addEventListener('click', () => setConnectionFilter('unlinked'));
@@ -3872,6 +4428,16 @@ function setupEventListeners() {
   // サイドバーのクイックアクセス（すべての写真）
   document.querySelectorAll('.sidebar [data-filter-type="all"]').forEach(el => {
     el.addEventListener('click', () => {
+      state.connectionStates = new Set(['online', 'offline', 'unlinked']);
+      state.connectionFilter = 'all';
+      state.onlineOnly = false;
+      updateConnectionFilterUI();
+      setFilter('all', null, 'すべての写真');
+    });
+  });
+
+  if (false) document.querySelectorAll('.sidebar [data-filter-type="all"]').forEach(el => {
+    el.addEventListener('click', () => {
       state.connectionFilter = 'all';
       state.onlineOnly = false;
       updateConnectionFilterUI();
@@ -3887,86 +4453,122 @@ function setupEventListeners() {
   }
 
   // --- フォルダ専用コンテキストメニューのイベント登録 ---
-  // 1. 直下のみ再スキャン
+  // 消失フォルダのリンク削除（コンテキストメニューヘッダー横 ＆ 警告バナー共通処理）
+  const promptAndUnlinkMissingFolder = async (folderPath, folderName, volumeSerial) => {
+    if (!folderPath) return;
+    const confirmed = typeof showConfirmModal === 'function'
+      ? await showConfirmModal({
+          title: '消失フォルダのリンク削除',
+          subtitle: '実体フォルダが見つからない写真のリンク整理',
+          icon: 'unlink',
+          targetName: folderName || folderPath,
+          headingSuffix: 'の写真リンクを削除しますか？',
+          subPath: folderPath,
+          descriptionLines: [
+            'このフォルダ（および配下）へのパス紐付け（リンク）を解除します。',
+            '※ 他メディアにリンクがある写真はそちらのリンクが維持され、リンクが0本になる写真は「リンク消失の写真」へ移行します。',
+            '※ 写真のサムネイル・タグ・評価は消去されずそのまま保持されます。',
+          ],
+          confirmText: 'リンクを削除する',
+          confirmVariant: 'primary',
+        })
+      : confirm(`消失フォルダ「${folderName || folderPath}」の写真リンクを削除しますか？（サムネイル・タグ・評価は保持されます）`);
+    if (!confirmed) return;
+
+    try {
+      const res = await fetch('/api/folders/unlink-missing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          folder_path: folderPath,
+          recursive: true,
+          volume_serial: volumeSerial || null,
+        }),
+      });
+      if (!res.ok) throw new Error(`リンク削除に失敗しました (HTTP ${res.status})`);
+      const data = await res.json();
+      showToast(`${data.unlinked || 0}枚の写真リンクを削除しました（サムネイル・タグは保持）`, 'success');
+      if (state.currentFilter && state.currentFilter.type === 'folder' && state.currentFilter.value && state.currentFilter.value.toLowerCase() === String(folderPath).toLowerCase()) {
+        setFilter('all', null, 'すべての写真');
+      }
+      await Promise.all([
+        typeof refreshAll === 'function' ? refreshAll() : fetchPhotos(),
+        refreshFolderTree(),
+      ]);
+    } catch (err) {
+      showToast(`リンク削除エラー: ${err.message}`, 'error');
+    }
+  };
+
+  const headerUnlinkBtn = elements.folderContextHeaderUnlinkBtn || document.getElementById('folderContextHeaderUnlinkBtn');
+  if (headerUnlinkBtn) {
+    headerUnlinkBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const node = _activeFolderNode;
+      closeFolderContextMenu();
+      if (!node) return;
+      await promptAndUnlinkMissingFolder(node.fullPath, node.name, node.volumeSerial || null);
+    });
+  }
+
+  const bannerUnlinkBtn = elements.warningBannerUnlinkBtn || document.getElementById('warningBannerUnlinkBtn');
+  if (bannerUnlinkBtn) {
+    bannerUnlinkBtn.addEventListener('click', async () => {
+      if (state.currentFilter.type !== 'folder' || !state.currentFilter.value) return;
+      const folderPath = state.currentFilter.value;
+      const folderName = folderPath.split(/[\\/]/).filter(Boolean).pop() || folderPath;
+      await promptAndUnlinkMissingFolder(folderPath, folderName, state.currentFilter.volumeSerial || null);
+    });
+  }
+
+  // 1. 再スキャン（直下のみ＋直下の消失写真リンク整理）
   if (elements.folderMenuRescanDirect) {
     elements.folderMenuRescanDirect.addEventListener('click', async () => {
       const node = _activeFolderNode;
       closeFolderContextMenu();
       if (!node) return;
-      if (node.isMissing) {
+      if (node.isMissing || node.isOffline) {
         showToast('実フォルダが存在しないか、ドライブが未接続のため再スキャンできません', 'warning');
         return;
       }
-      showToast(`「${node.name}」の直下を再スキャン中...`, 'info');
-      await executeScan(node.fullPath, false, false);
+      showToast(`「${node.name}」を再スキャン中...`, 'info');
+      await executeScan(node.fullPath, false, true, node.volumeSerial || null);
     });
   }
 
-  // 2. 配下も含めて再スキャン
+  // 2. 再スキャン（子を含む）（配下再帰スキャン＋消失写真リンク整理・時間警告付き）
   if (elements.folderMenuRescanRecursive) {
     elements.folderMenuRescanRecursive.addEventListener('click', async () => {
       const node = _activeFolderNode;
       closeFolderContextMenu();
       if (!node) return;
-      if (node.isMissing) {
+      if (node.isMissing || node.isOffline) {
         showToast('実フォルダが存在しないか、ドライブが未接続のため再スキャンできません', 'warning');
         return;
       }
-      // ドライブ全体やルート種別の場合は警告ダイアログを表示
       const isDriveRoot = /^[a-zA-Z]:\\?$/.test(node.fullPath);
-      if (isDriveRoot) {
-        const confirmed = typeof showConfirmModal === 'function'
-          ? await showConfirmModal({
-              title: 'ドライブ全体のスキャン確認',
-              subtitle: '広範囲のサブフォルダ再帰スキャン',
-              icon: 'folder-refresh',
-              targetName: node.name,
-              headingSuffix: 'はドライブ全体です。スキャンを開始しますか？',
-              subPath: node.fullPath,
-              descriptionLines: [
-                '配下のすべてのサブフォルダをスキャンするため、時間がかかる場合があります。',
-              ],
-              confirmText: 'スキャンを開始',
-              confirmVariant: 'primary',
-            })
-          : confirm(`「${node.name}」はドライブ全体です。配下のすべてのサブフォルダをスキャンすると時間がかかる場合があります。\n\nスキャンを開始しますか？`);
-        if (!confirmed) return;
-      }
-      showToast(`「${node.name}」配下を再帰スキャン中...`, 'info');
-      await executeScan(node.fullPath, true, false);
-    });
-  }
-
-  // 2-B. ♻️ リフレッシュ（再スキャン＋消失写真のDB削除・配下含む）
-  if (elements.folderMenuRefresh) {
-    elements.folderMenuRefresh.addEventListener('click', async () => {
-      const node = _activeFolderNode;
-      closeFolderContextMenu();
-      if (!node) return;
-      if (node.isMissing || node.isOffline) {
-        showToast('ドライブが未接続または実フォルダが存在しないためリフレッシュできません', 'warning');
-        return;
-      }
       const confirmed = typeof showConfirmModal === 'function'
         ? await showConfirmModal({
-            title: 'フォルダのリフレッシュ',
-            subtitle: '再スキャンと移動・削除写真の整理',
+            title: isDriveRoot ? 'ドライブ全体のスキャン確認' : '再スキャン（子を含む）の確認',
+            subtitle: 'サブフォルダを含む再帰スキャンとリンク整理',
             icon: 'folder-refresh',
             targetName: node.name,
-            headingSuffix: 'をリフレッシュ（最新化）しますか？',
+            headingSuffix: isDriveRoot
+              ? 'はドライブ全体です。子フォルダも含めてスキャンしますか？'
+              : 'を子フォルダも含めて再スキャンしますか？',
             subPath: node.fullPath,
             descriptionLines: [
-              '配下の写真フォルダを再スキャンし、PC上から移動・削除された写真をライブラリから削除（リフレッシュ）します。',
-              '※ PC上の実ファイル本体は削除されません。',
+              '配下のすべてのサブフォルダを走査するため、フォルダ数や写真枚数によっては時間がかかる場合があります。',
+              '※ 移動・削除された写真のリンクは解除され、他メディアにリンクが無い写真は「リンク消失の写真」へ移行します（サムネイル・タグ・評価は保持）。',
             ],
-            confirmText: 'リフレッシュ実行',
+            confirmText: '再スキャン開始',
             confirmVariant: 'primary',
           })
-        : confirm(`フォルダ「${node.name}」内の写真フォルダを再スキャンし、PC上から移動・削除された写真をライブラリから削除（リフレッシュ）します。\n\nよろしいですか？`);
+        : confirm(`「${node.name}」を子フォルダも含めて再スキャンしますか？\n（フォルダ数によっては時間がかかる場合があります）`);
       if (!confirmed) return;
 
-      showToast(`「${node.name}」をリフレッシュ中（消失写真のDB整理を含む）...`, 'info');
-      await executeScan(node.fullPath, true, true);
+      showToast(`「${node.name}」配下を再スキャン中...`, 'info');
+      await executeScan(node.fullPath, true, true, node.volumeSerial || null);
     });
   }
 
@@ -4277,6 +4879,14 @@ function setupEventListeners() {
         await fetchFolders();
         if (state.currentFilter.type === 'folder') {
           await fetchPhotos();
+          if (state.currentFilter.value && !state.currentFilter.isOffline) {
+            _dismissedFolderDiffSignatures.clear();
+            const folderName = state.currentFilter.value.split(/[\\/]/).filter(Boolean).pop() || state.currentFilter.value;
+            checkAndPromptFolderRefresh(state.currentFilter.value, folderName, {
+              volumeSerial: state.currentFilter.volumeSerial || null,
+              isOffline: false,
+            });
+          }
         }
         showToast('接続状態を更新しました', 'success');
       } catch (err) {
@@ -4446,8 +5056,12 @@ function setupEventListeners() {
       }
     }
 
-    // Esc でドロワーまたは選択解除 (プレビュー外)
+    // Esc でコンテキストメニュー・ドロワーまたは選択解除 (プレビュー外)
     if (e.key === 'Escape' && state.currentPhotoIndex === -1) {
+      if (elements.contextMenu && elements.contextMenu.style.display !== 'none' && typeof closeContextMenu === 'function') {
+        closeContextMenu();
+        return;
+      }
       if (typeof isFilterDrawerOpen === 'function' && isFilterDrawerOpen()) {
         closeFilterDrawer();
         return;
@@ -4857,10 +5471,26 @@ window.navigateGridByArrow = navigateGridByArrow;
 function setupPhotoGridDelegation() {
   if (!elements.photoGrid) return;
 
+  // 0. グリッド余白（コンテナ背景）クリックで選択解除
+  const gridContainer = elements.photoGrid.closest('.photo-grid-container');
+  if (gridContainer) {
+    gridContainer.addEventListener('click', (e) => {
+      if (e.target.closest('.photo-card, #emptyState')) return;
+      if (state.selectedPhotoIds.size > 0 && typeof clearSelection === 'function') {
+        clearSelection();
+      }
+    });
+  }
+
   // 1. クリックイベントの委譲
   elements.photoGrid.addEventListener('click', (e) => {
     const card = e.target.closest('.photo-card');
-    if (!card) return;
+    if (!card) {
+      if (state.selectedPhotoIds.size > 0 && typeof clearSelection === 'function') {
+        clearSelection();
+      }
+      return;
+    }
 
     const photoId = parseInt(card.dataset.photoId, 10);
     const index = parseInt(card.dataset.index, 10);
@@ -4899,6 +5529,9 @@ function setupPhotoGridDelegation() {
     const ratingBarBtn = e.target.closest('.card-rating-bar-btn');
     if (ratingBarBtn) {
       e.stopPropagation();
+      if (ratingBarBtn.classList.contains('disabled') || (isEffectiveStacked() && ((photo.stack_count && photo.stack_count > 1) || (photo.stack_photos && photo.stack_photos.length > 1)))) {
+        return;
+      }
       const rating = parseInt(ratingBarBtn.dataset.rating, 10);
       const newRating = (photo.rating === rating) ? 0 : rating;
       photo.rating = newRating;
@@ -5091,7 +5724,7 @@ async function uploadPhotos(fileList) {
     if (!response.ok) throw new Error(data.detail || '取り込み失敗');
 
     console.log(`[UPLOAD] ${data.uploaded_count}枚の写真を取り込みました`);
-    showToast(`${data.uploaded_count}枚の写真を storage に取り込みました`, 'success', 3500);
+    showToast(`${data.uploaded_count}枚の写真を Loome に取り込みました`, 'success', 3500);
     if (typeof window.refreshStorageFolders === 'function') {
       await window.refreshStorageFolders();
     }
@@ -5697,11 +6330,15 @@ function renderManagedMediaModalList() {
     // 上段: ステータス・メディア名・シリアルID
     const topRow = document.createElement('div');
     topRow.style.cssText = 'display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;';
+    const loomeBadgeHtml = v.loome_enabled
+      ? `<span style="font-size:11px; font-weight:600; color:var(--accent-primary, #c89d66); background:rgba(200,157,102,0.14); border:1px solid rgba(200,157,102,0.35); padding:1px 6px; border-radius:4px;" title="${escapeHtml(v.loome_path || 'Loome 有効')}">📦 Loome 有効</span>`
+      : '';
     topRow.innerHTML = `
       <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
         <span style="font-size:12px; font-weight:700; color:${statusColor};">${escapeHtml(statusText)}</span>
         <span style="font-size:14px; font-weight:700; color:var(--text-primary);">${escapeHtml(primaryName)}</span>
         ${subLabel ? `<span style="font-size:11.5px; color:var(--text-secondary);">${escapeHtml(subLabel)}</span>` : ''}
+        ${loomeBadgeHtml}
       </div>
       <span style="font-size:11px; font-family:monospace; color:var(--text-muted); background:rgba(255,255,255,0.05); padding:2px 7px; border-radius:4px;">ID: ${escapeHtml(shortId)}</span>
     `;
@@ -5767,6 +6404,36 @@ function renderManagedMediaModalList() {
     leftBtns.appendChild(showBtn);
     leftBtns.appendChild(excludeBtn);
     leftBtns.appendChild(renameBtn);
+
+    if (v.loome_enabled) {
+      const removeLoomeBtn = document.createElement('button');
+      removeLoomeBtn.type = 'button';
+      removeLoomeBtn.className = 'btn btn-secondary';
+      removeLoomeBtn.style.cssText = 'font-size:11.5px; padding:4px 10px;';
+      removeLoomeBtn.textContent = '📦 Loome 解除';
+      removeLoomeBtn.title = 'このドライブの Loome ショートカット登録を解除します（実ファイルは残ります）';
+      removeLoomeBtn.addEventListener('click', async () => {
+        if (typeof window.removeLoomeFromVolume === 'function') {
+          await window.removeLoomeFromVolume(vsn, primaryName);
+          await fetchManagedVolumes();
+        }
+      });
+      leftBtns.appendChild(removeLoomeBtn);
+    } else if (v.is_online && v.drive_letter) {
+      const createLoomeBtn = document.createElement('button');
+      createLoomeBtn.type = 'button';
+      createLoomeBtn.className = 'btn btn-secondary';
+      createLoomeBtn.style.cssText = 'font-size:11.5px; padding:4px 10px;';
+      createLoomeBtn.textContent = '📦 Loome を作成';
+      createLoomeBtn.title = `${v.drive_letter}\\Loome を作成し、左ペインの Loome として登録します`;
+      createLoomeBtn.addEventListener('click', async () => {
+        if (typeof window.createLoomeOnVolume === 'function') {
+          await window.createLoomeOnVolume(vsn, v.drive_letter, primaryName);
+          await fetchManagedVolumes();
+        }
+      });
+      leftBtns.appendChild(createLoomeBtn);
+    }
 
     const unmanageBtn = document.createElement('button');
     unmanageBtn.type = 'button';
@@ -5847,15 +6514,25 @@ async function checkAndPromptFolderRefresh(folderPath, folderName, node) {
 
     // 【ケース1: 管理外フォルダをクリックした場合 (v2.02: 子フォルダ含む/直下のみ/キャンセル 3段階選択)】
     if (!diff.is_managed) {
-      // ドライブ全体（C:\ など）やショートカット、除外設定フォルダなら登録確認はスキップ
-      if (node && (node.kind === 'drive' || node.status === 'ignored')) return;
+      // ドライブ全体（C:\ など）やショートカット、Loome（内部ストレージ）、除外設定フォルダなら登録確認はスキップ
+      if (node && (node.kind === 'drive' || node.kind === 'shortcut' || node.isStorage || node.status === 'managed' || node.status === 'ignored')) return;
       if (/^[a-zA-Z]:\\?$/.test(folderPath)) return;
 
       const choice = typeof showRegisterFolderModal === 'function'
         ? await showRegisterFolderModal(folderPath, name, diff.total_disk || 0)
         : (confirm(`管理外のフォルダです。管理フォルダとして登録しますか？`) ? 'direct' : null);
 
-      if (!choice) return;
+      if (!choice) {
+        if (node && node._prevFilter && state.currentFilter && state.currentFilter.value === folderPath) {
+          const pf = node._prevFilter;
+          setFilter(pf.type || 'all', pf.value || null, pf.titleText || 'すべての写真', {
+            volumeSerial: pf.volumeSerial || null,
+            serialMode: pf.serialMode || null,
+            isOffline: Boolean(pf.isOffline),
+          });
+        }
+        return;
+      }
 
       const isRecursive = choice === 'recursive';
       const rangeText = isRecursive ? '（子フォルダ含む）' : '（直下のみ）';
@@ -5923,18 +6600,23 @@ async function checkAndPromptFolderRefresh(folderPath, folderName, node) {
       });
     }
 
+    const descriptionLines = [
+      '変更内容をスキャンして、ライブラリをリフレッシュ（最新化）しますか？',
+    ];
+    if (diff.deleted > 0 || diff.folder_deleted) {
+      descriptionLines.push('※ 削除・消失した写真のリンクは解除され、他メディアにリンクが無い写真は「リンク消失の写真」へ移行します（サムネイル・タグ・評価は保持）。');
+    }
+
     const shouldRefresh = typeof showConfirmModal === 'function'
       ? await showConfirmModal({
           title: 'フォルダの更新（差分検出）',
           subtitle: 'フォルダ内の変更をライブラリへ反映',
           icon: 'folder-refresh',
           targetName: name,
-          headingSuffix: 'の内容が更新されています',
+          headingSuffix: diff.folder_deleted ? 'のフォルダまたは写真が見つかりません' : 'の内容が更新されています',
           subPath: folderPath,
           detailRows,
-          descriptionLines: [
-            '変更内容をスキャンして、ライブラリをリフレッシュ（最新化）しますか？',
-          ],
+          descriptionLines,
           cancelText: 'あとで (Esc)',
           confirmText: 'リフレッシュ（最新化）',
           confirmVariant: 'primary',
@@ -5947,61 +6629,10 @@ async function checkAndPromptFolderRefresh(folderPath, folderName, node) {
     }
     _dismissedFolderDiffSignatures.delete(normKey);
 
-    const useRecursive = Boolean(diff.has_subfolder_changes);
-    showToast(`「${name}」の変更を取り込み中...`, 'info');
-    // 差分スキャン（子フォルダに変更がある場合は再帰スキャン、cleanupなしで安全に取り込み）
-    await executeScan(folderPath, useRecursive, false);
-
-    if (diff.added > 0 || diff.added_folders_count > 0) {
-      const folderMsg = diff.added_folders_count > 0 ? `${diff.added_folders_count}件の新規フォルダ / ` : '';
-      showToast(`${folderMsg}${diff.added}枚の写真を取り込みました`, 'success');
-    }
-
-    // もし削除（見つからない写真）がある場合: 第2モーダルでリンク解除（リンク消失）確認
-    if (diff.deleted > 0) {
-      setTimeout(async () => {
-        const shouldUnlink = typeof showConfirmModal === 'function'
-          ? await showConfirmModal({
-              title: '消失写真のリンク解除',
-              subtitle: '実体ファイルが見つからない写真の整理',
-              icon: 'unlink',
-              targetName: name,
-              headingSuffix: `内に実体ファイルが見つからない写真が ${diff.deleted.toLocaleString()} 枚あります`,
-              subPath: folderPath,
-              descriptionLines: [
-                '実体へのパス紐付けを解除（リンク消失状態へ移行）しますか？',
-                '※ 写真のサムネイルやタグ、評価はそのまま保持されます。',
-                '※ 後から「リンク消失の写真」フィルタで確認・完全消去が可能です。',
-              ],
-              cancelText: 'そのまま残す (Esc)',
-              confirmText: 'リンクを解除する',
-              confirmVariant: 'primary',
-            })
-          : confirm(`フォルダ「${name}」内に実体ファイルが見つからない写真が ${diff.deleted}枚 あります。\n\n実体へのパス紐付けを解除（リンク消失）しますか？`);
-
-        if (shouldUnlink) {
-          try {
-            const cleanRes = await fetch('/api/folders/unlink-missing', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                folder_path: folderPath,
-                recursive: useRecursive,
-                volume_serial: (node && node.volumeSerial) || null,
-              }),
-            });
-            if (!cleanRes.ok) throw new Error(`リンク解除に失敗しました (HTTP ${cleanRes.status})`);
-            const cleanData = await cleanRes.json();
-            showToast(`${cleanData.unlinked || diff.deleted}枚の写真のリンクを解除しました（サムネイル・タグは保持）`, 'success');
-            await fetchPhotos();
-            await refreshFolderTree();
-            if (typeof fetchUnlinkedCount === 'function') fetchUnlinkedCount();
-          } catch (err) {
-            showToast(`リンク解除エラー: ${err.message}`, 'error');
-          }
-        }
-      }, 500);
-    }
+    const useRecursive = Boolean(diff.has_subfolder_changes || diff.folder_deleted || /^[a-zA-Z]:\\?$/.test(folderPath));
+    showToast(`「${name}」をリフレッシュ中...`, 'info');
+    // 差分スキャン＋消失写真リンクの自動整理を一括実行
+    await executeScan(folderPath, useRecursive, true, (node && node.volumeSerial) || null);
   } catch (err) {
     console.warn('[WARN] checkAndPromptFolderRefresh エラー:', err);
   } finally {
