@@ -210,6 +210,9 @@ const elements = {
   contextMenuPreviewItem: document.getElementById('contextMenuPreviewItem'),
   contextMenuDeleteItem: document.getElementById('contextMenuDeleteItem'),
   contextMenuClearSelection: document.getElementById('contextMenuClearSelection'),
+  contextMenuPurgeUnlinkedItem: document.getElementById('contextMenuPurgeUnlinkedItem'),
+  contextMenuPurgeUnlinkedLabel: document.getElementById('contextMenuPurgeUnlinkedLabel'),
+  contextMenuPurgeUnlinkedDivider: document.getElementById('contextMenuPurgeUnlinkedDivider'),
   // フォルダ専用コンテキストメニュー
   folderContextMenu: document.getElementById('folderContextMenu'),
   folderContextMenuPath: document.getElementById('folderContextMenuPath'),
@@ -548,6 +551,47 @@ function findAllPhotoInstancesById(photoId) {
   return results;
 }
 window.findAllPhotoInstancesById = findAllPhotoInstancesById;
+
+/**
+ * 現在の表示モードが「リンク情報なし（リンク消失の写真）」単独表示中かどうかを判定する。
+ * リンク消失写真のDB完全消去UI・ショートカットはこの状態でのみ有効化する。
+ */
+function isStrictlyUnlinkedOnlyView() {
+  if (state.connectionFilter === 'unlinked' || state.connectionFilter === 'missing') {
+    return true;
+  }
+  if (
+    state.connectionFilter !== 'duplicates' &&
+    state.connectionStates instanceof Set &&
+    state.connectionStates.size === 1 &&
+    state.connectionStates.has('unlinked')
+  ) {
+    return true;
+  }
+  return false;
+}
+window.isStrictlyUnlinkedOnlyView = isStrictlyUnlinkedOnlyView;
+
+/**
+ * 指定された写真ID配列（またはSet）を「リンクあり（実体登録あり）」と「リンク情報なし（is_unlinked）」に振り分ける
+ */
+function partitionPhotosByLinkStatus(photoIds) {
+  const ids = Array.isArray(photoIds) ? photoIds : Array.from(photoIds || []);
+  const linkedIds = [];
+  const unlinkedIds = [];
+  for (const rawId of ids) {
+    const id = Number(rawId);
+    if (!id) continue;
+    const p = findPhotoByIdAnywhere(id);
+    if (p && p.is_unlinked) {
+      unlinkedIds.push(id);
+    } else if (p) {
+      linkedIds.push(id);
+    }
+  }
+  return { linkedIds, unlinkedIds, allIds: ids };
+}
+window.partitionPhotosByLinkStatus = partitionPhotosByLinkStatus;
 
 
 

@@ -66,7 +66,15 @@ def _compute_content_key(meta: Dict[str, Any]) -> Optional[str]:
     fsize = int(meta.get("file_size") or 0)
     if fsize <= 0:
         return None
+    existing_ck = str(meta.get("content_key") or "").strip()
+    if existing_ck.startswith("hash:"):
+        return existing_ck
     is_raw_flag = 1 if int(meta.get("is_raw") or 0) == 1 else 0
+    chash = str(meta.get("content_hash") or "").strip()
+    if chash:
+        w = int(meta.get("width") or 0)
+        h = int(meta.get("height") or 0)
+        return f"hash:{chash}|sz:{fsize}|wh:{w}x{h}|raw:{is_raw_flag}"
     dt_raw = str(meta.get("original_date_taken") or meta.get("date_taken") or "").strip()
     if dt_raw:
         dt_norm = dt_raw.replace(":", "-", 2)[:19]
@@ -507,7 +515,7 @@ def _upsert_single_photo_in_tx(cursor: Any, clean_data: Dict[str, Any]) -> int:
                         country = CASE WHEN photos.gps_source IN ('copied', 'manual', 'inferred') THEN photos.country ELSE COALESCE(:country, photos.country) END,
                         state = CASE WHEN photos.gps_source IN ('copied', 'manual', 'inferred') THEN photos.state ELSE COALESCE(:state, photos.state) END,
                         city = CASE WHEN photos.gps_source IN ('copied', 'manual', 'inferred') THEN photos.city ELSE COALESCE(:city, photos.city) END,
-                        content_key = COALESCE(photos.content_key, :content_key),
+                        content_key = CASE WHEN :content_key LIKE 'hash:%' THEN :content_key ELSE COALESCE(photos.content_key, :content_key) END,
                         is_unlinked = 0,
                         updated_at = CURRENT_TIMESTAMP
                     WHERE id = :target_id
@@ -535,6 +543,48 @@ def _upsert_single_photo_in_tx(cursor: Any, clean_data: Dict[str, Any]) -> int:
             (ckey,),
         )
         target_photo = cursor.fetchone()
+
+    if not target_photo and ckey and ckey.startswith("hash:") and int(clean_data.get("file_size") or 0) > 0:
+        fsize = int(clean_data["file_size"])
+        is_raw_val = 1 if int(clean_data.get("is_raw") or 0) == 1 else 0
+        w_val = int(clean_data.get("width") or 0)
+        h_val = int(clean_data.get("height") or 0)
+        cursor.execute(
+            """
+            SELECT * FROM photos
+            WHERE file_size = ? AND COALESCE(is_raw, 0) = ?
+              AND COALESCE(width, 0) = ? AND COALESCE(height, 0) = ?
+              AND (content_key IS NULL OR content_key NOT LIKE 'hash:%')
+              AND COALESCE(camera_model, '不明') IN ('不明', '', 'RAW写真')
+              AND shutter_speed IS NULL AND f_number IS NULL AND iso IS NULL
+            ORDER BY COALESCE(is_unlinked, 0) ASC,
+                     (CASE WHEN rating != 0 OR is_favorite != 0 THEN 1 ELSE 0 END) DESC,
+                     id ASC
+            """,
+            (fsize, is_raw_val, w_val, h_val),
+        )
+        candidates = cursor.fetchall()
+        if candidates:
+            from ..scanner import resolve_portable_path, compute_file_sample_hash, has_exif_datetime
+            expected_hash = ckey.split("|", 1)[0][5:]
+            for cand in candidates:
+                cand_fp = cand["file_path"]
+                cand_vsn = cand["volume_serial"] or None
+                if cand_fp:
+                    try:
+                        res_p, is_on = resolve_portable_path(cand_fp, expected_serial=cand_vsn)
+                        if is_on and res_p and os.path.isfile(str(res_p)):
+                            if not has_exif_datetime(res_p):
+                                cand_hash = compute_file_sample_hash(res_p)
+                                if cand_hash and cand_hash == expected_hash:
+                                    target_photo = cand
+                                    break
+                            continue
+                    except Exception:
+                        pass
+                if (cand["file_name"] or "").lower() == (fname or "").lower():
+                    target_photo = cand
+                    break
 
     if not target_photo and clean_data.get("date_taken") and int(clean_data.get("file_size") or 0) > 0:
         dt_val = clean_data["date_taken"]
@@ -637,7 +687,7 @@ def _upsert_single_photo_in_tx(cursor: Any, clean_data: Dict[str, Any]) -> int:
                 country = COALESCE(photos.country, :country),
                 state = COALESCE(photos.state, :state),
                 city = COALESCE(photos.city, :city),
-                content_key = COALESCE(photos.content_key, :content_key),
+                content_key = CASE WHEN :content_key LIKE 'hash:%' THEN :content_key ELSE COALESCE(photos.content_key, :content_key) END,
                 is_unlinked = 0,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = :target_id
@@ -3397,7 +3447,13 @@ def purge_unlinked_photos(photo_ids: Optional[List[int]] = None) -> int:
         if photo_ids is not None:
             if not photo_ids:
                 return 0
-            target_ids = list(photo_ids)
+            raw_ids = [int(pid) for pid in photo_ids if pid is not None]
+            target_ids = []
+            for i in range(0, len(raw_ids), 500):
+                chunk = raw_ids[i:i + 500]
+                ph = ",".join(["?"] * len(chunk))
+                cursor.execute(f"SELECT id FROM photos WHERE id IN ({ph}) AND is_unlinked = 1", chunk)
+                target_ids.extend(r["id"] for r in cursor.fetchall())
         else:
             cursor.execute("SELECT id FROM photos WHERE is_unlinked = 1")
             rows = cursor.fetchall()
@@ -3416,7 +3472,289 @@ def purge_unlinked_photos(photo_ids: Optional[List[int]] = None) -> int:
 
         cursor.execute("DELETE FROM thumbnails WHERE photo_id NOT IN (SELECT id FROM photos)")
         conn.commit()
+        invalidate_fast_cache()
         return len(target_ids)
+
+
+def migrate_and_merge_exifless_photos(
+    directory_path: Optional[str] = None,
+    recursive: bool = True,
+    progress_callback: Optional[Any] = None,
+) -> Dict[str, int]:
+    """
+    Exif（撮影日時）を持たない既存画像の content_key をファイルサンプリングハッシュ方式 (hash:...) へ移行し、
+    別フォルダへのコピー等で複数レコードに分裂していた同一画像を1つの写真エンティティへ統合（マージ）する。
+    """
+    from ..scanner import resolve_portable_path, compute_file_sample_hash, has_exif_datetime
+
+    updated_count = 0
+    merged_count = 0
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        where_clauses = [
+            "(p.content_key IS NULL OR p.content_key NOT LIKE 'hash:%')",
+            "COALESCE(p.is_unlinked, 0) = 0",
+            """(
+                (COALESCE(p.camera_model, '不明') IN ('不明', '', 'RAW写真')
+                 AND p.shutter_speed IS NULL AND p.f_number IS NULL AND p.iso IS NULL AND p.focal_length IS NULL)
+                OR (p.file_mtime IS NOT NULL AND p.date_taken = strftime('%Y-%m-%d %H:%M:%S', CAST(p.file_mtime AS INTEGER), 'unixepoch', 'localtime'))
+            )""",
+        ]
+        params: List[Any] = []
+        if directory_path:
+            dir_frag, dir_params = _build_folder_missing_filter(
+                directory_path,
+                recursive=recursive,
+                column_name="p.directory_path",
+            )
+            where_clauses.append(
+                f"({dir_frag} OR EXISTS (SELECT 1 FROM photo_links pl WHERE pl.photo_id = p.id AND {dir_frag.replace('p.directory_path', 'pl.directory_path')}))"
+            )
+            params.extend(dir_params)
+            params.extend(dir_params)
+
+        sql = f"""
+            SELECT p.id, p.file_path, p.file_name, p.volume_serial, p.file_size, p.width, p.height, p.is_raw
+            FROM photos p
+            WHERE {' AND '.join(where_clauses)}
+            ORDER BY p.id ASC
+        """
+        cursor.execute(sql, params)
+        candidates = cursor.fetchall()
+
+        total_cand = len(candidates)
+        updates_batch: List[Tuple[str, int]] = []
+        for idx, row in enumerate(candidates, start=1):
+            pid = int(row["id"])
+            fname = row["file_name"] or ""
+            if callable(progress_callback):
+                try:
+                    progress_callback(idx, total_cand, fname)
+                except Exception:
+                    pass
+
+            fp_str = row["file_path"]
+            vsn = row["volume_serial"] or None
+            resolved_p = None
+            if fp_str:
+                try:
+                    rp, is_on = resolve_portable_path(fp_str, expected_serial=vsn)
+                    if is_on and rp and os.path.isfile(str(rp)):
+                        resolved_p = rp
+                except Exception:
+                    resolved_p = None
+
+            if resolved_p is None:
+                cursor.execute(
+                    "SELECT file_path, volume_serial FROM photo_links WHERE photo_id = ?",
+                    (pid,),
+                )
+                for lk in cursor.fetchall():
+                    try:
+                        rp, is_on = resolve_portable_path(lk["file_path"], expected_serial=lk["volume_serial"] or None)
+                        if is_on and rp and os.path.isfile(str(rp)):
+                            resolved_p = rp
+                            break
+                    except Exception:
+                        continue
+
+            if resolved_p is None:
+                continue
+
+            if has_exif_datetime(resolved_p):
+                continue
+
+            chash = compute_file_sample_hash(resolved_p)
+            if not chash:
+                continue
+
+            fsize = int(row["file_size"] or 0)
+            w = int(row["width"] or 0)
+            h = int(row["height"] or 0)
+            is_raw_flag = 1 if int(row["is_raw"] or 0) == 1 else 0
+            new_ck = f"hash:{chash}|sz:{fsize}|wh:{w}x{h}|raw:{is_raw_flag}"
+            updates_batch.append((new_ck, pid))
+
+        if updates_batch:
+            cursor.executemany(
+                "UPDATE photos SET content_key = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                updates_batch,
+            )
+            updated_count = len(updates_batch)
+
+        # 同一の hash:... content_key を持つ重複 photos レコードを統合する
+        cursor.execute(
+            """
+            SELECT content_key
+            FROM photos
+            WHERE content_key LIKE 'hash:%'
+            GROUP BY content_key
+            HAVING COUNT(*) > 1
+            """
+        )
+        dup_keys = [r["content_key"] for r in cursor.fetchall() if r["content_key"]]
+
+        for ck in dup_keys:
+            cursor.execute(
+                """
+                SELECT * FROM photos
+                WHERE content_key = ?
+                ORDER BY COALESCE(is_unlinked, 0) ASC,
+                         (CASE WHEN rating != 0 OR is_favorite != 0 THEN 1 ELSE 0 END) DESC,
+                         id ASC
+                """,
+                (ck,),
+            )
+            group_rows = [dict(r) for r in cursor.fetchall()]
+            if len(group_rows) <= 1:
+                continue
+
+            primary = group_rows[0]
+            primary_id = int(primary["id"])
+
+            for dup in group_rows[1:]:
+                dup_id = int(dup["id"])
+                cursor.execute(
+                    """
+                    SELECT id, volume_serial, rel_path, rel_dir, file_path, directory_path,
+                           file_name, file_mtime, paired_raw_path
+                    FROM photo_links
+                    WHERE photo_id = ?
+                    """,
+                    (dup_id,),
+                )
+                dup_links = cursor.fetchall()
+                for lk in dup_links:
+                    cursor.execute(
+                        """
+                        INSERT INTO photo_links (
+                            photo_id, volume_serial, rel_path, rel_dir,
+                            file_path, directory_path, file_name, file_mtime, paired_raw_path, is_primary
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+                        ON CONFLICT(volume_serial, rel_path) DO NOTHING
+                        """,
+                        (
+                            primary_id,
+                            lk["volume_serial"] or "",
+                            lk["rel_path"] or "",
+                            lk["rel_dir"] or "",
+                            lk["file_path"],
+                            lk["directory_path"],
+                            lk["file_name"],
+                            lk["file_mtime"],
+                            lk["paired_raw_path"],
+                        ),
+                    )
+
+                cursor.execute(
+                    """
+                    INSERT INTO photo_tags (photo_id, tag, source, confidence, created_at)
+                    SELECT ?, tag, source, confidence, created_at
+                    FROM photo_tags
+                    WHERE photo_id = ?
+                    ON CONFLICT(photo_id, tag) DO UPDATE SET
+                        source = CASE WHEN excluded.source = 'manual' THEN 'manual' ELSE photo_tags.source END,
+                        confidence = CASE WHEN excluded.source = 'manual' THEN 1.0 ELSE MAX(COALESCE(photo_tags.confidence, 0.0), COALESCE(excluded.confidence, 0.0)) END
+                    """,
+                    (primary_id, dup_id),
+                )
+
+                cursor.execute(
+                    """
+                    INSERT OR IGNORE INTO thumbnails (photo_id, file_hash, data, width, height, created_at)
+                    SELECT ?, file_hash, data, width, height, created_at
+                    FROM thumbnails
+                    WHERE photo_id = ?
+                    """,
+                    (primary_id, dup_id),
+                )
+
+                prim_r = int(primary.get("rating") or 0)
+                dup_r = int(dup.get("rating") or 0)
+                if (prim_r == 0 and dup_r != 0) or (dup_r > prim_r and dup_r > 0):
+                    primary["rating"] = dup_r
+                    cursor.execute("UPDATE photos SET rating = ? WHERE id = ?", (primary["rating"], primary_id))
+
+                prim_has_adj = (
+                    int(primary.get("rotation") or 0) != 0
+                    or abs(float(primary.get("fine_angle") or 0.0)) >= 0.01
+                    or primary.get("crop_w") is not None
+                    or int(primary.get("brightness") or 0) != 0
+                    or int(primary.get("contrast") or 0) != 0
+                    or int(primary.get("saturation") or 0) != 0
+                )
+                dup_has_adj = (
+                    int(dup.get("rotation") or 0) != 0
+                    or abs(float(dup.get("fine_angle") or 0.0)) >= 0.01
+                    or dup.get("crop_w") is not None
+                    or int(dup.get("brightness") or 0) != 0
+                    or int(dup.get("contrast") or 0) != 0
+                    or int(dup.get("saturation") or 0) != 0
+                )
+                if not prim_has_adj and dup_has_adj:
+                    cursor.execute(
+                        """
+                        UPDATE photos
+                        SET rotation = ?, fine_angle = ?, crop_x = ?, crop_y = ?, crop_w = ?, crop_h = ?,
+                            crop_aspect = ?, brightness = ?, contrast = ?, saturation = ?
+                        WHERE id = ?
+                        """,
+                        (
+                            dup.get("rotation") or 0,
+                            dup.get("fine_angle") or 0.0,
+                            dup.get("crop_x"),
+                            dup.get("crop_y"),
+                            dup.get("crop_w"),
+                            dup.get("crop_h"),
+                            dup.get("crop_aspect"),
+                            dup.get("brightness") or 0,
+                            dup.get("contrast") or 0,
+                            dup.get("saturation") or 0,
+                            primary_id,
+                        ),
+                    )
+                    primary.update({
+                        "rotation": dup.get("rotation") or 0,
+                        "fine_angle": dup.get("fine_angle") or 0.0,
+                        "crop_w": dup.get("crop_w"),
+                        "brightness": dup.get("brightness") or 0,
+                        "contrast": dup.get("contrast") or 0,
+                        "saturation": dup.get("saturation") or 0,
+                    })
+
+                if primary.get("latitude") is None and dup.get("latitude") is not None:
+                    cursor.execute(
+                        """
+                        UPDATE photos
+                        SET latitude = ?, longitude = ?, gps_source = ?, country = ?, state = ?, city = ?
+                        WHERE id = ?
+                        """,
+                        (
+                            dup.get("latitude"),
+                            dup.get("longitude"),
+                            dup.get("gps_source"),
+                            dup.get("country"),
+                            dup.get("state"),
+                            dup.get("city"),
+                            primary_id,
+                        ),
+                    )
+                    primary["latitude"] = dup.get("latitude")
+
+                cursor.execute("DELETE FROM photo_links WHERE photo_id = ?", (dup_id,))
+                cursor.execute("DELETE FROM photo_tags WHERE photo_id = ?", (dup_id,))
+                cursor.execute("DELETE FROM thumbnails WHERE photo_id = ?", (dup_id,))
+                cursor.execute("DELETE FROM photos WHERE id = ?", (dup_id,))
+                merged_count += 1
+
+            _sync_photo_links_state(cursor, primary_id)
+
+        if updated_count > 0 or merged_count > 0:
+            conn.commit()
+            invalidate_fast_cache()
+
+    return {"updated": updated_count, "merged": merged_count}
 
 
 def get_location_tree_summary() -> Dict[str, Any]:

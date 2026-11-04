@@ -19,6 +19,7 @@ from .photos import (
     _split_link_path,
     _strip_vsn_prefix_raw,
     _sync_photo_links_state,
+    migrate_and_merge_exifless_photos,
 )
 from .tags import (
     _ensure_tag_definitions_table,
@@ -38,6 +39,7 @@ _startup_status: Dict[str, Any] = {
     "message": "ライブラリを初期化しています...",
     "detail": "",
     "percent": -1,
+    "exifless_migration": None,
 }
 
 
@@ -53,6 +55,7 @@ def set_startup_status(
     message: Any = None,
     detail: Any = None,
     percent: Any = None,
+    exifless_migration: Any = None,
 ) -> None:
     """起動・DBマイグレーションのステータスを更新する"""
     if is_ready is not None:
@@ -65,6 +68,8 @@ def set_startup_status(
         _startup_status["detail"] = str(detail)
     if percent is not None:
         _startup_status["percent"] = int(percent)
+    if exifless_migration is not None:
+        _startup_status["exifless_migration"] = exifless_migration
 
 
 def _create_photos_indexes(cursor) -> None:
@@ -496,6 +501,42 @@ def initialize_database() -> None:
                         conn.commit()
                 except Exception as e:
                     logger.warning(f"スキャンルートのフィンガープリント更新失敗 ({f_path}): {e}")
+
+        # --- マイグレーション: Exif（撮影日時）欠落画像の識別キー更新・重複統合 ---
+        cursor.execute("SELECT 1 FROM migrations WHERE name = 'exifless_content_hash_v1'")
+        if not cursor.fetchone():
+            conn.commit()
+            set_startup_status(
+                is_ready=False,
+                phase="exifless_hash",
+                message="Exifなし画像の識別キーを更新・重複統合中...",
+                detail="対象ファイルを確認しています...",
+                percent=75,
+            )
+
+            def _on_startup_exifless_progress(cur_i: int, tot_i: int, fname_i: str) -> None:
+                pct = 75 + int((cur_i / max(1, tot_i)) * 20)
+                set_startup_status(
+                    is_ready=False,
+                    phase="exifless_hash",
+                    message="Exifなし画像の識別キーを更新・重複統合中...",
+                    detail=f"{cur_i}/{tot_i} 枚を確認中 ({fname_i})",
+                    percent=pct,
+                )
+
+            try:
+                exifless_res = migrate_and_merge_exifless_photos(progress_callback=_on_startup_exifless_progress)
+                set_startup_status(exifless_migration=exifless_res)
+                if exifless_res.get("updated", 0) > 0 or exifless_res.get("merged", 0) > 0:
+                    print(
+                        f"[MIGRATE] exifless_content_hash_v1: "
+                        f"Exifなし画像 {exifless_res.get('updated', 0)} 枚の識別キーを更新し、"
+                        f"重複 {exifless_res.get('merged', 0)} 件を統合しました"
+                    )
+            except Exception as ex_mig_err:
+                logger.warning(f"Exifなし画像の移行処理で警告: {ex_mig_err}")
+            cursor.execute("INSERT OR IGNORE INTO migrations (name) VALUES ('exifless_content_hash_v1')")
+            conn.commit()
 
         # クエリオプティマイザのインデックス統計を最新化
         cursor.execute("PRAGMA optimize")

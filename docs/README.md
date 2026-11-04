@@ -67,6 +67,11 @@ GitHub Releases 投稿用に作成されたバージョン別リリースノー�
 
 | バージョン | 主な更新内容 | ファイル |
 | :--- | :--- | :--- |
+| **v1.6.1** | リンク消失写真の選択削除＆絞り込み削除・矛盾操作防止と混在選択スキップ通知、Exif欠落画像のサンプリングハッシュ同一認識＆重複自動統合、フッター三大フィルタの意図しない解除防止 | [RELEASE_NOTES_v1.6.1.md](release_notes/RELEASE_NOTES_v1.6.1.md) |
+| **v1.6.0** | `Loome` への超高速並列ファイルコピー（Win32 `CopyFileExW` ＋ドライブ種別自動並列化＋EXIF再解析スキップ）、NeXTSTEP風右展開カスケードメニュー、空フォルダ化時のリンク整理＆空サブフォルダ誤検知修正 | [RELEASE_NOTES_v1.6.0.md](release_notes/RELEASE_NOTES_v1.6.0.md) |
+| **v1.5.0** | イベント駆動メディア抜き挿し自動検知（`WM_DEVICECHANGE`＋SSE）、外部アプリ編集の自動同期、全画面リアクティブ同期 | [RELEASE_NOTES_v1.5.0.md](release_notes/RELEASE_NOTES_v1.5.0.md) |
+| **v1.4.1** | 日英翻訳（JP/EN）の網羅性向上、アプリ内ヘルプ＆ドキュメント同期 | [RELEASE_NOTES_v1.4.1.md](release_notes/RELEASE_NOTES_v1.4.1.md) |
+| **v1.4.0** | 専用保管庫「Loome」・外部ドライブ Loome 増設、下部フッターツールバー刷新、評価・フィルタ切替の超高速化 | [RELEASE_NOTES_v1.4.0.md](release_notes/RELEASE_NOTES_v1.4.0.md) |
 | **v1.2.2** | フォルダ更新（差分検出）・消失写真リンク解除 ＆ アプリ全体の確認ダイアログをカスタムモーダル（`#commonConfirmModal`）に統一、大規模DBマイグレーション時の起動待機時間延長（最大180秒） | [RELEASE_NOTES_v1.2.2.md](release_notes/RELEASE_NOTES_v1.2.2.md) |
 | **v1.2.1** | DBマイグレーション時の `ON DELETE CASCADE` 遮断と事前バックアップからの自動自己修復復元、4KBパディング連写・ブラケット識別精度向上、フルブリード新アプリアイコン | [RELEASE_NOTES_v1.2.1.md](release_notes/RELEASE_NOTES_v1.2.1.md) |
 | **v1.2.0** | ユニーク画像エンティティ（`photos`）と実ファイル所在リンク（`photo_links`）の分離、`thumbnails` ROWID直結化、`photo_tags` `WITHOUT ROWID` クラスタ化 | [RELEASE_NOTES_v1.2.0.md](release_notes/RELEASE_NOTES_v1.2.0.md) |

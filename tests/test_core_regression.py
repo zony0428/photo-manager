@@ -2728,6 +2728,163 @@ class TestCoreRegression(unittest.TestCase):
                 sm.invalidate_loome_roots_cache()
 
 
+    def test_31_exifless_image_dedup_and_partial_purge_unlinked(self):
+        """Exif欠落画像の別フォルダコピー時の同一認識・分裂済みレコードの自動統合・リンク消失写真の選択削除を検証"""
+        import shutil
+        from unittest import mock as _mock
+        from PIL import Image as _PilImage
+        from server.database import (
+            add_tag_to_photo,
+            get_photo_by_id,
+            get_unlinked_photos_count,
+            migrate_and_merge_exifless_photos,
+            purge_unlinked_photos,
+            update_rating,
+        )
+        from server.scanner import scan_directory
+
+        with tempfile.TemporaryDirectory() as tmp, _mock.patch(
+            "server.preload_thumbnails.preload_all_thumbnails", return_value=None
+        ):
+            root = Path(tmp)
+            dir_a = root / "FolderA"
+            dir_b = root / "FolderB"
+            dir_a.mkdir(parents=True, exist_ok=True)
+            dir_b.mkdir(parents=True, exist_ok=True)
+
+            # 1) Exifの無いPNG画像を作成（6KB以上になるようノイズ風のパターンを描画）
+            img_a = dir_a / "NO_EXIF_ORIG.PNG"
+            pil_img = _PilImage.new("RGB", (320, 240))
+            pixels = pil_img.load()
+            for y in range(240):
+                for x in range(320):
+                    pixels[x, y] = ((x * 37 + y * 13) % 256, (x * 17 + y * 53) % 256, (x * 71 + y * 29) % 256)
+            pil_img.save(img_a, format="PNG", compress_level=0)
+            self.assertGreater(img_a.stat().st_size, 5000)
+
+            # フォルダAをスキャン
+            res_a = scan_directory(str(dir_a), recursive=True, cleanup_orphans=False)
+            self.assertEqual(res_a["added"], 1)
+
+            with get_connection() as conn:
+                row_a = conn.execute(
+                    "SELECT id, content_key FROM photos WHERE directory_path = ?",
+                    (str(dir_a),),
+                ).fetchone()
+            self.assertIsNotNone(row_a)
+            pid_a = row_a["id"]
+            self.assertTrue(str(row_a["content_key"]).startswith("hash:"), f"Expected hash:... key, got {row_a['content_key']}")
+
+            # 別フォルダBに別ファイル名・別更新日時(mtime)でコピーしてスキャン -> 分裂せず同一 photo_id にリンク追加されること
+            img_b = dir_b / "COPIED_RENAME.PNG"
+            shutil.copyfile(img_a, img_b)
+            os.utime(img_b, (1600000000, 1600000000))
+
+            res_b = scan_directory(str(dir_b), recursive=True, cleanup_orphans=False)
+            self.assertEqual(res_b["scanned"], 1)
+
+            with get_connection() as conn:
+                total_photos = conn.execute(
+                    "SELECT COUNT(*) FROM photos WHERE id = ?",
+                    (pid_a,),
+                ).fetchone()[0]
+                link_cnt = conn.execute(
+                    "SELECT COUNT(*) FROM photo_links WHERE photo_id = ?",
+                    (pid_a,),
+                ).fetchone()[0]
+            self.assertEqual(total_photos, 1)
+            self.assertEqual(link_cnt, 2, "FolderA と FolderB の2つのリンクが1つの photo_id に紐付いていること")
+
+            # 2) 旧方式で既に2レコードに分裂していたExifなし画像が migrate_and_merge_exifless_photos で統合されることを検証
+            dir_c = root / "LegacySplitC"
+            dir_d = root / "LegacySplitD"
+            dir_c.mkdir(parents=True, exist_ok=True)
+            dir_d.mkdir(parents=True, exist_ok=True)
+            img_c = dir_c / "SPLIT_1.PNG"
+            img_d = dir_d / "SPLIT_2.PNG"
+            pil_img2 = _PilImage.new("RGB", (300, 200))
+            px2 = pil_img2.load()
+            for y in range(200):
+                for x in range(300):
+                    px2[x, y] = ((x * 23 + y * 41) % 256, (x * 61 + y * 19) % 256, (x * 11 + y * 83) % 256)
+            pil_img2.save(img_c, format="PNG", compress_level=0)
+            shutil.copyfile(img_c, img_d)
+
+            fsize2 = img_c.stat().st_size
+            pid_c = upsert_photo({
+                "file_path": str(img_c),
+                "directory_path": str(dir_c),
+                "file_name": "SPLIT_1.PNG",
+                "file_size": fsize2,
+                "file_mtime": 1700000100.0,
+                "date_taken": "2025:01:01 10:00:00",
+                "width": 300,
+                "height": 200,
+                "is_raw": 0,
+                "content_key": f"dt:2025:01:01 10:00:00|sz:{fsize2}|wh:300x200|raw:0",
+            })
+            pid_d = upsert_photo({
+                "file_path": str(img_d),
+                "directory_path": str(dir_d),
+                "file_name": "SPLIT_2.PNG",
+                "file_size": fsize2,
+                "file_mtime": 1700000200.0,
+                "date_taken": "2025:02:02 12:00:00",
+                "width": 300,
+                "height": 200,
+                "is_raw": 0,
+                "content_key": f"dt:2025:02:02 12:00:00|sz:{fsize2}|wh:300x200|raw:0",
+            })
+            self.assertNotEqual(pid_c, pid_d)
+            update_rating(pid_c, 1)
+            update_rating(pid_d, 2)
+            add_tag_to_photo(pid_c, "タグC")
+            add_tag_to_photo(pid_d, "タグD")
+
+            mig_res = migrate_and_merge_exifless_photos()
+            self.assertGreaterEqual(mig_res["merged"], 1)
+
+            keeper = get_photo_by_id(pid_c)
+            self.assertIsNotNone(keeper)
+            self.assertIsNone(get_photo_by_id(pid_d))
+            self.assertEqual(keeper["rating"], 2, "評価が高い方が引き継がれること")
+            self.assertIn("タグC", keeper["tags"])
+            self.assertIn("タグD", keeper["tags"])
+
+            # 3) リンク消失写真の一部だけを選択して完全消去 (purge_unlinked_photos) できること・実体あり写真は消えないこと
+            unlinked_1 = upsert_photo({
+                "file_path": r"C:\Ghost\UNLINKED_1.JPG",
+                "directory_path": r"C:\Ghost",
+                "file_name": "UNLINKED_1.JPG",
+                "file_size": 1111,
+                "date_taken": "2024:01:01 00:00:00",
+                "width": 100,
+                "height": 100,
+            })
+            unlinked_2 = upsert_photo({
+                "file_path": r"C:\Ghost\UNLINKED_2.JPG",
+                "directory_path": r"C:\Ghost",
+                "file_name": "UNLINKED_2.JPG",
+                "file_size": 2222,
+                "date_taken": "2024:01:02 00:00:00",
+                "width": 100,
+                "height": 100,
+            })
+            with get_connection() as conn:
+                conn.execute("DELETE FROM photo_links WHERE photo_id IN (?, ?)", (unlinked_1, unlinked_2))
+                conn.execute("UPDATE photos SET is_unlinked = 1 WHERE id IN (?, ?)", (unlinked_1, unlinked_2))
+                conn.commit()
+
+            self.assertEqual(get_unlinked_photos_count(), 2)
+            # unlinked_1 と リンクありの pid_a を渡しても、unlinked_1 だけが削除され pid_a と unlinked_2 は残ること
+            purged = purge_unlinked_photos([unlinked_1, pid_a])
+            self.assertEqual(purged, 1)
+            self.assertIsNone(get_photo_by_id(unlinked_1))
+            self.assertIsNotNone(get_photo_by_id(unlinked_2))
+            self.assertIsNotNone(get_photo_by_id(pid_a))
+            self.assertEqual(get_unlinked_photos_count(), 1)
+
+
 if __name__ == "__main__":
     unittest.main()
 

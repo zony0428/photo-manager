@@ -66,6 +66,7 @@ from .photos import (
     cleanup_invalid_zero_gps,
     backfill_photo_locations,
     backfill_missing_lens_models,
+    migrate_and_merge_exifless_photos,
     get_location_tree_summary,
 )
 

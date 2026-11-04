@@ -660,14 +660,18 @@ function showSingleInspector(photo) {
 
   // ヘッダーのフォルダ・ファイルを開くボタン
   if (elements.inspectorOpenFolderBtn) {
-    elements.inspectorOpenFolderBtn.style.display = 'inline-flex';
+    elements.inspectorOpenFolderBtn.style.display = photo.is_unlinked ? 'none' : 'inline-flex';
     elements.inspectorOpenFolderBtn.onclick = (e) => {
       e.stopPropagation(); // 大画面ビューワが開かないようにする
       openPhotoFolder(photo.id);
     };
   }
   if (elements.inspectorOpenFileBtn) {
-    elements.inspectorOpenFileBtn.style.display = 'inline-flex';
+    elements.inspectorOpenFileBtn.style.display = photo.is_unlinked ? 'none' : 'inline-flex';
+    const quickAdjBtn = document.getElementById('inspectorQuickAdjustBtn');
+    if (quickAdjBtn) {
+      quickAdjBtn.style.display = photo.is_unlinked ? 'none' : '';
+    }
     elements.inspectorOpenFileBtn.onclick = (e) => {
       e.stopPropagation();
       openPhotoFile(photo.id);
@@ -1105,6 +1109,7 @@ function showSingleInspector(photo) {
       }
       // 「RAWを開く」ボタンイベント
       if (elements.inspectorOpenRawBtn) {
+        elements.inspectorOpenRawBtn.style.display = photo.is_unlinked ? 'none' : '';
         elements.inspectorOpenRawBtn.onclick = async () => {
           try {
             const res = await fetch(`/api/photo/${photo.id}/open-raw`, { method: 'POST' });

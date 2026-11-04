@@ -91,11 +91,15 @@ async function initializeApp() {
   setupEventListeners();
   initUserSettings();
   initHeartbeat();
+  let startupExiflessMig = null;
   if (typeof updateStartupSplash === 'function') {
     try {
       const stRes = await fetch('/api/startup/status');
       if (stRes.ok) {
         const st = await stRes.json();
+        if (st && st.exifless_migration) {
+          startupExiflessMig = st.exifless_migration;
+        }
         if (st && st.message) {
           updateStartupSplash({
             message: st.message,
@@ -109,6 +113,19 @@ async function initializeApp() {
       message: t('splash.loading_library', 'ライブラリを読み込み中...'),
       percent: 55,
       detail: t('splash.loading_library_detail', '写真とタグのインデックスを取得しています'),
+    });
+    if (startupExiflessMig && (startupExiflessMig.updated > 0 || startupExiflessMig.merged > 0)) {
+      setTimeout(() => {
+        const uCnt = startupExiflessMig.updated || 0;
+        const mCnt = startupExiflessMig.merged || 0;
+        const mergePart = mCnt > 0 ? `し、重複 ${mCnt}件を統合` : '';
+        showToast(`Exifなし画像 ${uCnt}枚の識別キーを更新${mergePart}しました`, 'info', 4500);
+      }, 900);
+    }
+  }
+  if (false) {
+    updateStartupSplash({
+      detail: '',
     });
   }
   try {
@@ -163,6 +180,154 @@ async function fetchUnlinkedCount() {
 }
 window.fetchUnlinkedCount = fetchUnlinkedCount;
 window.fetchMissingCount = fetchUnlinkedCount; // 互換性エイリアス
+
+/**
+ * 現在ギャラリーに表示されている写真群から「リンク消失（is_unlinked）」の全photo_idを重複なく取得する（スタック内も含む）
+ */
+function getDisplayedUnlinkedPhotoIds() {
+  if (!Array.isArray(state.photos) || state.photos.length === 0) return [];
+  const idSet = new Set();
+  const isUnlinkedFn = typeof isPhotoUnlinkedRecord === 'function'
+    ? isPhotoUnlinkedRecord
+    : (p) => Boolean(p && (p.is_unlinked || p.is_missing || !p.file_path));
+  for (const p of state.photos) {
+    if (!p) continue;
+    if (isUnlinkedFn(p) && p.id) idSet.add(Number(p.id));
+    if (Array.isArray(p.stack_photos)) {
+      for (const sp of p.stack_photos) {
+        if (sp && isUnlinkedFn(sp) && sp.id) idSet.add(Number(sp.id));
+      }
+    }
+  }
+  return Array.from(idSet).filter(Boolean);
+}
+window.getDisplayedUnlinkedPhotoIds = getDisplayedUnlinkedPhotoIds;
+
+/**
+ * 「リンク情報なし（リンク消失の写真）」絞り込み時の完全消去ボタン（#purgeUnlinkedBtn）の表示・ラベルを選択枚数や他フィルタと同期する
+ */
+function syncPurgeUnlinkedButtonUI() {
+  const btn = elements.purgeUnlinkedBtn || document.getElementById('purgeUnlinkedBtn');
+  if (!btn) return;
+  const isUnlinkedView = typeof isStrictlyUnlinkedOnlyView === 'function'
+    ? isStrictlyUnlinkedOnlyView()
+    : (state.connectionFilter === 'unlinked');
+  if (!isUnlinkedView || !Array.isArray(state.photos) || state.photos.length === 0) {
+    btn.style.display = 'none';
+    return;
+  }
+  btn.style.display = 'inline-flex';
+  const selCount = state.selectedPhotoIds ? state.selectedPhotoIds.size : 0;
+  if (selCount > 0) {
+    btn.textContent = `選択したリンク消失写真を完全消去 (${selCount}枚)`;
+  } else {
+    const dispIds = getDisplayedUnlinkedPhotoIds();
+    const totalUnlinked = Number(
+      elements.unlinkedPhotosCount?.textContent
+      || elements.folderTreeUnlinkedCount?.textContent
+      || dispIds.length
+    );
+    if (totalUnlinked > 0 && dispIds.length < totalUnlinked) {
+      btn.textContent = `表示中のリンク消失写真を完全消去 (${dispIds.length}枚)`;
+    } else if (dispIds.length > 0) {
+      btn.textContent = `リンク消失写真をすべて完全消去 (${dispIds.length}枚)`;
+    } else {
+      btn.textContent = 'リンク消失写真をすべて完全消去';
+    }
+  }
+}
+window.syncPurgeUnlinkedButtonUI = syncPurgeUnlinkedButtonUI;
+
+/**
+ * 「リンク情報なし（リンク消失の写真）」絞り込み時に、選択した写真（または未選択時は現在表示中の対象写真）をDBから完全消去する
+ */
+async function purgeUnlinkedPhotosAction(explicitPhotoIds = null) {
+  const isUnlinkedView = typeof isStrictlyUnlinkedOnlyView === 'function'
+    ? isStrictlyUnlinkedOnlyView()
+    : (state.connectionFilter === 'unlinked');
+  if (!isUnlinkedView) {
+    showToast('データの完全消去は「リンク情報なし（リンク消失の写真）」の絞り込み表示中のみ実行できます', 'warning');
+    return;
+  }
+
+  let targetIds = null;
+  let isSelectedMode = false;
+  if (Array.isArray(explicitPhotoIds) && explicitPhotoIds.length > 0) {
+    targetIds = explicitPhotoIds.map(Number).filter(Boolean);
+    isSelectedMode = true;
+  } else if (state.selectedPhotoIds && state.selectedPhotoIds.size > 0) {
+    targetIds = Array.from(state.selectedPhotoIds).map(Number).filter(Boolean);
+    isSelectedMode = true;
+  }
+
+  const dispIds = getDisplayedUnlinkedPhotoIds();
+  const totalUnlinked = Number(
+    elements.unlinkedPhotosCount?.textContent
+    || elements.folderTreeUnlinkedCount?.textContent
+    || dispIds.length
+  );
+  const isFilteredSubset = !isSelectedMode && dispIds.length > 0 && totalUnlinked > dispIds.length;
+  if (isFilteredSubset) {
+    targetIds = dispIds;
+  }
+
+  const isPartial = Array.isArray(targetIds) && targetIds.length > 0;
+  let headingText = 'リンク消失しているすべての写真レコードをDBから完全に消去しますか？';
+  let modalTitle = 'リンク消失写真の完全消去';
+  let modalSubtitle = 'データベースからのレコード一括消去';
+  let confirmBtnText = 'すべて完全に消去する';
+
+  if (isSelectedMode && isPartial) {
+    headingText = `選択した ${targetIds.length} 枚のリンク消失写真レコードをDBから完全に消去しますか？`;
+    modalTitle = '選択したリンク消失写真の完全消去';
+    modalSubtitle = `選択中の ${targetIds.length} 枚をデータベースから消去`;
+    confirmBtnText = `選択した ${targetIds.length} 枚を消去する`;
+  } else if (isFilteredSubset && isPartial) {
+    headingText = `現在絞り込み表示されている ${targetIds.length} 枚のリンク消失写真レコードをDBから完全に消去しますか？`;
+    modalTitle = '表示中のリンク消失写真の完全消去';
+    modalSubtitle = `絞り込み表示中の ${targetIds.length} 枚をデータベースから消去（非表示の ${totalUnlinked - targetIds.length} 枚は保持）`;
+    confirmBtnText = `表示中の ${targetIds.length} 枚を消去する`;
+  }
+
+  const confirmed = typeof showConfirmModal === 'function'
+    ? await showConfirmModal({
+        title: modalTitle,
+        subtitle: modalSubtitle,
+        icon: 'trash',
+        headingText,
+        descriptionLines: [
+          'サムネイル・タグ・評価を含むすべての登録情報がデータベースから削除されます。',
+          '※ この操作は取り消せません。',
+        ],
+        confirmText: confirmBtnText,
+        confirmVariant: 'danger',
+      })
+    : confirm(`${headingText}\nこの操作は取り消せません。`);
+  if (!confirmed) return;
+
+  try {
+    const payload = isPartial ? { photo_ids: targetIds } : {};
+    const res = await fetch('/api/photos/purge-unlinked', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || '消去に失敗しました');
+    showToast(`${data.purged}枚の写真レコードを完全に消去しました`, 'success');
+    if (state.selectedPhotoIds) state.selectedPhotoIds.clear();
+    state.lastSelectedIndex = -1;
+    state.activeInspectorPhotoId = null;
+    const purgedCount = Number(data.purged || 0);
+    if (!isPartial || (totalUnlinked > 0 && totalUnlinked <= purgedCount)) {
+      setConnectionFilter('all');
+    }
+    await refreshAll();
+  } catch (err) {
+    showToast('消去エラー: ' + err.message, 'error');
+  }
+}
+window.purgeUnlinkedPhotosAction = purgeUnlinkedPhotosAction;
 
 /**
  * 重複写真（同一撮影日時＋サイズで他フォルダコピーあり）件数の取得とクイックアクセス表示更新
@@ -432,15 +597,11 @@ async function fetchPhotos() {
       state.photos = data.photos;
     }
     state.isLimitReached = MAX_DISPLAY_PHOTOS > 0 && data.photos.length >= MAX_DISPLAY_PHOTOS;
+    // リンク消失写真一括消去ボタンの表示切替（updateViewHeader内のrenderActiveFilterChipsより先に実行してバー表示を同期）
+    syncPurgeUnlinkedButtonUI();
     renderPhotoGrid();
     updateViewHeader();
     updateInspectorView();
-
-    // リンク消失写真一括消去ボタンの表示切替
-    if (elements.purgeUnlinkedBtn) {
-      const isUnlinkedOnlyView = state.connectionFilter === 'unlinked' || (state.connectionStates instanceof Set && state.connectionStates.size === 1 && state.connectionStates.has('unlinked'));
-      elements.purgeUnlinkedBtn.style.display = (isUnlinkedOnlyView && state.photos.length > 0) ? 'inline-flex' : 'none';
-    }
   } catch (error) {
     if (error && error.name === 'AbortError') return;
     console.error('写真読み込みエラー:', error);
@@ -1125,7 +1286,6 @@ function setTagFilterModeDirect(tagPath, mode) {
   if (!tagPath) return;
   state.untaggedOnly = false;
   if (elements.untaggedNavItem) elements.untaggedNavItem.classList.remove('active');
-  state.connectionStates = new Set(['online', 'offline', 'unlinked']);
 
   const isColor = typeof COLOR_TAG_MAP !== 'undefined' && (tagPath in COLOR_TAG_MAP);
   if (isColor) {
@@ -2779,7 +2939,7 @@ function renderActiveFilterChips() {
         clrBtn.textContent = '解除（すべて）';
         clrBtn.addEventListener('click', () => {
           closeNlFilterPopover();
-          setConnectionFilter(state.connectionFilter);
+          setConnectionFilter('all');
         });
         grid.appendChild(clrBtn);
 
@@ -2792,7 +2952,7 @@ function renderActiveFilterChips() {
     clause.appendChild(createPill({
       labelHtml: escapeHtml(connLabels[state.connectionFilter] || state.connectionFilter),
       extraClass: 'chip-tag-include',
-      onRemove: () => setConnectionFilter(state.connectionFilter),
+      onRemove: () => setConnectionFilter('all'),
       onClick: openConnPopover,
     }));
     appendClause(clause);
@@ -3182,6 +3342,14 @@ function applyHeaderScopeFilter(scopeValue) {
     state.connectionStates = new Set(['online', 'offline', 'unlinked']);
     _syncConnectionFilterAndTitleFromSet();
   } else if (val === 'online' || val === 'offline' || val === 'unlinked') {
+    if (val === 'unlinked' && state.currentFilter && (state.currentFilter.type === 'folder' || state.currentFilter.type === 'folder_exclude')) {
+      state.currentFilter = { type: 'all', value: null, titleText: 'リンク消失の写真（実体パス未登録）' };
+      document.querySelectorAll('.sidebar .nav-item, .sidebar .folder-tree-item').forEach(el => {
+        el.classList.remove('active', 'active-exclude');
+      });
+      if (typeof window.syncFolderTreeFilterStates === 'function') window.syncFolderTreeFilterStates();
+      if (typeof window.syncSidebarMediaActiveStates === 'function') window.syncSidebarMediaActiveStates();
+    }
     state.connectionStates = new Set([val]);
     _syncConnectionFilterAndTitleFromSet();
   } else if (val === 'duplicates') {
@@ -3271,6 +3439,14 @@ function setConnectionFilter(type) {
     if (isAlreadySingle) {
       state.connectionStates = new Set(['online', 'offline', 'unlinked']);
     } else {
+      if (normKey === 'unlinked' && state.currentFilter && (state.currentFilter.type === 'folder' || state.currentFilter.type === 'folder_exclude')) {
+        state.currentFilter = { type: 'all', value: null, titleText: 'リンク消失の写真（実体パス未登録）' };
+        document.querySelectorAll('.sidebar .nav-item, .sidebar .folder-tree-item').forEach(el => {
+          el.classList.remove('active', 'active-exclude');
+        });
+        if (typeof window.syncFolderTreeFilterStates === 'function') window.syncFolderTreeFilterStates();
+        if (typeof window.syncSidebarMediaActiveStates === 'function') window.syncSidebarMediaActiveStates();
+      }
       state.connectionStates = new Set([normKey]);
     }
     _syncConnectionFilterAndTitleFromSet();
@@ -3460,6 +3636,15 @@ function setFilter(type, value, titleText, options = {}) {
 
   if ((type === 'folder' || type === 'folder_exclude') && value) {
     revealFolderInTree(value);
+    // リンク消失写真（実体パス未登録）のみ絞り込み中にフォルダを選択した場合は接続状態フィルタを「すべて」に戻す
+    const isUnlinkedOnly = state.connectionFilter === 'unlinked'
+      || state.connectionFilter === 'missing'
+      || (state.connectionStates instanceof Set && state.connectionStates.size === 1 && state.connectionStates.has('unlinked'));
+    if (isUnlinkedOnly) {
+      state.connectionStates = new Set(['online', 'offline', 'unlinked']);
+      state.connectionFilter = 'all';
+      state.onlineOnly = false;
+    }
   }
 
   state.currentFilter = {
@@ -3470,8 +3655,10 @@ function setFilter(type, value, titleText, options = {}) {
     isOffline: Boolean(options && options.isOffline),
     titleText: titleText || '',
   };
-  state.untaggedOnly = false;
-  elements.untaggedNavItem.classList.remove('active');
+  if (type === 'all' && !value) {
+    state.untaggedOnly = false;
+    if (elements.untaggedNavItem) elements.untaggedNavItem.classList.remove('active');
+  }
   elements.viewTitle.textContent = titleText;
 
   // サイドバーのアクティブクラス更新（通常nav-item ＆ フォルダツリー項目）
@@ -4333,13 +4520,16 @@ function setupEventListeners() {
   // 表示対象（スコープ）変更
   if (elements.headerScopeSelect) {
     elements.headerScopeSelect.addEventListener('change', (e) => {
-      applyHeaderScopeFilter(e.target.value);
+      const val = e.target.value;
+      if (typeof e.target.blur === 'function') e.target.blur();
+      applyHeaderScopeFilter(val);
     });
   }
 
   // ソート順変更
   elements.sortBySelect.addEventListener('change', (e) => {
     state.sortBy = e.target.value;
+    if (typeof e.target.blur === 'function') e.target.blur();
     localStorage.setItem('pm_sort_by', state.sortBy);
     fetchPhotos();
   });
@@ -4348,6 +4538,7 @@ function setupEventListeners() {
   document.querySelectorAll('.rating-filter-toggles .rating-toggle').forEach(btn => {
     btn.addEventListener('click', () => {
       const rv = parseInt(btn.dataset.rating, 10);
+      if (typeof btn.blur === 'function') btn.blur();
       toggleRatingFilter(rv);
       updateRatingFilterUI();
       fetchPhotos();
@@ -4365,6 +4556,7 @@ function setupEventListeners() {
   if (headerAttrSel) {
     headerAttrSel.addEventListener('change', (e) => {
       state.attrFilter = e.target.value || 'all';
+      if (typeof e.target.blur === 'function') e.target.blur();
       syncAttrFilterButtons();
       fetchPhotos();
     });
@@ -4374,6 +4566,7 @@ function setupEventListeners() {
   if (attrSubSelect) {
     attrSubSelect.addEventListener('change', (e) => {
       const val = e.target.value;
+      if (typeof e.target.blur === 'function') e.target.blur();
       setAttrFilter(val || 'all');
     });
   }
@@ -4415,7 +4608,13 @@ function setupEventListeners() {
     elements.duplicatesOnlyNavItem.addEventListener('click', () => setConnectionFilter('duplicates'));
   }
 
-  // リンク消失写真の一括完全消去ボタン
+  // リンク消失写真の完全消去ボタン（選択枚数連動・リンク情報なし画面限定）
+  if (elements.purgeUnlinkedBtn) {
+    elements.purgeUnlinkedBtn.addEventListener('click', async () => {
+      await purgeUnlinkedPhotosAction(null);
+    });
+  }
+  if (false)
   if (elements.purgeUnlinkedBtn) {
     elements.purgeUnlinkedBtn.addEventListener('click', async () => {
       const confirmed = typeof showConfirmModal === 'function'
@@ -5305,6 +5504,11 @@ function setupEventListeners() {
       } else if (e.key === '0' || e.key === '4') {
         // 選択写真の評価取消 (可)
         applyRatingToSelection(0);
+      } else if (e.key === 'Delete' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (typeof isStrictlyUnlinkedOnlyView === 'function' && isStrictlyUnlinkedOnlyView() && state.selectedPhotoIds.size > 0) {
+          e.preventDefault();
+          purgeUnlinkedPhotosAction(Array.from(state.selectedPhotoIds));
+        }
       } else if (e.key === 'x' || e.key === 'X') {
         // 選択写真に棄
         applyRatingToSelection(-1);

@@ -422,6 +422,12 @@
           ? findPhotoByIdAnywhere(photoOrId)
           : ((typeof state !== 'undefined' && state.photos) ? state.photos.find(p => p.id === Number(photoOrId)) : null));
     if (!photo) return;
+    if (photo.is_unlinked) {
+      if (typeof showToast === 'function') {
+        showToast('リンク情報なしの写真は元ファイルがないため切り抜き・微調整できません（90°回転のみ可能）', 'warning', 3500);
+      }
+      return;
+    }
     if (!modalEl) initAdjustModule();
 
     adjustState.photo = photo;
@@ -794,6 +800,12 @@
   async function handleApplyAdjustments() {
     const photo = adjustState.photo;
     if (!photo) return;
+    if (photo.is_unlinked) {
+      if (typeof showToast === 'function') {
+        showToast('リンク情報なしの写真は元ファイルがないため切り抜き・微調整できません（90°回転のみ可能）', 'warning', 3500);
+      }
+      return;
+    }
 
     const { w: contW, h: contH } = adjustState.containerSize;
     if (contW <= 0 || contH <= 0) return;
@@ -879,6 +891,12 @@
   async function handleResetAdjustments() {
     const photo = adjustState.photo;
     if (!photo) return;
+    if (photo.is_unlinked) {
+      if (typeof showToast === 'function') {
+        showToast('リンク情報なしの写真は元ファイルがないため切り抜き・微調整できません（90°回転のみ可能）', 'warning', 3500);
+      }
+      return;
+    }
 
     try {
       const res = await fetch(`/api/photo/${photo.id}/adjust/reset`, {
@@ -1437,6 +1455,12 @@
         : ((typeof state !== 'undefined' && state.photos) ? state.photos.find(p => p.id === Number(photoOrId)) : null);
     }
     if (!photo) return;
+    if (photo.is_unlinked) {
+      if (typeof showToast === 'function') {
+        showToast('リンク情報なしの写真は元ファイルがないため切り抜き・微調整できません（90°回転のみ可能）', 'warning', 3500);
+      }
+      return;
+    }
 
     const saved = setCopiedToneAdjustments({
       brightness: Number(photo.brightness) || 0,
@@ -1519,6 +1543,12 @@
         : ((typeof state !== 'undefined' && state.photos) ? state.photos.find(p => p.id === Number(photoOrId)) : null);
     }
     if (!photo) return;
+    if (photo.is_unlinked) {
+      if (typeof showToast === 'function') {
+        showToast('リンク情報なしの写真は元ファイルがないため切り抜き・微調整できません（90°回転のみ可能）', 'warning', 3500);
+      }
+      return;
+    }
 
     if (!navigator.clipboard || typeof window.ClipboardItem === 'undefined') {
       if (typeof showToast === 'function') {

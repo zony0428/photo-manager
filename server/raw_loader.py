@@ -314,6 +314,7 @@ def extract_raw_metadata(file_path: Path) -> Dict[str, Any]:
     fallback_dt = datetime.fromtimestamp(stat.st_mtime)
     date_taken = fallback_dt.strftime("%Y-%m-%d %H:%M:%S")
     camera_model = "RAW写真"
+    has_exif_date = False
     width = 0
     height = 0
     exposure_bias = 0.0
@@ -391,6 +392,7 @@ def extract_raw_metadata(file_path: Path) -> Dict[str, Any]:
             exif_ifd.get(0x0132)
         )
         parsed = parse_exif_date_str(str(raw_date) if raw_date else None)
+        has_exif_date = bool(parsed)
         if parsed:
             date_taken = parsed
 
@@ -500,5 +502,6 @@ def extract_raw_metadata(file_path: Path) -> Dict[str, Any]:
         "subsec_time": subsec_time,
         "is_raw": 1,
         "raw_format": file_path.suffix.lower(),
+        "has_exif_date": has_exif_date,
         "volume_serial": None,
     }

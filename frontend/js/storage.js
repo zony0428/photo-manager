@@ -114,6 +114,11 @@ function getSelectedPhotosStorageBreakdown() {
       ? findPhotoByIdAnywhere(id)
       : (state.photos || []).find(item => item.id === id);
     if (!p) continue;
+    if (!p) continue;
+    if (p.is_unlinked) {
+      if (!window._lastStorageUnlinkedIds) window._lastStorageUnlinkedIds = [];
+      continue;
+    }
     if (isPhotoInStorage(p)) {
       storagePhotos.push(p);
       storagePhotoIds.push(p.id);
@@ -726,7 +731,8 @@ function updateStorageContextMenu() {
 
   if (importItem) {
     const selectedCount = (typeof state !== 'undefined' && state.selectedPhotoIds) ? state.selectedPhotoIds.size : 0;
-    if (externalPhotoIds.length > 0 || selectedCount > 0) {
+    const hasLinkedSelection = externalPhotoIds.length > 0 || storagePhotoIds.length > 0;
+    if (hasLinkedSelection) {
       importItem.style.display = '';
       anyStorageItemVisible = true;
       const importList = document.getElementById('contextStorageImportFolderList');
@@ -806,6 +812,17 @@ async function importPhotosToStorage(photoIds, destination, displayName = '') {
     if (typeof showToast === 'function') showToast('コピーする写真が選択されていません', 'info');
     return;
   }
+  const linkPart = typeof partitionPhotosByLinkStatus === 'function'
+    ? partitionPhotosByLinkStatus(ids)
+    : { linkedIds: ids, unlinkedIds: [] };
+  const skippedUnlinkedCount = linkPart.unlinkedIds.length;
+  if (linkPart.linkedIds.length === 0) {
+    if (typeof showToast === 'function') {
+      showToast('リンク情報なしの写真は実体ファイルがないため Loome へコピーできません', 'warning', 3500);
+    }
+    return;
+  }
+  ids.splice(0, ids.length, ...linkPart.linkedIds);
 
   if (typeof closeContextMenu === 'function') closeContextMenu();
   if (typeof closeAllFloatingPopovers === 'function') closeAllFloatingPopovers();
@@ -835,10 +852,10 @@ async function importPhotosToStorage(photoIds, destination, displayName = '') {
     const destLabel = displayName || data.destination_name || 'Loome';
     const importedCount = Number(data.imported_count || 0);
     const skippedCount = Number(data.skipped_count || 0);
-    const skipMsg = skippedCount > 0 ? `（スキップ: ${skippedCount}枚）` : '';
-
+    const skipMsg = skippedCount > 0 ? `（重複スキップ: ${skippedCount}枚）` : '';
+    const unlinkedSkipMsg = skippedUnlinkedCount > 0 ? `（実体のない ${skippedUnlinkedCount} 枚はスキップしました）` : '';
     if (typeof showToast === 'function') {
-      showToast(`${importedCount}枚の写真を「${destLabel}」へコピーしました${skipMsg}`, 'success', 4000);
+      showToast(`${importedCount}枚の写真を「${destLabel}」へコピーしました${skipMsg}${unlinkedSkipMsg}`, 'success', 4200);
     }
 
     if (typeof clearSelection === 'function' && state.selectedPhotoIds && state.selectedPhotoIds.size > 0) {
@@ -872,8 +889,12 @@ window.importPhotosToStorage = importPhotosToStorage;
  * 選択中の外部写真を Loome へインポートする
  */
 async function executeStorageImportFromSelection(destination, displayName = '') {
-  const { externalPhotoIds } = getSelectedPhotosStorageBreakdown();
-  const targetIds = externalPhotoIds.length > 0 ? externalPhotoIds : Array.from(state.selectedPhotoIds || []);
+  const { externalPhotoIds, storagePhotoIds } = getSelectedPhotosStorageBreakdown();
+  const linkPart = typeof partitionPhotosByLinkStatus === 'function'
+    ? partitionPhotosByLinkStatus(state.selectedPhotoIds || [])
+    : { linkedIds: [], unlinkedIds: [] };
+  const baseIds = externalPhotoIds.length > 0 ? externalPhotoIds : storagePhotoIds;
+  const targetIds = [...baseIds, ...linkPart.unlinkedIds];
   await importPhotosToStorage(targetIds, destination, displayName);
 }
 
@@ -971,10 +992,21 @@ async function handleDropPhotosToStorageFolder(targetPath, targetName, explicitP
 
   const storageIds = [];
   const externalIds = [];
+  const linkPart = typeof partitionPhotosByLinkStatus === 'function'
+    ? partitionPhotosByLinkStatus(rawIds)
+    : { linkedIds: rawIds, unlinkedIds: [] };
+  if (linkPart.linkedIds.length === 0) {
+    if (typeof showToast === 'function') {
+      showToast('リンク情報なしの写真は実体ファイルがないため Loome へコピー・移動できません', 'warning', 3500);
+    }
+    return;
+  }
   for (const id of rawIds) {
     const numId = Number(id);
-    const p = (state.photos || []).find(item => item.id === numId);
-    if (p && isPhotoInStorage(p)) {
+    const p = typeof findPhotoByIdAnywhere === 'function'
+      ? findPhotoByIdAnywhere(numId)
+      : (state.photos || []).find(item => item.id === numId);
+    if (p && !p.is_unlinked && isPhotoInStorage(p)) {
       storageIds.push(numId);
     } else if (numId) {
       externalIds.push(numId);

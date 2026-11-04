@@ -170,6 +170,9 @@ function hasMissingThumbnailsInSelection() {
 
 function updateSelectionUI() {
   document.body.classList.toggle('inspector-collapsed', !state.isInspectorOpen);
+  if (typeof window.syncPurgeUnlinkedButtonUI === 'function') {
+    window.syncPurgeUnlinkedButtonUI();
+  }
   const count = state.selectedPhotoIds.size;
   if (elements.contextMenuSelectedCount) {
     elements.contextMenuSelectedCount.textContent = `${count}枚の写真を選択中`;
@@ -207,7 +210,38 @@ function openContextMenu(x, y) {
 
   // 単一選択専用の項目（クロップ画面・トーンコピー・画像コピー）の表示制御
   const ctxCropEl = document.getElementById('contextMenuCrop');
-  if (ctxCropEl) ctxCropEl.style.display = count <= 1 ? 'flex' : 'none';
+  const linkPart = typeof partitionPhotosByLinkStatus === 'function'
+    ? partitionPhotosByLinkStatus(state.selectedPhotoIds)
+    : { linkedIds: Array.from(state.selectedPhotoIds), unlinkedIds: [] };
+  const hasAnyLinked = linkPart.linkedIds.length > 0;
+  const unlinkedCountInSel = linkPart.unlinkedIds.length;
+
+  if (ctxCropEl) ctxCropEl.style.display = (count <= 1 && hasAnyLinked) ? 'flex' : 'none';
+  if (elements.contextMenuImportItem) {
+    elements.contextMenuImportItem.style.display = hasAnyLinked ? 'flex' : 'none';
+  }
+  if (elements.contextMenuRefreshThumbItem) {
+    elements.contextMenuRefreshThumbItem.style.display = hasAnyLinked ? 'flex' : 'none';
+  }
+  if (hasAnyLinked && unlinkedCountInSel > 0 && elements.contextMenuRefreshThumbLabel) {
+    const actionText = hasMissing ? 'サムネイルを取得' : 'サムネイルを更新';
+    elements.contextMenuRefreshThumbLabel.textContent = ` ${actionText} (${linkPart.linkedIds.length}枚 / 消失${unlinkedCountInSel}枚除外)`;
+  }
+
+  // Folderメニュー「リンク情報なし」一覧表示中のみ「選択した写真をDBから完全消去」を表示
+  const isUnlinkedOnly = typeof isStrictlyUnlinkedOnlyView === 'function' && isStrictlyUnlinkedOnlyView();
+  const purgeItemEl = elements.contextMenuPurgeUnlinkedItem || document.getElementById('contextMenuPurgeUnlinkedItem');
+  const purgeLabelEl = elements.contextMenuPurgeUnlinkedLabel || document.getElementById('contextMenuPurgeUnlinkedLabel');
+  const purgeDivEl = elements.contextMenuPurgeUnlinkedDivider || document.getElementById('contextMenuPurgeUnlinkedDivider');
+  if (purgeItemEl) {
+    purgeItemEl.style.display = (isUnlinkedOnly && count > 0) ? 'flex' : 'none';
+  }
+  if (purgeDivEl) {
+    purgeDivEl.style.display = (isUnlinkedOnly && count > 0) ? 'block' : 'none';
+  }
+  if (purgeLabelEl && isUnlinkedOnly && count > 0) {
+    purgeLabelEl.textContent = `選択した写真をDBから完全消去 (${count}枚)`;
+  }
   const ctxCopyToneEl = document.getElementById('contextMenuCopyTone');
   if (ctxCopyToneEl) ctxCopyToneEl.style.display = count <= 1 ? 'flex' : 'none';
   const ctxCopyImgEl = document.getElementById('contextMenuCopyImageItem');
@@ -491,6 +525,17 @@ async function importSelectedPhotos(destinationPath = '', displayName = '') {
   const photoIds = Array.from(state.selectedPhotoIds);
   if (photoIds.length === 0) return;
 
+  const linkPart = typeof partitionPhotosByLinkStatus === 'function'
+    ? partitionPhotosByLinkStatus(photoIds)
+    : { linkedIds: photoIds, unlinkedIds: [] };
+  const skippedUnlinkedCount = linkPart.unlinkedIds.length;
+  if (linkPart.linkedIds.length === 0) {
+    showToast('リンク情報なしの写真は実体ファイルがないためテイクアウトできません', 'warning', 3500);
+    return;
+  }
+  if (skippedUnlinkedCount > 0) {
+    photoIds.splice(0, photoIds.length, ...linkPart.linkedIds);
+  }
   const targetLabel = displayName || (destinationPath ? destinationPath : 'take_out (直下)');
 
   try {
@@ -511,10 +556,12 @@ async function importSelectedPhotos(destinationPath = '', displayName = '') {
     if (data.copied_count === 0) {
       showToast('選択された写真にJPGがありません（RAW単体は除外されます）', 'warning', 4000);
     } else if (data.skipped_count > 0) {
-      showToast(`${data.copied_count}枚のJPGを「${targetLabel}」にテイクアウトしました（※非JPGの${data.skipped_count}枚はスキップ）`, 'success', 4500);
+      const unlinkedNote = skippedUnlinkedCount > 0 ? ` / 実体のない${skippedUnlinkedCount}枚もスキップ` : '';
+      showToast(`${data.copied_count}枚のJPGを「${targetLabel}」にテイクアウトしました（※非JPGの${data.skipped_count}枚はスキップ${unlinkedNote}）`, 'success', 4500);
       clearSelection();
     } else {
-      showToast(`${data.copied_count}枚のJPGを「${targetLabel}」にテイクアウトしました`, 'success', 3500);
+      const unlinkedNote = skippedUnlinkedCount > 0 ? `（実体のない ${skippedUnlinkedCount} 枚はスキップしました）` : '';
+      showToast(`${data.copied_count}枚のJPGを「${targetLabel}」にテイクアウトしました${unlinkedNote}`, 'success', 3800);
       clearSelection();
     }
   } catch (err) {
@@ -1081,6 +1128,20 @@ function initSelectionEvents() {
   }
 
   // 撮影日時一括シフト補正モーダルのイベント登録
+  // コンテキストメニュー: リンク情報なし限定 DB完全消去
+  const ctxPurgeUnlinkedEl = elements.contextMenuPurgeUnlinkedItem || document.getElementById('contextMenuPurgeUnlinkedItem');
+  if (ctxPurgeUnlinkedEl && !ctxPurgeUnlinkedEl.dataset.boundPurge) {
+    ctxPurgeUnlinkedEl.dataset.boundPurge = '1';
+    ctxPurgeUnlinkedEl.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      closeContextMenu();
+      if (typeof window.purgeUnlinkedPhotosAction === 'function') {
+        await window.purgeUnlinkedPhotosAction(Array.from(state.selectedPhotoIds));
+      }
+    });
+  }
+
+  // 撮影日時一括シフト補正モーダルのイベント登録
   initDateShiftModalEvents();
 }
 
@@ -1160,6 +1221,19 @@ async function refreshSelectedThumbnails() {
   if (photoIds.length === 0) return;
 
   const hasMissing = hasMissingThumbnailsInSelection();
+  const linkPart = typeof partitionPhotosByLinkStatus === 'function'
+    ? partitionPhotosByLinkStatus(photoIds)
+    : { linkedIds: photoIds, unlinkedIds: [] };
+  const skippedUnlinkedCount = linkPart.unlinkedIds.length;
+  if (linkPart.linkedIds.length === 0) {
+    if (typeof showToast === 'function') {
+      showToast('リンク情報なしの写真は元ファイルがないためサムネイルを更新できません', 'warning', 3500);
+    }
+    return;
+  }
+  if (skippedUnlinkedCount > 0) {
+    photoIds.splice(0, photoIds.length, ...linkPart.linkedIds);
+  }
   const actionName = hasMissing ? '取得' : '更新';
   if (typeof showToast === 'function') {
     showToast(`${photoIds.length}枚のサムネイルを${actionName}中...`, 'info', 3000);
@@ -1224,7 +1298,8 @@ async function refreshSelectedThumbnails() {
         }
       } else {
         if (typeof showToast === 'function') {
-          showToast(`${data.success_ids.length}枚のサムネイルを${actionName}しました`, 'success', 3000);
+          const skipSuffix = skippedUnlinkedCount > 0 ? `（実体のない ${skippedUnlinkedCount} 枚はスキップしました）` : '';
+          showToast(`${data.success_ids.length}枚のサムネイルを${actionName}しました${skipSuffix}`, 'success', 3500);
         }
       }
     } else {
@@ -1478,6 +1553,20 @@ function openDateShiftModal(targetPhotoIds) {
   }
 
   _dateShiftTargetIds = ids;
+  // コンテキストメニュー: リンク情報なし限定 DB完全消去
+  const ctxPurgeUnlinkedEl = elements.contextMenuPurgeUnlinkedItem || document.getElementById('contextMenuPurgeUnlinkedItem');
+  if (ctxPurgeUnlinkedEl && !ctxPurgeUnlinkedEl.dataset.boundPurge) {
+    ctxPurgeUnlinkedEl.dataset.boundPurge = '1';
+    ctxPurgeUnlinkedEl.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      closeContextMenu();
+      if (typeof window.purgeUnlinkedPhotosAction === 'function') {
+        await window.purgeUnlinkedPhotosAction(Array.from(state.selectedPhotoIds));
+      }
+    });
+  }
+
+  // 撮影日時一括シフト補正モーダルのイベント登録
   initDateShiftModalEvents();
 
   const modal = elements.dateShiftModal || document.getElementById('dateShiftModal');

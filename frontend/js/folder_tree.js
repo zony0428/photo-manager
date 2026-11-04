@@ -792,6 +792,19 @@ function _ftRenderScanProgress(status) {
         indeterminate: true,
       });
     }
+  } else if (status.phase === 'exifless_dedup') {
+    const total = status.total_files || 0;
+    const current = (status.scanned !== undefined ? status.scanned : status.scanned_files) || 0;
+    const pct = total > 0 ? Math.min(100, Math.round((current / total) * 100)) : null;
+    if (typeof setGlobalActivity === 'function') {
+      setGlobalActivity('scan', {
+        title: 'Exifなし画像の識別キー更新・重複統合中...',
+        countText: total > 0 ? `${current.toLocaleString()} / ${total.toLocaleString()} 枚` : '',
+        percent: pct,
+        filename: status.current_file || '',
+        indeterminate: total === 0,
+      });
+    }
   } else if (status.phase === 'stacks') {
     const stackText = t('scan.stacks', '連写・露出グループ化中...');
     if (typeof setGlobalActivity === 'function') {
@@ -1045,7 +1058,12 @@ async function executeScan(folderPath, recursive = true, cleanupOrphans = false,
     const cleanedInfo = (data.result && data.result.cleaned > 0) ? ` / ${data.result.cleaned}枚 リンク整理` : '';
     const scanned = data.result ? (data.result.scanned || 0) : 0;
     const updated = data.result ? (data.result.added_or_updated || 0) : 0;
-    showToast(`スキャン完了: ${scanned}枚検出 (${updated}枚更新${cleanedInfo})`, 'success');
+    const exiflessUpd = data.result ? (data.result.exifless_updated || 0) : 0;
+    const exiflessMrg = data.result ? (data.result.exifless_merged || 0) : 0;
+    const exiflessInfo = (exiflessUpd > 0 || exiflessMrg > 0)
+      ? ` / Exifなし画像 ${exiflessUpd}枚識別更新・${exiflessMrg}件統合`
+      : '';
+    showToast(`スキャン完了: ${scanned}枚検出 (${updated}枚更新${cleanedInfo}${exiflessInfo})`, 'success', (exiflessUpd > 0 || exiflessMrg > 0) ? 5500 : 3500);
 
     await Promise.all([
       typeof refreshAll === 'function' ? refreshAll() : null,

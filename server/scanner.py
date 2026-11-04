@@ -49,6 +49,7 @@ from .database import (
     get_ignored_folders,
     remove_ignored_folder,
     backfill_missing_lens_models,
+    migrate_and_merge_exifless_photos,
 )
 from .database.folders import clear_folders_fs_cache
 
@@ -631,6 +632,87 @@ def resolve_drive_online_path(
     return orig_path, False
 
 
+def compute_file_sample_hash(file_path: Path) -> Optional[str]:
+    """
+    Exif（撮影日時）を持たない画像を別フォルダへコピーした際にも同一画像として認識できるよう、
+    ファイル先頭ヘッダー領域（先頭4KB）を避けた中間・後半の複数箇所サンプリングデータから
+    軽量な64bit BLAKE2bハッシュ（16桁hex）を算出する。
+    """
+    try:
+        p = Path(file_path)
+        fsize = p.stat().st_size
+        if fsize <= 0:
+            return None
+        h = hashlib.blake2b(digest_size=8)
+        h.update(f"sz:{fsize}|".encode("ascii"))
+        with open(p, "rb") as f:
+            if fsize <= 32768:
+                data = f.read()
+                h.update(data[512:] if len(data) > 1024 else data)
+            else:
+                chunk_size = 8192
+                offsets = (
+                    4096,
+                    max(4096, (fsize // 2) - (chunk_size // 2)),
+                    max(4096, fsize - chunk_size - 1024),
+                )
+                for off in offsets:
+                    f.seek(off)
+                    h.update(f.read(chunk_size))
+        return h.hexdigest()
+    except Exception as e:
+        logger.debug(f"サンプルハッシュ算出スキップ ({file_path}): {e}")
+        return None
+
+
+def has_exif_datetime(file_path: Path) -> bool:
+    """
+    指定された画像ファイル（または付随するXMPサイドカー）に
+    Exif由来の撮影日時（DateTimeOriginal / DateTime）が存在するかどうかを高速判定する。
+    """
+    try:
+        p = Path(file_path)
+        if not p.is_file():
+            return False
+        if is_raw_file(p):
+            raw_meta = extract_raw_metadata(p)
+            if raw_meta.get("has_exif_date"):
+                return True
+        else:
+            with Image.open(p) as img:
+                exif = img.getexif()
+                if exif:
+                    exif_ifd = {}
+                    try:
+                        exif_ifd = exif.get_ifd(0x8769)
+                    except Exception:
+                        exif_ifd = {}
+                    raw_date = (
+                        exif_ifd.get(0x9003)
+                        or exif.get(0x9003)
+                        or exif.get(0x0132)
+                        or exif_ifd.get(0x0132)
+                    )
+                    if parse_exif_date(str(raw_date) if raw_date else None):
+                        return True
+        from .sidecar import parse_xmp_for_photo
+        xmp_info = parse_xmp_for_photo(p)
+        if xmp_info.get("has_xmp") and (xmp_info.get("hardware") or {}).get("date_taken"):
+            return True
+    except Exception as e:
+        logger.debug(f"Exif日時有無の判定スキップ ({file_path}): {e}")
+    return False
+
+
+def _finalize_exifless_content_hash(meta: Dict[str, Any], file_path: Path) -> Dict[str, Any]:
+    """Exif（およびXMP）に撮影日時が存在しない画像に対して、先頭ヘッダーを避けた中間サンプリングハッシュを付与する"""
+    if not meta.get("has_exif_date") and not meta.get("content_hash"):
+        chash = compute_file_sample_hash(file_path)
+        if chash:
+            meta["content_hash"] = chash
+    return meta
+
+
 def parse_exif_date(date_str: Optional[str]) -> Optional[str]:
     """EXIFの日時文字列 (YYYY:MM:DD HH:MM:SS) を YYYY-MM-DD HH:MM:SS 形式に変換する"""
     if not date_str:
@@ -693,6 +775,7 @@ def _apply_xmp_hardware_fallback(meta: Dict[str, Any], file_path: Path, fallback
             meta["camera_model"] = sanitize_camera_model(hw["camera_model"])
         if need_dt and hw.get("date_taken"):
             meta["date_taken"] = hw["date_taken"]
+            meta["has_exif_date"] = True
             meta["year_month"] = hw["date_taken"][:7] if len(hw["date_taken"]) >= 7 else ""
         if need_gps and hw.get("latitude") is not None and hw.get("longitude") is not None:
             meta["latitude"] = hw["latitude"]
@@ -720,7 +803,7 @@ def extract_metadata(file_path: Path) -> Dict[str, Any]:
             fb_str = datetime.fromtimestamp(file_path.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
         except Exception:
             fb_str = ""
-        return _apply_xmp_hardware_fallback(raw_meta, file_path, fb_str)
+        return _finalize_exifless_content_hash(_apply_xmp_hardware_fallback(raw_meta, file_path, fb_str), file_path)
 
     stat = file_path.stat()
     file_size = stat.st_size
@@ -728,6 +811,7 @@ def extract_metadata(file_path: Path) -> Dict[str, Any]:
     # デフォルト値（ファイル更新日時をフォールバックとして使用）
     fallback_dt = datetime.fromtimestamp(stat.st_mtime)
     date_taken = fallback_dt.strftime("%Y-%m-%d %H:%M:%S")
+    has_exif_date = False
     camera_model = "不明"
     width = 0
     height = 0
@@ -764,6 +848,7 @@ def extract_metadata(file_path: Path) -> Dict[str, Any]:
                 )
 
                 parsed_date = parse_exif_date(str(raw_date) if raw_date else None)
+                has_exif_date = bool(parsed_date)
                 if parsed_date:
                     date_taken = parsed_date
 
@@ -912,7 +997,8 @@ def extract_metadata(file_path: Path) -> Dict[str, Any]:
         "state": state,
         "city": city,
     }
-    return _apply_xmp_hardware_fallback(meta, file_path, fallback_dt.strftime("%Y-%m-%d %H:%M:%S"))
+    meta["has_exif_date"] = has_exif_date
+    return _finalize_exifless_content_hash(_apply_xmp_hardware_fallback(meta, file_path, fallback_dt.strftime("%Y-%m-%d %H:%M:%S")), file_path)
 
 
 def get_thumbnail_path(photo_id: int) -> Path:
@@ -1618,7 +1704,27 @@ def scan_directory(
                 continue
 
         # 残りのバッチをコミット
+        # 残りのバッチをコミット
         _flush_batch_with_duplicates()
+
+        # Exif（撮影日時）を持たない既存画像の識別キー更新・重複レコード統合（進捗通知付き）
+        exifless_updated = 0
+        exifless_merged = 0
+        try:
+            def _on_exifless_progress(cur_i: int, tot_i: int, fname_i: str) -> None:
+                if cur_i == 1:
+                    scan_tracker.set_phase("exifless_dedup", total_files=tot_i)
+                scan_tracker.update_progress(cur_i, fname_i, "exifless")
+
+            exifless_res = migrate_and_merge_exifless_photos(
+                directory_path=os.path.abspath(target_dir_str),
+                recursive=recursive,
+                progress_callback=_on_exifless_progress,
+            )
+            exifless_updated = int(exifless_res.get("updated") or 0)
+            exifless_merged = int(exifless_res.get("merged") or 0)
+        except Exception as ex_err:
+            print(f"[WARN] Exifなし画像の識別キー更新・統合処理で警告: {ex_err}")
 
         # 既存（unchanged）レコードで lens_model が未取得の写真を MakerNote / XMP から高速補完
         try:
@@ -1660,6 +1766,8 @@ def scan_directory(
             "cleaned": cleaned_count,
             "stacks_created": stacks_created,
             "added_or_updated": total_added + total_updated + total_relinked,
+            "exifless_updated": exifless_updated,
+            "exifless_merged": exifless_merged,
         }
         # スマホで cache/library.db 単体を開いた際にもスキャン結果がすべて含まれるようWALをフラッシュ
         try:

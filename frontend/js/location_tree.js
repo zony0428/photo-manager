@@ -303,15 +303,13 @@ function selectLocationFilter(loc) {
     return;
   }
 
-  // フォルダ選択・未分類等をリセット（排他化）
+  // フォルダ選択をリセット（排他化）
   if (state.currentFilter && (state.currentFilter.type === 'folder' || state.currentFilter.type === 'folder_exclude')) {
     state.currentFilter = { type: 'all', value: null };
     document.querySelectorAll('.sidebar .folder-tree-item, .sidebar .nav-item').forEach(el => {
       el.classList.remove('active', 'active-exclude');
     });
   }
-  state.untaggedOnly = false;
-  if (elements.untaggedNavItem) elements.untaggedNavItem.classList.remove('active');
 
   state.activeLocation = {
     country: loc.country,
@@ -339,15 +337,13 @@ function toggleNoLocationFilter() {
     return;
   }
 
-  // フォルダ選択・未分類等をリセット（排他化）
+  // フォルダ選択をリセット（排他化）
   if (state.currentFilter && (state.currentFilter.type === 'folder' || state.currentFilter.type === 'folder_exclude')) {
     state.currentFilter = { type: 'all', value: null };
     document.querySelectorAll('.sidebar .folder-tree-item, .sidebar .nav-item').forEach(el => {
       el.classList.remove('active', 'active-exclude');
     });
   }
-  state.untaggedOnly = false;
-  if (elements.untaggedNavItem) elements.untaggedNavItem.classList.remove('active');
 
   state.activeLocation = {
     country: null,

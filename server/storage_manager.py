@@ -1229,6 +1229,7 @@ def _build_copied_photo_meta(
             "country": src_photo.get("country") or src_photo.get("location_country"),
             "state": src_photo.get("state") or src_photo.get("location_state"),
             "city": src_photo.get("city") or src_photo.get("location_city"),
+            "content_key": src_photo.get("content_key"),
         }
 
     meta["file_path"] = normalize_folder_path(str(dest_file))

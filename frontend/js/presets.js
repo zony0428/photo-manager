@@ -153,6 +153,10 @@ function renderPresetCurrentChips() {
     chips.push({ icon: '\u{1F7E2}', label: '\u63A5\u7D9A\u4E2D\u306E\u307F' });
   } else if (state.connectionFilter === 'offline') {
     chips.push({ icon: '\u26AA', label: '\u672A\u63A5\u7D9A\u306E\u307F' });
+  } else if (state.connectionFilter === 'unlinked' || state.connectionFilter === 'missing') {
+    chips.push({ icon: '\u{1F517}', label: '\u30EA\u30F3\u30AF\u6D88\u5931\u306E\u307F' });
+  } else if (state.connectionFilter === 'duplicates') {
+    chips.push({ icon: '\u{1F4CB}', label: '\u91CD\u8907\u306E\u3042\u308B\u5199\u771F' });
   }
 
   // 7. search
@@ -476,6 +480,8 @@ function applyFilterPreset(preset) {
     state.connectionStates = new Set(['online']);
   } else if (state.connectionFilter === 'offline') {
     state.connectionStates = new Set(['offline']);
+  } else if (state.connectionFilter === 'unlinked' || state.connectionFilter === 'missing') {
+    state.connectionStates = new Set(['unlinked']);
   } else {
     state.connectionStates = new Set(['online', 'offline', 'unlinked']);
   }

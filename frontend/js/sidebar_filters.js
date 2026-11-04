@@ -493,8 +493,6 @@ window.toggleTimelineDate = toggleTimelineDate;
  */
 function updateTimelineFilterState() {
   if (!state.selectedDates) state.selectedDates = new Set();
-  state.untaggedOnly = false;
-  if (elements.untaggedNavItem) elements.untaggedNavItem.classList.remove('active');
 
   const isFolderActive = state.currentFilter && (state.currentFilter.type === 'folder' || state.currentFilter.type === 'folder_exclude');
   const ymCount = state.selectedYearMonths.size;
@@ -1635,9 +1633,6 @@ function syncCameraAndLensFilterTitle() {
       if (mode === 'include') state.selectedLenses.add(key);
     });
   }
-
-  state.untaggedOnly = false;
-  if (elements.untaggedNavItem) elements.untaggedNavItem.classList.remove('active');
 
   const isFolderActive = state.currentFilter && (state.currentFilter.type === 'folder' || state.currentFilter.type === 'folder_exclude');
   const camCount = state.cameraFilters ? state.cameraFilters.size : 0;

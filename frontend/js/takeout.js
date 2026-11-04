@@ -347,6 +347,18 @@
 
     currentPhotoIds = resolveTargetPhotoIds(photoIds);
 
+    const linkPart = typeof partitionPhotosByLinkStatus === 'function'
+      ? partitionPhotosByLinkStatus(currentPhotoIds)
+      : { linkedIds: currentPhotoIds, unlinkedIds: [] };
+    if (linkPart.linkedIds.length === 0 && (currentPhotoIds || []).length > 0) {
+      _showToast('リンク情報なしの写真は実体ファイルがないためテイクアウトできません', 'warning', 3500);
+      return;
+    }
+    if (linkPart.unlinkedIds.length > 0) {
+      currentPhotoIds = linkPart.linkedIds;
+      _showToast(`実体のない ${linkPart.unlinkedIds.length} 枚はスキップしました（${currentPhotoIds.length}枚を対象にします）`, 'info', 4000);
+    }
+
     if (!currentPhotoIds || currentPhotoIds.length === 0) {
       _showToast('テイクアウトする写真を選択してください', 'warning', 3500);
       return;
