@@ -154,7 +154,8 @@ body.selection-active .card-select-checkbox {
   pointer-events: auto;
 }
 
-.context-menu-item:hover > .context-submenu {
+.context-menu-item:hover > .context-submenu,
+.context-menu-item:focus-within > .context-submenu {
   display: flex;
 }
 
@@ -541,4 +542,478 @@ body.selection-active .card-select-checkbox {
   background: rgba(var(--accent-rgb, 225, 77, 42), 0.22);
   color: #ff6b4a;
   font-weight: 600;
+}
+
+/* ==========================================================================
+   Loome 右クリックメニュー：NeXTSTEP 風味 右展開カスケード階層メニュー
+   ========================================================================== */
+.context-submenu.ns-loome-submenu {
+  top: -6px;
+  width: 248px;
+  max-height: none !important;
+  overflow: visible !important;
+  padding: 0 !important;
+  border-radius: 3px;
+  border: 1px solid var(--border-color, #444);
+  box-shadow: 3px 5px 18px rgba(0, 0, 0, 0.35);
+}
+
+.ns-cascade-root.submenu-folder-list {
+  max-height: none !important;
+  overflow: visible !important;
+  gap: 0;
+  padding: 0;
+}
+
+.ns-cascade-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  background: rgba(251, 249, 244, 0.99);
+  border-radius: 2px;
+  overflow: visible !important;
+}
+
+/* 第2階層以降の右展開カスケードパネル */
+.ns-cascade-panel.ns-child-panel {
+  position: absolute;
+  top: -1px;
+  left: calc(100% + 2px);
+  width: 246px;
+  border: 1px solid var(--border-color, #444);
+  border-radius: 3px;
+  box-shadow: 4px 6px 20px rgba(0, 0, 0, 0.38);
+  z-index: 10020;
+}
+
+/* 画面右端に近い場合の左折り返し展開 */
+.ns-cascade-panel.ns-child-panel.open-left {
+  left: auto;
+  right: calc(100% + 2px);
+  box-shadow: -4px 6px 20px rgba(0, 0, 0, 0.38);
+}
+
+/* 親パネルから子パネルへ斜め移動してもホバーが途切れない透明ブリッジ */
+.ns-cascade-panel.ns-child-panel::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  left: -12px;
+  width: 14px;
+  height: calc(100% + 12px);
+  background: transparent;
+  pointer-events: auto;
+}
+
+.ns-cascade-panel.ns-child-panel.open-left::before {
+  left: auto;
+  right: -12px;
+}
+
+/* NeXTSTEP 風 タイトルバー */
+.ns-menu-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 6px 11px;
+  background: #232220;
+  color: #f5f3ef;
+  font-size: 0.73rem;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.5);
+  border-radius: 2px 2px 0 0;
+  user-select: none;
+}
+
+.ns-title-text,
+.ns-menu-titlebar-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.ns-title-badge,
+.ns-menu-titlebar-sub {
+  font-size: 0.66rem;
+  font-weight: 600;
+  opacity: 0.85;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.14);
+  font-family: monospace;
+  flex-shrink: 0;
+}
+
+/* メニュー項目本体リスト（長大時のみ縦スクロール） */
+.ns-menu-body {
+  display: flex;
+  flex-direction: column;
+  max-height: 290px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 3px 0;
+}
+
+.ns-menu-sep {
+  height: 1px;
+  background: rgba(42, 41, 38, 0.14);
+  margin: 2px 0;
+}
+
+.ns-empty-hint {
+  padding: 10px 12px;
+  font-size: 0.74rem;
+  color: #78716c;
+  text-align: center;
+  font-style: italic;
+}
+
+/* メニュー各行（ドライブ行・フォルダ行・直下アクション行共通） */
+.ns-menu-item,
+.submenu-folder-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 36px;
+  padding: 7px 11px;
+  font-size: 0.81rem;
+  font-weight: 500;
+  color: #1c1917;
+  background: transparent;
+  border-bottom: 1px solid rgba(42, 41, 38, 0.08);
+  border-left: 3px solid transparent;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.1s ease, color 0.1s ease, border-color 0.1s ease;
+}
+
+.ns-menu-item:last-child,
+.submenu-folder-item:last-child {
+  border-bottom: none;
+}
+
+/* ドライブ（Loome ルート）行はさらに縦幅をゆったり取って選びやすく */
+.ns-menu-item.ns-drive-item {
+  min-height: 44px;
+  padding: 8px 12px;
+}
+
+/* マウスオーバー & 子パネル展開中の強調表示（NeXTSTEP 高コントラストハイライト） */
+.ns-menu-item:hover,
+.ns-menu-item.is-active-cascade,
+.ns-menu-item.is-cascade-open,
+.submenu-folder-item:hover {
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.16);
+  border-left-color: var(--accent-primary, #e14d2a);
+  color: var(--accent-primary, #e14d2a);
+  font-weight: 600;
+}
+
+.ns-item-icon {
+  font-size: 0.96rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.ns-item-main,
+.ns-item-labels {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+  gap: 2px;
+}
+
+.ns-item-label,
+.ns-item-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.25;
+}
+
+.ns-item-sub {
+  font-size: 0.67rem;
+  font-weight: 400;
+  color: #6b665e;
+  font-family: monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.15;
+}
+
+.ns-menu-item:hover .ns-item-sub,
+.ns-menu-item.is-active-cascade .ns-item-sub,
+.ns-menu-item.is-cascade-open .ns-item-sub {
+  color: inherit;
+  opacity: 0.85;
+}
+
+.ns-item-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.ns-item-count,
+.submenu-folder-count {
+  font-size: 0.69rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: rgba(42, 41, 38, 0.09);
+  color: #57534e;
+  flex-shrink: 0;
+}
+
+.ns-menu-item:hover .ns-item-count,
+.ns-menu-item.is-active-cascade .ns-item-count,
+.ns-menu-item.is-cascade-open .ns-item-count,
+.submenu-folder-item:hover .submenu-folder-count {
+  background: var(--accent-primary, #e14d2a);
+  color: #ffffff;
+}
+
+.ns-item-arrow,
+.ns-cascade-arrow {
+  font-size: 0.75rem;
+  color: #7a766e;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: transform 0.12s ease, color 0.12s ease;
+}
+
+.ns-menu-item:hover .ns-item-arrow,
+.ns-menu-item.is-active-cascade .ns-item-arrow,
+.ns-menu-item:hover .ns-cascade-arrow,
+.ns-menu-item.is-cascade-open .ns-cascade-arrow {
+  color: var(--accent-primary, #e14d2a);
+  transform: translateX(2px);
+}
+
+/* 「このフォルダ直下へコピー/移動」アクション行 */
+.ns-menu-item.ns-direct-dest-item {
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.06);
+  border-bottom: 1px solid rgba(42, 41, 38, 0.14);
+  font-weight: 600;
+}
+
+.ns-menu-item.ns-direct-dest-item:hover {
+  background: var(--accent-primary, #e14d2a);
+  color: #ffffff;
+  border-left-color: #ffffff;
+}
+
+.ns-menu-item.ns-direct-dest-item:hover .ns-item-sub,
+.ns-menu-item.ns-direct-dest-item:hover .ns-item-count {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.22);
+}
+
+/* パネル下部フッター（この階層に新規フォルダ作成 ＆ エクスプローラー起動） */
+.ns-panel-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 7px 8px;
+  border-top: 1px solid rgba(42, 41, 38, 0.15);
+  background: rgba(42, 41, 38, 0.04);
+  border-radius: 0 0 2px 2px;
+}
+
+.ns-create-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.ns-create-input {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  padding: 0 7px;
+  font-size: 0.74rem;
+  border-radius: 3px;
+  border: 1px solid #b5b0a3;
+  background: #ffffff;
+  color: #1c1917;
+  outline: none;
+}
+
+.ns-create-input:focus {
+  border-color: var(--accent-primary, #e14d2a);
+}
+
+.ns-create-btn {
+  height: 26px !important;
+  padding: 0 9px !important;
+  font-size: 0.72rem !important;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+  border-radius: 3px;
+  border: 1px solid var(--accent-primary, #e14d2a);
+  background: var(--accent-primary, #e14d2a);
+  color: #ffffff;
+  cursor: pointer;
+  transition: opacity 0.12s ease;
+}
+
+.ns-create-btn:hover {
+  opacity: 0.9;
+}
+
+.ns-open-explorer-btn {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  background: transparent;
+  border: none;
+  text-align: left;
+  padding: 5px 7px;
+  font-size: 0.73rem;
+  font-weight: 500;
+  color: #57534e;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.ns-open-explorer-btn:hover {
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.14);
+  color: var(--accent-primary, #e14d2a);
+}
+
+/* ダークテーマ（Sumi / Tetheract D）対応 */
+[data-theme="sumi"] .ns-cascade-panel {
+  background: rgba(24, 26, 30, 0.99);
+}
+
+[data-theme="sumi"] .ns-menu-titlebar {
+  background: #0f1115;
+  color: #f8fafc;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+[data-theme="sumi"] .ns-menu-sep {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="sumi"] .ns-empty-hint {
+  color: #94a3b8;
+}
+
+[data-theme="sumi"] .ns-menu-item,
+[data-theme="sumi"] .submenu-folder-item {
+  color: #f1f5f9;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+[data-theme="sumi"] .ns-item-sub {
+  color: #94a3b8;
+}
+
+[data-theme="sumi"] .ns-menu-item:hover,
+[data-theme="sumi"] .ns-menu-item.is-active-cascade,
+[data-theme="sumi"] .ns-menu-item.is-cascade-open,
+[data-theme="sumi"] .submenu-folder-item:hover {
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.25);
+  border-left-color: var(--accent-primary, #e14d2a);
+  color: var(--accent-primary, #ff8a65);
+}
+
+[data-theme="sumi"] .ns-item-count,
+[data-theme="sumi"] .submenu-folder-count {
+  background: rgba(255, 255, 255, 0.1);
+  color: #cbd5e1;
+}
+
+[data-theme="sumi"] .ns-item-arrow,
+[data-theme="sumi"] .ns-cascade-arrow {
+  color: #94a3b8;
+}
+
+[data-theme="sumi"] .ns-menu-item.ns-direct-dest-item {
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.11);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+[data-theme="sumi"] .ns-menu-item.ns-direct-dest-item:hover {
+  background: var(--accent-primary, #e14d2a);
+  color: #ffffff;
+  border-left-color: #ffffff;
+}
+
+[data-theme="sumi"] .ns-panel-footer {
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.25);
+}
+
+[data-theme="sumi"] .ns-create-input {
+  background: #11141a;
+  border-color: #3d4756;
+  color: #f8fafc;
+}
+
+[data-theme="sumi"] .ns-open-explorer-btn {
+  color: #94a3b8;
+}
+
+[data-theme="sumi"] .ns-open-explorer-btn:hover {
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.22);
+  color: var(--accent-primary, #ff8a65);
+}
+
+/* 右クリックメニュー本体のセクションキャプション（Loome 保管庫操作など） */
+.context-menu-section-caption {
+  padding: 4px 10px 3px 10px;
+  font-size: 0.67rem;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: #78716c;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* カスケードパネル内の小キャプション */
+.ns-section-caption {
+  padding: 5px 11px 3px 11px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.35px;
+  color: #78716c;
+  background: rgba(42, 41, 38, 0.03);
+  border-bottom: 1px solid rgba(42, 41, 38, 0.06);
+  user-select: none;
+  pointer-events: none;
+}
+
+.ns-section-caption.ns-footer-caption {
+  padding: 0 2px 2px 2px;
+  background: transparent;
+  border-bottom: none;
+}
+
+[data-theme="sumi"] .context-menu-section-caption {
+  color: #94a3b8;
+}
+
+[data-theme="sumi"] .ns-section-caption {
+  color: #94a3b8;
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom-color: rgba(255, 255, 255, 0.06);
+}
+
+[data-theme="sumi"] .ns-section-caption.ns-footer-caption {
+  background: transparent;
 }

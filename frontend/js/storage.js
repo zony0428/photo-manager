@@ -210,7 +210,309 @@ async function fetchStorageFolders() {
 window.fetchStorageFolders = fetchStorageFolders;
 
 /**
- * 指定されたコンテナ群に Loome フォルダ一覧を描画する
+ * フラットな /api/storage/folders 配列から、ドライブ（Loome ルート）ごとの階層ツリーを構築する
+ * @param {Array<Object>} folders サーバーから返却されたフォルダ配列
+ * @returns {Array<Object>} ルートノード（ドライブ）配列
+ */
+function _buildLoomeCascadeTree(folders) {
+  const roots = [];
+  const pathToNode = new Map();
+
+  const normPath = (p) => String(p || '').replace(/\//g, '\\').replace(/\\+$/, '');
+  const normKey = (p) => normPath(p).toLowerCase();
+
+  (folders || []).forEach(f => {
+    const cleanPath = normPath(f.path);
+    const key = normKey(cleanPath);
+    const isRoot = !!f.is_root || Number(f.depth || 0) === 0;
+    const driveLabel = f.root_name || (f.name ? String(f.name).replace(/\s*\((?:直下|Root)\)\s*$/i, '') : 'Loome');
+    const node = {
+      ...f,
+      cleanPath,
+      key,
+      isRoot,
+      driveLabel,
+      displayName: isRoot ? driveLabel : (f.name || cleanPath.split('\\').pop() || 'Folder'),
+      count: Number(f.count || 0),
+      totalCount: Number(f.count || 0),
+      children: [],
+    };
+    if (key) {
+      pathToNode.set(key, node);
+    }
+    if (isRoot) {
+      roots.push(node);
+    }
+  });
+
+  // 親子関係の構築
+  (folders || []).forEach(f => {
+    const isRoot = !!f.is_root || Number(f.depth || 0) === 0;
+    if (isRoot) return;
+    const cleanPath = normPath(f.path);
+    const key = normKey(cleanPath);
+    const node = pathToNode.get(key);
+    if (!node) return;
+
+    const lastSlash = cleanPath.lastIndexOf('\\');
+    if (lastSlash > 0) {
+      const parentKey = cleanPath.slice(0, lastSlash).toLowerCase();
+      const parentNode = pathToNode.get(parentKey);
+      if (parentNode && parentNode !== node) {
+        parentNode.children.push(node);
+        return;
+      }
+    }
+    // 親が見つからない場合は所属ドライブのルートにぶら下げる
+    const fallbackRoot = roots.find(r => key.startsWith(r.key + '\\')) || roots[0];
+    if (fallbackRoot && fallbackRoot !== node) {
+      fallbackRoot.children.push(node);
+    }
+  });
+
+  // 各ノードの配下合計枚数（サブフォルダ含む）を再帰計算
+  const calcTotal = (n) => {
+    let sum = Number(n.count || 0);
+    for (const ch of n.children) {
+      sum += calcTotal(ch);
+    }
+    n.totalCount = sum;
+    return sum;
+  };
+  roots.forEach(calcTotal);
+
+  return roots;
+}
+
+/**
+ * 指定された親フォルダ配下に新規サブフォルダを作成してコピーまたは移動を実行する
+ * @param {string} parentPath 親フォルダの絶対パス
+ * @param {string} rawFolderName 新規作成するフォルダ名
+ * @param {'import'|'move'} actionMode 動作モード
+ * @param {string} parentDisplayName 親の表示名
+ */
+async function _executeCreateSubfolderAndStorageAction(parentPath, rawFolderName, actionMode, parentDisplayName = '') {
+  const folderName = String(rawFolderName || '').trim();
+  if (!folderName) {
+    if (typeof showToast === 'function') {
+      showToast(actionMode === 'move' ? '移動先の新規フォルダ名を入力してください' : 'コピー先の新規フォルダ名を入力してください', 'info');
+    }
+    return;
+  }
+  if (/[<>:"/\\|?*]/.test(folderName) || folderName === '.' || folderName === '..') {
+    if (typeof showToast === 'function') {
+      showToast('フォルダ名に使用できない文字が含まれています', 'error');
+    }
+    return;
+  }
+  const cleanParent = String(parentPath || '').replace(/\//g, '\\').replace(/\\+$/, '');
+  const targetDest = cleanParent ? `${cleanParent}\\${folderName}` : folderName;
+  const dispLabel = parentDisplayName ? `${parentDisplayName} / ${folderName}` : folderName;
+
+  if (actionMode === 'move') {
+    await executeStorageMoveFromSelection(targetDest, dispLabel);
+  } else {
+    await executeStorageImportFromSelection(targetDest, dispLabel);
+  }
+}
+
+/**
+ * NeXTSTEP 風味のカスケード子パネル（ドライブ配下・サブフォルダ配下）を生成する
+ * @param {Object} node 対象ノード（ドライブまたはフォルダ）
+ * @param {'import'|'move'} actionMode 動作モード
+ * @returns {HTMLElement} 生成された .ns-cascade-panel.ns-child-panel 要素
+ */
+function _createLoomeCascadeChildPanel(node, actionMode) {
+  const isEn = typeof currentLang !== 'undefined' && currentLang === 'en';
+  const panel = document.createElement('div');
+  panel.className = 'ns-cascade-panel ns-child-panel';
+  panel.addEventListener('click', (e) => e.stopPropagation());
+
+  // 1. NeXTSTEP 風タイトルバー
+  const titlebar = document.createElement('div');
+  titlebar.className = 'ns-menu-titlebar';
+  const titleIcon = node.isRoot ? (node.is_primary_loome ? '📦' : '💾') : '📁';
+  titlebar.innerHTML = `
+    <span class="ns-title-text" title="${escapeHtml(node.cleanPath || node.displayName)}">${titleIcon} ${escapeHtml(node.displayName)}</span>
+    <span class="ns-title-badge">${Number(node.totalCount || 0)}</span>
+  `;
+  panel.appendChild(titlebar);
+
+  // 2. メニューボディ（直下への保存・移動 ＋ サブフォルダ一覧）
+  const body = document.createElement('div');
+  body.className = 'ns-menu-body';
+
+  let activeChildPanel = null;
+  let activeRowEl = null;
+  let hoverTimer = null;
+
+  const closeActiveSubPanel = () => {
+    if (hoverTimer) {
+      clearTimeout(hoverTimer);
+      hoverTimer = null;
+    }
+    if (activeChildPanel && activeChildPanel.parentNode) {
+      activeChildPanel.parentNode.removeChild(activeChildPanel);
+    }
+    activeChildPanel = null;
+    if (activeRowEl) {
+      activeRowEl.classList.remove('is-active-cascade');
+      activeRowEl = null;
+    }
+  };
+
+  // 2-A. 「ここ（直下）へコピー / 移動」アイテム
+  const directItem = document.createElement('div');
+  directItem.className = 'ns-menu-item ns-direct-dest-item';
+  const directActionLabel = actionMode === 'move'
+    ? (isEn ? 'Move Here' : 'ここ（直下）へ移動')
+    : (isEn ? 'Copy Here' : 'ここ（直下）へコピー');
+  const directTargetLabel = node.isRoot ? `${node.displayName} (直下)` : node.displayName;
+  const directCountText = `${Number(node.count || 0)}${isEn ? '' : '枚'}`;
+
+  directItem.innerHTML = `
+    <span class="ns-item-icon">📥</span>
+    <span class="ns-item-main">
+      <span class="ns-item-label" title="${escapeHtml(node.cleanPath || node.displayName)}">${escapeHtml(directActionLabel)}</span>
+    </span>
+    <span class="ns-item-count">${escapeHtml(directCountText)}</span>
+  `;
+  directItem.addEventListener('mouseenter', () => {
+    closeActiveSubPanel();
+  });
+  directItem.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const targetDest = node.cleanPath || node.path || node.rel_path || '';
+    if (actionMode === 'move') {
+      executeStorageMoveFromSelection(targetDest, directTargetLabel);
+    } else {
+      executeStorageImportFromSelection(targetDest, directTargetLabel);
+    }
+  });
+  body.appendChild(directItem);
+
+  // 2-B. 子フォルダ一覧（セパレーター ＋ 小キャプション付き）
+  if (Array.isArray(node.children) && node.children.length > 0) {
+    const sep = document.createElement('div');
+    sep.className = 'ns-menu-sep';
+    body.appendChild(sep);
+
+    const subCaption = document.createElement('div');
+    subCaption.className = 'ns-section-caption';
+    subCaption.textContent = isEn ? 'Subfolders' : 'サブフォルダ';
+    body.appendChild(subCaption);
+
+    node.children.forEach(child => {
+      const row = document.createElement('div');
+      row.className = 'ns-menu-item ns-folder-item';
+      const countLabel = `${Number(child.count || 0)}${isEn ? '' : '枚'}`;
+
+      row.innerHTML = `
+        <span class="ns-item-icon">📁</span>
+        <span class="ns-item-main">
+          <span class="ns-item-label" title="${escapeHtml(child.cleanPath || child.displayName)}">${escapeHtml(child.displayName)}</span>
+        </span>
+        <span class="ns-item-count">${escapeHtml(countLabel)}</span>
+        <span class="ns-item-arrow">▸</span>
+      `;
+
+      // マウスオーバーで右側に次階層パネルをカスケード展開
+      row.addEventListener('mouseenter', () => {
+        if (activeRowEl === row && activeChildPanel) return;
+        closeActiveSubPanel();
+        hoverTimer = setTimeout(() => {
+          activeRowEl = row;
+          row.classList.add('is-active-cascade');
+          const subPanel = _createLoomeCascadeChildPanel(child, actionMode);
+          activeChildPanel = subPanel;
+          // 親パネル基準のY座標を計算して配置
+          const panelRect = panel.getBoundingClientRect();
+          const rowRect = row.getBoundingClientRect();
+          const topOffset = Math.max(0, Math.round(rowRect.top - panelRect.top - 4));
+          subPanel.style.top = `${topOffset}px`;
+          panel.appendChild(subPanel);
+
+          // 画面右端・下端のはみ出し補正
+          requestAnimationFrame(() => {
+            if (!subPanel.isConnected) return;
+            const subRect = subPanel.getBoundingClientRect();
+            if (subRect.right > window.innerWidth - 10) {
+              subPanel.classList.add('open-left');
+            }
+            if (subRect.bottom > window.innerHeight - 10) {
+              const shiftUp = subRect.bottom - (window.innerHeight - 10);
+              subPanel.style.top = `${Math.max(0, topOffset - shiftUp)}px`;
+            }
+          });
+        }, 65);
+      });
+
+      // クリックで即座にその子フォルダへコピー/移動
+      row.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const targetDest = child.cleanPath || child.path || child.rel_path || '';
+        if (actionMode === 'move') {
+          executeStorageMoveFromSelection(targetDest, child.displayName);
+        } else {
+          executeStorageImportFromSelection(targetDest, child.displayName);
+        }
+      });
+
+      body.appendChild(row);
+    });
+  }
+
+  panel.appendChild(body);
+
+  // 3. パネル下部フッター（この階層への新規サブフォルダ作成）
+  const footer = document.createElement('div');
+  footer.className = 'ns-panel-footer';
+  footer.addEventListener('mouseenter', () => {
+    closeActiveSubPanel();
+  });
+
+  const inputPlaceholder = isEn ? '+ New folder here...' : '＋ 新規サブフォルダ...';
+  const btnLabel = actionMode === 'move' ? (isEn ? 'Move' : '移動') : (isEn ? 'Copy' : '作成');
+
+  footer.innerHTML = `
+    <div class="ns-create-row">
+      <input type="text" class="ns-create-input" placeholder="${escapeHtml(inputPlaceholder)}" autocomplete="off">
+      <button type="button" class="ns-create-btn">${escapeHtml(btnLabel)}</button>
+    </div>
+  `;
+
+  const createInput = footer.querySelector('.ns-create-input');
+  const createBtn = footer.querySelector('.ns-create-btn');
+
+  if (createInput && createBtn) {
+    const triggerCreate = async (e) => {
+      e.stopPropagation();
+      const val = createInput.value.trim();
+      if (!val) {
+        if (typeof showToast === 'function') showToast('新規フォルダ名を入力してください', 'info');
+        createInput.focus();
+        return;
+      }
+      createInput.value = '';
+      await _executeCreateSubfolderAndStorageAction(node.cleanPath, val, actionMode, node.displayName);
+    };
+    createBtn.addEventListener('click', triggerCreate);
+    createInput.addEventListener('click', (e) => e.stopPropagation());
+    createInput.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        triggerCreate(e);
+      }
+    });
+  }
+
+  panel.appendChild(footer);
+  return panel;
+}
+
+/**
+ * 指定されたコンテナ群に NeXTSTEP 風味の右展開カスケード Loome メニューを描画する
  * @param {HTMLElement[]} containers 描画対象のDOM要素配列
  * @param {'import'|'move'} actionMode クリック時の動作モード
  */
@@ -218,23 +520,49 @@ async function renderStorageFolderListInContainers(containers, actionMode) {
   const validContainers = (containers || []).filter(Boolean);
   if (validContainers.length === 0) return;
 
+  const isEn = typeof currentLang !== 'undefined' && currentLang === 'en';
+
   validContainers.forEach(c => {
-    c.innerHTML = '<div class="submenu-folder-loading">読み込み中...</div>';
+    c.innerHTML = `<div class="ns-cascade-panel"><div class="submenu-folder-loading">${isEn ? 'Loading...' : '読み込み中...'}</div></div>`;
   });
 
   const folders = await fetchStorageFolders();
+  const roots = _buildLoomeCascadeTree(folders);
 
   validContainers.forEach(container => {
     container.innerHTML = '';
-    if (!folders || folders.length === 0) {
-      // フォールバック: ルート1件のみ表示
-      const item = document.createElement('div');
-      item.className = 'submenu-folder-item';
-      item.innerHTML = `
-        <span class="submenu-folder-name" title="Loome (直下)">Loome (直下)</span>
-        <span class="submenu-folder-count">${actionMode === 'move' ? '移動' : '保存'}</span>
+
+    // ルートパネル（第1階層: ドライブ選択パネル）
+    const rootPanel = document.createElement('div');
+    rootPanel.className = 'ns-cascade-panel';
+    rootPanel.addEventListener('click', (e) => e.stopPropagation());
+
+    const titlebar = document.createElement('div');
+    titlebar.className = 'ns-menu-titlebar';
+    const rootTitle = actionMode === 'move'
+      ? (isEn ? 'Loome Drive' : 'Loome 移動先ドライブ')
+      : (isEn ? 'Loome Drive' : 'Loome コピー先ドライブ');
+    titlebar.innerHTML = `
+      <span class="ns-title-text">📦 ${escapeHtml(rootTitle)}</span>
+      <span class="ns-title-badge">${roots.length || 1}</span>
+    `;
+    rootPanel.appendChild(titlebar);
+
+    const body = document.createElement('div');
+    body.className = 'ns-menu-body';
+
+    if (roots.length === 0) {
+      // フォールバック: ルートが取得できなかった場合
+      const fallbackItem = document.createElement('div');
+      fallbackItem.className = 'ns-menu-item ns-drive-item';
+      fallbackItem.innerHTML = `
+        <span class="ns-item-icon">📦</span>
+        <span class="ns-item-main">
+          <span class="ns-item-label">Loome (${isEn ? 'Root' : '直下'})</span>
+        </span>
+        <span class="ns-item-count">${actionMode === 'move' ? '移動' : '保存'}</span>
       `;
-      item.addEventListener('click', (e) => {
+      fallbackItem.addEventListener('click', (e) => {
         e.stopPropagation();
         if (actionMode === 'move') {
           executeStorageMoveFromSelection('', 'Loome (直下)');
@@ -242,36 +570,100 @@ async function renderStorageFolderListInContainers(containers, actionMode) {
           executeStorageImportFromSelection('', 'Loome (直下)');
         }
       });
-      container.appendChild(item);
+      body.appendChild(fallbackItem);
+      rootPanel.appendChild(body);
+      container.appendChild(rootPanel);
       return;
     }
 
-    folders.forEach(folder => {
-      const item = document.createElement('div');
-      item.className = 'submenu-folder-item storage-folder-option';
-      const depth = Number(folder.depth || 0);
-      item.style.paddingLeft = `${8 + depth * 14}px`;
+    let activeChildPanel = null;
+    let activeDriveRow = null;
+    let hoverTimer = null;
 
-      const isRoot = !!folder.is_root || (depth === 0 && (!folder.rel_path || folder.rel_path === '.'));
-      const icon = isRoot ? '📦 ' : '';
-      const displayName = folder.name || (isRoot ? 'Loome (直下)' : (folder.rel_path || 'Loome'));
-      const targetDest = folder.path || folder.rel_path || '';
-      const countText = folder.count !== undefined ? `${Number(folder.count)}枚` : '';
+    const closeActiveDriveSubPanel = () => {
+      if (hoverTimer) {
+        clearTimeout(hoverTimer);
+        hoverTimer = null;
+      }
+      if (activeChildPanel && activeChildPanel.parentNode) {
+        activeChildPanel.parentNode.removeChild(activeChildPanel);
+      }
+      activeChildPanel = null;
+      if (activeDriveRow) {
+        activeDriveRow.classList.remove('is-active-cascade');
+        activeDriveRow = null;
+      }
+    };
 
-      item.innerHTML = `
-        <span class="submenu-folder-name" title="${escapeHtml(folder.rel_path || displayName)}">${icon}${escapeHtml(displayName)}</span>
-        <span class="submenu-folder-count">${escapeHtml(countText)}</span>
-      `;
-      item.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (actionMode === 'move') {
-          executeStorageMoveFromSelection(targetDest, displayName);
-        } else {
-          executeStorageImportFromSelection(targetDest, displayName);
+    const openDriveSubPanel = (driveNode, rowEl) => {
+      if (activeDriveRow === rowEl && activeChildPanel) return;
+      closeActiveDriveSubPanel();
+      activeDriveRow = rowEl;
+      rowEl.classList.add('is-active-cascade');
+
+      const childPanel = _createLoomeCascadeChildPanel(driveNode, actionMode);
+      activeChildPanel = childPanel;
+
+      const panelRect = rootPanel.getBoundingClientRect();
+      const rowRect = rowEl.getBoundingClientRect();
+      const topOffset = Math.max(0, Math.round(rowRect.top - panelRect.top - 4));
+      childPanel.style.top = `${topOffset}px`;
+      rootPanel.appendChild(childPanel);
+
+      requestAnimationFrame(() => {
+        if (!childPanel.isConnected) return;
+        const subRect = childPanel.getBoundingClientRect();
+        if (subRect.right > window.innerWidth - 10) {
+          childPanel.classList.add('open-left');
+        }
+        if (subRect.bottom > window.innerHeight - 10) {
+          const shiftUp = subRect.bottom - (window.innerHeight - 10);
+          childPanel.style.top = `${Math.max(0, topOffset - shiftUp)}px`;
         }
       });
-      container.appendChild(item);
+    };
+
+    roots.forEach((driveNode) => {
+      const row = document.createElement('div');
+      row.className = 'ns-menu-item ns-drive-item';
+
+      const icon = driveNode.is_primary_loome ? '📦' : '💾';
+      const totalPhotosText = `${Number(driveNode.totalCount || 0)}${isEn ? '' : '枚'}`;
+
+      row.innerHTML = `
+        <span class="ns-item-icon">${icon}</span>
+        <span class="ns-item-main">
+          <span class="ns-item-label" title="${escapeHtml(driveNode.cleanPath)}">${escapeHtml(driveNode.displayName)}</span>
+        </span>
+        <span class="ns-item-count">${escapeHtml(totalPhotosText)}</span>
+        <span class="ns-item-arrow">▸</span>
+      `;
+
+      // マウスオーバーで右側にドライブ内フォルダ階層パネルをカスケード展開
+      row.addEventListener('mouseenter', () => {
+        if (hoverTimer) clearTimeout(hoverTimer);
+        hoverTimer = setTimeout(() => {
+          openDriveSubPanel(driveNode, row);
+        }, 50);
+      });
+
+      // ドライブ行自体のクリックで、そのドライブ直下へ即コピー/移動
+      row.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const targetDest = driveNode.cleanPath || driveNode.path || '';
+        const dispLabel = `${driveNode.displayName} (直下)`;
+        if (actionMode === 'move') {
+          executeStorageMoveFromSelection(targetDest, dispLabel);
+        } else {
+          executeStorageImportFromSelection(targetDest, dispLabel);
+        }
+      });
+
+      body.appendChild(row);
     });
+
+    rootPanel.appendChild(body);
+    container.appendChild(rootPanel);
   });
 }
 
@@ -288,7 +680,9 @@ function updateStorageSelectionUI() {
 window.updateStorageSelectionUI = updateStorageSelectionUI;
 
 /**
- * function updateStorageContextMenu() {
+ * 写真の右クリックコンテキストメニューにおける Loome 関連項目（コピー・移動・リネーム）の表示を更新する
+ */
+function updateStorageContextMenu() {
   const { storagePhotoIds, externalPhotoIds } = getSelectedPhotosStorageBreakdown();
   const isEn = typeof currentLang !== 'undefined' && currentLang === 'en';
 
@@ -296,10 +690,15 @@ window.updateStorageSelectionUI = updateStorageSelectionUI;
   const renameItem = document.getElementById('contextMenuStorageRenameItem');
   const renameLabel = document.getElementById('contextMenuStorageRenameLabel');
   const importItem = document.getElementById('contextMenuStorageImportItem');
+  const topDivider = document.getElementById('contextMenuStorageTopDivider');
+  const sectionCaption = document.getElementById('contextMenuStorageCaption');
+
+  let anyStorageItemVisible = false;
 
   if (moveItem) {
     if (storagePhotoIds.length > 0) {
       moveItem.style.display = '';
+      anyStorageItemVisible = true;
       const moveList = document.getElementById('contextStorageMoveFolderList');
       if (moveList) {
         renderStorageFolderListInContainers([moveList], 'move');
@@ -312,6 +711,7 @@ window.updateStorageSelectionUI = updateStorageSelectionUI;
   if (renameItem) {
     if (storagePhotoIds.length > 0) {
       renameItem.style.display = '';
+      anyStorageItemVisible = true;
       if (renameLabel) {
         if (storagePhotoIds.length === 1) {
           renameLabel.textContent = isEn ? 'Rename File (F2)' : 'ファイル名を変更 (F2)';
@@ -325,8 +725,10 @@ window.updateStorageSelectionUI = updateStorageSelectionUI;
   }
 
   if (importItem) {
-    if (externalPhotoIds.length > 0) {
+    const selectedCount = (typeof state !== 'undefined' && state.selectedPhotoIds) ? state.selectedPhotoIds.size : 0;
+    if (externalPhotoIds.length > 0 || selectedCount > 0) {
       importItem.style.display = '';
+      anyStorageItemVisible = true;
       const importList = document.getElementById('contextStorageImportFolderList');
       if (importList) {
         renderStorageFolderListInContainers([importList], 'import');
@@ -334,6 +736,14 @@ window.updateStorageSelectionUI = updateStorageSelectionUI;
     } else {
       importItem.style.display = 'none';
     }
+  }
+
+  if (topDivider) {
+    topDivider.style.display = anyStorageItemVisible ? '' : 'none';
+  }
+  if (sectionCaption) {
+    sectionCaption.style.display = anyStorageItemVisible ? '' : 'none';
+    sectionCaption.textContent = isEn ? '📦 Loome Storage' : '📦 Loome 保管庫操作';
   }
 }
 window.updateStorageContextMenu = updateStorageContextMenu;

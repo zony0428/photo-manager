@@ -219,6 +219,7 @@ async function refreshAll() {
     fetchCameras(),
     fetchUnlinkedCount(),
     fetchDuplicatesCount(),
+    (typeof fetchManagedVolumes === 'function' ? fetchManagedVolumes() : Promise.resolve()),
     (window.fetchFilterPresets ? window.fetchFilterPresets() : Promise.resolve()),
     (window.loadLocationTree ? window.loadLocationTree() : Promise.resolve()),
   ]);

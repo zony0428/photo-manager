@@ -4,22 +4,22 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Tetheract Photo Manager</title>
-  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=1.5.0">
-  <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32.png?v=1.5.0">
-  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png?v=1.5.0">
-  <link rel="apple-touch-icon" href="/icons/icon-192.png?v=1.5.0">
-  <link rel="manifest" href="/manifest.json?v=1.5.0">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=1.6.0">
+  <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32.png?v=1.6.0">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png?v=1.6.0">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png?v=1.6.0">
+  <link rel="manifest" href="/manifest.json?v=1.6.0">
   <meta name="theme-color" content="#191816">
   <link rel="stylesheet" href="/vendor/fonts/fonts.css">
-  <link rel="stylesheet" href="/css/style.css?v=1.5.0">
-  <link rel="stylesheet" href="/css/grid-lightbox.css?v=1.5.0">
-  <link rel="stylesheet" href="/css/selection-menu.css?v=1.5.0">
-  <link rel="stylesheet" href="/css/inspector.css?v=1.5.0">
-  <link rel="stylesheet" href="/css/modals-features.css?v=1.5.0">
-  <link rel="stylesheet" href="/css/lab-map.css?v=1.5.0">
-  <link rel="stylesheet" href="/css/histogram.css?v=1.5.0">
-  <link rel="stylesheet" href="/css/compare.css?v=1.5.0">
-  <link rel="stylesheet" href="/css/ui-unify.css?v=1.5.0">
+  <link rel="stylesheet" href="/css/style.css?v=1.6.0">
+  <link rel="stylesheet" href="/css/grid-lightbox.css?v=1.6.0">
+  <link rel="stylesheet" href="/css/selection-menu.css?v=1.6.0">
+  <link rel="stylesheet" href="/css/inspector.css?v=1.6.0">
+  <link rel="stylesheet" href="/css/modals-features.css?v=1.6.0">
+  <link rel="stylesheet" href="/css/lab-map.css?v=1.6.0">
+  <link rel="stylesheet" href="/css/histogram.css?v=1.6.0">
+  <link rel="stylesheet" href="/css/compare.css?v=1.6.0">
+  <link rel="stylesheet" href="/css/ui-unify.css?v=1.6.0">
   <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
   <script src="/vendor/leaflet/leaflet.js"></script>
   <script>
@@ -108,14 +108,14 @@
 
         <div class="logo" id="headerAppLogo" title="Tetheract Photo Manager">
           <span class="logo-icon-wrap">
-            <img class="logo-app-icon" id="headerLogoStaticImg" src="/icons/icon-192.png?v=1.5.0" width="24" height="24" alt="" aria-hidden="true">
+            <img class="logo-app-icon" id="headerLogoStaticImg" src="/icons/icon-192.png?v=1.6.0" width="24" height="24" alt="" aria-hidden="true">
             <canvas class="logo-app-icon-canvas" id="headerTetheractCanvas" width="72" height="72" aria-hidden="true"></canvas>
           </span>
           <svg class="logo-lockup-svg" viewBox="64 8 248 48" width="134" height="26" fill="none" role="img" aria-label="TETHERACT pm">
             <text x="0" y="45.41" fill="var(--logo-text)" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif" font-size="44.38" font-weight="700" letter-spacing="2.8" textLength="269.4" lengthAdjust="spacingAndGlyphs" transform="translate(66, 0) scale(0.7071, 1)">TETHERACT</text>
             <text x="0" y="45.41" fill="var(--logo-pm)" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif" font-size="35.60" font-weight="600" letter-spacing="1.0" transform="translate(265, 0) scale(0.75, 1)">pm</text>
           </svg>
-          <span class="app-version" id="appVersion" title="v1.5.0 (最終更新: 2026-11-04 14:45)">v1.5.0</span>
+          <span class="app-version" id="appVersion" title="v1.6.0 (最終更新: 2026-11-04 17:15)">v1.6.0</span>
         </div>
 
         <!-- UI言語切替（日本語 JP ⇄ English EN） -->
@@ -1413,7 +1413,7 @@
             <p>Binder（条件セット保存）：よく使う絞り込み条件は、左サイドバー「Binder」の保存フォームで名前を付けて保存し、ワンクリックでの呼び出しやスライドショー再生が行えます。</p>
             <p>外部ソフト連携と自動更新検知：右インスペクタ上部のアイコンからエクスプローラーで保存先を開いたり、既定のソフトでファイルを開けます。外部ソフトで編集・保存したり .xmp サイドカーを出力して Tetheract の画面へ戻ると自動で変更を検知してサムネイルや XMP バッジを最新化します（右クリックメニューの「サムネイルを更新」から手動更新も可能です）。</p>
             <p>設定とDBメンテナンス：画面右上の「設定」ボタンから、起動時のウィンドウサイズやタグの名前順ルールの変更、世代バックアップ付きデータベース最適化（VACUUM）が行えます。</p>
-            <p>Loome 管理：左サイドバー「Folder」先頭の「Loome」には、外部フォルダの写真を「Loomeへコピー」（またはドラッグ＆ドロップ）でコピー取り込みできます。また、接続中のドライブを右クリックして「このドライブに Loome を作成...」（または「登録メディア管理」の「Loome を作成」）を実行すると、外付けSSD・USBメモリ直下にも専用 Loome を追加できます。Loome内ではサブフォルダ作成・移動・ファイル名変更（F2キーで単一または一括連番リネーム）・外部エクスポートが行え、同名のサイドカーファイル（.xmp等）やペアRAWも自動で追従します。</p>
+            <p>Loome 管理：左サイドバー「Folder」先頭の「Loome」には、外部フォルダの写真を右クリックの「Loomeへコピー ▶」（マウスオーバーでドライブからサブフォルダ階層へと右展開するカスケードメニュー）またはドラッグ＆ドロップで高速に並列コピー取り込みできます。また、接続中のドライブを右クリックして「このドライブに Loome を作成...」（または「登録メディア管理」の「Loome を作成」）を実行すると、外付けSSD・USBメモリ直下にも専用 Loome を追加できます。Loome内ではサブフォルダ作成・移動（右クリック「Loome内で移動 ▶」）・ファイル名変更（F2キーで単一または一括連番リネーム）・外部エクスポートが行え、同名のサイドカーファイル（.xmp等）やペアRAWも自動で追従します。</p>
           </div>
         </div>
 
@@ -2867,24 +2867,17 @@
         <span id="contextMenuCopyImageLabel">画像をクリップボードにコピー (Ctrl+C)</span>
       </div>
     </div>
+    <!-- Loome セクション（セパレーター ＋ 小キャプション） -->
+    <div class="context-menu-divider" id="contextMenuStorageTopDivider" style="display: none;"></div>
+    <div class="context-menu-section-caption" id="contextMenuStorageCaption" style="display: none;">📦 Loome 保管庫操作</div>
     <!-- Loome へコピー（外部写真選択時） -->
     <div class="context-menu-item has-submenu" id="contextMenuStorageImportItem" style="display: none;">
       <div class="menu-item-content">
         <span title="選択した写真を Loome フォルダへコピー＆取り込みます">Loomeへコピー</span>
         <span class="submenu-arrow">▶</span>
       </div>
-      <div class="context-submenu" id="contextStorageImportSubmenu">
-        <div class="submenu-create-input">
-          <input type="text" id="contextNewStorageImportFolderInput" placeholder="新規フォルダ名..." autocomplete="off">
-          <button class="btn btn-primary btn-xs" id="contextConfirmNewStorageImportFolderBtn" title="Loome内にフォルダを作成してコピー">作成&amp;コピー</button>
-        </div>
-        <div class="context-import-action" id="contextOpenStorageImportFolderBtn" title="エクスプローラーでLoomeフォルダを開きます">
-          
-          <span class="context-import-action-text">Loomeフォルダを開く</span>
-          <span class="context-import-action-arrow">↗</span>
-        </div>
-        <div class="context-menu-divider" style="margin: 4px 0;"></div>
-        <div class="submenu-folder-list" id="contextStorageImportFolderList">
+      <div class="context-submenu ns-loome-submenu" id="contextStorageImportSubmenu">
+        <div class="submenu-folder-list ns-cascade-root" id="contextStorageImportFolderList">
           <div class="submenu-folder-loading">読み込み中...</div>
         </div>
       </div>
@@ -2895,18 +2888,8 @@
         <span title="Loome 内の写真を別サブフォルダへ移動します">Loome内で移動</span>
         <span class="submenu-arrow">▶</span>
       </div>
-      <div class="context-submenu" id="contextStorageMoveSubmenu">
-        <div class="submenu-create-input">
-          <input type="text" id="contextNewStorageMoveFolderInput" placeholder="新規フォルダ名..." autocomplete="off">
-          <button class="btn btn-primary btn-xs" id="contextConfirmNewStorageMoveFolderBtn" title="Loome内にフォルダを作成して移動">作成&amp;移動</button>
-        </div>
-        <div class="context-import-action" id="contextOpenStorageMoveFolderBtn" title="エクスプローラーでLoomeフォルダを開きます">
-          
-          <span class="context-import-action-text">Loomeフォルダを開く</span>
-          <span class="context-import-action-arrow">↗</span>
-        </div>
-        <div class="context-menu-divider" style="margin: 4px 0;"></div>
-        <div class="submenu-folder-list" id="contextStorageMoveFolderList">
+      <div class="context-submenu ns-loome-submenu" id="contextStorageMoveSubmenu">
+        <div class="submenu-folder-list ns-cascade-root" id="contextStorageMoveFolderList">
           <div class="submenu-folder-loading">読み込み中...</div>
         </div>
       </div>
@@ -2952,6 +2935,7 @@
     
     <!-- Loome 専用メニュー項目 -->
     <div class="folder-menu-group" id="folderMenuStorageGroup" style="display: none;">
+      <div class="context-menu-section-caption" id="folderMenuStorageCaption">📦 Loome 保管庫操作</div>
       <div class="context-menu-item" id="folderMenuStorageCreateSub">
         <div class="menu-item-content">
           <span>新規サブフォルダを作成...</span>
@@ -3060,23 +3044,23 @@
     </div>
   </div>
 
-  <script src="/js/common.js?v=1.5.0"></script>
-  <script src="/js/selection.js?v=1.5.0"></script>
-  <script src="/js/inspector.js?v=1.5.0"></script>
-  <script src="/js/lightbox.js?v=1.5.0"></script>
-  <script src="/js/adjust.js?v=1.5.0"></script>
-  <script src="/js/histogram.js?v=1.5.0"></script>
-  <script src="/js/compare.js?v=1.5.0"></script>
-  <script src="/js/takeout.js?v=1.5.0"></script>
-  <script src="/js/presets.js?v=1.5.0"></script>
-  <script src="/js/slideshow.js?v=1.5.0"></script>
-  <script src="/js/location_tree.js?v=1.5.0"></script>
-  <script src="/js/folder_tree.js?v=1.5.0"></script>
-  <script src="/js/location_map.js?v=1.5.0"></script>
-  <script src="/js/lab.js?v=1.5.0"></script>
-  <script src="/js/sidebar_filters.js?v=1.5.0"></script>
-  <script src="/js/storage.js?v=1.5.0"></script>
-  <script src="/js/app.js?v=1.5.0"></script>
-  <script src="/js/i18n.js?v=1.5.0"></script>
+  <script src="/js/common.js?v=1.6.0"></script>
+  <script src="/js/selection.js?v=1.6.0"></script>
+  <script src="/js/inspector.js?v=1.6.0"></script>
+  <script src="/js/lightbox.js?v=1.6.0"></script>
+  <script src="/js/adjust.js?v=1.6.0"></script>
+  <script src="/js/histogram.js?v=1.6.0"></script>
+  <script src="/js/compare.js?v=1.6.0"></script>
+  <script src="/js/takeout.js?v=1.6.0"></script>
+  <script src="/js/presets.js?v=1.6.0"></script>
+  <script src="/js/slideshow.js?v=1.6.0"></script>
+  <script src="/js/location_tree.js?v=1.6.0"></script>
+  <script src="/js/folder_tree.js?v=1.6.0"></script>
+  <script src="/js/location_map.js?v=1.6.0"></script>
+  <script src="/js/lab.js?v=1.6.0"></script>
+  <script src="/js/sidebar_filters.js?v=1.6.0"></script>
+  <script src="/js/storage.js?v=1.6.0"></script>
+  <script src="/js/app.js?v=1.6.0"></script>
+  <script src="/js/i18n.js?v=1.6.0"></script>
 </body>
 </html>

@@ -160,6 +160,7 @@ from .fingerprint import (
     extract_folder_fingerprint,
     verify_folder_fingerprint,
     get_scan_root_fingerprint,
+    is_same_volume_as_registered_folder,
     update_scan_root_fingerprint,
 )
 

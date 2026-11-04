@@ -1994,6 +1994,13 @@ class TestCoreRegression(unittest.TestCase):
         self.assertTrue(diff_clean["is_managed"])
         self.assertFalse(diff_clean["has_changes"], "実体とDBが一致していれば差分なし")
 
+        # 空のサブフォルダ（画像0枚）を作成しても、スキャン対象画像がないため毎回「変更検知」にならないこと
+        empty_sub = dir_2026 / "EMPTY_TEST"
+        empty_sub.mkdir(parents=True, exist_ok=True)
+        diff_with_empty_sub = check_folder_diff(str(dir_2026))
+        self.assertFalse(diff_with_empty_sub["has_changes"], "画像0枚の空サブフォルダで毎回変更検知が発火しないこと")
+        self.assertEqual(diff_with_empty_sub["added_folders"], [])
+
         # OS側で新しい子フォルダ 202603（中に写真2枚）と、既存子フォルダ 202601 内への新規写真1枚を追加し、
         # さらに既存子フォルダ 202602（写真1枚）を削除したケース
         dir_202603 = dir_2026 / "202603"
@@ -2501,6 +2508,224 @@ class TestCoreRegression(unittest.TestCase):
                     chk_json = asyncio.run(api_check_external_updates(_DummyLocalReq()))
                 self.assertTrue(chk_json["ok"])
                 self.assertIn(id_001, chk_json["updated_photo_ids"])
+
+    def test_29_fast_copy_and_parallel_loome_import(self) -> None:
+        """
+        Win32 CopyFileExW (fast_copy_file) + マルチスレッド並列コピー + extract_metadata 再解析スキップ +
+        単一トランザクションDB登録による高速 Loome インポート、およびマルチリンク写真の Loome 内リネーム・移動を検証する。
+        """
+        import unittest.mock as _mock
+        from PIL import Image
+        import server.storage_manager as sm
+        from server.sidecar import fast_copy_file
+        from server.database import (
+            add_tag_to_photo,
+            get_photo_by_id,
+            get_thumbnail,
+            save_thumbnail,
+            update_photo_adjustments,
+            upsert_photo,
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            ext_dir = root / "ExternalCard"
+            loome_dir = root / "Loome"
+            ext_dir.mkdir(parents=True)
+            loome_dir.mkdir(parents=True)
+
+            # 1. fast_copy_file 単体検証（通常サイズ + 9MB 大容量ファイルの COPY_FILE_NO_BUFFERING 転送）
+            small_src = ext_dir / "small.bin"
+            small_dst = loome_dir / "small_copy.bin"
+            small_src.write_bytes(b"TetheractFastCopyTest" * 100)
+            fast_copy_file(small_src, small_dst)
+            self.assertEqual(small_src.read_bytes(), small_dst.read_bytes())
+
+            large_src = ext_dir / "large_raw.bin"
+            large_dst = loome_dir / "large_raw_copy.bin"
+            large_payload = b"RAW_DATA_BLOCK__" * (9 * 1024 * 64)  # 9MB (> 8MB threshold)
+            large_src.write_bytes(large_payload)
+            fast_copy_file(large_src, large_dst, file_size=len(large_payload))
+            self.assertEqual(large_dst.stat().st_size, len(large_payload))
+            self.assertEqual(large_src.read_bytes()[:4096], large_dst.read_bytes()[:4096])
+            self.assertEqual(large_src.read_bytes()[-4096:], large_dst.read_bytes()[-4096:])
+            small_dst.unlink()
+            large_dst.unlink()
+
+            # 2. 複数枚（ペアRAW・XMPサイドカー・タグ・評価・サムネイル付き）の並列高速インポート検証
+            pids = []
+            for idx in range(1, 5):
+                jpg_path = ext_dir / f"DSC_{idx:04d}.JPG"
+                Image.new("RGB", (120, 80), color=(idx * 40, 100, 150)).save(jpg_path, "JPEG")
+                xmp_path = ext_dir / f"DSC_{idx:04d}.xmp"
+                xmp_path.write_text("<x:xmpmeta>test</x:xmpmeta>", encoding="utf-8")
+
+                raw_path_str = None
+                if idx == 1:
+                    raw_path = ext_dir / f"DSC_{idx:04d}.ARW"
+                    raw_path.write_bytes(b"DUMMY_RAW_CONTENT_" * 500)
+                    raw_path_str = str(raw_path)
+
+                st = jpg_path.stat()
+                pid = upsert_photo({
+                    "file_path": str(jpg_path),
+                    "directory_path": str(ext_dir),
+                    "file_name": jpg_path.name,
+                    "file_size": st.st_size,
+                    "file_mtime": st.st_mtime,
+                    "width": 120,
+                    "height": 80,
+                    "date_taken": f"2026:11:04 12:00:0{idx}",
+                    "camera_make": "SONY",
+                    "camera_model": "ILCE-7RM5",
+                    "lens_model": "FE 24-70mm F2.8 GM II",
+                    "iso": 100 * idx,
+                    "rating": 4,
+                    "brightness": 12,
+                    "latitude": 35.6812,
+                    "longitude": 139.7671,
+                    "country": "日本",
+                    "state": "東京都",
+                    "city": "千代田区",
+                    "paired_raw_path": raw_path_str,
+                })
+                update_photo_adjustments(pid, brightness=12)
+                add_tag_to_photo(pid, f"高速コピー検証/テスト{idx}")
+                save_thumbnail(pid, b"WEBP_THUMB_DATA", 120, 80, "hash_init")
+                pids.append(pid)
+
+            orig_storage = sm.STORAGE_DIR
+            orig_loome = sm.LOOME_DIR
+            orig_legacy = sm.LEGACY_STORAGE_DIR
+            try:
+                sm.STORAGE_DIR = loome_dir
+                sm.LOOME_DIR = loome_dir
+                sm.LEGACY_STORAGE_DIR = root / "non_existent_legacy_storage"
+                sm.ensure_storage_dir()
+                sm.invalidate_loome_roots_cache()
+
+                # extract_metadata が1回も呼ばれずに全4枚＋ペアRAW＋サイドカーが並列コピー＆単一トランザクション登録されること
+                with _mock.patch.object(sm, "extract_metadata", wraps=sm.extract_metadata) as mock_extract:
+                    res = sm.import_photos_to_storage(pids, destination="SubAlbum")
+                    self.assertEqual(mock_extract.call_count, 0, "既存メタデータがある写真は extract_metadata を再実行しないこと")
+
+                self.assertEqual(res["status"], "ok")
+                self.assertEqual(res["imported_count"], 4)
+                self.assertEqual(res["skipped_count"], 0)
+
+                sub_dir = loome_dir / "SubAlbum"
+                for idx in range(1, 5):
+                    self.assertTrue((sub_dir / f"DSC_{idx:04d}.JPG").exists())
+                    self.assertTrue((sub_dir / f"DSC_{idx:04d}.xmp").exists())
+                self.assertTrue((sub_dir / "DSC_0001.ARW").exists())
+
+                # 同一 photo_id に外部フォルダと Loome のマルチリンクが紐づいている状態で、
+                # Loome 内のファイルリネーム・フォルダ間移動が正常に行えること
+                ren_res = sm.rename_photo_in_storage(pids[0], "RENAMED_0001")
+                self.assertEqual(ren_res["status"], "ok")
+                self.assertEqual(ren_res["new_name"], "RENAMED_0001.JPG")
+                self.assertTrue((sub_dir / "RENAMED_0001.JPG").exists())
+                self.assertTrue((sub_dir / "RENAMED_0001.xmp").exists())
+                self.assertTrue((sub_dir / "RENAMED_0001.ARW").exists())
+
+                mv_res = sm.move_photos_in_storage([pids[0]], destination="MovedAlbum")
+                self.assertEqual(mv_res["status"], "ok")
+                self.assertEqual(mv_res["moved_count"], 1)
+                self.assertTrue((loome_dir / "MovedAlbum" / "RENAMED_0001.JPG").exists())
+                self.assertTrue((loome_dir / "MovedAlbum" / "RENAMED_0001.ARW").exists())
+
+                # メタデータ・タグ・サムネイルがすべて維持されていること
+                p_after = get_photo_by_id(pids[0])
+                self.assertEqual(p_after["rating"], 4)
+                self.assertEqual(p_after["brightness"], 12)
+                self.assertEqual(p_after["camera_model"], "ILCE-7RM5")
+                self.assertIn("高速コピー検証/テスト1", p_after["tags"])
+                self.assertIsNotNone(get_thumbnail(pids[0]))
+            finally:
+                sm.STORAGE_DIR = orig_storage
+                sm.LOOME_DIR = orig_loome
+                sm.LEGACY_STORAGE_DIR = orig_legacy
+                sm.ensure_storage_dir()
+                sm.invalidate_loome_roots_cache()
+
+    def test_30_refresh_emptied_folder_after_loome_copy_cleans_links(self):
+        """指紋登録済みフォルダからLoomeへコピー後に元フォルダ内を全削除してリフレッシュした際、指紋エラーにならず元リンクが消えることを検証"""
+        from unittest import mock as _mock
+        from PIL import Image as _PilImage
+        from server.database import get_photo_by_id, get_scan_root_fingerprint
+        from server.scanner import scan_directory
+        import server.storage_manager as sm
+
+        with tempfile.TemporaryDirectory() as tmp, _mock.patch(
+            "server.preload_thumbnails.preload_all_thumbnails", return_value=None
+        ):
+            root = Path(tmp)
+            ext_dir = root / "Screenshots"
+            loome_dir = root / "Loome"
+            ext_dir.mkdir(parents=True, exist_ok=True)
+            loome_dir.mkdir(parents=True, exist_ok=True)
+
+            for idx in range(1, 4):
+                img_path = ext_dir / f"SHOT_{idx:03d}.PNG"
+                img = _PilImage.new("RGB", (64 + idx * 16, 48 + idx * 12), color=(20 * idx, 80, 140))
+                img.save(img_path, format="PNG")
+
+            scan1 = scan_directory(str(ext_dir), recursive=True, cleanup_orphans=True)
+            self.assertEqual(scan1["added"], 3)
+
+            matched_root, stored_fp = get_scan_root_fingerprint(str(ext_dir))
+            self.assertIsNotNone(stored_fp, "初回スキャン後にフォルダ指紋が記録されていること")
+
+            with get_connection() as conn:
+                rows = conn.execute(
+                    "SELECT id FROM photos WHERE directory_path = ? ORDER BY id",
+                    (str(ext_dir),),
+                ).fetchall()
+                pids = [r["id"] for r in rows]
+            self.assertEqual(len(pids), 3)
+
+            orig_storage = sm.STORAGE_DIR
+            orig_loome = sm.LOOME_DIR
+            orig_legacy = sm.LEGACY_STORAGE_DIR
+            try:
+                sm.STORAGE_DIR = loome_dir
+                sm.LOOME_DIR = loome_dir
+                sm.LEGACY_STORAGE_DIR = root / "non_existent_legacy_storage"
+                sm.ensure_storage_dir()
+                sm.invalidate_loome_roots_cache()
+
+                imp = sm.import_photos_to_storage(pids, destination="")
+                self.assertEqual(imp["imported_count"], 3)
+
+                # 元フォルダ（Screenshots）の画像をすべて削除して空にする
+                for p in ext_dir.glob("*.PNG"):
+                    p.unlink()
+
+                # リフレッシュ（cleanup_orphans=True）を実行しても指紋エラーにならず、3件のリンクが整理されること
+                scan2 = scan_directory(str(ext_dir), recursive=True, cleanup_orphans=True)
+                self.assertEqual(scan2["cleaned"], 3)
+
+                # 各写真の保存パスが Loome のみに切り替わり、Screenshots のリンクが消えていること
+                for pid in pids:
+                    p_info = get_photo_by_id(pid)
+                    self.assertEqual(os.path.normcase(p_info["directory_path"]), os.path.normcase(str(loome_dir)))
+                    self.assertFalse(p_info["is_unlinked"])
+
+                with get_connection() as conn:
+                    rem_ext = conn.execute(
+                        "SELECT COUNT(*) FROM photo_links WHERE directory_path = ?",
+                        (str(ext_dir),),
+                    ).fetchone()[0]
+                    self.assertEqual(rem_ext, 0, "空になった元フォルダの photo_links が0件になっていること")
+
+                _, fp_after = get_scan_root_fingerprint(str(ext_dir))
+                self.assertIsNone(fp_after, "空フォルダになった後は古い指紋がクリアされること")
+            finally:
+                sm.STORAGE_DIR = orig_storage
+                sm.LOOME_DIR = orig_loome
+                sm.LEGACY_STORAGE_DIR = orig_legacy
+                sm.ensure_storage_dir()
+                sm.invalidate_loome_roots_cache()
 
 
 if __name__ == "__main__":

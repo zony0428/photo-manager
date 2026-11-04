@@ -23,6 +23,7 @@ logger = logging.getLogger("scanner")
 from .database import (
     CACHE_DIR,
     get_connection,
+    close_thread_connection,
     upsert_photo,
     upsert_photos_batch,
     get_existing_photos_map,
@@ -43,6 +44,7 @@ from .database import (
     extract_folder_fingerprint,
     verify_folder_fingerprint,
     get_scan_root_fingerprint,
+    is_same_volume_as_registered_folder,
     update_scan_root_fingerprint,
     get_ignored_folders,
     remove_ignored_folder,
@@ -1467,25 +1469,29 @@ def scan_directory(
     clear_folders_fs_cache()
 
     try:
-        # 指紋照合（別PC・別アカウントの同名ドライブ/フォルダ誤読防止）
-        matched_root, stored_fp = get_scan_root_fingerprint(target_dir_str)
-        if matched_root and stored_fp:
-            # 指紋はルートフォルダ基準で記録されているため、ルートパスで検証する
-            is_valid, reason = verify_folder_fingerprint(matched_root, stored_fp)
-            if not is_valid:
-                scan_tracker.set_error(reason)
-                raise PermissionError(reason)
-
-        # 既存の登録ルート配下のサブフォルダでない場合のみ、新規ルートとしてDBに記録
-        if not matched_root or os.path.normpath(target_dir_str) == os.path.normpath(matched_root):
-            add_scan_root(target_dir_str)
-
         # スキャン対象ディレクトリのボリューム情報を1回だけ取得してDBに登録
         vol_info = get_volume_info(target_dir_str)
         volume_serial = None
         if vol_info:
             volume_serial = vol_info["serial"]
             upsert_volume(vol_info["serial"], vol_info["label"], vol_info["drive"])
+
+        # 指紋照合（別PC・別アカウントの同名ドライブ/フォルダ誤読防止）
+        # ※ 明示的なリフレッシュ・リンク整理（cleanup_orphans=True）時や、
+        #    ハードウェアVSNが登録済みリンクと完全一致している同一ドライブ上では、
+        #    フォルダ内の写真を全削除・移動した後の整理を妨げないよう指紋エラー中断を行わない
+        matched_root, stored_fp = get_scan_root_fingerprint(target_dir_str)
+        if matched_root and stored_fp:
+            if not cleanup_orphans and not is_same_volume_as_registered_folder(matched_root, volume_serial):
+                # 指紋はルートフォルダ基準で記録されているため、ルートパスで検証する
+                is_valid, reason = verify_folder_fingerprint(matched_root, stored_fp)
+                if not is_valid:
+                    scan_tracker.set_error(reason)
+                    raise PermissionError(reason)
+
+        # 既存の登録ルート配下のサブフォルダでない場合のみ、新規ルートとしてDBに記録
+        if not matched_root or os.path.normpath(target_dir_str) == os.path.normpath(matched_root):
+            add_scan_root(target_dir_str)
 
         # 1. まず高速に対象画像ファイルをリストアップして総数を把握
         scan_tracker.set_phase("listing")
@@ -1638,9 +1644,9 @@ def scan_directory(
         # 4. 指紋（フィンガープリント）を最新状態に更新（写真の変更・追加・削除があった場合のみ更新）
         if total_added > 0 or total_updated > 0 or total_relinked > 0 or cleaned_count > 0:
             try:
-                new_fp = extract_folder_fingerprint(target_dir_str)
-                if new_fp:
-                    update_scan_root_fingerprint(target_dir_str, new_fp)
+                fp_root = matched_root or target_dir_str
+                new_fp = extract_folder_fingerprint(fp_root)
+                update_scan_root_fingerprint(fp_root, new_fp)
             except Exception as fp_err:
                 print(f"[WARN] 指紋更新エラー（スキャン処理には影響なし）: {fp_err}")
 
@@ -1673,6 +1679,11 @@ def scan_directory(
                     ck_conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
             except Exception as e:
                 print(f"[WARN] バックグラウンドサムネイル生成エラー: {e}")
+            finally:
+                try:
+                    close_thread_connection()
+                except Exception:
+                    pass
 
         threading.Thread(target=_bg_preload, daemon=True).start()
 
@@ -1980,12 +1991,20 @@ def check_folder_diff(target_dir_str: str, volume_serial: Optional[str] = None) 
                     sub_modified += 1
 
         # (C) OS側で新規追加された未登録の直下子フォルダチェック（ドライブルート以外かつ実在時のみ）
+        # ※画像が0枚の空サブフォルダはスキャンしてもDB（photo_links）に登録されないため、
+        #   空サブフォルダを added_folders に入れるとクリックするたびに毎回「変更検知」が無限ループする。
+        #   内部に未登録画像が1枚以上存在する場合のみ新規追加サブフォルダとして検知する。
         if not is_drive_root and not folder_deleted:
             for sub_lower, (sub_cased, sub_full_path) in disk_subdirs.items():
                 if sub_lower not in db_direct_subdirs:
-                    added_folders.append(sub_cased)
-                    if time.monotonic() < deadline:
-                        sub_added += _count_images_in_new_subdir_fast(sub_full_path, ignored_set, deadline)
+                    img_in_sub = (
+                        _count_images_in_new_subdir_fast(sub_full_path, ignored_set, deadline)
+                        if time.monotonic() < deadline
+                        else 0
+                    )
+                    if img_in_sub > 0:
+                        added_folders.append(sub_cased)
+                        sub_added += img_in_sub
 
     added_folders.sort()
     deleted_folders.sort()

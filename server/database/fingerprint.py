@@ -183,8 +183,27 @@ def get_scan_root_fingerprint(folder_path: str) -> Tuple[Optional[str], Optional
         return matched_root, matched_fp
 
 
-def update_scan_root_fingerprint(folder_path: str, fp_json: str) -> None:
-    """指定された登録ルートの指紋JSONを更新する"""
+def is_same_volume_as_registered_folder(folder_path: str, volume_serial: Optional[str]) -> bool:
+    """指定されたフォルダのDB登録リンクが現在の物理ドライブ（VSN）と同一であるか判定する"""
+    if not volume_serial:
+        return False
+    norm_path = os.path.normpath(folder_path)
+    like_prefix = norm_path.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "\\%"
+    with get_connection() as conn:
+        row = conn.execute(
+            """
+            SELECT 1 FROM photo_links
+            WHERE (directory_path = ? OR directory_path LIKE ? ESCAPE '\\')
+              AND volume_serial = ?
+            LIMIT 1
+            """,
+            (norm_path, like_prefix, volume_serial),
+        ).fetchone()
+        return row is not None
+
+
+def update_scan_root_fingerprint(folder_path: str, fp_json: Optional[str]) -> None:
+    """指定された登録ルートの指紋JSONを更新する（None指定時は指紋をクリア）"""
     norm_path = os.path.normpath(folder_path)
     with get_connection() as conn:
         conn.execute(

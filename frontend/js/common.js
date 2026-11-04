@@ -1027,23 +1027,21 @@ function initMediaWatcher() {
       }
     }
 
-    // エクスプローラーで開いていたフォルダの変更チェック
+    // エクスプローラーで開いていたフォルダ、および現在表示中フォルダの変更チェック
     if (_pendingExternalFolders.size > 0) {
-      const foldersToCheck = Array.from(_pendingExternalFolders);
       _pendingExternalFolders.clear();
       if (typeof refreshFolderTree === 'function') {
         refreshFolderTree();
       }
-      if (state.currentFilter && state.currentFilter.type === 'folder' && state.currentFilter.value && !state.currentFilter.isOffline) {
-        const curPath = state.currentFilter.value;
-        const matched = foldersToCheck.some(fp => curPath.toLowerCase().startsWith(fp.toLowerCase()));
-        if (matched && typeof window.checkAndPromptFolderRefresh === 'function') {
-          const folderName = curPath.split(/[\\/]/).filter(Boolean).pop() || curPath;
-          window.checkAndPromptFolderRefresh(curPath, folderName, {
-            volumeSerial: state.currentFilter.volumeSerial || null,
-            isOffline: false,
-          });
-        }
+    }
+    if (state.currentFilter && state.currentFilter.type === 'folder' && state.currentFilter.value && !state.currentFilter.isOffline) {
+      const curPath = state.currentFilter.value;
+      if (typeof window.checkAndPromptFolderRefresh === 'function') {
+        const folderName = curPath.split(/[\\/]/).filter(Boolean).pop() || curPath;
+        window.checkAndPromptFolderRefresh(curPath, folderName, {
+          volumeSerial: state.currentFilter.volumeSerial || null,
+          isOffline: false,
+        });
       }
     }
   };

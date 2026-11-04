@@ -5,6 +5,7 @@
 安全解析、およびエクスポート時の標準 .xmp サイドカー書き出しを提供する。
 """
 
+import ctypes
 import html
 import logging
 import os
@@ -16,6 +17,52 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 logger = logging.getLogger("photo_manager.sidecar")
+
+# Win32 CopyFileExW セットアップ（Windows 環境でのみ有効化）
+_win32_copy_file_ex = None
+_COPY_FILE_NO_BUFFERING = 0x00001000
+_NO_BUFFERING_THRESHOLD = 8 * 1024 * 1024  # 8MB以上の大容量ファイルはキャッシュ非経由DMA転送を優先
+
+if os.name == "nt":
+    try:
+        _k32 = ctypes.windll.kernel32
+        _fn = _k32.CopyFileExW
+        _fn.argtypes = [
+            ctypes.c_wchar_p,
+            ctypes.c_wchar_p,
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+            ctypes.c_uint32,
+        ]
+        _fn.restype = ctypes.c_int
+        _win32_copy_file_ex = _fn
+    except Exception as _win_err:
+        logger.debug(f"Win32 CopyFileExW 初期化スキップ: {_win_err}")
+
+
+def fast_copy_file(src: Union[str, Path], dst: Union[str, Path], file_size: int = 0) -> None:
+    """
+    Win32 API CopyFileExW を用いた高速ファイルコピー（非Windowsまたは失敗時は shutil.copy2 にフォールバック）。
+    大容量ファイル（8MB以上）では COPY_FILE_NO_BUFFERING を優先試行してOSキャッシュ汚染を防止する。
+    """
+    src_str = os.path.abspath(str(src))
+    dst_str = os.path.abspath(str(dst))
+    if _win32_copy_file_ex is not None:
+        sz = int(file_size or 0)
+        if sz <= 0:
+            try:
+                sz = os.path.getsize(src_str)
+            except Exception:
+                sz = 0
+        if sz >= _NO_BUFFERING_THRESHOLD:
+            res = _win32_copy_file_ex(src_str, dst_str, None, None, None, _COPY_FILE_NO_BUFFERING)
+            if res != 0:
+                return
+        res = _win32_copy_file_ex(src_str, dst_str, None, None, None, 0)
+        if res != 0:
+            return
+    shutil.copy2(src_str, dst_str)
 
 # 対応サイドカー拡張子（小文字）
 SIDECAR_EXTENSIONS = {
@@ -189,7 +236,7 @@ def copy_sidecars_for_file(src_file: Union[str, Path], dest_file: Union[str, Pat
         dest_sc = dest_p.parent / dest_name
         try:
             if sc_path.resolve() != dest_sc.resolve():
-                shutil.copy2(str(sc_path), str(dest_sc))
+                fast_copy_file(sc_path, dest_sc)
                 if dest_sc.suffix.lower() == ".xmp" and src_p.name != dest_p.name:
                     _update_xmp_raw_filename_in_file(dest_sc, src_p, dest_p)
             copied.append(dest_sc)

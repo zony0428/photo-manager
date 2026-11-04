@@ -5,15 +5,17 @@
 およびフォルダ単位の外部エクスポートを提供する。
 """
 
+import concurrent.futures
 import logging
 import os
 import re
 import shutil
+import threading
 import time
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from .database import (
     add_scan_root,
@@ -29,8 +31,15 @@ from .database import (
     upsert_photo,
     upsert_volume,
 )
+from .database.connection import bump_db_commit_seq
 from .database.folders import clear_folders_fs_cache, normalize_folder_path
-from .database.photos import _directory_filter_sql, _split_link_path, _sync_photo_links_state
+from .database.photos import (
+    _directory_filter_sql,
+    _sanitize_photo_data,
+    _split_link_path,
+    _sync_photo_links_state,
+    _upsert_single_photo_in_tx,
+)
 from .exporter import open_folder_in_windows_explorer, pick_folder_dialog
 from .scanner import (
     SUPPORTED_EXTENSIONS,
@@ -42,6 +51,7 @@ from .scanner import (
 )
 from .sidecar import (
     copy_sidecars_for_file,
+    fast_copy_file,
     is_sidecar_file,
     move_sidecars_for_file,
     rename_sidecars_for_file,
@@ -322,18 +332,76 @@ def is_path_in_storage(path_str: Optional[str], volume_serial: Optional[str] = N
     return False
 
 
-def is_photo_in_storage(photo: Dict[str, Any]) -> bool:
-    """写真辞書データ（directory_path または file_path）が Loome 配下にあるか判定する"""
+def _resolve_storage_photo_entry(photo: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """
+    写真辞書データが Loome 配下にあるかを判定し、マルチリンク（外部フォルダ＋Loome）の場合でも
+    Loome 側のリンクパス情報（file_path, directory_path, file_name, volume_serial, paired_raw_path）を解決して返す。
+    Loome 配下にリンクを持たない場合は None を返す。
+    """
     if not photo:
-        return False
+        return None
     vsn = photo.get("volume_serial")
     dir_path = photo.get("directory_path")
-    if dir_path and is_path_in_storage(dir_path, volume_serial=vsn):
-        return True
     file_path = photo.get("file_path")
-    if file_path and is_path_in_storage(file_path, volume_serial=vsn):
-        return True
-    return False
+    if (dir_path and is_path_in_storage(dir_path, volume_serial=vsn)) or (
+        file_path and is_path_in_storage(file_path, volume_serial=vsn)
+    ):
+        return photo
+
+    # DB の photo_links テーブルから Loome 配下リンク（paired_raw_path 含む）を優先検索
+    pid = photo.get("id")
+    if pid:
+        try:
+            with get_connection() as conn:
+                rows = conn.execute(
+                    """
+                    SELECT file_path, directory_path, file_name, volume_serial, paired_raw_path
+                    FROM photo_links
+                    WHERE photo_id = ?
+                    ORDER BY is_primary DESC, id ASC
+                    """,
+                    (int(pid),),
+                ).fetchall()
+            for lk in rows:
+                lk_vsn = lk["volume_serial"]
+                lk_dir = lk["directory_path"]
+                lk_fp = lk["file_path"]
+                if (lk_dir and is_path_in_storage(lk_dir, volume_serial=lk_vsn)) or (
+                    lk_fp and is_path_in_storage(lk_fp, volume_serial=lk_vsn)
+                ):
+                    resolved = dict(photo)
+                    resolved["file_path"] = lk_fp
+                    resolved["directory_path"] = lk_dir
+                    resolved["file_name"] = lk["file_name"] or (Path(lk_fp).name if lk_fp else resolved.get("file_name"))
+                    resolved["volume_serial"] = lk_vsn
+                    resolved["paired_raw_path"] = lk["paired_raw_path"]
+                    return resolved
+        except Exception as e:
+            logger.debug(f"Loome リンク解決スキップ (photo_id={pid}): {e}")
+
+    # フォールバック: duplicates 配列に Loome 配下のリンクが含まれているか確認
+    for dup in photo.get("duplicates") or []:
+        dup_vsn = dup.get("volume_serial")
+        dup_dir = dup.get("directory_path")
+        dup_fp = dup.get("file_path")
+        if (dup_dir and is_path_in_storage(dup_dir, volume_serial=dup_vsn)) or (
+            dup_fp and is_path_in_storage(dup_fp, volume_serial=dup_vsn)
+        ):
+            resolved = dict(photo)
+            resolved["file_path"] = dup_fp or resolved.get("file_path")
+            resolved["directory_path"] = dup_dir or resolved.get("directory_path")
+            resolved["file_name"] = dup.get("file_name") or (Path(dup_fp).name if dup_fp else resolved.get("file_name"))
+            resolved["volume_serial"] = dup_vsn
+            if dup.get("paired_raw_path") is not None:
+                resolved["paired_raw_path"] = dup.get("paired_raw_path")
+            return resolved
+
+    return None
+
+
+def is_photo_in_storage(photo: Dict[str, Any]) -> bool:
+    """写真辞書データ（主リンクまたは photo_links 内のサブリンク）が Loome 配下にあるか判定する"""
+    return _resolve_storage_photo_entry(photo) is not None
 
 
 def resolve_storage_target_with_root(
@@ -528,6 +596,62 @@ def _unique_dest_path(dest_dir: Path, stem: str, ext: str, pair_ext: Optional[st
         candidate = dest_dir / f"{stem}_{counter}{ext}"
         counter += 1
     return candidate
+
+
+def _is_removable_drive_path(path_obj: Path) -> bool:
+    """指定パスのドライブがリムーバブルメディア（SDカード・USBメモリ等: DRIVE_REMOVABLE=2）か判定する"""
+    if os.name != "nt":
+        return False
+    try:
+        import ctypes
+        s = str(path_obj.resolve())
+        if len(s) >= 2 and s[1] == ":":
+            root = f"{s[:2]}\\"
+            return ctypes.windll.kernel32.GetDriveTypeW(root) == 2
+    except Exception:
+        pass
+    return False
+
+
+def _optimal_copy_workers(src_sample: Path, dst_dir: Path, avg_file_size: int, task_count: int) -> int:
+    """
+    コピー元・コピー先のドライブ種別とファイルサイズに応じて最適な並列ワーカー数を返す。
+    - 内蔵/外付けSSD同士（DRIVE_FIXED）: 最大 4 並列
+    - SDカード/USBメモリ（DRIVE_REMOVABLE）が絡む場合:
+      NANDコントローラのランダムアクセス競合（スラッシング）を防ぐため、
+      大容量RAW（平均8MB以上）は 1（純粋シーケンシャルDMA転送）、通常JPEG等は 2 並列に自動制御する。
+    """
+    if task_count <= 1:
+        return 1
+    if _is_removable_drive_path(src_sample) or _is_removable_drive_path(dst_dir):
+        if avg_file_size >= 8 * 1024 * 1024:
+            return 1
+        return min(2, task_count)
+    return min(4, task_count)
+
+
+def _allocate_unique_dest_path(
+    dest_dir: Path,
+    stem: str,
+    ext: str,
+    reserved_names_lower: Set[str],
+    pair_ext: Optional[str] = None,
+) -> Path:
+    """
+    事前に走査した既存ファイル名セット（小文字）を用いて、ディスクI/Oなしで衝突しないファイルパスを採番・予約する。
+    """
+    cand_stem = stem
+    counter = 1
+    while True:
+        name_low = f"{cand_stem}{ext}".lower()
+        pair_low = f"{cand_stem}{pair_ext}".lower() if pair_ext else None
+        if name_low not in reserved_names_lower and (not pair_low or pair_low not in reserved_names_lower):
+            reserved_names_lower.add(name_low)
+            if pair_low:
+                reserved_names_lower.add(pair_low)
+            return dest_dir / f"{cand_stem}{ext}"
+        cand_stem = f"{stem}_{counter}"
+        counter += 1
 
 
 def _replace_prefix_case_insensitive(path_str: str, old_prefix: str, new_prefix: str) -> str:
@@ -1065,10 +1189,72 @@ def delete_storage_subfolder(folder_path: str) -> Dict[str, Any]:
     }
 
 
+def _build_copied_photo_meta(
+    src_photo: Dict[str, Any],
+    dest_file: Path,
+    dest_norm: str,
+    volume_serial: Optional[str],
+    paired_raw_norm: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    コピー元写真のDBレコードからメタデータを引き継ぎ、EXIF/RAWヘッダの再解析（extract_metadata）を
+    省略して高速にDB登録用辞書を構築する。
+    """
+    # コピー元レコードに寸法・撮影日時のいずれも無い場合のみフォールバック解析
+    if src_photo.get("width") is None and src_photo.get("date_taken") is None:
+        meta = extract_metadata(dest_file)
+    else:
+        st = dest_file.stat()
+        ext_low = dest_file.suffix.lower()
+        meta = {
+            "file_size": st.st_size,
+            "file_mtime": st.st_mtime,
+            "width": src_photo.get("width"),
+            "height": src_photo.get("height"),
+            "date_taken": src_photo.get("date_taken"),
+            "camera_make": src_photo.get("camera_make"),
+            "camera_model": src_photo.get("camera_model"),
+            "lens_model": src_photo.get("lens_model"),
+            "exposure_bias": src_photo.get("exposure_bias"),
+            "shutter_speed": src_photo.get("shutter_speed"),
+            "f_number": src_photo.get("f_number"),
+            "iso": src_photo.get("iso"),
+            "focal_length": src_photo.get("focal_length"),
+            "subsec_time": src_photo.get("subsec_time") or "",
+            "is_raw": int(src_photo.get("is_raw") or 0),
+            "raw_format": src_photo.get("raw_format") or (ext_low.lstrip(".").upper() if int(src_photo.get("is_raw") or 0) else None),
+            "latitude": src_photo.get("latitude"),
+            "longitude": src_photo.get("longitude"),
+            "gps_source": src_photo.get("gps_source"),
+            "country": src_photo.get("country") or src_photo.get("location_country"),
+            "state": src_photo.get("state") or src_photo.get("location_state"),
+            "city": src_photo.get("city") or src_photo.get("location_city"),
+        }
+
+    meta["file_path"] = normalize_folder_path(str(dest_file))
+    meta["directory_path"] = dest_norm
+    meta["file_name"] = dest_file.name
+    meta["volume_serial"] = volume_serial
+
+    if src_photo.get("latitude") is not None and src_photo.get("longitude") is not None:
+        meta["latitude"] = src_photo["latitude"]
+        meta["longitude"] = src_photo["longitude"]
+        meta["gps_source"] = src_photo.get("gps_source") or meta.get("gps_source")
+        meta["country"] = src_photo.get("country") or src_photo.get("location_country") or meta.get("country")
+        meta["state"] = src_photo.get("state") or src_photo.get("location_state") or meta.get("state")
+        meta["city"] = src_photo.get("city") or src_photo.get("location_city") or meta.get("city")
+
+    if paired_raw_norm:
+        meta["paired_raw_path"] = paired_raw_norm
+
+    return meta
+
+
 def import_photos_to_storage(photo_ids: List[int], destination: Optional[str] = "") -> Dict[str, Any]:
     """
     閲覧中の写真を Loome 内の指定フォルダへ物理コピーし、メタデータ・評価・調整値・GPS・タグ・サムネイルを
     引き継いで DB 登録する。
+    Win32 CopyFileExW + マルチスレッド並列コピー + メタデータ再解析スキップ + 単一トランザクション一括登録により高速化する。
     """
     if not photo_ids:
         raise ValueError("インポートする写真が選択されていません")
@@ -1103,163 +1289,340 @@ def import_photos_to_storage(photo_ids: List[int], destination: Optional[str] = 
     )
 
     try:
-        for idx, raw_pid in enumerate(photo_ids, start=1):
-            _update_storage_task_status(current=idx)
-            photo = get_photo_by_id(int(raw_pid))
+        # 1. 対象写真のDBレコードを一括取得し、コピー先フォルダの既存ファイル名セットを1回だけ走査
+        clean_pids = [int(pid) for pid in photo_ids]
+        unique_pids = list(dict.fromkeys(clean_pids))
+        photo_map: Dict[int, Dict[str, Any]] = {}
+        links_by_pid: Dict[int, List[Dict[str, Any]]] = {}
+
+        with get_connection() as conn:
+            chunk_size = 500
+            for i in range(0, len(unique_pids), chunk_size):
+                chunk = unique_pids[i : i + chunk_size]
+                placeholders = ",".join("?" for _ in chunk)
+                for row in conn.execute(f"SELECT * FROM photos WHERE id IN ({placeholders})", chunk).fetchall():
+                    photo_map[int(row["id"])] = dict(row)
+                for lk_row in conn.execute(
+                    f"""
+                    SELECT photo_id, file_path, directory_path, file_name, volume_serial, paired_raw_path, is_primary
+                    FROM photo_links
+                    WHERE photo_id IN ({placeholders})
+                    ORDER BY is_primary DESC, id ASC
+                    """,
+                    chunk,
+                ).fetchall():
+                    links_by_pid.setdefault(int(lk_row["photo_id"]), []).append(dict(lk_row))
+
+        reserved_names_lower: Set[str] = set()
+        try:
+            with os.scandir(dest_dir) as it:
+                for entry in it:
+                    reserved_names_lower.add(entry.name.lower())
+        except Exception as scan_err:
+            logger.debug(f"コピー先ディレクトリ走査スキップ ({dest_dir}): {scan_err}")
+
+        copy_plans: List[Dict[str, Any]] = []
+        dest_norm_low = dest_norm.lower()
+
+        for raw_pid in clean_pids:
+            photo = photo_map.get(raw_pid)
             if not photo:
                 skipped += 1
                 continue
 
-            src_path_str = photo.get("file_path")
-            if not src_path_str:
-                skipped += 1
-                continue
+            # 主リンクがオフラインの場合でも、オンラインのサブリンクがあればそこからコピー可能にする
+            src_path: Optional[Path] = None
+            active_vsn = photo.get("volume_serial")
+            active_paired_raw = photo.get("paired_raw_path")
 
-            src_path, is_online = resolve_portable_path(src_path_str, expected_serial=photo.get("volume_serial"))
-            if not is_online or not src_path.exists():
-                skipped += 1
-                continue
+            candidate_links = [
+                {
+                    "file_path": photo.get("file_path"),
+                    "volume_serial": photo.get("volume_serial"),
+                    "paired_raw_path": photo.get("paired_raw_path"),
+                }
+            ] + links_by_pid.get(raw_pid, [])
 
-            src_parent_norm = normalize_folder_path(str(src_path.parent)).rstrip("\\/")
-            if src_parent_norm.lower() == dest_norm.lower():
+            already_in_dest = False
+            for cand in candidate_links:
+                fp_str = cand.get("file_path")
+                if not fp_str:
+                    continue
+                c_path, c_online = resolve_portable_path(fp_str, expected_serial=cand.get("volume_serial"))
+                if c_online and c_path.exists():
+                    c_parent_norm = normalize_folder_path(str(c_path.parent)).rstrip("\\/")
+                    if c_parent_norm.lower() == dest_norm_low:
+                        already_in_dest = True
+                        break
+                    if src_path is None:
+                        src_path = c_path
+                        active_vsn = cand.get("volume_serial")
+                        active_paired_raw = cand.get("paired_raw_path") or active_paired_raw
+
+            if already_in_dest or src_path is None:
                 skipped += 1
                 continue
 
             # ペアRAWの確認
             pair_src: Optional[Path] = None
-            paired_raw_str = photo.get("paired_raw_path")
-            if paired_raw_str:
-                p_cand, p_online = resolve_portable_path(
-                    paired_raw_str, expected_serial=photo.get("volume_serial")
-                )
+            if active_paired_raw:
+                p_cand, p_online = resolve_portable_path(active_paired_raw, expected_serial=active_vsn)
                 if p_online and p_cand.exists() and p_cand.resolve() != src_path.resolve():
                     pair_src = p_cand
 
             pair_ext = pair_src.suffix if pair_src else None
-            dest_file = _unique_dest_path(dest_dir, src_path.stem, src_path.suffix, pair_ext=pair_ext)
-            dest_pair_file: Optional[Path] = None
-            if pair_src:
-                dest_pair_file = dest_dir / f"{dest_file.stem}{pair_src.suffix}"
+            dest_file = _allocate_unique_dest_path(
+                dest_dir, src_path.stem, src_path.suffix, reserved_names_lower, pair_ext=pair_ext
+            )
+            dest_pair_file: Optional[Path] = (dest_dir / f"{dest_file.stem}{pair_src.suffix}") if pair_src else None
 
+            copy_plans.append(
+                {
+                    "photo": photo,
+                    "src_path": src_path,
+                    "dest_file": dest_file,
+                    "pair_src": pair_src,
+                    "dest_pair_file": dest_pair_file,
+                    "file_size": int(photo.get("file_size") or 0),
+                }
+            )
+
+        # 2. マルチスレッド + Win32 CopyFileExW による高速並列ファイルコピー
+        progress_lock = threading.Lock()
+        completed_count = skipped
+
+        def _execute_copy_plan(plan: Dict[str, Any]) -> Tuple[bool, Dict[str, Any]]:
+            nonlocal completed_count
+            s_path: Path = plan["src_path"]
+            d_file: Path = plan["dest_file"]
+            p_src: Optional[Path] = plan["pair_src"]
+            d_pair: Optional[Path] = plan["dest_pair_file"]
+            f_size: int = plan["file_size"]
             try:
-                _update_storage_task_status(current=idx, current_file=src_path.name)
-                shutil.copy2(str(src_path), str(dest_file))
-                copy_sidecars_for_file(src_path, dest_file)
-                if pair_src and dest_pair_file:
-                    shutil.copy2(str(pair_src), str(dest_pair_file))
-                    copy_sidecars_for_file(pair_src, dest_pair_file)
+                fast_copy_file(s_path, d_file, file_size=f_size)
+                copy_sidecars_for_file(s_path, d_file)
+                if p_src and d_pair:
+                    try:
+                        p_size = p_src.stat().st_size
+                    except Exception:
+                        p_size = 0
+                    fast_copy_file(p_src, d_pair, file_size=p_size)
+                    copy_sidecars_for_file(p_src, d_pair)
+                with progress_lock:
+                    completed_count += 1
+                    _update_storage_task_status(current=completed_count, current_file=s_path.name)
+                return True, plan
             except Exception as copy_err:
-                logger.warning(f"Loome への写真コピー失敗 ({src_path}): {copy_err}")
+                logger.warning(f"Loome への写真コピー失敗 ({s_path}): {copy_err}")
+                with progress_lock:
+                    completed_count += 1
+                    _update_storage_task_status(current=completed_count, current_file=s_path.name)
+                return False, plan
+
+        copied_plans: List[Dict[str, Any]] = []
+        if len(copy_plans) == 1:
+            ok, pl = _execute_copy_plan(copy_plans[0])
+            if ok:
+                copied_plans.append(pl)
+            else:
                 skipped += 1
-                continue
+        elif len(copy_plans) > 1:
+            avg_sz = sum(int(p.get("file_size") or 0) for p in copy_plans) // max(1, len(copy_plans))
+            max_workers = _optimal_copy_workers(copy_plans[0]["src_path"], dest_dir, avg_sz, len(copy_plans))
+            if max_workers <= 1:
+                for pl in copy_plans:
+                    ok, res_pl = _execute_copy_plan(pl)
+                    if ok:
+                        copied_plans.append(res_pl)
+                    else:
+                        skipped += 1
+            else:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    results = list(executor.map(_execute_copy_plan, copy_plans))
+                for ok, pl in results:
+                    if ok:
+                        copied_plans.append(pl)
+                    else:
+                        skipped += 1
 
-            try:
-                meta = extract_metadata(dest_file)
-                meta["file_path"] = normalize_folder_path(str(dest_file))
-                meta["directory_path"] = dest_norm
-                meta["file_name"] = dest_file.name
-                meta["volume_serial"] = volume_serial
+        # 3. 単一トランザクションでの一括DB登録・メタデータ/タグ/サムネイル引き継ぎ
+        missing_thumb_targets: List[Tuple[int, str]] = []
+        if copied_plans:
+            # ペアRAWで元レコードがDBにあるものを事前取得
+            pair_src_norms = [
+                normalize_folder_path(str(pl["pair_src"]))
+                for pl in copied_plans
+                if pl.get("pair_src") and pl.get("dest_pair_file")
+            ]
+            pair_photo_by_path: Dict[str, Dict[str, Any]] = {}
+            with get_connection() as conn:
+                cursor = conn.cursor()
+                if pair_src_norms:
+                    for i in range(0, len(pair_src_norms), 500):
+                        chunk = pair_src_norms[i : i + 500]
+                        ph = ",".join("?" for _ in chunk)
+                        for prow in cursor.execute(
+                            f"SELECT * FROM photos WHERE file_path IN ({ph}) COLLATE NOCASE", chunk
+                        ).fetchall():
+                            pair_photo_by_path[normalize_folder_path(prow["file_path"]).lower()] = dict(prow)
 
-                # 元写真の GPS・ロケーション情報の引き継ぎ
-                if photo.get("latitude") is not None and photo.get("longitude") is not None:
-                    meta["latitude"] = photo["latitude"]
-                    meta["longitude"] = photo["longitude"]
-                    meta["gps_source"] = photo.get("gps_source") or meta.get("gps_source")
-                    meta["country"] = photo.get("country") or photo.get("location_country") or meta.get("country")
-                    meta["state"] = photo.get("state") or photo.get("location_state") or meta.get("state")
-                    meta["city"] = photo.get("city") or photo.get("location_city") or meta.get("city")
+                for plan in copied_plans:
+                    photo = plan["photo"]
+                    src_id = int(photo["id"])
+                    dest_file: Path = plan["dest_file"]
+                    pair_src: Optional[Path] = plan["pair_src"]
+                    dest_pair_file: Optional[Path] = plan["dest_pair_file"]
 
-                if dest_pair_file and dest_pair_file.exists():
-                    meta["paired_raw_path"] = normalize_folder_path(str(dest_pair_file))
-
-                new_id = upsert_photo(meta)
-                if not new_id:
-                    inserted = get_photo_by_path(meta["file_path"])
-                    new_id = inserted["id"] if inserted else 0
-
-                if not new_id:
-                    skipped += 1
-                    continue
-
-                # ペアRAWもコピーした場合は DB に登録しておくことで recalculate_stacks でのペア解除を防止
-                if dest_pair_file and dest_pair_file.exists():
                     try:
-                        pair_meta = extract_metadata(dest_pair_file)
-                        pair_meta["file_path"] = normalize_folder_path(str(dest_pair_file))
-                        pair_meta["directory_path"] = dest_norm
-                        pair_meta["file_name"] = dest_pair_file.name
-                        pair_meta["volume_serial"] = volume_serial
-                        pair_meta["paired_raw_path"] = meta["file_path"]
-                        upsert_photo(pair_meta)
-                    except Exception as pm_err:
-                        logger.warning(f"ペアRAWのメタデータ登録スキップ ({dest_pair_file}): {pm_err}")
-
-                # 評価・非破壊調整パラメータ・タグの引き継ぎ
-                with get_connection() as conn:
-                    cursor = conn.cursor()
-                    cursor.execute(
-                        """
-                        UPDATE photos
-                        SET rating = ?,
-                            rotation = ?,
-                            fine_angle = ?,
-                            crop_x = ?,
-                            crop_y = ?,
-                            crop_w = ?,
-                            crop_h = ?,
-                            crop_aspect = ?,
-                            brightness = ?,
-                            contrast = ?,
-                            saturation = ?,
-                            paired_raw_path = COALESCE(?, paired_raw_path),
-                            updated_at = CURRENT_TIMESTAMP
-                        WHERE id = ?
-                        """,
-                        (
-                            int(photo.get("rating") or 0),
-                            int(photo.get("rotation") or 0),
-                            float(photo.get("fine_angle") or 0.0),
-                            photo.get("crop_x"),
-                            photo.get("crop_y"),
-                            photo.get("crop_w"),
-                            photo.get("crop_h"),
-                            photo.get("crop_aspect"),
-                            int(photo.get("brightness") or 0),
-                            int(photo.get("contrast") or 0),
-                            int(photo.get("saturation") or 0),
-                            meta.get("paired_raw_path"),
-                            new_id,
-                        ),
-                    )
-
-                    # タグ（source, confidence 含む）のコピー
-                    cursor.execute(
-                        "SELECT tag, source, confidence FROM photo_tags WHERE photo_id = ?",
-                        (photo["id"],),
-                    )
-                    tag_rows = cursor.fetchall()
-                    if tag_rows:
-                        cursor.executemany(
-                            "INSERT OR IGNORE INTO photo_tags (photo_id, tag, source, confidence) VALUES (?, ?, ?, ?)",
-                            [(new_id, tr["tag"], tr["source"] or "manual", tr["confidence"] if tr["confidence"] is not None else 1.0) for tr in tag_rows],
+                        paired_raw_norm = (
+                            normalize_folder_path(str(dest_pair_file))
+                            if (dest_pair_file and dest_pair_file.exists())
+                            else None
                         )
-                    conn.commit()
+                        meta = _build_copied_photo_meta(
+                            photo, dest_file, dest_norm, volume_serial, paired_raw_norm=paired_raw_norm
+                        )
+                        new_id = _upsert_single_photo_in_tx(cursor, _sanitize_photo_data(meta))
+                        if not new_id:
+                            cursor.execute(
+                                "SELECT id FROM photos WHERE file_path = ? COLLATE NOCASE", (meta["file_path"],)
+                            )
+                            r_ins = cursor.fetchone()
+                            new_id = int(r_ins["id"]) if r_ins else 0
 
-                # サムネイルのコピー（未生成なら生成）
-                orig_thumb = get_thumbnail(photo["id"])
-                if orig_thumb and orig_thumb.get("data"):
-                    new_hash = compute_thumbnail_hash(meta["file_path"], meta.get("file_mtime"))
-                    save_thumbnail(new_id, orig_thumb["data"], orig_thumb["width"], orig_thumb["height"], new_hash)
-                else:
-                    try:
-                        ensure_thumbnail(new_id, meta["file_path"])
-                    except Exception as th_err:
-                        logger.warning(f"インポート写真のサムネイル生成スキップ ({dest_file}): {th_err}")
+                        if not new_id:
+                            skipped += 1
+                            continue
 
-                new_ids.append(new_id)
-            except Exception as db_err:
-                logger.error(f"インポート写真のDB登録エラー ({dest_file}): {db_err}")
-                skipped += 1
+                        # ペアRAWもコピーした場合は同一トランザクション内で DB に登録
+                        if pair_src and dest_pair_file and dest_pair_file.exists():
+                            try:
+                                orig_pair_rec = pair_photo_by_path.get(normalize_folder_path(str(pair_src)).lower())
+                                if orig_pair_rec:
+                                    pair_meta = _build_copied_photo_meta(
+                                        orig_pair_rec,
+                                        dest_pair_file,
+                                        dest_norm,
+                                        volume_serial,
+                                        paired_raw_norm=meta["file_path"],
+                                    )
+                                else:
+                                    p_st = dest_pair_file.stat()
+                                    p_ext = dest_pair_file.suffix.lower().lstrip(".").upper()
+                                    pair_meta = _build_copied_photo_meta(
+                                        photo,
+                                        dest_pair_file,
+                                        dest_norm,
+                                        volume_serial,
+                                        paired_raw_norm=meta["file_path"],
+                                    )
+                                    pair_meta["file_size"] = p_st.st_size
+                                    pair_meta["file_mtime"] = p_st.st_mtime
+                                    pair_meta["is_raw"] = 1
+                                    pair_meta["raw_format"] = p_ext
+                                _upsert_single_photo_in_tx(cursor, _sanitize_photo_data(pair_meta))
+                            except Exception as pm_err:
+                                logger.warning(f"ペアRAWのメタデータ登録スキップ ({dest_pair_file}): {pm_err}")
+
+                        # 新規 photo_id が採番された場合（または既存レコードの調整値・ペアRAWパス更新）
+                        if new_id != src_id:
+                            cursor.execute(
+                                """
+                                UPDATE photos
+                                SET rating = ?,
+                                    rotation = ?,
+                                    fine_angle = ?,
+                                    crop_x = ?,
+                                    crop_y = ?,
+                                    crop_w = ?,
+                                    crop_h = ?,
+                                    crop_aspect = ?,
+                                    brightness = ?,
+                                    contrast = ?,
+                                    saturation = ?,
+                                    paired_raw_path = COALESCE(?, paired_raw_path),
+                                    updated_at = CURRENT_TIMESTAMP
+                                WHERE id = ?
+                                """,
+                                (
+                                    int(photo.get("rating") or 0),
+                                    int(photo.get("rotation") or 0),
+                                    float(photo.get("fine_angle") or 0.0),
+                                    photo.get("crop_x"),
+                                    photo.get("crop_y"),
+                                    photo.get("crop_w"),
+                                    photo.get("crop_h"),
+                                    photo.get("crop_aspect"),
+                                    int(photo.get("brightness") or 0),
+                                    int(photo.get("contrast") or 0),
+                                    int(photo.get("saturation") or 0),
+                                    meta.get("paired_raw_path"),
+                                    new_id,
+                                ),
+                            )
+                            cursor.execute(
+                                "SELECT tag, source, confidence FROM photo_tags WHERE photo_id = ?",
+                                (src_id,),
+                            )
+                            tag_rows = cursor.fetchall()
+                            if tag_rows:
+                                cursor.executemany(
+                                    "INSERT OR IGNORE INTO photo_tags (photo_id, tag, source, confidence) VALUES (?, ?, ?, ?)",
+                                    [
+                                        (
+                                            new_id,
+                                            tr["tag"],
+                                            tr["source"] or "manual",
+                                            tr["confidence"] if tr["confidence"] is not None else 1.0,
+                                        )
+                                        for tr in tag_rows
+                                    ],
+                                )
+                        elif meta.get("paired_raw_path"):
+                            cursor.execute(
+                                "UPDATE photos SET paired_raw_path = COALESCE(paired_raw_path, ?) WHERE id = ?",
+                                (meta["paired_raw_path"], new_id),
+                            )
+
+                        # サムネイルの引き継ぎ（同一 photo_id で既にサムネイルが存在する場合は再書き込み不要）
+                        cursor.execute(
+                            "SELECT data, width, height FROM thumbnails WHERE photo_id = ?",
+                            (src_id,),
+                        )
+                        orig_thumb = cursor.fetchone()
+                        if orig_thumb and orig_thumb["data"]:
+                            if new_id != src_id:
+                                new_hash = compute_thumbnail_hash(meta["file_path"], meta.get("file_mtime"))
+                                cursor.execute(
+                                    """
+                                    INSERT INTO thumbnails (photo_id, data, width, height, file_hash)
+                                    VALUES (?, ?, ?, ?, ?)
+                                    ON CONFLICT(photo_id) DO UPDATE SET
+                                        data = excluded.data,
+                                        width = excluded.width,
+                                        height = excluded.height,
+                                        file_hash = excluded.file_hash,
+                                        created_at = CURRENT_TIMESTAMP
+                                    """,
+                                    (new_id, orig_thumb["data"], orig_thumb["width"], orig_thumb["height"], new_hash),
+                                )
+                        else:
+                            missing_thumb_targets.append((new_id, meta["file_path"]))
+
+                        new_ids.append(new_id)
+                    except Exception as db_err:
+                        logger.error(f"インポート写真のDB登録エラー ({dest_file}): {db_err}")
+                        skipped += 1
+
+                conn.commit()
+                bump_db_commit_seq()
+
+        # 元写真にサムネイルが無かったもののみトランザクション後に生成
+        for nid, fp in missing_thumb_targets:
+            try:
+                ensure_thumbnail(nid, fp)
+            except Exception as th_err:
+                logger.warning(f"インポート写真のサムネイル生成スキップ ({fp}): {th_err}")
     finally:
         _update_storage_task_status(is_running=False, current=total_target, current_file="")
 
@@ -1324,8 +1687,9 @@ def move_photos_in_storage(photo_ids: List[int], destination: Optional[str] = ""
             cursor = conn.cursor()
             for idx, raw_pid in enumerate(photo_ids, start=1):
                 _update_storage_task_status(current=idx)
-                photo = get_photo_by_id(int(raw_pid))
-                if not photo or not is_photo_in_storage(photo):
+                raw_photo = get_photo_by_id(int(raw_pid))
+                photo = _resolve_storage_photo_entry(raw_photo)
+                if not photo:
                     skipped += 1
                     continue
 
@@ -1435,11 +1799,12 @@ def rename_photo_in_storage(photo_id: int, new_name: str) -> Dict[str, Any]:
     """
     Loome 内の単一写真のファイル名を変更する（元の拡張子は維持し、同フォルダのペアRAWも連動リネーム）。
     """
-    photo = get_photo_by_id(int(photo_id))
-    if not photo:
+    raw_photo = get_photo_by_id(int(photo_id))
+    if not raw_photo:
         raise ValueError("写真が見つかりません")
 
-    if not is_photo_in_storage(photo):
+    photo = _resolve_storage_photo_entry(raw_photo)
+    if not photo:
         raise ValueError("Loome 内の写真のみファイル名を変更できます")
 
     src_path, is_online = resolve_portable_path(photo["file_path"], expected_serial=photo.get("volume_serial"))
@@ -1611,8 +1976,9 @@ def batch_rename_photos_in_storage(
     skipped = 0
 
     for pid in unique_ids:
-        p = get_photo_by_id(pid)
-        if not p or not is_photo_in_storage(p):
+        raw_p = get_photo_by_id(pid)
+        p = _resolve_storage_photo_entry(raw_p)
+        if not p:
             skipped += 1
             continue
         src_path, is_online = resolve_portable_path(p["file_path"], expected_serial=p.get("volume_serial"))
@@ -1859,6 +2225,7 @@ def export_storage_folder(
         current_file=out_folder_name,
     )
     try:
+        export_copy_tasks: List[Tuple[Path, Path]] = []
         for root, dirs, files in os.walk(src_dir, topdown=True):
             dirs[:] = [d for d in dirs if not d.startswith(".") and not d.startswith("$")]
             curr_path = Path(root)
@@ -1866,18 +2233,50 @@ def export_storage_folder(
             target_sub = out_dir if str(rel) == "." else (out_dir / rel)
             target_sub.mkdir(parents=True, exist_ok=True)
 
+            reserved_sub: Set[str] = set()
+            try:
+                with os.scandir(target_sub) as it:
+                    for entry in it:
+                        reserved_sub.add(entry.name.lower())
+            except Exception:
+                pass
+
             for fname in files:
                 if fname.startswith("."):
                     continue
                 s_file = curr_path / fname
-                d_file = target_sub / fname
-                if d_file.exists():
-                    d_file = _unique_dest_path(target_sub, s_file.stem, s_file.suffix)
-                _update_storage_task_status(current=exported_count + 1, current_file=fname)
-                shutil.copy2(str(s_file), str(d_file))
+                d_file = _allocate_unique_dest_path(target_sub, s_file.stem, s_file.suffix, reserved_sub)
+                export_copy_tasks.append((s_file, d_file))
+
+        exp_lock = threading.Lock()
+
+        def _copy_export_pair(pair: Tuple[Path, Path]) -> Tuple[Path, Path]:
+            nonlocal exported_count
+            s_f, d_f = pair
+            try:
+                f_sz = s_f.stat().st_size
+            except Exception:
+                f_sz = 0
+            fast_copy_file(s_f, d_f, file_size=f_sz)
+            with exp_lock:
                 exported_count += 1
-                if s_file.suffix.lower() in SUPPORTED_EXTENSIONS:
-                    exported_image_pairs.append((s_file, d_file))
+                _update_storage_task_status(current=exported_count, current_file=s_f.name)
+            return s_f, d_f
+
+        if len(export_copy_tasks) == 1:
+            s_f, d_f = _copy_export_pair(export_copy_tasks[0])
+            if s_f.suffix.lower() in SUPPORTED_EXTENSIONS:
+                exported_image_pairs.append((s_f, d_f))
+        elif len(export_copy_tasks) > 1:
+            exp_workers = _optimal_copy_workers(src_dir, out_dir, 0, len(export_copy_tasks))
+            if exp_workers <= 1:
+                copied_pairs = [_copy_export_pair(t) for t in export_copy_tasks]
+            else:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=exp_workers) as executor:
+                    copied_pairs = list(executor.map(_copy_export_pair, export_copy_tasks))
+            for s_f, d_f in copied_pairs:
+                if s_f.suffix.lower() in SUPPORTED_EXTENSIONS:
+                    exported_image_pairs.append((s_f, d_f))
 
         # DBに登録されている写真について、評価・タグ・GPS・調整情報を反映した .xmp サイドカーを一緒に出力
         for s_img, d_img in exported_image_pairs:
