@@ -718,8 +718,8 @@ def _sync_photo_link_on_storage_change(
                 """
                 UPDATE OR IGNORE photo_links
                 SET volume_serial = ?,
-                    relative_path = ?,
-                    directory_rel_path = ?,
+                    rel_path = ?,
+                    rel_dir = ?,
                     file_path = ?,
                     directory_path = ?,
                     file_name = ?,
@@ -730,7 +730,7 @@ def _sync_photo_link_on_storage_change(
                 (vsn_norm, rel_path, rel_dir, clean_fp, clean_dir, new_fn, new_pair_fp, lk["id"]),
             )
     except Exception as e:
-        logger.debug(f"photo_links 同期更新スキップ (photo_id={photo_id}): {e}")
+        logger.warning(f"photo_links 同期更新エラー (photo_id={photo_id}): {e}")
 
 
 def get_storage_folders() -> Dict[str, Any]:
@@ -986,7 +986,7 @@ def rename_storage_subfolder(folder_path: str, new_name: str) -> Dict[str, Any]:
                 cursor.execute(
                     """
                     UPDATE OR IGNORE photo_links
-                    SET relative_path = ?, directory_rel_path = ?, file_path = ?, directory_path = ?, paired_raw_path = ?, updated_at = CURRENT_TIMESTAMP
+                    SET rel_path = ?, rel_dir = ?, file_path = ?, directory_path = ?, paired_raw_path = ?, updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?
                     """,
                     (rel_path, rel_dir, clean_fp, clean_dir, lk_new_pair, lk_row["id"]),

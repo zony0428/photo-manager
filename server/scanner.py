@@ -226,6 +226,8 @@ def clear_online_cache() -> None:
         _drive_to_serial_cache.clear()
         _remote_drive_letters_cache.clear()
         _network_root_online_cache.clear()
+    from .database.connection import bump_db_commit_seq
+    bump_db_commit_seq()
 
 
 def _get_connected_drive_serial_map() -> Tuple[Dict[str, str], Dict[str, str]]:
@@ -1435,6 +1437,8 @@ def scan_directory(
                     "stacks_created": 0,
                     "added_or_updated": 0,
                 }
+                clear_online_cache()
+                clear_folders_fs_cache()
                 scan_tracker.finish(result)
                 return result
             except Exception as e:
@@ -1672,6 +1676,8 @@ def scan_directory(
 
         threading.Thread(target=_bg_preload, daemon=True).start()
 
+        clear_online_cache()
+        clear_folders_fs_cache()
         return result
 
     except Exception as e:

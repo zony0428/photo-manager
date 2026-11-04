@@ -490,6 +490,65 @@ const elements = {
   settingToolbarPositionSelect: document.getElementById('settingToolbarPositionSelect'),
 };
 
+/**
+ * state.photos トップレベル・各カードの stack_photos・ライトボックス展開スタック (state.currentLightboxStackPhotos) の
+ * 全箇所から指定IDの写真オブジェクトを検索して返す共通ヘルパー
+ */
+function findPhotoByIdAnywhere(photoId) {
+  const numId = Number(photoId);
+  if (!numId) return null;
+  if (Array.isArray(state.photos)) {
+    const top = state.photos.find(p => p.id === numId);
+    if (top) return top;
+    for (const p of state.photos) {
+      if (Array.isArray(p.stack_photos)) {
+        const sub = p.stack_photos.find(sp => sp.id === numId);
+        if (sub) return sub;
+      }
+    }
+  }
+  if (Array.isArray(state.currentLightboxStackPhotos)) {
+    const lb = state.currentLightboxStackPhotos.find(sp => sp.id === numId);
+    if (lb) return lb;
+  }
+  return null;
+}
+window.findPhotoByIdAnywhere = findPhotoByIdAnywhere;
+
+/**
+ * 指定IDに一致するすべての写真オブジェクト参照（トップ・stack_photos内・currentLightboxStackPhotos内）を配列で返す
+ * （ミューテーション時に全参照を漏れなく同期するため）
+ */
+function findAllPhotoInstancesById(photoId) {
+  const numId = Number(photoId);
+  const results = [];
+  const seen = new Set();
+  const pushUnique = (obj) => {
+    if (obj && !seen.has(obj)) {
+      seen.add(obj);
+      results.push(obj);
+    }
+  };
+  if (!numId) return results;
+  if (Array.isArray(state.photos)) {
+    for (const p of state.photos) {
+      if (p.id === numId) pushUnique(p);
+      if (Array.isArray(p.stack_photos)) {
+        for (const sp of p.stack_photos) {
+          if (sp.id === numId) pushUnique(sp);
+        }
+      }
+    }
+  }
+  if (Array.isArray(state.currentLightboxStackPhotos)) {
+    for (const sp of state.currentLightboxStackPhotos) {
+      if (sp.id === numId) pushUnique(sp);
+    }
+  }
+  return results;
+}
+window.findAllPhotoInstancesById = findAllPhotoInstancesById;
+
 
 
 /**
@@ -578,6 +637,7 @@ function getThumbnailUrl(photo) {
 function getPhotoViewUrl(photo) {
   if (!photo) return '';
   const baseVer = `${photo.file_size || 0}_${Math.floor(photo.file_mtime || 0)}`;
+  const bust = photo._thumbBust ? `_${photo._thumbBust}` : '';
   if (hasBakedViewAdjustments(photo)) {
     const rot = photo.rotation || 0;
     const fa = Math.round((Number(photo.fine_angle) || 0) * 10);
@@ -585,10 +645,9 @@ function getPhotoViewUrl(photo) {
       ? `${Math.round((photo.crop_x || 0) * 1000)}_${Math.round((photo.crop_y || 0) * 1000)}_${Math.round(photo.crop_w * 1000)}_${Math.round((photo.crop_h || 0) * 1000)}`
       : '0';
     const tone = `${photo.brightness || 0}_${photo.contrast || 0}_${photo.saturation || 0}`;
-    const bust = photo._thumbBust ? `_${photo._thumbBust}` : '';
     return `/api/photo/${photo.id}/view?v=${baseVer}_r${rot}_fa${fa}_c${crop}_t${tone}${bust}`;
   }
-  return `/api/photo/${photo.id}/view?v=${baseVer}`;
+  return `/api/photo/${photo.id}/view?v=${baseVer}${bust}`;
 }
 
 /**
@@ -714,6 +773,286 @@ function toggleTheme() {
  * すべてのタブ/ウィンドウが閉じられると通信が途絶え、サーバー側で自動停止する。
  */
 let _lastSeenMobileSyncSeq = null;
+let _lastSeenMediaEventSeq = null;
+let _mediaEventSource = null;
+let _mediaSyncRunning = false;
+
+/**
+ * メディア（SDカード・USBメモリ・外付けSSD）の抜き挿し検知イベントを受け取り、
+ * トースト通知およびフォルダツリー・ギャラリー・インスペクタ・クイックアクセスを自動同期する
+ */
+async function handleMediaChangeEvent(evt) {
+  if (!evt || typeof evt.seq !== 'number') return;
+  if (_lastSeenMediaEventSeq !== null && evt.seq <= _lastSeenMediaEventSeq) return;
+  _lastSeenMediaEventSeq = evt.seq;
+
+  const added = Array.isArray(evt.added) ? evt.added : [];
+  const removed = Array.isArray(evt.removed) ? evt.removed : [];
+  const changed = Array.isArray(evt.changed) ? evt.changed : [];
+  if (added.length === 0 && removed.length === 0 && changed.length === 0) return;
+
+  // 1. トースト通知の表示
+  if (typeof showToast === 'function') {
+    added.forEach((m) => {
+      const name = m.custom_name || m.label || (m.short_serial ? `ID:${m.short_serial}` : '外部メディア');
+      const idPart = (m.short_serial && (m.custom_name || m.label)) ? ` [ID:${m.short_serial}]` : '';
+      const drvPart = m.drive ? ` (${m.drive})` : '';
+      if (m.photo_count > 0) {
+        showToast(
+          `🟢 メディア「${name}${idPart}${drvPart}」が接続されました（登録写真 ${Number(m.photo_count).toLocaleString()}枚）`,
+          'success',
+          4200
+        );
+      } else if (m.loome_enabled) {
+        showToast(`🟢 Loome メディア「${name}${idPart}${drvPart}」が接続されました`, 'success', 3600);
+      } else {
+        showToast(`🟢 メディア「${name}${idPart}${drvPart}」が接続されました`, 'info', 3200);
+      }
+    });
+
+    removed.forEach((m) => {
+      const name = m.custom_name || m.label || (m.short_serial ? `ID:${m.short_serial}` : '外部メディア');
+      const idPart = (m.short_serial && (m.custom_name || m.label)) ? ` [ID:${m.short_serial}]` : '';
+      const drvPart = m.drive ? ` (${m.drive})` : '';
+      showToast(`⚪ メディア「${name}${idPart}${drvPart}」が取り外されました`, 'info', 3200);
+    });
+
+    changed.forEach((m) => {
+      const name = m.custom_name || m.label || (m.short_serial ? `ID:${m.short_serial}` : '外部メディア');
+      const drvPart = m.drive ? ` (${m.drive})` : '';
+      showToast(`🔄 メディア「${name}」が${drvPart}として認識されました`, 'info', 3000);
+    });
+  }
+
+  // 2. 現在選択中のフォルダ・ボリュームフィルタがあればオンライン状態とドライブ文字を自動追従
+  let activeManagedFolderToCheckDiff = null;
+  if (state.currentFilter && state.currentFilter.volumeSerial) {
+    const curVsn = String(state.currentFilter.volumeSerial).trim().toUpperCase();
+    const matchedAdded = added.find(m => String(m.serial || '').toUpperCase() === curVsn)
+      || changed.find(m => String(m.serial || '').toUpperCase() === curVsn);
+    const matchedRemoved = removed.find(m => String(m.serial || '').toUpperCase() === curVsn);
+
+    if (matchedAdded) {
+      state.currentFilter.isOffline = false;
+      if (matchedAdded.drive && state.currentFilter.value && /^[a-zA-Z]:/.test(state.currentFilter.value)) {
+        const newDrive = matchedAdded.drive.replace(/\\+$/, '');
+        state.currentFilter.value = newDrive + state.currentFilter.value.slice(2);
+      }
+      if (state.currentFilter.type === 'folder' && state.currentFilter.value) {
+        activeManagedFolderToCheckDiff = {
+          path: state.currentFilter.value,
+          name: state.currentFilter.titleText || state.currentFilter.value,
+          volumeSerial: curVsn,
+        };
+      }
+    } else if (matchedRemoved) {
+      state.currentFilter.isOffline = true;
+    }
+  }
+
+  // 3. 写真オブジェクトの詳細キャッシュ（重複リスト等）を破棄してインスペクタ再描画時に最新状態を反映させる
+  if (Array.isArray(state.photos)) {
+    state.photos.forEach((p) => {
+      delete p._xmpDetailFetched;
+      delete p.duplicates;
+    });
+  }
+
+  // 4. フォルダツリー・ギャラリー写真一覧・クイックアクセス枚数・インスペクタを一括ライブ同期
+  if (_mediaSyncRunning) return;
+  _mediaSyncRunning = true;
+  try {
+    await Promise.all([
+      typeof fetchFolders === 'function' ? fetchFolders() : Promise.resolve(),
+      typeof fetchPhotos === 'function' ? fetchPhotos() : Promise.resolve(),
+      typeof fetchTags === 'function' ? fetchTags() : Promise.resolve(),
+      typeof fetchUnlinkedCount === 'function' ? fetchUnlinkedCount() : Promise.resolve(),
+      typeof fetchDuplicatesCount === 'function' ? fetchDuplicatesCount() : Promise.resolve(),
+    ]);
+    if (typeof syncCurrentFilterOfflineState === 'function') {
+      syncCurrentFilterOfflineState();
+    }
+
+    // ストレージ(Loome)管理モーダルが開いていれば最新化
+    const storageModal = document.getElementById('storageManagerModal');
+    if (storageModal && storageModal.style.display !== 'none' && typeof window.loadStorageFolders === 'function') {
+      window.loadStorageFolders();
+    }
+
+    // ライトボックスが開いていれば現在表示中の写真を最新状態（フル解像度・オンラインバッジ解除）で再反映
+    if (elements.lightboxModal && elements.lightboxModal.style.display !== 'none' && typeof updateLightboxContent === 'function') {
+      const lbPhoto = typeof getCurrentLightboxPhoto === 'function' ? getCurrentLightboxPhoto() : state.photos[state.currentPhotoIndex];
+      if (lbPhoto) {
+        lbPhoto._thumbBust = Date.now();
+        updateLightboxContent(lbPhoto);
+      }
+    }
+
+    // 接続されたメディア上のフォルダを現在開いている場合は自動で差分（新規追加等）チェックも実行
+    if (activeManagedFolderToCheckDiff && typeof window.checkAndPromptFolderRefresh === 'function') {
+      window.checkAndPromptFolderRefresh(
+        activeManagedFolderToCheckDiff.path,
+        activeManagedFolderToCheckDiff.name,
+        { volumeSerial: activeManagedFolderToCheckDiff.volumeSerial, kind: 'folder', status: 'managed' }
+      );
+    }
+  } catch (err) {
+    console.warn('[MediaWatcher] 自動同期エラー:', err);
+  } finally {
+    _mediaSyncRunning = false;
+  }
+}
+window.handleMediaChangeEvent = handleMediaChangeEvent;
+
+// 外部アプリ・エクスプローラーで開いた写真・フォルダの追跡セット（ウィンドウフォーカス復帰時の差分検知用）
+const _pendingExternalPhotoIds = new Set();
+const _pendingExternalFolders = new Set();
+
+window.markExternalPhotoOpened = function (photoId) {
+  if (photoId) _pendingExternalPhotoIds.add(Number(photoId));
+};
+window.markExternalFolderOpened = function (folderPath) {
+  if (folderPath) _pendingExternalFolders.add(String(folderPath));
+};
+
+/**
+ * OSイベント駆動（SSE）＋ ウィンドウフォーカス復帰時の保険チェックを初期化する
+ */
+function initMediaWatcher() {
+  if (typeof EventSource !== 'undefined' && !_mediaEventSource) {
+    try {
+      const es = new EventSource('/api/media/events');
+      _mediaEventSource = es;
+      es.onmessage = (e) => {
+        try {
+          const payload = JSON.parse(e.data);
+          if (!payload) return;
+          if (payload.type === 'init') {
+            if (_lastSeenMediaEventSeq === null && typeof payload.seq === 'number') {
+              _lastSeenMediaEventSeq = payload.seq;
+            }
+          } else if (payload.type === 'change') {
+            handleMediaChangeEvent(payload);
+          } else if (payload.type === 'lenses_backfilled') {
+            if (typeof fetchCameras === 'function') {
+              fetchCameras();
+            }
+          } else if (payload.type === 'mobile_synced') {
+            if (typeof payload.seq === 'number') {
+              _lastSeenMobileSyncSeq = payload.seq;
+            }
+            if (typeof showToast === 'function') {
+              showToast('スマホ版での評価・タグ変更がPCに自動反映されました', 'success', 4000);
+            }
+            if (typeof refreshAll === 'function') {
+              refreshAll();
+            }
+          }
+        } catch (err) {
+          console.debug('[MediaWatcher] イベント解析スキップ:', err);
+        }
+      };
+      es.onerror = () => {
+        // ブラウザ標準の自動再接続に委ねる
+      };
+    } catch (err) {
+      console.warn('[MediaWatcher] EventSource 初期化スキップ:', err);
+    }
+  }
+
+  // 保険チェック: WM_DEVICECHANGE を送出しない古い外付けカードリーダー対策 ＆ 外部アプリからのフォーカス復帰時同期
+  const checkOnFocus = async () => {
+    fetch('/api/media/check', { method: 'POST' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && data.changed && data.event) {
+          handleMediaChangeEvent(data.event);
+        }
+      })
+      .catch(() => {});
+
+    // 外部アプリで開いていた写真の変更チェック（mtime / size / XMPサイドカー差分）
+    if (_pendingExternalPhotoIds.size > 0 || _pendingExternalFolders.size > 0) {
+      const idsToCheck = Array.from(_pendingExternalPhotoIds);
+      try {
+        const res = await fetch('/api/photos/check-external-updates', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ photo_ids: idsToCheck }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const updatedIds = Array.isArray(data.updated_photo_ids) ? data.updated_photo_ids : [];
+          const checkedPhotos = Array.isArray(data.photos) ? data.photos : [];
+          let xmpChanged = false;
+          checkedPhotos.forEach(pInfo => {
+            findAllPhotoInstancesById(pInfo.id).forEach(inst => {
+              delete inst._xmpDetailFetched;
+              delete inst.duplicates;
+              if (Boolean(inst.has_xmp) !== Boolean(pInfo.has_xmp)) {
+                inst.has_xmp = Boolean(pInfo.has_xmp);
+                xmpChanged = true;
+              }
+            });
+          });
+          if (updatedIds.length === 0 && idsToCheck.length > 0 && (xmpChanged || (state.activeInspectorPhotoId && idsToCheck.includes(Number(state.activeInspectorPhotoId))))) {
+            if (typeof updateInspectorView === 'function') updateInspectorView();
+          }
+          if (updatedIds.length > 0) {
+            const nowBust = Date.now();
+            updatedIds.forEach(uid => {
+              findAllPhotoInstancesById(uid).forEach(inst => {
+                inst._thumbBust = nowBust;
+                delete inst._xmpDetailFetched;
+                delete inst.duplicates;
+              });
+            });
+            if (typeof fetchPhotos === 'function') await fetchPhotos();
+            if (typeof fetchTags === 'function') fetchTags();
+            if (elements.lightboxModal && elements.lightboxModal.style.display !== 'none' && typeof updateLightboxContent === 'function') {
+              const curLb = typeof getCurrentLightboxPhoto === 'function' ? getCurrentLightboxPhoto() : null;
+              if (curLb && updatedIds.includes(curLb.id)) {
+                curLb._thumbBust = nowBust;
+                updateLightboxContent(curLb);
+              }
+            }
+            if (typeof updateInspectorView === 'function') updateInspectorView();
+            if (typeof showToast === 'function') {
+              showToast(`外部アプリでの変更（${updatedIds.length}枚）をライブラリに反映しました`, 'info', 3000);
+            }
+          }
+        }
+      } catch (err) {
+        console.debug('[FocusSync] 外部更新確認スキップ:', err);
+      }
+    }
+
+    // エクスプローラーで開いていたフォルダの変更チェック
+    if (_pendingExternalFolders.size > 0) {
+      const foldersToCheck = Array.from(_pendingExternalFolders);
+      _pendingExternalFolders.clear();
+      if (typeof refreshFolderTree === 'function') {
+        refreshFolderTree();
+      }
+      if (state.currentFilter && state.currentFilter.type === 'folder' && state.currentFilter.value && !state.currentFilter.isOffline) {
+        const curPath = state.currentFilter.value;
+        const matched = foldersToCheck.some(fp => curPath.toLowerCase().startsWith(fp.toLowerCase()));
+        if (matched && typeof window.checkAndPromptFolderRefresh === 'function') {
+          const folderName = curPath.split(/[\\/]/).filter(Boolean).pop() || curPath;
+          window.checkAndPromptFolderRefresh(curPath, folderName, {
+            volumeSerial: state.currentFilter.volumeSerial || null,
+            isOffline: false,
+          });
+        }
+      }
+    }
+  };
+
+  window.addEventListener('focus', checkOnFocus);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) checkOnFocus();
+  });
+}
 
 /**
  * クライアント側 JavaScript API で可能な範囲でウィンドウモードを即時反映する（Win32 API とのハイブリッド補完）
@@ -811,12 +1150,20 @@ function ensureStartupWindowMaximized() {
 
 function initHeartbeat() {
   ensureStartupWindowMaximized();
+  initMediaWatcher();
 
   const sendHeartbeat = () => {
     fetch('/api/heartbeat', { method: 'POST' })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (!data || typeof data.mobile_sync_seq !== 'number') return;
+        if (typeof data.media_event_seq === 'number') {
+          if (_lastSeenMediaEventSeq === null) {
+            _lastSeenMediaEventSeq = data.media_event_seq;
+          } else if (data.media_event_seq > _lastSeenMediaEventSeq && data.media_last_event) {
+            handleMediaChangeEvent(data.media_last_event);
+          }
+        }
         if (_lastSeenMobileSyncSeq === null) {
           _lastSeenMobileSyncSeq = data.mobile_sync_seq;
         } else if (data.mobile_sync_seq > _lastSeenMobileSyncSeq) {

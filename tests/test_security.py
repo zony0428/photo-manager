@@ -101,6 +101,9 @@ def test_lan_whitelist_blocks_admin_apis():
         ("GET", "/api/browse"),
         ("GET", "/api/photo/1/view"),
         ("GET", "/api/mobile/info"),
+        ("POST", "/api/media/check"),
+        ("GET", "/api/media/events"),
+        ("POST", "/api/photos/check-external-updates"),
         ("GET", "/index.html"),
     ]
     for method, path in blocked:

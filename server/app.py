@@ -16,7 +16,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -115,6 +115,7 @@ from .scanner import (
     extract_metadata,
     resolve_portable_path,
     resolve_drive_online_path,
+    clear_online_cache,
     is_raw_file,
     extract_raw_full_preview,
     check_folder_diff,
@@ -136,6 +137,7 @@ from .storage_manager import (
     resolve_storage_target_with_root,
     enable_volume_loome,
     disable_volume_loome,
+    invalidate_loome_roots_cache,
     get_storage_folders,
     create_storage_subfolder,
     rename_storage_subfolder,
@@ -156,6 +158,15 @@ from .folder_tree import (
     list_children as list_folder_tree_children,
 )
 
+from .media_watcher import (
+    start_media_watcher,
+    check_media_changes,
+    get_media_watcher_state,
+    subscribe_media_events,
+    unsubscribe_media_events,
+    update_known_volume_meta,
+    broadcast_app_event,
+)
 from .version import get_version, get_version_info, __version__
 from .exporter import (
     run_smart_export,
@@ -215,6 +226,7 @@ async def lifespan(app: FastAPI):
     cleanup_invalid_zero_gps()
     set_startup_status(is_ready=False, phase="mobile", message="モバイル同期バンドルを準備中...", detail="Tetheract_Mobile.html を確認しています", percent=95)
     ensure_standalone_mobile_html()
+    start_media_watcher()
     set_startup_status(is_ready=True, phase="ready", message="準備完了", detail="", percent=100)
 
     # 既存DBで lens_model が未設定の一眼カメラ写真（Panasonic MakerNote / XMP等）をバックグラウンドで自動補完
@@ -229,6 +241,8 @@ async def lifespan(app: FastAPI):
             cnt = backfill_missing_lens_models(only_interchangeable_cameras=True)
             if cnt > 0:
                 logger.info(f"[Backfill] 既存写真のレンズ機種名を {cnt} 件自動補完しました")
+                clear_folders_fs_cache()
+                broadcast_app_event("lenses_backfilled", {"updated": cnt})
             marker_file.parent.mkdir(parents=True, exist_ok=True)
             marker_file.write_text("done", encoding="utf-8")
         except Exception as e:
@@ -494,7 +508,55 @@ def api_heartbeat():
         "status": "ok",
         "mobile_sync_seq": _mobile_sync_event["seq"],
         "mobile_sync_applied": _mobile_sync_event["applied_count"],
+        "media_event_seq": get_media_watcher_state()["seq"],
+        "media_last_event": get_media_watcher_state()["last_event"],
     }
+
+
+@app.post("/api/media/check")
+def api_media_check():
+    """ウィンドウフォーカス復帰時や手動確認時にドライブ接続状態の差分をチェックする（localhost専用）"""
+    return _fast_json(check_media_changes(source="window_focus"))
+
+
+@app.get("/api/media/events")
+async def api_media_events(request: Request):
+    """
+    Windows OS の WM_DEVICECHANGE イベント等で検知したメディア抜き挿しを
+    Server-Sent Events (SSE) でフロントエンドへ即時プッシュ配信する（localhost専用）。
+    """
+    import asyncio as _asyncio
+
+    async def _event_generator():
+        sub = subscribe_media_events()
+        _, q = sub
+        try:
+            init_state = get_media_watcher_state()
+            init_json = json.dumps({"type": "init", **init_state}, ensure_ascii=False, default=str)
+            yield f"data: {init_json}\n\n"
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    evt = await _asyncio.wait_for(q.get(), timeout=20.0)
+                    evt_json = json.dumps({"type": "change", **evt}, ensure_ascii=False, default=str)
+                    yield f"data: {evt_json}\n\n"
+                except _asyncio.TimeoutError:
+                    yield ": keepalive\n\n"
+        except _asyncio.CancelledError:
+            pass
+        finally:
+            unsubscribe_media_events(sub)
+
+    return StreamingResponse(
+        _event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.get("/api/window/settings")
@@ -584,6 +646,131 @@ def api_get_duplicates_count():
 
 
 _API_PHOTOS_RESPONSE_CACHE: Dict[Tuple, Tuple[float, Response]] = {}
+
+
+def clear_api_photos_cache() -> None:
+    """写真一覧APIのレスポンスキャッシュをクリアする"""
+    _API_PHOTOS_RESPONSE_CACHE.clear()
+
+
+def _require_localhost(request: Request) -> None:
+    """ローカルホストからのアクセスのみ許可する（二重ガード）"""
+    client_host = request.client.host if request.client else ""
+    if not is_loopback_client(client_host):
+        raise HTTPException(status_code=403, detail="この操作はPC本体（localhost）からのみ実行できます。")
+
+
+class CheckExternalUpdatesRequest(BaseModel):
+    photo_ids: Optional[List[int]] = None
+    folders: Optional[List[str]] = None
+
+
+@app.post("/api/photos/check-external-updates")
+async def api_check_external_updates(request: Request):
+    """
+    ウィンドウフォーカス復帰時等に外部アプリでの編集・削除・XMP追加を検知し、
+    オンラインキャッシュ・ディレクトリスキャンキャッシュをクリアした上で、
+    指定写真の mtime / ファイルサイズ変化があればサムネイルを再生成して通知する（localhost専用）。
+    """
+    _require_localhost(request)
+
+    req = CheckExternalUpdatesRequest()
+    try:
+        body_bytes = await request.body()
+        if body_bytes:
+            body_data = json.loads(body_bytes.decode("utf-8"))
+            if isinstance(body_data, dict):
+                req = CheckExternalUpdatesRequest(**body_data)
+    except Exception as e:
+        logger.debug(f"check-external-updates リクエストボディ解析スキップ: {e}")
+
+    clear_online_cache()
+    clear_folders_fs_cache()
+    clear_api_photos_cache()
+
+    updated_photo_ids: List[int] = []
+    checked_photos: List[Dict[str, Any]] = []
+
+    if req.photo_ids:
+        from .database.connection import get_connection
+        from .database.photos import _has_xmp_sidecar_fast, _strip_vsn_prefix_raw
+
+        unique_ids = [int(x) for x in dict.fromkeys(req.photo_ids) if isinstance(x, int) or (isinstance(x, str) and str(x).isdigit())][:200]
+        if unique_ids:
+            placeholders = ",".join("?" for _ in unique_ids)
+            changed_rows: List[Tuple[int, str, float, int]] = []
+            with get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    f"""
+                    SELECT id, file_path, paired_raw_path, volume_serial, file_mtime, file_size
+                    FROM photos
+                    WHERE id IN ({placeholders})
+                    """,
+                    unique_ids,
+                )
+                rows = cursor.fetchall()
+
+                for row in rows:
+                    pid = int(row["id"])
+                    fpath = _strip_vsn_prefix_raw(row["file_path"]) or ""
+                    paired_raw = row["paired_raw_path"]
+                    v_ser = row["volume_serial"]
+                    old_mtime = float(row["file_mtime"] or 0.0)
+                    old_size = int(row["file_size"] or 0)
+                    cur_mtime = old_mtime
+
+                    if fpath:
+                        real_p, is_online = resolve_portable_path(fpath, expected_serial=v_ser)
+                        if is_online and real_p.exists():
+                            try:
+                                st = real_p.stat()
+                                cur_mtime = float(st.st_mtime)
+                                cur_size = int(st.st_size)
+                                if abs(cur_mtime - old_mtime) > 0.5 or cur_size != old_size:
+                                    changed_rows.append((pid, fpath, cur_mtime, cur_size))
+                            except Exception as e:
+                                logger.debug(f"外部更新チェック stat 失敗 ({real_p}): {e}")
+
+                    has_xmp = _has_xmp_sidecar_fast(
+                        fpath,
+                        paired_raw,
+                        volume_serial=v_ser,
+                    )
+                    checked_photos.append({
+                        "id": pid,
+                        "file_mtime": cur_mtime,
+                        "has_xmp": has_xmp,
+                    })
+
+                if changed_rows:
+                    for pid, fpath, new_mtime, new_size in changed_rows:
+                        cursor.execute(
+                            "UPDATE photos SET file_mtime = ?, file_size = ? WHERE id = ?",
+                            (new_mtime, new_size, pid),
+                        )
+                        cursor.execute(
+                            "UPDATE photo_links SET file_mtime = ? WHERE photo_id = ? AND file_path = ?",
+                            (new_mtime, pid, fpath),
+                        )
+                    conn.commit()
+
+            for pid, _, _, _ in changed_rows:
+                try:
+                    refresh_photo_thumbnail_transform(pid)
+                except Exception as e:
+                    logger.warning(f"外部編集検知後のサムネイル再生成失敗 (id={pid}): {e}")
+                updated_photo_ids.append(pid)
+
+            if updated_photo_ids:
+                clear_folders_fs_cache()
+                clear_api_photos_cache()
+
+    return {
+        "ok": True,
+        "updated_photo_ids": updated_photo_ids,
+        "photos": checked_photos,
+    }
 
 
 @app.get("/api/photos")
@@ -995,6 +1182,9 @@ def api_delete_photo(photo_id: int, delete_file: bool = False):
     success = delete_photo_by_id(photo_id, delete_file=delete_file)
     if not success:
         raise HTTPException(status_code=404, detail="写真が見つかりません")
+    clear_folders_fs_cache()
+    invalidate_loome_roots_cache()
+    clear_api_photos_cache()
     return {"status": "ok", "photo_id": photo_id, "deleted_file": delete_file}
 
 
@@ -1155,6 +1345,9 @@ def api_batch_delete(req: BatchDeleteRequest):
     if not req.photo_ids:
         raise HTTPException(status_code=400, detail="削除対象が指定されていません")
     deleted = delete_photos_by_ids(req.photo_ids)
+    clear_folders_fs_cache()
+    invalidate_loome_roots_cache()
+    clear_api_photos_cache()
     return {"status": "ok", "deleted": deleted}
 
 
@@ -1443,8 +1636,31 @@ def api_get_thumbnail(photo_id: int, request: Request):
     if not photo:
         raise HTTPException(status_code=404, detail="写真が見つかりません")
 
+    # 1. 既存サムネイルBLOBを直引きし、未生成時のみ元画像からオンデマンド生成
+    thumb = db_get_thumbnail(photo_id)
+    thumb_data: Optional[bytes] = thumb["data"] if thumb and thumb.get("data") else None
+    if thumb_data is None:
+        try:
+            thumb_data = ensure_thumbnail(photo["id"], photo["file_path"])
+            thumb = db_get_thumbnail(photo_id)
+        except Exception as e:
+            logger.debug(f"サムネイルのオンデマンド生成スキップ ({photo_id}): {e}")
+            thumb_data = None
+
+    if thumb_data is None:
+        # サムネイル生成に失敗した場合（オフライン・一時的読み込みエラー等）、500エラーではなくプレースホルダーを返す
+        from .scanner import get_ondemand_placeholder_webp
+        return Response(
+            content=get_ondemand_placeholder_webp(),
+            media_type="image/webp",
+            headers={
+                "Cache-Control": "no-store",
+                "X-Thumbnail-Error": "true",
+            },
+        )
+
     # ETagにファイルパスを含めてDB再構築時のID衝突を防止
-    # file_mtime, rotation, fine_angle, crop_*, トーン微調整値も含め、編集後も 304 で古いサムネイルが返らないようにする
+    # file_mtime, rotation, fine_angle, crop_*, トーン微調整値に加え、サムネイルBLOBのサイズと寸法も含め、再生成後も古いサムネイルが返らないようにする
     path_hash = hashlib.md5(photo.get("file_path", "").encode()).hexdigest()[:8]
     mtime_part = int(photo.get("file_mtime") or 0)
     rot_part = photo.get("rotation") or 0
@@ -1456,7 +1672,14 @@ def api_get_thumbnail(photo_id: int, request: Request):
     b_part = int(photo.get("brightness") or 0)
     ct_part = int(photo.get("contrast") or 0)
     s_part = int(photo.get("saturation") or 0)
-    etag_val = f'"{photo_id}-{path_hash}-{photo.get("file_size", 0)}-{mtime_part}-r{rot_part}-fa{fa_part}-c{cx_part}_{cy_part}_{cw_part}_{ch_part}-t{b_part}_{ct_part}_{s_part}"'
+    thumb_len = len(thumb_data)
+    thumb_w = (thumb.get("width") if thumb else 0) or 0
+    thumb_h = (thumb.get("height") if thumb else 0) or 0
+    etag_val = (
+        f'"{photo_id}-{path_hash}-{photo.get("file_size", 0)}-{mtime_part}'
+        f'-r{rot_part}-fa{fa_part}-c{cx_part}_{cy_part}_{cw_part}_{ch_part}'
+        f'-t{b_part}_{ct_part}_{s_part}-tb{thumb_len}_{thumb_w}x{thumb_h}"'
+    )
 
     # If-None-Match と ETag が一致した場合は 304 Not Modified（本文なし）を返す
     if_none_match = request.headers.get("if-none-match")
@@ -1464,45 +1687,19 @@ def api_get_thumbnail(photo_id: int, request: Request):
         return Response(
             status_code=304,
             headers={
-                "Cache-Control": "public, max-age=86400",
+                "Cache-Control": "no-cache, must-revalidate",
                 "ETag": etag_val,
             },
         )
 
-    # 1. 既存サムネイルBLOBを直引き
-    thumb = db_get_thumbnail(photo_id)
-    if thumb:
-        return Response(
-            content=thumb["data"],
-            media_type="image/webp",
-            headers={
-                "Cache-Control": "public, max-age=86400",
-                "ETag": etag_val,
-            },
-        )
-
-    # 2. キャッシュ未生成時のみ元画像からオンデマンド生成
-    try:
-        thumb_data = ensure_thumbnail(photo["id"], photo["file_path"])
-        return Response(
-            content=thumb_data,
-            media_type="image/webp",
-            headers={
-                "Cache-Control": "public, max-age=86400",
-                "ETag": etag_val,
-            },
-        )
-    except Exception as e:
-        # サムネイル生成に失敗した場合（オフライン・一時的読み込みエラー等）、500エラーではなくプレースホルダーを返す
-        from .scanner import get_ondemand_placeholder_webp
-        return Response(
-            content=get_ondemand_placeholder_webp(),
-            media_type="image/webp",
-            headers={
-                "Cache-Control": "no-cache",
-                "X-Thumbnail-Error": "true",
-            },
-        )
+    return Response(
+        content=thumb_data,
+        media_type="image/webp",
+        headers={
+            "Cache-Control": "no-cache, must-revalidate",
+            "ETag": etag_val,
+        },
+    )
 
 
 @app.get("/api/photo/{photo_id}/view")
@@ -1510,7 +1707,7 @@ def api_get_photo_view(photo_id: int, request: Request, raw: int = Query(default
     """
     実画像ファイルを配信する（拡大プレビュー用・RAWは埋め込み高解像度プレビュー・オフライン時はDB内サムネイルをスマートプレビュー配信）。
     raw=1 の場合は調整モーダル用に未加工の元画像を返し、
-    raw=0 かつ非破壊調整（クロップ・水平傾き補正・トーン調整）がある場合はオンザフライで調整反映済みJPEGを返す。
+    raw=0 かつ非破壊調整（回転・クロップ・水平傾き補正・トーン調整）がある場合はオンザフライで調整反映済みJPEGを返す。
     """
     import io as _io
     from PIL import Image as _Image, ImageOps as _ImageOps
@@ -1531,7 +1728,7 @@ def api_get_photo_view(photo_id: int, request: Request, raw: int = Query(default
 
     has_crop = bool(cw_val and ch_val and (cw_val < 0.999 or ch_val < 0.999 or cx_val > 0.001 or cy_val > 0.001))
     has_baked_adjustments = (raw == 0) and (
-        has_crop or abs(fa_val) > 0.01 or b_val != 0 or ct_val != 0 or s_val != 0
+        rot_val != 0 or has_crop or abs(fa_val) > 0.01 or b_val != 0 or ct_val != 0 or s_val != 0
     )
 
     # ETagにファイルパスと更新日時および調整パラメータを含めてキャッシュ整合性を担保
@@ -1544,20 +1741,20 @@ def api_get_photo_view(photo_id: int, request: Request, raw: int = Query(default
         adj_sig = f"raw{raw}"
     etag_val = f'"{photo_id}-{path_hash}-{file_size_part}-{mtime_part}-{adj_sig}-view"'
 
-    # If-None-Match と ETag が一致した場合は 304 Not Modified（即時返却）
-    if_none_match = request.headers.get("if-none-match")
-    if if_none_match and (if_none_match == etag_val or etag_val in [t.strip() for t in if_none_match.split(",")]):
-        return Response(
-            status_code=304,
-            headers={
-                "Cache-Control": "public, max-age=86400",
-                "ETag": etag_val,
-            },
-        )
-
     target_path, is_online = resolve_portable_path(photo["file_path"], expected_serial=photo.get("volume_serial"))
     if is_online and target_path.exists():
-        # 非破壊調整（クロップ・水平出し・トーン微調整）が有効かつ raw=0 の場合はPillowで適用して返却
+        # オンラインで実ファイルが存在する場合のみ ETag / 304 Not Modified を返す
+        if_none_match = request.headers.get("if-none-match")
+        if if_none_match and (if_none_match == etag_val or etag_val in [t.strip() for t in if_none_match.split(",")]):
+            return Response(
+                status_code=304,
+                headers={
+                    "Cache-Control": "no-cache, must-revalidate",
+                    "ETag": etag_val,
+                },
+            )
+
+        # 非破壊調整（回転・クロップ・水平出し・トーン微調整）が有効かつ raw=0 の場合はPillowで適用して返却
         if has_baked_adjustments:
             try:
                 pil_img = None
@@ -1638,12 +1835,16 @@ def api_get_photo_view(photo_id: int, request: Request, raw: int = Query(default
             )
 
     # オフライン時（USB持出で元ドライブ未接続など）または実ファイル取得失敗時はDB内サムネイルをスマートプレビューとしてフォールバック配信
+    # ※再接続時にフル解像度へ即切り替わるよう ETag は付与せず no-store とする
     thumb = db_get_thumbnail(photo_id)
     if thumb:
         return Response(
             content=thumb["data"],
             media_type="image/webp",
-            headers={"X-Photo-Offline": "true", "ETag": etag_val},
+            headers={
+                "Cache-Control": "no-store",
+                "X-Photo-Offline": "true",
+            },
         )
 
     # サムネイルもない場合はプレースホルダーWebPを返して404を回避
@@ -1651,7 +1852,11 @@ def api_get_photo_view(photo_id: int, request: Request, raw: int = Query(default
     return Response(
         content=get_ondemand_placeholder_webp(),
         media_type="image/webp",
-        headers={"X-Photo-Offline": "true", "X-Photo-Missing": "true"},
+        headers={
+            "Cache-Control": "no-store",
+            "X-Photo-Offline": "true",
+            "X-Photo-Missing": "true",
+        },
     )
 
 
@@ -2090,6 +2295,9 @@ def api_delete_folder(req: DeleteFolderRequest):
             recursive=req.recursive,
             volume_serial=req.volume_serial,
         )
+        clear_folders_fs_cache()
+        invalidate_loome_roots_cache()
+        clear_api_photos_cache()
         return {
             "status": "ok",
             "folder_path": req.folder_path,
@@ -2109,6 +2317,9 @@ def api_ignore_folder(req: FolderIgnoreRequest):
     """指定されたフォルダを除外（管理対象外）として登録し、DBから写真を解除する"""
     try:
         add_ignored_folder(req.folder_path)
+        clear_folders_fs_cache()
+        invalidate_loome_roots_cache()
+        clear_api_photos_cache()
         return {"status": "ok", "folder_path": req.folder_path}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -2119,6 +2330,9 @@ def api_unignore_folder(req: FolderIgnoreRequest):
     """指定されたフォルダの除外設定を解除する（未管理状態に戻す）"""
     try:
         remove_ignored_folder(req.folder_path)
+        clear_folders_fs_cache()
+        invalidate_loome_roots_cache()
+        clear_api_photos_cache()
         return {"status": "ok", "folder_path": req.folder_path}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -2167,6 +2381,9 @@ def api_cleanup_missing_folder_photos(req: FolderCleanupMissingRequest):
             recursive=req.recursive,
             volume_serial=req.volume_serial,
         )
+        clear_folders_fs_cache()
+        invalidate_loome_roots_cache()
+        clear_api_photos_cache()
         return {"status": "ok", "cleaned": cleaned, "folder_path": req.folder_path}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -2190,6 +2407,9 @@ def api_unlink_missing_folder_photos(req: FolderUnlinkMissingRequest):
             recursive=req.recursive,
             volume_serial=req.volume_serial,
         )
+        clear_folders_fs_cache()
+        invalidate_loome_roots_cache()
+        clear_api_photos_cache()
         return {"status": "ok", "unlinked": unlinked, "folder_path": req.folder_path}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -2206,7 +2426,25 @@ def api_purge_unlinked_photos(req: PurgeUnlinkedRequest):
     """
     try:
         purged = purge_unlinked_photos(req.photo_ids)
+        clear_folders_fs_cache()
+        invalidate_loome_roots_cache()
+        clear_api_photos_cache()
         return {"status": "ok", "purged": purged}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/photos/missing")
+def api_delete_missing_photos():
+    """実ファイルが消失した写真を一括でDBからクリーンアップする"""
+    try:
+        missing = get_missing_photos()
+        missing_ids = [int(p["id"]) for p in missing if p.get("id")]
+        deleted = delete_photos_by_ids(missing_ids) if missing_ids else 0
+        clear_folders_fs_cache()
+        invalidate_loome_roots_cache()
+        clear_api_photos_cache()
+        return {"status": "ok", "deleted": deleted}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -2394,6 +2632,10 @@ def api_delete_volume(volume_serial: str):
     if not serial_clean:
         raise HTTPException(status_code=400, detail="ボリュームシリアル番号が指定されていません")
     res = remove_volume_by_serial(serial_clean)
+    clear_online_cache()
+    clear_folders_fs_cache()
+    invalidate_loome_roots_cache()
+    clear_api_photos_cache()
     return {"status": "ok", **res}
 
 
@@ -2451,15 +2693,22 @@ def api_update_volume_name(volume_serial: str, req: UpdateVolumeNameRequest):
             updated_phys_label = phys_res.get("volume_label", clean_phys_label)
             updated_drive = phys_res.get("drive") or updated_drive
             wrote_physical = True
-            # フォルダ・ドライブのファイルシステムキャッシュを即時クリア
-            from .database.folders import clear_folders_fs_cache
-            clear_folders_fs_cache()
 
         vol = update_volume_custom_name(
             volume_serial=serial_clean,
             custom_name=req.custom_name,
             volume_label=updated_phys_label,
             drive_letter=updated_drive,
+        )
+        clear_online_cache()
+        clear_folders_fs_cache()
+        invalidate_loome_roots_cache()
+        clear_api_photos_cache()
+        update_known_volume_meta(
+            serial_clean,
+            custom_name=vol.get("custom_name", ""),
+            label=vol.get("volume_label", ""),
+            drive=vol.get("drive_letter"),
         )
         return {
             "status": "ok",
@@ -2488,7 +2737,10 @@ def api_enable_volume_loome(volume_serial: str, req: Optional[EnableVolumeLoomeR
     try:
         drive_letter = req.drive_letter if req else None
         res = enable_volume_loome(volume_serial, drive_letter=drive_letter)
+        clear_online_cache()
         clear_folders_fs_cache()
+        invalidate_loome_roots_cache()
+        clear_api_photos_cache()
         return res
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -2501,7 +2753,10 @@ def api_disable_volume_loome(volume_serial: str):
     """指定ボリュームの Loome 登録を解除する（実フォルダおよび写真ファイルは削除しない）"""
     try:
         res = disable_volume_loome(volume_serial)
+        clear_online_cache()
         clear_folders_fs_cache()
+        invalidate_loome_roots_cache()
+        clear_api_photos_cache()
         return res
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -2935,8 +3190,10 @@ def api_upload_photos(req: PhotoUploadRequest):
         except Exception as e:
             errors.append(f"{item.filename}: {str(e)}")
 
-    if saved_photos:
+    if saved_photos or saved_sidecars:
         clear_folders_fs_cache()
+        invalidate_loome_roots_cache()
+        clear_api_photos_cache()
 
     return {
         "status": "ok",
@@ -3109,6 +3366,22 @@ def api_get_duplicates(limit: int = 100):
     """ライブラリ内の重複写真グループ一覧および品質スコアに基づく代表写真情報を高速取得する"""
     groups = get_all_duplicate_groups(limit=limit)
     return _fast_json(groups)
+
+
+class DuplicatesResolveRequest(BaseModel):
+    photo_ids: Optional[List[int]] = None
+    delete_photo_ids: Optional[List[int]] = None
+
+
+@app.post("/api/duplicates/resolve")
+def api_resolve_duplicates(req: DuplicatesResolveRequest):
+    """重複解消として指定された写真群をライブラリから一括解除し、キャッシュを即時無効化する"""
+    target_ids = req.delete_photo_ids or req.photo_ids or []
+    deleted = delete_photos_by_ids(target_ids) if target_ids else 0
+    clear_folders_fs_cache()
+    invalidate_loome_roots_cache()
+    clear_api_photos_cache()
+    return {"status": "ok", "deleted": deleted}
 
 
 # -------------------------------------------------------------
@@ -3579,6 +3852,12 @@ def _apply_mobile_sync_changes(
     if applied_count > 0:
         _mobile_sync_event["seq"] += 1
         _mobile_sync_event["applied_count"] = applied_count
+        clear_folders_fs_cache()
+        clear_api_photos_cache()
+        broadcast_app_event(
+            "mobile_synced",
+            {"applied": applied_count, "seq": _mobile_sync_event["seq"]},
+        )
 
     return {
         "status": "ok",

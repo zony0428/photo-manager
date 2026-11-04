@@ -6,6 +6,15 @@
 let _lightboxOpenRafId = null;
 let _lightboxViewPreloadImg = null;
 
+function computeFilmstripPhotosKey() {
+  const len = Array.isArray(state.photos) ? state.photos.length : 0;
+  if (len === 0) return '0';
+  const first = state.photos[0];
+  const mid = state.photos[len >> 1];
+  const last = state.photos[len - 1];
+  return `${len}-${state.sortBy || ''}-${first?.id || 0}:${first?.rotation || 0}:${first?._thumbBust || 0}-${mid?.id || 0}:${mid?.rotation || 0}-${last?.id || 0}:${last?.rotation || 0}`;
+}
+
 function openLightbox(index) {
   if (index < 0 || index >= state.photos.length) return;
 
@@ -20,7 +29,7 @@ function openLightbox(index) {
   loadLightboxPhoto(true, true);
 
   // 2. フィルムストリップが構築済みなら即時スクロール、未構築（1万枚超の初回等）なら次フレームで非同期構築
-  const currentKey = `${state.photos.length}-${state.photos[0]?.id || 0}`;
+  const currentKey = computeFilmstripPhotosKey();
   if (filmstripRenderedPhotosKey === currentKey && elements.filmstrip && elements.filmstrip.children.length === state.photos.length) {
     updateFilmstripActive(true);
   } else {
@@ -612,22 +621,47 @@ function renderLightboxTags(photo) {
  * 写真にタグを追加
  */
 async function addTagToCurrentPhoto(photoId, tag) {
-  if (!tag.trim()) return;
+  if (!tag || !tag.trim()) return;
+  const tagName = tag.trim();
+  const parts = tagName.split('/').map(p => p.trim()).filter(Boolean);
+  const allExpandedTags = parts.map((_, idx) => parts.slice(0, idx + 1).join('/'));
   try {
     const res = await fetch(`/api/photo/${photoId}/tags`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tag: tag.trim() }),
+      body: JSON.stringify({ tag: tagName }),
     });
     if (!res.ok) throw new Error('タグ追加失敗');
 
-    const photo = state.photos[state.currentPhotoIndex];
+    const photo = (typeof findPhotoByIdAnywhere === 'function' ? findPhotoByIdAnywhere(photoId) : null)
+      || (typeof getCurrentLightboxPhoto === 'function' ? getCurrentLightboxPhoto() : null)
+      || state.photos[state.currentPhotoIndex];
+    const instances = typeof findAllPhotoInstancesById === 'function'
+      ? findAllPhotoInstancesById(photoId)
+      : (photo ? [photo] : []);
+    if (photo && !instances.includes(photo)) instances.push(photo);
+
+    instances.forEach(inst => {
+      if (!inst.tags) inst.tags = [];
+      if (!inst.tag_details) inst.tag_details = [];
+      allExpandedTags.forEach(tPath => {
+        if (!inst.tags.includes(tPath)) {
+          inst.tags.push(tPath);
+        }
+        if (!inst.tag_details.some(d => d.tag === tPath)) {
+          inst.tag_details.push({ tag: tPath, source: 'manual', confidence: 1.0 });
+        }
+      });
+    });
+
     if (photo) {
-      if (!photo.tags) photo.tags = [];
-      if (!photo.tags.includes(tag.trim())) {
-        photo.tags.push(tag.trim());
+      const curLight = typeof getCurrentLightboxPhoto === 'function' ? getCurrentLightboxPhoto() : state.photos[state.currentPhotoIndex];
+      if (curLight && curLight.id === photoId) {
+        renderLightboxTags(curLight);
       }
-      renderLightboxTags(photo);
+      if (state.isInspectorOpen && state.activeInspectorPhotoId === photoId && typeof updateInspectorView === 'function') {
+        updateInspectorView();
+      }
       renderPhotoGrid();
       fetchTags(); // サイドバーの件数も更新
     }
@@ -647,12 +681,25 @@ async function removeTagFromCurrentPhoto(photoId, tag) {
     });
     if (!res.ok) throw new Error('タグ削除失敗');
 
-    const photo = state.photos[state.currentPhotoIndex];
+    const photo = (typeof findPhotoByIdAnywhere === 'function' ? findPhotoByIdAnywhere(photoId) : null)
+      || (typeof getCurrentLightboxPhoto === 'function' ? getCurrentLightboxPhoto() : null)
+      || state.photos[state.currentPhotoIndex];
+    const instances = typeof findAllPhotoInstancesById === 'function'
+      ? findAllPhotoInstancesById(photoId)
+      : (photo ? [photo] : []);
+    if (photo && !instances.includes(photo)) instances.push(photo);
+
+    instances.forEach(inst => {
+      if (inst.tags) inst.tags = inst.tags.filter(t => t !== tag && !t.startsWith(tag + '/'));
+      if (inst.tag_details) inst.tag_details = inst.tag_details.filter(d => d.tag !== tag && !d.tag.startsWith(tag + '/'));
+    });
+
     if (photo) {
-      if (photo.tags) photo.tags = photo.tags.filter(t => t !== tag && !t.startsWith(tag + '/'));
-      if (photo.tag_details) photo.tag_details = photo.tag_details.filter(d => d.tag !== tag && !d.tag.startsWith(tag + '/'));
-      renderLightboxTags(photo);
-      if (state.isInspectorOpen && state.activeInspectorPhotoId === photoId) {
+      const curLight = typeof getCurrentLightboxPhoto === 'function' ? getCurrentLightboxPhoto() : state.photos[state.currentPhotoIndex];
+      if (curLight && curLight.id === photoId) {
+        renderLightboxTags(curLight);
+      }
+      if (state.isInspectorOpen && state.activeInspectorPhotoId === photoId && typeof updateInspectorView === 'function') {
         updateInspectorView();
       }
       renderPhotoGrid();
@@ -675,23 +722,27 @@ async function promoteTagForPhoto(photoId, tag) {
     });
     if (!res.ok) throw new Error('タグ昇格に失敗しました');
 
-    // キャッシュ更新
-    const photo = state.photos.find(p => p.id === photoId);
-    if (photo && photo.tag_details) {
-      const detail = photo.tag_details.find(d => d.tag === tag);
-      if (detail) {
-        detail.source = 'manual';
-        detail.confidence = 1.0;
+    // キャッシュ更新（全インスタンス同期）
+    const instances = typeof findAllPhotoInstancesById === 'function'
+      ? findAllPhotoInstancesById(photoId)
+      : state.photos.filter(p => p.id === photoId);
+    instances.forEach(inst => {
+      if (inst && inst.tag_details) {
+        const detail = inst.tag_details.find(d => d.tag === tag);
+        if (detail) {
+          detail.source = 'manual';
+          detail.confidence = 1.0;
+        }
       }
-    }
+    });
     if (state.currentPhotoIndex < 0 && state.selectedPhotoIds && state.selectedPhotoIds.size > 0 && typeof clearSelection === 'function') {
       state.activeInspectorPhotoId = photoId;
       clearSelection();
     } else if (state.isInspectorOpen && state.activeInspectorPhotoId === photoId) {
       updateInspectorView();
     }
-    // ライトボックス再描画
-    const curLight = state.photos[state.currentPhotoIndex];
+    // ライトボックス再描画（スタック展開メンバーも考慮）
+    const curLight = typeof getCurrentLightboxPhoto === 'function' ? getCurrentLightboxPhoto() : state.photos[state.currentPhotoIndex];
     if (curLight && curLight.id === photoId) {
       renderLightboxTags(curLight);
     }
@@ -716,11 +767,15 @@ async function triggerAiTagForSinglePhoto(photoId, btnElement) {
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || 'AIタグ付けに失敗しました');
 
-    const photo = state.photos.find(p => p.id === photoId);
-    if (photo) {
-      photo.tag_details = data.tags || [];
-      photo.tags = photo.tag_details.map(d => d.tag);
-    }
+    const newDetails = data.tags || [];
+    const newTagNames = newDetails.map(d => d.tag);
+    const instances = typeof findAllPhotoInstancesById === 'function'
+      ? findAllPhotoInstancesById(photoId)
+      : state.photos.filter(p => p.id === photoId);
+    instances.forEach(inst => {
+      inst.tag_details = newDetails.map(d => ({ ...d }));
+      inst.tags = [...newTagNames];
+    });
 
     if (state.currentPhotoIndex < 0 && state.selectedPhotoIds && state.selectedPhotoIds.size > 0 && typeof clearSelection === 'function') {
       state.activeInspectorPhotoId = photoId;
@@ -728,7 +783,7 @@ async function triggerAiTagForSinglePhoto(photoId, btnElement) {
     } else if (state.isInspectorOpen && state.activeInspectorPhotoId === photoId) {
       updateInspectorView();
     }
-    const curLight = state.photos[state.currentPhotoIndex];
+    const curLight = typeof getCurrentLightboxPhoto === 'function' ? getCurrentLightboxPhoto() : state.photos[state.currentPhotoIndex];
     if (curLight && curLight.id === photoId) {
       renderLightboxTags(curLight);
     }
@@ -1177,7 +1232,7 @@ function renderFilmstrip(instant = false) {
   if (!elements.filmstrip) return;
 
   // 写真リストが同一なら再構築せずアクティブ更新のみ
-  const currentKey = `${state.photos.length}-${state.photos[0]?.id || 0}`;
+  const currentKey = computeFilmstripPhotosKey();
   if (filmstripRenderedPhotosKey === currentKey && elements.filmstrip.children.length === state.photos.length) {
     updateFilmstripActive(instant);
     return;

@@ -1319,6 +1319,61 @@ def get_photos(
                     p["volume_label"] = lk[7]
                     p["volume_custom_name"] = lk[8]
                     p["volume_drive"] = lk[9]
+        elif photos and not has_link_filter and not unlinked_only:
+            # 全体表示・タグ検索等で複数メディアにリンクを持つ写真は、主リンクがオフラインならオンラインの副リンクを優先採用する
+            multi_link_photos = [
+                p for p in photos
+                if int(p.get("duplicate_count") or 1) > 1 and not p.get("is_unlinked")
+            ]
+            if multi_link_photos:
+                from ..scanner import resolve_drive_online_path
+                dir_online_memo: Dict[Tuple[str, Optional[str]], bool] = {}
+
+                def _is_dir_online_cached(d_p: Optional[str], v_s: Optional[str]) -> bool:
+                    if not d_p:
+                        return False
+                    key = (d_p, (v_s or "").strip() or None)
+                    if key not in dir_online_memo:
+                        dir_online_memo[key] = bool(resolve_drive_online_path(d_p, expected_serial=key[1])[1])
+                    return dir_online_memo[key]
+
+                offline_primary_map = {
+                    p["id"]: p for p in multi_link_photos
+                    if not _is_dir_online_cached(p.get("directory_path"), p.get("volume_serial"))
+                }
+                if offline_primary_map:
+                    placeholders = ",".join(["?"] * len(offline_primary_map))
+                    cursor.execute(
+                        f"""
+                        SELECT pl.photo_id, pl.file_path, pl.directory_path, pl.file_name,
+                               pl.volume_serial, pl.file_mtime, pl.paired_raw_path,
+                               v.volume_label, COALESCE(v.custom_name, '') AS volume_custom_name,
+                               v.drive_letter AS volume_drive
+                        FROM photo_links pl
+                        LEFT JOIN volumes v ON pl.volume_serial = v.volume_serial
+                        WHERE pl.photo_id IN ({placeholders})
+                        ORDER BY pl.is_primary DESC, pl.id ASC
+                        """,
+                        list(offline_primary_map.keys()),
+                    )
+                    resolved_pids = set()
+                    for lk_row in cursor.fetchall():
+                        pid = lk_row[0]
+                        if pid in resolved_pids:
+                            continue
+                        if _is_dir_online_cached(lk_row[2], lk_row[4]):
+                            resolved_pids.add(pid)
+                            p = offline_primary_map[pid]
+                            p["file_path"] = lk_row[1]
+                            p["directory_path"] = lk_row[2]
+                            p["file_name"] = lk_row[3]
+                            p["volume_serial"] = lk_row[4] or None
+                            if lk_row[5] is not None:
+                                p["file_mtime"] = lk_row[5]
+                            p["paired_raw_path"] = lk_row[6]
+                            p["volume_label"] = lk_row[7]
+                            p["volume_custom_name"] = lk_row[8]
+                            p["volume_drive"] = lk_row[9]
 
         if photos:
             dir_files_map: Dict[Tuple[str, str], Optional[set]] = {}
@@ -3281,6 +3336,48 @@ def get_connection_counts() -> Dict[str, int]:
             online_count += cnt
         else:
             offline_count += cnt
+
+    if offline_count > 0:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT p.id, p.directory_path, COALESCE(p.volume_serial, '') AS vsn,
+                       pl.directory_path AS link_dir, COALESCE(pl.volume_serial, '') AS link_vsn
+                FROM photos p
+                JOIN photo_links pl ON pl.photo_id = p.id AND pl.is_primary = 0
+                WHERE COALESCE(p.is_unlinked, 0) = 0
+                  AND COALESCE(p.link_count, 1) > 1
+                  AND NOT (COALESCE(p.is_raw, 0) = 1 AND p.paired_raw_path IS NOT NULL AND p.paired_raw_path != '')
+                """
+            )
+            multi_rows = cursor.fetchall()
+        if multi_rows:
+            dir_online_memo: Dict[Tuple[str, Optional[str]], bool] = {}
+
+            def _chk_online(dp: str, vs: str) -> bool:
+                if not dp:
+                    return False
+                nd = dp.replace("/", "\\").lower()
+                if nd == storage_norm or nd.startswith(storage_norm + "\\"):
+                    return True
+                k = (dp, (vs or "").strip() or None)
+                if k not in dir_online_memo:
+                    dir_online_memo[k] = bool(resolve_drive_online_path(dp, expected_serial=k[1])[1])
+                return dir_online_memo[k]
+
+            recovered_pids = set()
+            for mr in multi_rows:
+                pid = mr["id"]
+                if pid in recovered_pids:
+                    continue
+                if not _chk_online(mr["directory_path"] or "", mr["vsn"] or ""):
+                    if _chk_online(mr["link_dir"] or "", mr["link_vsn"] or ""):
+                        recovered_pids.add(pid)
+            if recovered_pids:
+                shift_cnt = min(offline_count, len(recovered_pids))
+                offline_count -= shift_cnt
+                online_count += shift_cnt
 
     total_count = online_count + offline_count + unlinked_count
     return {

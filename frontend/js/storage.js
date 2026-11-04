@@ -110,7 +110,9 @@ function getSelectedPhotosStorageBreakdown() {
   const externalPhotoIds = [];
 
   for (const id of selectedIds) {
-    const p = (state.photos || []).find(item => item.id === id);
+    const p = typeof findPhotoByIdAnywhere === 'function'
+      ? findPhotoByIdAnywhere(id)
+      : (state.photos || []).find(item => item.id === id);
     if (!p) continue;
     if (isPhotoInStorage(p)) {
       storagePhotos.push(p);
@@ -139,27 +141,39 @@ window.getSelectedPhotosStorageBreakdown = getSelectedPhotosStorageBreakdown;
  *  3. インスペクタ表示中の単一写真（storage 内の場合）
  */
 function getTargetStoragePhotoIdsForRename() {
-  // 1. ライトボックスが開いている場合は表示中の写真を最優先
+  // 1. ライトボックスが開いている場合は表示中の写真（スタック展開メンバー含む）を最優先
   const lbModal = document.getElementById('lightboxModal');
-  if (lbModal && lbModal.style.display !== 'none' && state.lightboxIndex >= 0) {
-    const lbPhoto = (state.photos || [])[state.lightboxIndex];
+  if (lbModal && lbModal.style.display !== 'none' && state.currentPhotoIndex >= 0) {
+    const lbPhoto = typeof getCurrentLightboxPhoto === 'function'
+      ? getCurrentLightboxPhoto()
+      : (state.photos || [])[state.currentPhotoIndex];
     if (lbPhoto && isPhotoInStorage(lbPhoto)) {
       return [lbPhoto.id];
     }
   }
 
-  // 2. 選択中の写真に storage 内写真がある場合
-  const { storagePhotoIds } = getSelectedPhotosStorageBreakdown();
-  if (storagePhotoIds.length > 0) {
-    return storagePhotoIds;
+  // 2. 複数選択中の写真に storage 内写真がある場合
+  if (state.selectedPhotoIds && state.selectedPhotoIds.size > 1) {
+    const { storagePhotoIds } = getSelectedPhotosStorageBreakdown();
+    if (storagePhotoIds.length > 0) {
+      return storagePhotoIds;
+    }
   }
 
-  // 3. インスペクタで単一表示中の写真
+  // 3. インスペクタで単一表示中の写真（スタック内サブ写真含む）
   if (state.activeInspectorPhotoId) {
-    const activePhoto = (state.photos || []).find(p => p.id === state.activeInspectorPhotoId);
+    const activePhoto = typeof findPhotoByIdAnywhere === 'function'
+      ? findPhotoByIdAnywhere(state.activeInspectorPhotoId)
+      : (state.photos || []).find(p => p.id === state.activeInspectorPhotoId);
     if (activePhoto && isPhotoInStorage(activePhoto)) {
       return [activePhoto.id];
     }
+  }
+
+  // 4. 単一選択中の写真フォールバック
+  const { storagePhotoIds } = getSelectedPhotosStorageBreakdown();
+  if (storagePhotoIds.length > 0) {
+    return storagePhotoIds;
   }
 
   return [];
@@ -593,6 +607,9 @@ async function openStorageFolderInExplorer(targetPath = '') {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.detail || 'フォルダを開けませんでした');
     }
+    if (typeof window.markExternalFolderOpened === 'function') {
+      window.markExternalFolderOpened(pathToOpen);
+    }
     if (typeof showToast === 'function') {
       showToast('エクスプローラーで Loome フォルダを開きました', 'info', 2000);
     }
@@ -761,13 +778,22 @@ async function submitRenameStorageFolder(folderPath, newName) {
       showToast(`フォルダ名を「${data.new_name || trimmed}」に変更しました`, 'success', 3500);
     }
 
-    // 現在表示中のフォルダがリネーム対象だった場合はフィルタパスを更新
-    if (state.currentFilter && state.currentFilter.type === 'folder' && data.old_path && data.new_path) {
+    // 現在表示中のフォルダ（またはその配下サブフォルダ）がリネーム対象だった場合はフィルタパス・タイトルを更新
+    if (state.currentFilter && (state.currentFilter.type === 'folder' || state.currentFilter.type === 'folder_exclude') && data.old_path && data.new_path) {
       const curNorm = String(state.currentFilter.value || '').replace(/\//g, '\\').replace(/\\+$/, '');
       const oldNorm = String(data.old_path).replace(/\//g, '\\').replace(/\\+$/, '');
+      const newNorm = String(data.new_path).replace(/\//g, '\\').replace(/\\+$/, '');
       if (curNorm.toLowerCase() === oldNorm.toLowerCase()) {
-        state.currentFilter.value = data.new_path;
-        state.currentFilter.label = `${data.new_name || trimmed}`;
+        state.currentFilter.value = newNorm;
+        const newTitle = state.currentFilter.type === 'folder_exclude'
+          ? `除外: ${data.new_name || trimmed}`
+          : `${data.new_name || trimmed}`;
+        state.currentFilter.label = newTitle;
+        state.currentFilter.titleText = newTitle;
+        if (elements.viewTitle) elements.viewTitle.textContent = newTitle;
+      } else if (curNorm.toLowerCase().startsWith(oldNorm.toLowerCase() + '\\')) {
+        const suffix = curNorm.slice(oldNorm.length);
+        state.currentFilter.value = newNorm + suffix;
       }
     }
 
@@ -1070,7 +1096,9 @@ function openStorageRenameModal(explicitPhotoIds = null) {
   let targetIds = [];
   if (Array.isArray(explicitPhotoIds) && explicitPhotoIds.length > 0) {
     targetIds = explicitPhotoIds.filter(id => {
-      const p = (state.photos || []).find(item => item.id === id);
+      const p = typeof findPhotoByIdAnywhere === 'function'
+        ? findPhotoByIdAnywhere(id)
+        : (state.photos || []).find(item => item.id === id);
       return p ? isPhotoInStorage(p) : true;
     });
   } else {
@@ -1095,7 +1123,9 @@ function openStorageRenameModal(explicitPhotoIds = null) {
   if (targetIds.length === 1) {
     // 単一写真リネームモード
     storageState.renameMode = 'single';
-    const photo = (state.photos || []).find(p => p.id === targetIds[0]);
+    const photo = typeof findPhotoByIdAnywhere === 'function'
+      ? findPhotoByIdAnywhere(targetIds[0])
+      : (state.photos || []).find(p => p.id === targetIds[0]);
     const currentFilename = photo?.file_name || photo?.filename || (photo?.file_path ? photo.file_path.split(/[\\/]/).pop() : '');
     const { stem, ext } = _splitFilenameExt(currentFilename);
     storageState.singlePhotoExt = ext;
@@ -1192,7 +1222,9 @@ function updateStorageBatchRenamePreview() {
 
   for (let i = 0; i < previewCount; i++) {
     const id = ids[i];
-    const photo = (state.photos || []).find(p => p.id === id);
+    const photo = typeof findPhotoByIdAnywhere === 'function'
+      ? findPhotoByIdAnywhere(id)
+      : (state.photos || []).find(p => p.id === id);
     const oldName = photo?.file_name || photo?.filename || (photo?.file_path ? photo.file_path.split(/[\\/]/).pop() : `photo_${id}.jpg`);
     const { stem, ext } = _splitFilenameExt(oldName);
     const { dateStr, dateTimeStr } = _formatPhotoLocalDateParts(photo);
@@ -1252,14 +1284,19 @@ async function submitSinglePhotoRename(photoId, newFullName) {
 
     closeStorageRenameModal();
 
-    // ローカル state.photos の該当写真を即時更新
-    const photo = (state.photos || []).find(p => p.id === photoId);
-    if (photo) {
+    // ローカル state.photos およびスタック内の該当写真インスタンスをすべて即時更新
+    const instances = typeof findAllPhotoInstancesById === 'function'
+      ? findAllPhotoInstancesById(photoId)
+      : (state.photos || []).filter(p => p.id === photoId);
+    for (const photo of instances) {
       if (data.new_name) {
         photo.file_name = data.new_name;
         photo.filename = data.new_name;
       }
       if (data.new_path) photo.file_path = data.new_path;
+      // インスペクタが古いパスキャッシュを表示しないよう破棄
+      delete photo.duplicates;
+      delete photo._xmpDetailFetched;
     }
 
     // グリッド上のカード表示を更新
@@ -1272,16 +1309,25 @@ async function submitSinglePhotoRename(photoId, newFullName) {
       }
     }
 
+    // ファイル名ソート中の場合は並び順を最新化するため再取得
+    if (state.sortBy && state.sortBy.includes('file_name') && typeof fetchPhotos === 'function') {
+      await fetchPhotos();
+    }
+
     // インスペクタが開いていれば再描画
     if (state.isInspectorOpen && typeof updateInspectorView === 'function') {
       updateInspectorView();
     }
 
     // ライトボックスが開いていればファイル名表示を更新
-    if (elements.lightboxFilename && state.lightboxIndex >= 0) {
-      const lbPhoto = (state.photos || [])[state.lightboxIndex];
+    const lbFileNameEl = elements.lightboxFileName || elements.lightboxFilename;
+    if (lbFileNameEl && state.currentPhotoIndex >= 0) {
+      const lbPhoto = typeof getCurrentLightboxPhoto === 'function'
+        ? getCurrentLightboxPhoto()
+        : (state.photos || [])[state.currentPhotoIndex];
       if (lbPhoto && lbPhoto.id === photoId && data.new_name) {
-        elements.lightboxFilename.textContent = data.new_name;
+        lbFileNameEl.textContent = data.new_name;
+        if (elements.exifFileName) elements.exifFileName.textContent = data.new_name;
       }
     }
 

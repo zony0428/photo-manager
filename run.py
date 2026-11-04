@@ -60,6 +60,7 @@ def is_port_in_use(port: int, host: str = "127.0.0.1") -> bool:
 
 
 from server.window_utils import (
+    _find_photo_manager_hwnds,
     ensure_window_mode_loop,
     get_startup_chromium_args,
     get_startup_window_mode,
@@ -73,6 +74,20 @@ def _apply_startup_window_win32(mode: str = None, timeout_sec: float = 6.0) -> N
 
 def launch_app_window() -> None:
     """デスクトップアプリ風ウィンドウ（または通常ブラウザ）を設定されたウィンドウモードで開く"""
+    try:
+        hwnds = _find_photo_manager_hwnds(port=PORT)
+        if hwnds:
+            import ctypes
+            user32 = ctypes.windll.user32
+            for hwnd in hwnds:
+                if user32.IsIconic(hwnd):
+                    user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+                user32.SetForegroundWindow(hwnd)
+            print(f"[INFO] 既存のアプリウィンドウを前面に表示しました (HWND: {hwnds[0]})")
+            return
+    except Exception as e:
+        print(f"[WARN] 既存ウィンドウの前面化確認スキップ: {e}")
+
     startup_mode = get_startup_window_mode()
 
     # Edge または Chrome の実行ファイルを探す

@@ -544,6 +544,32 @@ async function fetchTimeline() {
  * ツリー表示は folder_tree.js（/api/folder-tree）が担う。/api/folders の結果は
  * 未接続警告バナー・空状態表示・「展開」ボタン用に state.rawFoldersData へ保持する。
  */
+function syncCurrentFilterOfflineState() {
+  if (state.currentFilter && (state.currentFilter.type === 'folder' || state.currentFilter.type === 'folder_exclude')) {
+    const cf = state.currentFilter;
+    const vsn = cf.volumeSerial ? String(cf.volumeSerial).toUpperCase() : '';
+    if (vsn && Array.isArray(state.managedVolumes)) {
+      const matchedVol = state.managedVolumes.find(v => String(v.volume_serial || '').toUpperCase() === vsn);
+      if (matchedVol) {
+        cf.isOffline = !matchedVol.is_online;
+        if (matchedVol.is_online && matchedVol.drive_letter && cf.value && /^[A-Za-z]:/.test(cf.value)) {
+          const newDrivePrefix = matchedVol.drive_letter.slice(0, 2);
+          if (cf.value.slice(0, 2).toUpperCase() !== newDrivePrefix.toUpperCase()) {
+            cf.value = newDrivePrefix + cf.value.slice(2);
+          }
+        }
+      }
+    } else if (cf.value && Array.isArray(state.rawFoldersData)) {
+      const curNorm = cf.value.replace(/\\/g, '/').toLowerCase();
+      const matchedFolder = state.rawFoldersData.find(f => (f.directory_path || '').replace(/\\/g, '/').toLowerCase() === curNorm);
+      if (matchedFolder) {
+        cf.isOffline = Boolean(matchedFolder.is_offline);
+      }
+    }
+    updateFolderWarningBanner();
+  }
+}
+
 async function fetchFolders() {
   const loadFolderSummary = async () => {
     try {
@@ -3757,6 +3783,8 @@ async function updatePhotoRating(photoId, newRating) {
 
     if (!response.ok) throw new Error('評価の更新に失敗しました');
 
+    state.calendarDaysMap = null;
+
     if (state.currentPhotoIndex < 0 && state.selectedPhotoIds && state.selectedPhotoIds.has(photoId)) {
       state.activeInspectorPhotoId = photoId;
     }
@@ -4863,6 +4891,9 @@ function setupEventListeners() {
         if (!res.ok) {
           const data = await res.json();
           throw new Error(data.detail || 'フォルダを開けませんでした');
+        }
+        if (typeof window.markExternalFolderOpened === 'function') {
+          window.markExternalFolderOpened(node.fullPath);
         }
         showToast('フォルダを開きました', 'info', 2000);
       } catch (err) {

@@ -27,14 +27,27 @@ function updateInspectorView() {
     showBatchInspector();
   } else if (count === 1) {
     const selectedId = Array.from(state.selectedPhotoIds)[0];
-    const photo = state.photos.find(p => p.id === selectedId);
+    let photo = null;
+    if (state.activeInspectorPhotoId && state.activeInspectorPhotoId !== selectedId) {
+      const parentPhoto = state.photos.find(p => p.id === selectedId);
+      if (parentPhoto && Array.isArray(parentPhoto.stack_photos)) {
+        photo = parentPhoto.stack_photos.find(sp => sp.id === state.activeInspectorPhotoId) || null;
+      }
+    }
+    if (!photo) {
+      photo = typeof findPhotoByIdAnywhere === 'function'
+        ? findPhotoByIdAnywhere(selectedId)
+        : state.photos.find(p => p.id === selectedId);
+    }
     if (photo) {
       state.activeInspectorPhotoId = photo.id;
       showSingleInspector(photo);
     }
   } else {
-    // 選択なし時: 直前のアクティブ写真、または最初の写真を表示
-    let photo = state.photos.find(p => p.id === state.activeInspectorPhotoId);
+    // 選択なし時: 直前のアクティブ写真（スタック内サブ写真含む）、または最初の写真を表示
+    let photo = typeof findPhotoByIdAnywhere === 'function'
+      ? findPhotoByIdAnywhere(state.activeInspectorPhotoId)
+      : state.photos.find(p => p.id === state.activeInspectorPhotoId);
     if (!photo && state.photos.length > 0) {
       photo = state.photos[0];
       state.activeInspectorPhotoId = photo.id;
@@ -290,6 +303,9 @@ async function openPhotoFolder(photoId) {
   try {
     const res = await fetch(`/api/photo/${photoId}/open-folder`, { method: 'POST' });
     if (res.ok) {
+      if (typeof window.markExternalPhotoOpened === 'function') {
+        window.markExternalPhotoOpened(photoId);
+      }
       showToast('フォルダを開きました', 'info');
     } else {
       const err = await res.json();
@@ -308,6 +324,9 @@ async function openPhotoFile(photoId) {
   try {
     const res = await fetch(`/api/photo/${photoId}/open-file`, { method: 'POST' });
     if (res.ok) {
+      if (typeof window.markExternalPhotoOpened === 'function') {
+        window.markExternalPhotoOpened(photoId);
+      }
       showToast('規定のアプリで写真を開きました', 'info');
     } else {
       const err = await res.json();
@@ -770,6 +789,7 @@ function showSingleInspector(photo) {
       stackPhotos.forEach((sp, idx) => {
         const item = document.createElement('div');
         item.className = 'inspector-bracket-item';
+        item.dataset.photoId = String(sp.id);
         if (sp.id === photo.id) item.classList.add('active');
         if (Number(sp.rating ?? 0) === -1) item.classList.add('is-discarded');
 
@@ -1088,7 +1108,11 @@ function showSingleInspector(photo) {
         elements.inspectorOpenRawBtn.onclick = async () => {
           try {
             const res = await fetch(`/api/photo/${photo.id}/open-raw`, { method: 'POST' });
-            if (!res.ok) {
+            if (res.ok) {
+              if (typeof window.markExternalPhotoOpened === 'function') {
+                window.markExternalPhotoOpened(photo.id);
+              }
+            } else {
               const err = await res.json();
               if (typeof showToast === 'function') {
                 showToast(err.detail || 'RAWファイルを開けませんでした', 'error');
@@ -1362,15 +1386,17 @@ async function showGpsCandidateModal(photo) {
           photo.state = c.state;
           photo.city = c.city;
 
-          const statePhoto = state.photos.find(p => p.id === photo.id);
-          if (statePhoto) {
-            statePhoto.latitude = c.latitude;
-            statePhoto.longitude = c.longitude;
-            statePhoto.gps_source = 'copied';
-            statePhoto.country = c.country;
-            statePhoto.state = c.state;
-            statePhoto.city = c.city;
-          }
+          const instances = typeof findAllPhotoInstancesById === 'function'
+            ? findAllPhotoInstancesById(photo.id)
+            : state.photos.filter(p => p.id === photo.id);
+          instances.forEach(inst => {
+            inst.latitude = c.latitude;
+            inst.longitude = c.longitude;
+            inst.gps_source = 'copied';
+            inst.country = c.country;
+            inst.state = c.state;
+            inst.city = c.city;
+          });
           state.activeInspectorPhotoId = photo.id;
           if (state.currentPhotoIndex < 0 && state.selectedPhotoIds.size > 0 && typeof clearSelection === 'function') {
             clearSelection();
@@ -1486,6 +1512,13 @@ async function showGpsCandidateModal(photo) {
       }
     }
 
+    const mapContainer = document.createElement('div');
+    mapContainer.className = 'gps-candidate-map';
+    mapContainer.style.cssText = 'height: 180px; width: 100%; border-radius: 6px; margin-top: 10px; overflow: hidden;';
+    if (candidates.length > 0) {
+      bodyContainer.appendChild(mapContainer);
+    }
+
     modal.appendChild(bodyContainer);
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
@@ -1497,7 +1530,7 @@ async function showGpsCandidateModal(photo) {
     });
 
     // 候補ミニマップに全候補をプロット
-    if (typeof L !== 'undefined' && candidates.length > 0) {
+    if (typeof L !== 'undefined' && candidates.length > 0 && mapContainer.isConnected) {
       setTimeout(() => {
         const candidateMap = L.map(mapContainer, {
           zoomControl: true,
@@ -1518,7 +1551,7 @@ async function showGpsCandidateModal(photo) {
         }
         candidateMap.invalidateSize();
       }, 150);
-    } else {
+    } else if (mapContainer) {
       mapContainer.style.display = 'none';
     }
   } catch (err) {
@@ -1839,7 +1872,9 @@ function renderInspectorQuickTree(container, onSelect) {
         if (state.selectedPhotoIds && state.selectedPhotoIds.size > 1 && typeof showBatchInspector === 'function') {
           showBatchInspector();
         } else if (state.activeInspectorPhotoId && typeof showSingleInspector === 'function') {
-          const p = state.photos.find(x => x.id === state.activeInspectorPhotoId);
+          const p = typeof findPhotoByIdAnywhere === 'function'
+            ? findPhotoByIdAnywhere(state.activeInspectorPhotoId)
+            : state.photos.find(x => x.id === state.activeInspectorPhotoId);
           if (p) showSingleInspector(p);
         }
         if (typeof showToast === 'function') {
@@ -1880,9 +1915,11 @@ function renderInspectorQuickTree(container, onSelect) {
 
   const treeRoot = buildTagTree(manualTags, { sortByCount: Boolean(state.inspectorTagSortByCount) });
 
-  // 単一表示時の対象写真に既に付いているタグ集合
+  // 単一表示時の対象写真に既に付いているタグ集合（スタック展開メンバーも含めて検索）
   const activeSinglePhoto = (state.selectedPhotoIds.size <= 1 && state.activeInspectorPhotoId)
-    ? state.photos.find(p => p.id === state.activeInspectorPhotoId)
+    ? (typeof findPhotoByIdAnywhere === 'function'
+        ? findPhotoByIdAnywhere(state.activeInspectorPhotoId)
+        : state.photos.find(p => p.id === state.activeInspectorPhotoId))
     : null;
   const assignedTagsSet = new Set((activeSinglePhoto && Array.isArray(activeSinglePhoto.tags)) ? activeSinglePhoto.tags : []);
 
@@ -2154,28 +2191,24 @@ async function addTagToPhoto(photoId, tag, photoObj = null) {
   const parts = tagName.split('/').map(p => p.trim()).filter(Boolean);
   const allExpandedTags = parts.map((_, idx) => parts.slice(0, idx + 1).join('/'));
 
-  const photo = photoObj || state.photos.find(p => p.id === photoId);
-  if (photo) {
-    if (!photo.tags) photo.tags = [];
-    if (!photo.tag_details) photo.tag_details = [];
+  const photo = photoObj || (typeof findPhotoByIdAnywhere === 'function' ? findPhotoByIdAnywhere(photoId) : state.photos.find(p => p.id === photoId));
+  const instances = typeof findAllPhotoInstancesById === 'function'
+    ? findAllPhotoInstancesById(photoId)
+    : (photo ? [photo] : []);
+  if (photo && !instances.includes(photo)) instances.push(photo);
+
+  instances.forEach(inst => {
+    if (!inst.tags) inst.tags = [];
+    if (!inst.tag_details) inst.tag_details = [];
     allExpandedTags.forEach(tPath => {
-      if (!photo.tags.includes(tPath)) {
-        photo.tags.push(tPath);
+      if (!inst.tags.includes(tPath)) {
+        inst.tags.push(tPath);
       }
-      if (!photo.tag_details.some(d => d.tag === tPath)) {
-        photo.tag_details.push({ tag: tPath, source: 'manual', confidence: 1.0 });
+      if (!inst.tag_details.some(d => d.tag === tPath)) {
+        inst.tag_details.push({ tag: tPath, source: 'manual', confidence: 1.0 });
       }
     });
-    // スタックメンバーのキャッシュも同期
-    if (photo.stack_photos && Array.isArray(photo.stack_photos)) {
-      photo.stack_photos.forEach(sp => {
-        if (!sp.tags) sp.tags = [];
-        allExpandedTags.forEach(tPath => {
-          if (!sp.tags.includes(tPath)) sp.tags.push(tPath);
-        });
-      });
-    }
-  }
+  });
 
   // 新規タグ・親階層タグが availableTags に未登録なら即時追加してツリーにも反映
   if (Array.isArray(state.availableTags)) {
@@ -2199,8 +2232,8 @@ async function addTagToPhoto(photoId, tag, photoObj = null) {
     }
   }
 
-  // ライトボックス側も同期
-  const curLight = state.photos[state.currentPhotoIndex];
+  // ライトボックス側も同期（スタック展開メンバーも考慮）
+  const curLight = typeof getCurrentLightboxPhoto === 'function' ? getCurrentLightboxPhoto() : state.photos[state.currentPhotoIndex];
   if (curLight && curLight.id === photoId) {
     renderLightboxTags(curLight);
   }
@@ -2314,24 +2347,21 @@ async function removeTagFromPhoto(photoId, tag, chipEl = null, photoObj = null) 
     chipEl.remove();
   }
 
-  // 2. メモリ上キャッシュの即時同期
-  const photo = photoObj || state.photos.find(p => p.id === photoId);
-  if (photo) {
-    if (photo.tags) {
-      photo.tags = photo.tags.filter(t => t !== tag && !t.startsWith(tag + '/'));
+  // 2. メモリ上キャッシュの即時同期（該当IDのインスタンスのみ正確に更新）
+  const photo = photoObj || (typeof findPhotoByIdAnywhere === 'function' ? findPhotoByIdAnywhere(photoId) : state.photos.find(p => p.id === photoId));
+  const instances = typeof findAllPhotoInstancesById === 'function'
+    ? findAllPhotoInstancesById(photoId)
+    : (photo ? [photo] : []);
+  if (photo && !instances.includes(photo)) instances.push(photo);
+
+  instances.forEach(inst => {
+    if (inst.tags) {
+      inst.tags = inst.tags.filter(t => t !== tag && !t.startsWith(tag + '/'));
     }
-    if (photo.tag_details) {
-      photo.tag_details = photo.tag_details.filter(d => d.tag !== tag && !d.tag.startsWith(tag + '/'));
+    if (inst.tag_details) {
+      inst.tag_details = inst.tag_details.filter(d => d.tag !== tag && !d.tag.startsWith(tag + '/'));
     }
-    // スタックメンバーのキャッシュも同期
-    if (photo.stack_photos && Array.isArray(photo.stack_photos)) {
-      photo.stack_photos.forEach(sp => {
-        if (sp.tags) {
-          sp.tags = sp.tags.filter(t => t !== tag && !t.startsWith(tag + '/'));
-        }
-      });
-    }
-  }
+  });
 
   // インスペクタのタグチップ・カラーパレット・クイックツリー（✓付与済バッジ）を即時再描画
   if (photo && state.activeInspectorPhotoId === photoId) {
@@ -2346,8 +2376,8 @@ async function removeTagFromPhoto(photoId, tag, chipEl = null, photoObj = null) 
     }
   }
 
-  // ライトボックスが開いている場合はライトボックス側も同期
-  const curLight = state.photos[state.currentPhotoIndex];
+  // ライトボックスが開いている場合はライトボックス側も同期（スタック展開メンバーも考慮）
+  const curLight = typeof getCurrentLightboxPhoto === 'function' ? getCurrentLightboxPhoto() : state.photos[state.currentPhotoIndex];
   if (curLight && curLight.id === photoId) {
     renderLightboxTags(curLight);
   }
@@ -2437,7 +2467,9 @@ function initInspectorEvents() {
     quickAdjustBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       const pid = state.activeInspectorPhotoId;
-      const photo = pid ? state.photos.find(p => p.id === pid) : null;
+      const photo = pid
+        ? (typeof findPhotoByIdAnywhere === 'function' ? findPhotoByIdAnywhere(pid) : state.photos.find(p => p.id === pid))
+        : null;
       if (photo && typeof window.openImageAdjustModal === 'function') {
         window.openImageAdjustModal(photo);
       }
@@ -2653,7 +2685,9 @@ function initInspectorEvents() {
     clearGpsBtn.addEventListener('click', async () => {
       const pid = state.activeInspectorPhotoId;
       if (!pid) return;
-      const photo = state.photos.find(p => p.id === pid);
+      const photo = typeof findPhotoByIdAnywhere === 'function'
+        ? findPhotoByIdAnywhere(pid)
+        : state.photos.find(p => p.id === pid);
       if (!photo) return;
 
       const confirmed = typeof showConfirmModal === 'function'
@@ -2680,13 +2714,19 @@ function initInspectorEvents() {
         const res = await fetch(`/api/photo/${pid}/gps`, { method: 'DELETE' });
         if (!res.ok) throw new Error(`HTTP error ${res.status}`);
 
-        // 状態更新
-        photo.latitude = null;
-        photo.longitude = null;
-        photo.gps_source = null;
-        photo.country = null;
-        photo.state = null;
-        photo.city = null;
+        // 状態更新（全インスタンス同期）
+        const instances = typeof findAllPhotoInstancesById === 'function'
+          ? findAllPhotoInstancesById(photo.id)
+          : [photo];
+        if (!instances.includes(photo)) instances.push(photo);
+        instances.forEach(inst => {
+          inst.latitude = null;
+          inst.longitude = null;
+          inst.gps_source = null;
+          inst.country = null;
+          inst.state = null;
+          inst.city = null;
+        });
 
         state.activeInspectorPhotoId = photo.id;
         if (state.currentPhotoIndex < 0 && state.selectedPhotoIds.size > 0 && typeof clearSelection === 'function') {

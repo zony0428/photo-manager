@@ -2449,6 +2449,59 @@ class TestCoreRegression(unittest.TestCase):
                     conn_counts["total_count"],
                 )
 
+                # メディア抜き挿し自動検知 (media_watcher.check_media_changes) で added / removed / changed が正確に検出され、
+                # 登録済みボリュームのドライブレターが自動同期されることを検証
+                from server import media_watcher
+                from server.database import get_volume_by_serial
+
+                drive_state_1 = {
+                    vsn_b: {"serial": vsn_b, "drive": "F:", "label": "SD_CARD_B", "filesystem": "exFAT", "drive_type": 2}
+                }
+                drive_state_2 = {
+                    vsn_a: {"serial": vsn_a, "drive": "E:", "label": "SD_CARD_A", "filesystem": "exFAT", "drive_type": 2},
+                    vsn_b: {"serial": vsn_b, "drive": "G:", "label": "SD_CARD_B", "filesystem": "exFAT", "drive_type": 2},
+                }
+                with _mock.patch.object(media_watcher, "_scan_connected_local_drives", side_effect=[drive_state_1, drive_state_2, drive_state_1]):
+                    media_watcher._initialized = False
+                    init_res = media_watcher.check_media_changes(source="test_init")
+                    self.assertFalse(init_res["changed"])
+
+                    # vsn_a が挿され、vsn_b のドライブ文字が F: -> G: に変化
+                    chg_res = media_watcher.check_media_changes(source="wm_devicechange")
+                    self.assertTrue(chg_res["changed"])
+                    evt = chg_res["event"]
+                    self.assertEqual([x["serial"] for x in evt["added"]], [vsn_a])
+                    self.assertEqual([x["serial"] for x in evt["changed"]], [vsn_b])
+                    vol_b = get_volume_by_serial(vsn_b)
+                    self.assertIsNotNone(vol_b)
+                    self.assertEqual(vol_b["drive_letter"], "G:")
+
+                    # vsn_a が取り外された場合
+                    rem_res = media_watcher.check_media_changes(source="wm_devicechange")
+                    self.assertTrue(rem_res["changed"])
+                    self.assertEqual([x["serial"] for x in rem_res["event"]["removed"]], [vsn_a])
+
+                # 外部アプリ編集検知 API (/api/photos/check-external-updates) で実ファイルの更新が検知され DB mtime/size とサムネイルが更新されること
+                import asyncio
+                import json
+                from PIL import Image
+                import time
+                from server.app import api_check_external_updates
+
+                class _DummyLocalReq:
+                    client = type("C", (), {"host": "127.0.0.1"})()
+                    headers = {"host": "127.0.0.1:8088"}
+                    async def body(self):
+                        return json.dumps({"photo_ids": [id_001]}).encode("utf-8")
+
+                img_mod = Image.new("RGB", (80, 60), color=(20, 220, 40))
+                img_mod.save(f_b1, "JPEG", quality=95)
+                os.utime(f_b1, (time.time() + 10.0, time.time() + 10.0))
+                with _mock.patch.object(scanner, "_get_connected_drive_serial_map", return_value=({vsn_b: drive_b}, {drive_b.upper(): vsn_b})):
+                    chk_json = asyncio.run(api_check_external_updates(_DummyLocalReq()))
+                self.assertTrue(chk_json["ok"])
+                self.assertIn(id_001, chk_json["updated_photo_ids"])
+
 
 if __name__ == "__main__":
     unittest.main()

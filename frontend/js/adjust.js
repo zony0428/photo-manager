@@ -415,7 +415,12 @@
   /**
    * モーダルを開いて編集を開始する
    */
-  function openImageAdjustModal(photo) {
+  function openImageAdjustModal(photoOrId) {
+    const photo = (photoOrId && typeof photoOrId === 'object')
+      ? photoOrId
+      : (typeof findPhotoByIdAnywhere === 'function'
+          ? findPhotoByIdAnywhere(photoOrId)
+          : ((typeof state !== 'undefined' && state.photos) ? state.photos.find(p => p.id === Number(photoOrId)) : null));
     if (!photo) return;
     if (!modalEl) initAdjustModule();
 
@@ -827,18 +832,25 @@
 
       if (!res.ok) throw new Error('調整の保存に失敗しました');
 
-      // state.photos 内の該当データを更新
-      photo.rotation = payload.rotation;
-      photo.fine_angle = payload.fine_angle;
-      photo.crop_x = payload.crop_x;
-      photo.crop_y = payload.crop_y;
-      photo.crop_w = payload.crop_w;
-      photo.crop_h = payload.crop_h;
-      photo.crop_aspect = payload.crop_aspect;
-      photo.brightness = payload.brightness;
-      photo.contrast = payload.contrast;
-      photo.saturation = payload.saturation;
-      photo._thumbBust = Date.now();
+      // state.photos およびスタック展開内の該当データをすべて更新
+      const nowBust = Date.now();
+      const instances = typeof findAllPhotoInstancesById === 'function'
+        ? findAllPhotoInstancesById(photo.id)
+        : [photo];
+      if (!instances.includes(photo)) instances.push(photo);
+      instances.forEach(inst => {
+        inst.rotation = payload.rotation;
+        inst.fine_angle = payload.fine_angle;
+        inst.crop_x = payload.crop_x;
+        inst.crop_y = payload.crop_y;
+        inst.crop_w = payload.crop_w;
+        inst.crop_h = payload.crop_h;
+        inst.crop_aspect = payload.crop_aspect;
+        inst.brightness = payload.brightness;
+        inst.contrast = payload.contrast;
+        inst.saturation = payload.saturation;
+        inst._thumbBust = nowBust;
+      });
 
       // サムネイルおよびライトボックス表示に即時反映
       applyTransformToPhotoViews(photo);
@@ -875,17 +887,24 @@
 
       if (!res.ok) throw new Error('リセットに失敗しました');
 
-      photo.rotation = 0;
-      photo.fine_angle = 0.0;
-      photo.crop_x = null;
-      photo.crop_y = null;
-      photo.crop_w = null;
-      photo.crop_h = null;
-      photo.crop_aspect = null;
-      photo.brightness = 0;
-      photo.contrast = 0;
-      photo.saturation = 0;
-      photo._thumbBust = Date.now();
+      const nowBust = Date.now();
+      const instances = typeof findAllPhotoInstancesById === 'function'
+        ? findAllPhotoInstancesById(photo.id)
+        : [photo];
+      if (!instances.includes(photo)) instances.push(photo);
+      instances.forEach(inst => {
+        inst.rotation = 0;
+        inst.fine_angle = 0.0;
+        inst.crop_x = null;
+        inst.crop_y = null;
+        inst.crop_w = null;
+        inst.crop_h = null;
+        inst.crop_aspect = null;
+        inst.brightness = 0;
+        inst.contrast = 0;
+        inst.saturation = 0;
+        inst._thumbBust = nowBust;
+      });
 
       applyTransformToPhotoViews(photo);
 
@@ -913,10 +932,13 @@
   async function rotatePhotoQuick(photoId, delta = 90) {
     if (!photoId) return;
 
-    // 対象写真オブジェクトを取得
-    const photo = (typeof state !== 'undefined' && state.photos)
-      ? state.photos.find(p => p.id === photoId)
-      : null;
+    // 対象写真オブジェクトを取得（スタック展開メンバーも含めて検索）
+    const photo = typeof findPhotoByIdAnywhere === 'function'
+      ? findPhotoByIdAnywhere(photoId)
+      : ((typeof state !== 'undefined' && state.photos) ? state.photos.find(p => p.id === photoId) : null);
+    const instances = typeof findAllPhotoInstancesById === 'function'
+      ? findAllPhotoInstancesById(photoId)
+      : (photo ? [photo] : []);
 
     const currentRot = photo ? (photo.rotation || 0) : 0;
     const newRot = ((currentRot + delta) % 360 + 360) % 360;
@@ -934,7 +956,9 @@
 
     // ライトボックス表示中であれば即時回転
     if (photo) {
-      photo.rotation = newRot;
+      instances.forEach(inst => {
+        inst.rotation = newRot;
+      });
       if (typeof getCurrentLightboxPhoto === 'function') {
         const cur = getCurrentLightboxPhoto();
         if (cur && cur.id === photo.id) {
@@ -960,9 +984,12 @@
       if (!res.ok) throw new Error('回転に失敗しました');
       const data = await res.json();
 
+      const nowBust = Date.now();
+      instances.forEach(inst => {
+        inst.rotation = data.rotation;
+        inst._thumbBust = nowBust;
+      });
       if (photo) {
-        photo.rotation = data.rotation;
-        photo._thumbBust = Date.now();
         applyTransformToPhotoViews(photo);
       }
 
@@ -977,6 +1004,9 @@
       }
     } catch (e) {
       console.error(e);
+      instances.forEach(inst => {
+        inst.rotation = currentRot;
+      });
       if (thumbImg) {
         thumbImg.style.transition = '';
         thumbImg.style.transform = '';
@@ -1016,15 +1046,21 @@
       const data = await res.json();
 
       // 各写真の rotation を更新し、再生成されたサムネイルを反映
-      if (typeof state !== 'undefined' && state.photos) {
-        state.photos.forEach(p => {
-          if (photoIds.includes(p.id)) {
-            p.rotation = (((p.rotation || 0) + delta) % 360 + 360) % 360;
-            p._thumbBust = Date.now();
-            applyTransformToPhotoViews(p);
-          }
+      const nowBust = Date.now();
+      photoIds.forEach(pid => {
+        const instances = typeof findAllPhotoInstancesById === 'function'
+          ? findAllPhotoInstancesById(pid)
+          : ((typeof state !== 'undefined' && state.photos) ? state.photos.filter(p => p.id === pid) : []);
+        const baseRot = instances[0] ? (instances[0].rotation || 0) : 0;
+        const nextRot = (((baseRot + delta) % 360) + 360) % 360;
+        instances.forEach(inst => {
+          inst.rotation = nextRot;
+          inst._thumbBust = nowBust;
         });
-      }
+        if (instances[0]) {
+          applyTransformToPhotoViews(instances[0]);
+        }
+      });
 
       if (typeof state !== 'undefined' && state.currentPhotoIndex < 0 && state.selectedPhotoIds && state.selectedPhotoIds.size > 0 && typeof clearSelection === 'function') {
         clearSelection();
@@ -1061,9 +1097,12 @@
   async function resetPhotoAdjustmentsQuick(photoId) {
     if (!photoId) return;
 
-    const photo = (typeof state !== 'undefined' && state.photos)
-      ? state.photos.find(p => p.id === photoId)
-      : null;
+    const photo = typeof findPhotoByIdAnywhere === 'function'
+      ? findPhotoByIdAnywhere(photoId)
+      : ((typeof state !== 'undefined' && state.photos) ? state.photos.find(p => p.id === photoId) : null);
+    const instances = typeof findAllPhotoInstancesById === 'function'
+      ? findAllPhotoInstancesById(photoId)
+      : (photo ? [photo] : []);
 
     try {
       const res = await fetch(`/api/photo/${photoId}/adjust/reset`, {
@@ -1071,18 +1110,21 @@
       });
       if (!res.ok) throw new Error('リセットに失敗しました');
 
+      const nowBust = Date.now();
+      instances.forEach(inst => {
+        inst.rotation = 0;
+        inst.fine_angle = 0.0;
+        inst.crop_x = null;
+        inst.crop_y = null;
+        inst.crop_w = null;
+        inst.crop_h = null;
+        inst.crop_aspect = null;
+        inst.brightness = 0;
+        inst.contrast = 0;
+        inst.saturation = 0;
+        inst._thumbBust = nowBust;
+      });
       if (photo) {
-        photo.rotation = 0;
-        photo.fine_angle = 0.0;
-        photo.crop_x = null;
-        photo.crop_y = null;
-        photo.crop_w = null;
-        photo.crop_h = null;
-        photo.crop_aspect = null;
-        photo.brightness = 0;
-        photo.contrast = 0;
-        photo.saturation = 0;
-        photo._thumbBust = Date.now();
         applyTransformToPhotoViews(photo);
       }
 
@@ -1119,24 +1161,28 @@
       if (!res.ok) throw new Error('一括リセットに失敗しました');
       const data = await res.json();
 
-      if (typeof state !== 'undefined' && state.photos) {
-        state.photos.forEach(p => {
-          if (photoIds.includes(p.id)) {
-            p.rotation = 0;
-            p.fine_angle = 0.0;
-            p.crop_x = null;
-            p.crop_y = null;
-            p.crop_w = null;
-            p.crop_h = null;
-            p.crop_aspect = null;
-            p.brightness = 0;
-            p.contrast = 0;
-            p.saturation = 0;
-            p._thumbBust = Date.now();
-            applyTransformToPhotoViews(p);
-          }
+      const nowBust = Date.now();
+      photoIds.forEach(pid => {
+        const instances = typeof findAllPhotoInstancesById === 'function'
+          ? findAllPhotoInstancesById(pid)
+          : ((typeof state !== 'undefined' && state.photos) ? state.photos.filter(p => p.id === pid) : []);
+        instances.forEach(inst => {
+          inst.rotation = 0;
+          inst.fine_angle = 0.0;
+          inst.crop_x = null;
+          inst.crop_y = null;
+          inst.crop_w = null;
+          inst.crop_h = null;
+          inst.crop_aspect = null;
+          inst.brightness = 0;
+          inst.contrast = 0;
+          inst.saturation = 0;
+          inst._thumbBust = nowBust;
         });
-      }
+        if (instances[0]) {
+          applyTransformToPhotoViews(instances[0]);
+        }
+      });
 
       if (typeof state !== 'undefined' && state.currentPhotoIndex < 0 && state.selectedPhotoIds && state.selectedPhotoIds.size > 0 && typeof clearSelection === 'function') {
         clearSelection();
@@ -1166,6 +1212,10 @@
     photo.thumb_width = null;
     photo.thumb_height = null;
 
+    const thumbUrl = typeof getThumbnailUrl === 'function'
+      ? `${getThumbnailUrl(photo)}&t=${Date.now()}`
+      : `/api/photo/${photo.id}/thumbnail?t=${Date.now()}`;
+
     // 1. 中央グリッド内の写真カードの <img>
     const cardEl = document.querySelector(`.photo-card[data-photo-id="${photo.id}"]`);
     if (cardEl) {
@@ -1180,10 +1230,6 @@
 
       const thumbImg = cardEl.querySelector('.card-thumb-img') || cardEl.querySelector('img');
       if (thumbImg) {
-        const newSrc = typeof getThumbnailUrl === 'function'
-          ? `${getThumbnailUrl(photo)}&t=${Date.now()}`
-          : `/api/photo/${photo.id}/thumbnail?t=${Date.now()}`;
-
         // 新しいサムネイルをプリロードして、ロード完了時に差し替え（ちらつき・二重回転ゼロ）
         const loader = new Image();
         loader.onload = () => {
@@ -1193,28 +1239,36 @@
           }
           thumbImg.style.transition = '';
           thumbImg.style.transform = '';
-          thumbImg.src = newSrc;
+          thumbImg.src = thumbUrl;
           if (typeof onThumbImageLoad === 'function') {
             onThumbImageLoad(thumbImg);
           }
         };
-        loader.src = newSrc;
+        loader.src = thumbUrl;
       }
     }
 
-    // 2. 右インスペクタのプレビュー
+    // 2. 右インスペクタのプレビューおよびヒストグラム更新
     const inspectorThumb = document.getElementById('inspectorThumb');
-    if (inspectorThumb && typeof state !== 'undefined' && (state.selectedPhotoIds.has(photo.id) || state.activeInspectorPhotoId === photo.id)) {
-      const newSrc = typeof getThumbnailUrl === 'function'
-        ? `${getThumbnailUrl(photo)}&t=${Date.now()}`
-        : `/api/photo/${photo.id}/thumbnail?t=${Date.now()}`;
+    const isInspectorViewingThis = typeof state !== 'undefined' && (state.activeInspectorPhotoId === photo.id || (state.selectedPhotoIds && state.selectedPhotoIds.has(photo.id)));
+    if (inspectorThumb && isInspectorViewingThis) {
       const loader = new Image();
       loader.onload = () => {
         inspectorThumb.style.transform = '';
-        inspectorThumb.src = newSrc;
+        inspectorThumb.src = thumbUrl;
       };
-      loader.src = newSrc;
+      loader.src = thumbUrl;
     }
+    if (typeof window.refreshInspectorHistogram === 'function' && isInspectorViewingThis) {
+      window.refreshInspectorHistogram(photo.id);
+    }
+
+    // 2-B. インスペクタおよびライトボックスのスタック・ブラケット一覧サムネイル更新
+    document.querySelectorAll(
+      `.inspector-bracket-item[data-photo-id="${photo.id}"] img, .bracket-item[data-photo-id="${photo.id}"] img, .bracket-pill[data-photo-id="${photo.id}"] img`
+    ).forEach(img => {
+      img.src = thumbUrl;
+    });
 
     // 3. ライトボックス表示中であればライトボックス画像・フィルムストリップを更新
     if (typeof getCurrentLightboxPhoto === 'function') {
@@ -1377,8 +1431,10 @@
     let photo = null;
     if (photoOrId && typeof photoOrId === 'object') {
       photo = photoOrId;
-    } else if (photoOrId && typeof state !== 'undefined' && state.photos) {
-      photo = state.photos.find(p => p.id === Number(photoOrId));
+    } else if (photoOrId) {
+      photo = typeof findPhotoByIdAnywhere === 'function'
+        ? findPhotoByIdAnywhere(photoOrId)
+        : ((typeof state !== 'undefined' && state.photos) ? state.photos.find(p => p.id === Number(photoOrId)) : null);
     }
     if (!photo) return;
 
@@ -1419,17 +1475,21 @@
       if (!res.ok) throw new Error('トーン調整の一括ペーストに失敗しました');
       const data = await res.json();
 
-      if (typeof state !== 'undefined' && state.photos) {
-        state.photos.forEach(p => {
-          if (photoIds.includes(p.id)) {
-            p.brightness = copied.brightness;
-            p.contrast = copied.contrast;
-            p.saturation = copied.saturation;
-            p._thumbBust = Date.now();
-            applyTransformToPhotoViews(p);
-          }
+      const nowBust = Date.now();
+      photoIds.forEach(pid => {
+        const instances = typeof findAllPhotoInstancesById === 'function'
+          ? findAllPhotoInstancesById(pid)
+          : ((typeof state !== 'undefined' && state.photos) ? state.photos.filter(p => p.id === pid) : []);
+        instances.forEach(inst => {
+          inst.brightness = copied.brightness;
+          inst.contrast = copied.contrast;
+          inst.saturation = copied.saturation;
+          inst._thumbBust = nowBust;
         });
-      }
+        if (instances[0]) {
+          applyTransformToPhotoViews(instances[0]);
+        }
+      });
 
       if (typeof updateInspectorView === 'function' && typeof state !== 'undefined' && state.isInspectorOpen) {
         updateInspectorView();
@@ -1453,8 +1513,10 @@
     let photo = null;
     if (photoOrId && typeof photoOrId === 'object') {
       photo = photoOrId;
-    } else if (photoOrId && typeof state !== 'undefined' && state.photos) {
-      photo = state.photos.find(p => p.id === Number(photoOrId));
+    } else if (photoOrId) {
+      photo = typeof findPhotoByIdAnywhere === 'function'
+        ? findPhotoByIdAnywhere(photoOrId)
+        : ((typeof state !== 'undefined' && state.photos) ? state.photos.find(p => p.id === Number(photoOrId)) : null);
     }
     if (!photo) return;
 

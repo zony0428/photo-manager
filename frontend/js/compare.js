@@ -794,8 +794,12 @@
     const newRating = (photo.rating === ratingVal) ? 0 : ratingVal;
     photo.rating = newRating;
 
-    // state.photos 内の該当オブジェクトおよびスタック内オブジェクトも同期
-    if (typeof state !== 'undefined' && Array.isArray(state.photos)) {
+    // state.photos 内の該当オブジェクトおよびスタック内・ライトボックス内オブジェクトも同期
+    if (typeof findAllPhotoInstancesById === 'function') {
+      findAllPhotoInstancesById(photo.id).forEach(inst => {
+        inst.rating = newRating;
+      });
+    } else if (typeof state !== 'undefined' && Array.isArray(state.photos)) {
       const mainPhoto = state.photos.find(p => p.id === photo.id);
       if (mainPhoto) mainPhoto.rating = newRating;
       state.photos.forEach(p => {
@@ -804,6 +808,18 @@
           if (sm) sm.rating = newRating;
         }
       });
+    }
+    if (typeof state !== 'undefined') {
+      state.calendarDaysMap = null;
+    }
+    if (typeof getCurrentLightboxPhoto === 'function') {
+      const curLb = getCurrentLightboxPhoto();
+      if (curLb && curLb.id === photo.id && typeof updateLightboxRating === 'function') {
+        updateLightboxRating(newRating);
+      }
+    }
+    if (typeof window.syncLightboxBracketPillsRatingUI === 'function') {
+      window.syncLightboxBracketPillsRatingUI();
     }
     if (typeof window.syncStackCoverAfterRatingChange === 'function') {
       const syncRes = window.syncStackCoverAfterRatingChange(photo.id);

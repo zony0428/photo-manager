@@ -797,6 +797,7 @@ async function batchRateSelection(rating) {
     if (typeof showToast === 'function') {
       showToast(`${photoIds.length}枚の評価を「${rateLabels[String(rating)] || rating}」に設定しました`, 'success', 2500);
     }
+    state.calendarDaysMap = null;
     clearSelection();
     await fetchPhotos();
   } catch (err) {
@@ -1714,10 +1715,12 @@ async function submitDateShift(resetMode = false) {
       }
     }
 
-    // タイムラインツリーの再取得・更新
-    if (typeof fetchTimeline === 'function') {
-      fetchTimeline();
-    }
+    // カレンダーキャッシュを破棄し、一覧グリッド（日時ソート順・撮影月フィルタ）およびタイムラインを再取得
+    state.calendarDaysMap = null;
+    await Promise.all([
+      typeof fetchPhotos === 'function' ? fetchPhotos() : Promise.resolve(),
+      typeof fetchTimeline === 'function' ? fetchTimeline() : Promise.resolve(),
+    ]);
 
     const updatedCount = data.updated_count != null ? data.updated_count : _dateShiftTargetIds.length;
     if (typeof showToast === 'function') {
