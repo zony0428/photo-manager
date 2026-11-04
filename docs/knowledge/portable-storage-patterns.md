@@ -76,8 +76,8 @@ volume_info = get_volume_info(path)
    - `_sync_photo_links_state()` や `unlink_missing_photos_in_folder()` で写真の全リンクが0本になり `is_unlinked = 1` へ移行する際は、`file_path = 'unlinked://<id>/<file_name>'`・`directory_path = '__unlinked__'` とあわせて **`volume_serial = NULL`** にクリアする。
    - `get_photos()` / `get_photo_by_id()` の `LEFT JOIN volumes` でも `AND COALESCE(p.is_unlinked, 0) = 0` を条件とし、また `/api/photos` 側でも `is_unlinked` 写真に対して `is_offline = False` を明示設定することで、リンク消失写真に過去の「保存ボリューム」が残ったり「未接続の写真」へ誤混入したりするのを完全に防いでいる。
    - DB起動時マイグレーション（`schema.py`）でも `UPDATE photos SET volume_serial = NULL WHERE is_unlinked = 1 AND volume_serial IS NOT NULL` を実行し、既存のリンク消失レコードを自動修復する。
-4. **クイックアクセスにおける接続状態内訳の完全一致と個別ON/OFF**:
-   - `get_connection_counts()` により、ペア済みRAW従属コマを除いたユニーク写真全体について **`すべての写真` ＝ `接続中の写真` ＋ `未接続の写真` ＋ `リンク消失の写真`** の内訳枚数をディレクトリ単位の `GROUP BY` で高速集計し、常時バッジ表示する。
+4. **メインツールバー表示対象プルダウンとリンク消失バッジ**:
+   - メインツールバー中央の「表示対象プルダウン」から `すべての写真 / 接続中の写真 / 未接続の写真 / リンク消失の写真 / 未分類の写真 / 重複のある写真` を直接切り替えることができ、`get_connection_counts()` によりペア済みRAW従属コマを除いたユニーク写真全体について **`すべての写真` ＝ `接続中の写真` ＋ `未接続の写真` ＋ `リンク消失の写真`** の枚数が高速集計される。
    - 「すべての写真」一覧には `include_unlinked=True` によりリンク消失写真も含め、カードサムネイル右下にアンバー色のリンク切れアイコンバッジ（`.unlinked-card-badge`）を表示して一目で判別できるようにしている。
 
 ### (4) カタログ単体持ち歩き機能（オフライン閲覧）

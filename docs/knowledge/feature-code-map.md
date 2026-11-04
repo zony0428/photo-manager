@@ -16,7 +16,7 @@
 8. [スキャン & フォルダ管理 (Scanner & Folder Management)](#8-スキャン--フォルダ管理-scanner--folder-management)
 9. [RAW画像処理 & クラウド連携 (RAW Loading & Cloud Storage)](#9-raw画像処理--クラウド連携-raw-loading--cloud-storage)
 10. [AI自動タグ付け & 機械学習 (AI Auto-tagging)](#10-ai自動タグ付け--機械学習-ai-auto-tagging)
-11. [アプリ内ストレージ (`storage/`) 完結管理・XMP連携・スマートテイクアウト & 非破壊画像調整](#11-アプリ内ストレージ-storage-完結管理xmp連携スマートテイクアウト--非破壊画像調整)
+11. [専用保管庫 `Loome` (`Loome/`・`storage/`・外付け `<Drive>:\Loome`) 完結管理・XMP連携・スマートテイクアウト & 非破壊画像調整](#11-専用保管庫-loome-loomestorage外付け-driveloome-完結管理xmp連携スマートテイクアウト--非破壊画像調整)
 12. [設定 ＆ データベース管理・ライフサイクル・配布ビルド (Settings, Database & Build)](#12-設定--データベース管理ライフサイクル配布ビルド-settings-database--build)
 13. [Android / スマホ専用UI & ハイブリッドDB連携 (Mobile Viewer & Offline DB Sync)](#13-android--スマホ専用ui--ハイブリッドdb連携-mobile-viewer--offline-db-sync)
 14. [セキュリティ ＆ 自動テスト (Security & Automated Tests)](#14-セキュリティ--自動テスト-security--automated-tests)
@@ -30,7 +30,7 @@
 |---|---|
 | `frontend/js/common.js` | 定数、`state`、`elements`、汎用ヘルパー（`showToast`, `escapeHtml`, ローカルタイム日付ヘルパー等）、テーマ制御、ペインリサイズ、共通モーダル（汎用確認モーダル `#commonConfirmModal` / `showConfirmModal`、フォルダ管理登録 `#registerFolderModal` / `showRegisterFolderModal`、ヘルプ、終了、スマホ連携、タグ削除確認） |
 | `frontend/js/selection.js` | 複数選択、Shift範囲選択、選択差分DOM更新、右クリックメニュー（#contextMenu）表示・制御、キーボードショートカット連携 |
-| `frontend/js/storage.js` | アプリ内ストレージ（`storage/`）管理: 外部写真からのインポート、サブフォルダ作成/リネーム/削除/エクスポート、写真のサブフォルダ間D&D/移動、単一/一括連番リネーム (`F2`) |
+| `frontend/js/storage.js` | 専用保管庫 `Loome`（`Loome/`・`storage/`・外付け `<Drive>:\Loome`）管理: 外部写真からのコピー取り込み、外付けドライブへの `Loome` 作成、サブフォルダ作成/リネーム/削除/エクスポート、写真のサブフォルダ間D&D/移動、単一/一括連番リネーム (`F2`) |
 | `frontend/js/inspector.js` | 右ペイン、単一写真EXIF詳細、露出タグ、地図・MiniMap、GPS候補モーダル、クイックタグツリー（`+追加`/`+子`）、XMPサイドカー検出バー（`[👁️ XMPプレビュー]` ホールド比較・`📥 評価・タグ取込`）、一括タグ編集 |
 | `frontend/js/lightbox.js` | 全画面プレビュー、ズーム・パン、スタック切替バー、フィルムストリップ、ライトボックス内タグ/評価 |
 | `frontend/js/folder_tree.js` | 左ペイン階層フォルダツリー（遅延展開、`storage` 専用右クリックメニュー＆D&D移動受け入れ、ショートカット、接続/未接続分離、除外/通常切替、パス直接入力、スキャン進捗）、2ペイン `⚙️ 設定 ＆ 🌳 タグツリーエディタ` モーダル (`#dbMaintenanceModal`) |
@@ -70,7 +70,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| **UI要素 (HTML)** | `#photoGrid` (メインコンテナ), `#viewTitle`, `#photoCountBadge`, `#sortBySelect` (14種類のソート順: シャッター速度順含む), `#attrFilterGroup` (`#attrFilterToggles`: `すべて`/`RAW`/`✂ 調整済` ＋ `#attrSubFilterSelect`: `JPEG`/`RAW+JPG`/`📄 XMP`), `#layoutToggleBtn`, `#minimalToggleBtn` |
+| **UI要素 (HTML)** | `#photoGrid` (メインコンテナ), `#photoCountBadge`, `#sortBySelect` (14種類のソート順), メインツールバー中央3大基本フィルタ (`.header-center-filters`: `#headerScopeFilterSelect` 表示対象プルダウン ＋ `#headerFormatFilterSelect` 形式・状態プルダウン ＋ 評価ピル `優/良/可/棄`), `#layoutToggleBtn`, `#minimalToggleBtn` |
 | **CSS** | `frontend/css/style.css`, `frontend/css/grid-lightbox.css` (`.photo-grid`, `.photo-card`, `.view-actions`, `.attr-filter-toggles`, `.attr-sub-select`) |
 | **フロントエンド (JS)** | `frontend/js/app.js`<br>・`fetchPhotos()`: APIから写真一覧を取得し `state.photos` へ格納（`attr_filter` 等対応）<br>・`renderPhotoGrid()`: グリッド描画のメイン処理（差分更新、DOM構築）<br>・`createPhotoCard(photo, index)`: 1枚分のカードDOM要素を生成<br>・`setupPhotoGridDelegation()`: グリッド上のクリック/右クリック/ダブルクリックの委譲処理<br>・`navigateGridSelection(key, isShift)`: 一覧グリッドでの矢印キー移動（`←` `→` `↑` `↓` ＆ `Shift` 範囲選択・自動スクロール・インスペクタ同期）<br>・`setAttrFilter(attr)` / `syncAttrFilterButtons()`: 属性フィルタピル＆詳細属性サブセレクト（すべて / RAW / 調整済 / JPEG / RAW+JPG / XMP）切替<br>・`setLayoutMode(mode)`: グリッドサイズ・密度切り替え<br>・`toggleMinimalView()`: 情報非表示の純粋写真一覧モード切替<br>・`removePhotoFromView(photoId)`: フィルタ外となった写真を全再描画せずDOMから差分除去し、単一フォーカス時は次の写真へ自動引き継ぎ |
 | **APIエンドポイント** | `GET /api/photos` (クエリ引数: `folder`, `recursive`, `search`, `ratings`, `attr_filter`, `tags`, `sort_by`, `camera`, `year_month`, `connection`, `stacked`)<br>`GET /api/photo/{photo_id}/thumbnail` (サムネイル画像バイナリ)<br>`GET /api/thumbnails/batch` (複数サムネイルの一括取得) |
@@ -125,10 +125,10 @@ Picasaスタイルの4段階評価（棄/可/良/優）、カラーラベル（1
 
 | 項目 | 内容 |
 |---|---|
-| **UI要素 (HTML)** | `#sidebarIndexTabs`, `#sidebarTabPanels`, `#tabPanel-quick` (`#allPhotosNavItem`, `#onlineOnlyNavItem` / `#onlinePhotosCount`, `#offlineOnlyNavItem` / `#offlinePhotosCount`, `#unlinkedOnlyNavItem` / `#unlinkedPhotosCount`, `#untaggedNavItem`, `#duplicatesOnlyNavItem`), `#tabPanel-timeline`, `#sidebarMiniCalendarBox` (サイドバー常設ミニカレンダー), `#timelineOpenCalendarBtn`, `#calendarModal` (拡大カレンダーモーダル: 月間フォト＆年間12ヶ月ヒートマップ), `#tabPanel-camera`, `#tabPanel-folder`, `#tabPanel-tags`, `#tabPanel-presets`, `#tabPanel-search` |
+| **UI要素 (HTML)** | `#sidebarRail` (`Binder / Folder / Tag / Place / Historia / Gear / Lab` ＋ `Search`), `#sidebarStage`, `#accordionItem-quick` (`Binder`: 条件セット保存・一覧・スライドショー再生専用ページ), `#accordionItem-timeline`, `#sidebarMiniCalendarBox`, `#timelineOpenCalendarBtn`, `#calendarModal`, `#accordionItem-cameras`, `#accordionItem-folders`, `#accordionItem-tags`, `#accordionItem-search` |
 | **フロントエンド (JS)** | `frontend/js/sidebar_filters.js` & `frontend/js/app.js` & `frontend/js/presets.js`<br>・`initSidebarTabs()`: サイドバータブ切替<br>・`renderTimeline(timelineData)` / `toggleTimelineYearMonth()` / `toggleYearMonths()` / `toggleTimelineDate()`: 撮影年月ツリーと年・月・日のOR絞り込み (`sidebar_filters.js`)<br>・`fetchCalendarSummary()` / `renderSidebarMiniCalendar()` / `openCalendarModal()`: サイドバーミニカレンダー＆拡大カレンダー（月間代表サムネイル・年間12ヶ月ヒートマップ・Shift日付範囲選択） (`sidebar_filters.js`)<br>・`renderCameras(cameras)` / `cycleCameraFilterState()` / `cycleLensFilterState()`: カメラ＆レンズ2階層ツリーと排他絞り込み (`sidebar_filters.js`)<br>・`buildTagTree(tags)` / `renderTagList()`: 階層タグツリーと12色パレット (`sidebar_filters.js`)<br>・`renderFilterPresetsList()` / `applyFilterPreset()`: フィルタプリセットの保存・適用 (`presets.js`) |
 | **APIエンドポイント** | `GET /api/timeline`<br>`GET /api/calendar/summary` (日別枚数・優枚数・代表写真ID・代表撮影地集計)<br>`GET /api/cameras`<br>`GET /api/folders`<br>`GET /api/locations/heatmap`<br>`GET /api/lab/karte`<br>`GET /api/lab/random-unrated-folder`<br>`POST /api/folders/open` (エクスプローラー起動)<br>`POST /api/folders/ignore` / `DELETE /api/folders/ignore` (除外管理)<br>`GET /api/filter-presets`, `POST /api/filter-presets` (プリセットCRUD) |
-| **バックエンド (Python)** | `server/database/photos.py`: `get_photos()` (`include_unlinked` / `unlinked_only`、`year_months` と `dates` のOR結合フィルタ対応), `get_connection_counts()` (接続中・未接続・リンク消失・合計の高速集計), `get_location_tree_summary()`<br>`server/database/lab_analytics.py`: `get_location_heatmap_data()`, `get_lab_karte_data()`, `get_random_unrated_folder()`, `_normalize_jp_prefecture()`<br>`server/database/folders.py`: `get_timeline_summary()`, `get_calendar_summary()`, `get_cameras_summary()`, `get_folders_summary()`, `_directory_filter_sql()`<br>`server/database/presets.py`: `get_filter_presets()`, `create_filter_preset()` |
+| **バックエンド (Python)** | `server/database/photos.py`: `get_photos()` (`include_unlinked` / `unlinked_only`、`year_months` と `dates` のOR結合フィルタ対応), `get_connection_counts()` (接続中・未接続・リンク消失・合計の高速集計), `get_location_tree_summary()`<br>`server/database/connection.py`: `get_read_connection()` (スレッドローカル常駐読み取り接続によるフィルタ高速化)<br>`server/database/lab_analytics.py`: `get_location_heatmap_data()`, `get_lab_karte_data()`, `get_random_unrated_folder()`, `_normalize_jp_prefecture()`<br>`server/database/folders.py`: `get_timeline_summary()`, `get_calendar_summary()`, `get_cameras_summary()`, `get_folders_summary()`, `_directory_filter_sql()`<br>`server/database/presets.py`: `get_filter_presets()`, `create_filter_preset()` |
 
 ---
 
@@ -154,7 +154,7 @@ Picasaスタイルの4段階評価（棄/可/良/優）、カラーラベル（1
 | **UI要素 (HTML)** | `#card-stack-badge`, `#inspectorBracketSection`, `#inspectorRawPairRow` |
 | **フロントエンド (JS)** | `frontend/js/app.js`<br>・`createPhotoCard()`: スタック代表カードのバッジ描画（枚数表示、ペアバッジ）<br>・`getPhotoExactTimestamp()`: サブセック・ミリ秒精度での撮影時間計算<br>・`renderLightboxBracketBar()`: 連写の秒ズレ（+0.17s等）やEV補正値（-1.00 EV等）の比較表示<br>・`switchLightboxStackMember()` / `selectLightboxStackMember()`: スタック内写真の切替 |
 | **APIエンドポイント** | `POST /api/photo/{photo_id}/set-primary` (代表写真の変更)<br>`POST /api/stacks/recalculate` (スタックの再計算) |
-| **バックエンド (Python)** | `server/database/stacks.py`: `recalculate_stacks()` (連写間隔・露出値による自動グループ化、差分更新), `set_stack_primary()` |
+| **バックエンド (Python)** | `server/database/stacks.py`: `recalculate_stacks()` (連写間隔・露出値による自動グループ化、最高評価 `優>良>可>棄` 優先の代表自動選出、差分更新), `set_stack_primary()` |
 | **関連ナレッジ** | `performance-optimization-patterns.md` (スタック差分UPDATEによる高速化) |
 
 ---
@@ -198,15 +198,15 @@ ONNX Runtime と CLIP モデルによるローカル画像分類・被写体自�
 
 ---
 
-## 11. アプリ内ストレージ (`storage/`) 完結管理・XMP連携・スマートテイクアウト & 非破壊画像調整
+## 11. 専用保管庫 `Loome` (`Loome/`・`storage/`・外付け `<Drive>:\Loome`) 完結管理・XMP連携・スマートテイクアウト & 非破壊画像調整
 
-`storage/` 内のファイル/フォルダ管理・サイドカー追従、選択した写真を特定フォルダへコピー・リサイズ・Exif同期/選択消去・非破壊調整焼き込みして書き出す機能、および元画像非破壊での回転・水平出し・クロップ・トーン微調整機能。
+専用保管庫 `Loome`（アプリ内 `Loome/`・`storage/` および外付けドライブ直下 `<Drive>:\Loome`）内のファイル/フォルダ管理・サイドカー追従、選択した写真を特定フォルダへコピー・リサイズ・Exif同期/選択消去・非破壊調整焼き込みして書き出す機能、および元画像非破壊での回転・水平出し・クロップ・トーン微調整機能。
 
 | 項目 | 内容 |
 |---|---|
 | **UI要素 (HTML)** | **テイクアウト**: `#smartTakeoutModal`, `#takeoutApplyAdjustments`, `#takeoutExifSyncDb`, `#takeoutExifRemoveAll`, `#takeoutExifRemoveGps`, `#takeoutExportXmp`<br>**storage管理**: `#storageRenameModal`, `#storageFolderCreateModal`, `#storageFolderRenameModal`, `#storageFolderExportModal`<br>**画像調整**: `#imageAdjustModal`, `#adjustCopyToneBtn`, `#adjustPasteToneBtn`, `#adjustCompareOrigBtn`, `#adjustBeforeBadge`, `#adjustFineAngleRange`, `#adjustBrightnessRange`, `#adjustContrastRange`, `#adjustSaturationRange`<br>**コンテキストメニュー連携**: `#contextMenuCopyTone`, `#contextMenuPasteTone`, `#contextMenuCopyImageItem` |
 | **フロントエンド (JS)** | `frontend/js/takeout.js`: スマートテイクアウト設定モーダル制御、`executeSmartTakeout()`<br>`frontend/js/storage.js`: `storage/` へのインポート・移動・単一/一括連番リネーム (`openStorageRenameModal`)、ドラッグ＆ドロップ階層移動<br>`frontend/js/adjust.js`: Twitter(X)風クロップ枠・8点ハンドル制御、水平出し（自動内接ズーム連動）・明るさ・コントラスト・彩度の0ms CSSリアルタイムプレビュー、`setCompareOriginalMode()`（`\` / `Space` 長押しBefore比較）、`copyPhotoToneAdjustments()` / `batchPastePhotoToneAdjustments()`（トーン3項目のみのコピー＆一括ペースト）、`copyPhotoImageToClipboard()`（`Ctrl+C` で非破壊調整反映済み画像をOSクリップボードへコピー）、`saveAdjustModal()` |
-| **APIエンドポイント** | `POST /api/export/smart` (スマートテイクアウト一括出力・オプション `.xmp` サイドカー出力)<br>`POST /api/photo/{photo_id}/adjust` / `POST /api/photos/batch-adjust-tone` (トーン3項目一括適用) / `POST /api/photo/{photo_id}/reset-adjust` / `POST /api/photos/batch-reset-adjust`<br>`GET /api/photo/{photo_id}/view` (`?raw=1` で調整モーダル用無加工原画を返却)<br>`GET /api/storage-folders` / `POST /api/storage-folders` / `PUT /api/storage-folders/rename` / `DELETE /api/storage-folders` / `POST /api/storage-folders/export`<br>`POST /api/photos/import-to-storage` / `POST /api/storage/move-photos` / `POST /api/storage/rename-photo` / `POST /api/storage/batch-rename-photos` |
+| **APIエンドポイント** | `POST /api/export/smart` (スマートテイクアウト一括出力・オプション `.xmp` サイドカー出力)<br>`POST /api/photo/{photo_id}/adjust` / `POST /api/photos/batch-adjust-tone` (トーン3項目一括適用) / `POST /api/photo/{photo_id}/reset-adjust` / `POST /api/photos/batch-reset-adjust`<br>`GET /api/photo/{photo_id}/view` (`?raw=1` で調整モーダル用無加工原画を返却)<br>`GET /api/storage-folders` / `POST /api/storage/create-external-loome` (外付けドライブへの `Loome` 作成) / `POST /api/storage-folders` / `PUT /api/storage-folders/rename` / `DELETE /api/storage-folders` / `POST /api/storage-folders/export`<br>`POST /api/photos/import-to-storage` / `POST /api/storage/move-photos` / `POST /api/storage/rename-photo` / `POST /api/storage/batch-rename-photos` |
 | **バックエンド (Python)** | `server/storage_manager.py`: `get_storage_folders()`, `create_storage_subfolder()`, `rename_storage_subfolder()`, `delete_storage_subfolder()`, `export_storage_folder()`, `import_photos_to_storage()`, `move_photos_in_storage()`, `rename_photo_in_storage()`, `batch_rename_photos_in_storage()`<br>`server/sidecar.py`: `parse_xmp_for_photo()`, `write_xmp_sidecar_for_photo()`, `find_sidecars_for_file()`, `move_sidecars_for_file()`, `rename_sidecars_for_file()`, `copy_sidecars_for_file()`<br>`server/exporter.py`: `export_single_photo()`, `filter_exif_data()`<br>`server/scanner.py`: `apply_photo_adjustments_pil()`, `refresh_photo_thumbnail_transform()`<br>`server/database/photos.py`: `update_photo_adjustments()`, `batch_update_photo_tone()`, `reset_photo_adjustments()`, `update_photo_file_location()`, `update_directory_prefix()` |
 | **関連ナレッジ** | `storage-and-xmp-sidecar-architecture.md` |
 

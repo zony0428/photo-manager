@@ -36,7 +36,7 @@ No need to reorganize folders or import files into a proprietary library. Keep y
 - Cross-Drive Browsing: Browse and search across internal and external drives while keeping your existing folder hierarchy intact.
 - Tag & Gear Include `[+]` / Exclude `[-]` Search: Combine include `[+]` and exclude `[-]` conditions across hierarchical tags and the "Camera > Lens" tree (OR within the same root group, AND across groups, toggleable in one click).
 - Natural-Language Filter Bar: Summarizes active filters at the bottom of the screen with click-to-edit popovers for sibling tags and same-month selection across years.
-- Multi-Axis Filtering & Presets: Filter by Date (with calendar view), Location (Country > State/Prefecture > City), 12-Color Palette, Format, and 4-Tier Rating, sort by EXIF parameters, and save Filter Presets.
+- Multi-Axis Filtering & Binder Presets: Filter by Date (with calendar view), Location (Country > State/Prefecture > City), 12-Color Palette, Format, and 4-Tier Rating, sort by EXIF parameters, and save filter combinations in `Binder`.
 - Photography Lab & Map Insights: Explore your 47-prefecture footprint map, heatmaps, walk trajectories, "Winning Lens Chart" based on keeper rates, and solar-angle Golden/Blue Hour extraction.
 
 ### 2. Never Touch or Break Original Files — Yet Go Beyond Just Viewing.
@@ -47,7 +47,7 @@ Your original files and photo folders are never touched, and no hidden managemen
 - Capture Time Shift & Phone GPS Copy: Batch-offset capture timestamps to fix camera clock drift or timezones (with one-click EXIF restore), and copy GPS coordinates from smartphone photos taken within ±1 hour.
 - XMP Sidecar Reading: Read existing `.xmp` / `.pp3` / `.dop` sidecars without modifying them, preview adjustments, and import ratings and hierarchical keywords into an isolated `XMP/...` branch.
 - Flexible Export: Batch-export with "Smart Takeout" (applying edits, resizing, sequential renaming, EXIF stripping, and optional `.xmp` output), generate darkroom-style "Contact Sheet HTML", or copy images to the clipboard (<kbd>Ctrl</kbd>+<kbd>C</kbd>).
-- Optional Internal Storage (`storage/`): Copy only the specific photos you want to physically reorganize into `storage/` to move across subfolders or batch-rename (<kbd>F2</kbd>) while paired RAW and `.xmp` files follow automatically.
+- Managed Vault "Loome" (`Loome/` & External `<Drive>:\Loome`): Copy only the specific photos you want to physically reorganize into `Loome` to move across subfolders or batch-rename (<kbd>F2</kbd>) while paired RAW and `.xmp` files follow automatically.
 
 ### 3. A Quiet Look & Feel That Stays Out of Your Way.
 A visually quiet interface where photo colors stand out naturally, designed for smooth keyboard-driven culling with minimal eye movement.
@@ -55,7 +55,7 @@ A visually quiet interface where photo colors stand out naturally, designed for 
 - Quiet Interface & 4 Themes: Free of noisy emojis, featuring 4 presets (`Tetheract D / L` champagne monotone, `Urusi` dark, and `Washi` light) plus instant `JP` / `EN` switching.
 - Three Grid Layouts: Switch between Standard Grid, aspect-ratio Masonry view, and film-frame Slide Mount view. Hide text overlays (<kbd>I</kbd> key) or collapse panels to maximize space.
 - Fast Viewing for Foveon (`X3F`) & Camera RAWs: Supports SIGMA (`X3F`), Canon, Nikon, Sony, Fujifilm, Panasonic, Olympus, Pentax, `DNG`, and more, prioritizing embedded previews for instant viewing in camera-original colors.
-- Smart Stacks for Bursts & Brackets: Automatically groups bursts, exposure brackets (AEB), RAW+JPG pairs, and duplicates. Flip frames with <kbd>↑</kbd> <kbd>↓</kbd> in Lightbox and switch cover shots easily.
+- Smart Stacks for Bursts & Brackets: Automatically groups bursts, exposure brackets (AEB), RAW+JPG pairs, and duplicates (prioritizing the highest-rated shot as the cover). Flip frames with <kbd>↑</kbd> <kbd>↓</kbd> in Lightbox and switch cover shots easily.
 - One-Handed Rating & 2-Up Duel: Rate with number keys (<kbd>1</kbd>: Ex / <kbd>2</kbd>: Gd / <kbd>3</kbd>: Rj / <kbd>0</kbd>: Nm), or compare two contenders side-by-side (<kbd>V</kbd> key) with synchronized zoom and knockout selection (<kbd>W</kbd> key).
 - Separation of Daily Tagging and Tree Editing: Daily tagging stays in the right Inspector, while moving, renaming, and deleting tag hierarchies are isolated in a dedicated Settings editor to prevent accidental edits.
 
@@ -79,7 +79,7 @@ Every feature runs locally offline. Place the folder on an external SSD or USB d
 | <kbd>V</kbd> / <kbd>W</kbd> | Open 2-Up Duel comparison / Keep right photo as winner |
 | <kbd>C</kbd> / <kbd>H</kbd> | Open Crop / Straighten / Tone modal / Toggle histogram |
 | <kbd>R</kbd> / <kbd>L</kbd> | Rotate 90° clockwise / Rotate 90° counter-clockwise |
-| <kbd>F2</kbd> | Rename file (single or batch sequential rename in `storage/`) |
+| <kbd>F2</kbd> | Rename file (single or batch sequential rename in `Loome`) |
 | <kbd>[</kbd> (<kbd>B</kbd>) / <kbd>D</kbd> / <kbd>I</kbd> | Toggle left menu / Toggle right inspector / Toggle thumbnail text overlay |
 
 ---
@@ -91,7 +91,7 @@ Every feature runs locally offline. Place the folder on an external SSD or USB d
 No prior Python installation is required.
 
 1. First-Time Setup (Full Package `Tetheract_vX.X.X.zip`): Extract the ZIP and run `Tetheract.exe`.
-2. Updating (Lightweight Diff `Tetheract_vX.X.Xdiff.zip`): Extract and overwrite your existing folder to update while keeping `cache/` and `storage/` intact.
+2. Updating (Lightweight Diff `Tetheract_vX.X.Xdiff.zip`): Extract and overwrite your existing folder to update while keeping `cache/` and `Loome/` (`storage/`) intact.
 
 > [!NOTE]
 > Upgrading from Photo Manager v3.x

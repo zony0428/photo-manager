@@ -168,7 +168,7 @@ photo-manager/
 ├── launcher/                  ★ C#ランチャーソース（Launcher.cs）
 ├── python/                    ★ 同梱のポータブルPython（3.11 embeddable）
 ├── cache/                     ★ SQLiteデータベース（library.db）
-├── storage/                   ★ 内部ストレージ（取り込み写真・実ファイル保存領域）
+├── storage/                   ★ 専用保管庫 Loome（Loome/ または storage/、および外付けドライブ <Drive>:\Loome）
 ├── models/                    ★ ローカルAI推論モデル（CLIP ONNXモデル・トークナイザー）
 ├── tests/                     ★ 自動テスト（test_security.py, test_core_regression.py。unittest discover で一括実行）
 ├── LICENSES/                  ★ 各種OSSライセンス全文および NOTICE.txt

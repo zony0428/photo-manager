@@ -4,22 +4,22 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Tetheract Photo Manager</title>
-  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=1.4.0">
-  <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32.png?v=1.4.0">
-  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png?v=1.4.0">
-  <link rel="apple-touch-icon" href="/icons/icon-192.png?v=1.4.0">
-  <link rel="manifest" href="/manifest.json?v=1.4.0">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=1.4.1">
+  <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32.png?v=1.4.1">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png?v=1.4.1">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png?v=1.4.1">
+  <link rel="manifest" href="/manifest.json?v=1.4.1">
   <meta name="theme-color" content="#191816">
   <link rel="stylesheet" href="/vendor/fonts/fonts.css">
-  <link rel="stylesheet" href="/css/style.css?v=1.4.0">
-  <link rel="stylesheet" href="/css/grid-lightbox.css?v=1.4.0">
-  <link rel="stylesheet" href="/css/selection-menu.css?v=1.4.0">
-  <link rel="stylesheet" href="/css/inspector.css?v=1.4.0">
-  <link rel="stylesheet" href="/css/modals-features.css?v=1.4.0">
-  <link rel="stylesheet" href="/css/lab-map.css?v=1.4.0">
-  <link rel="stylesheet" href="/css/histogram.css?v=1.4.0">
-  <link rel="stylesheet" href="/css/compare.css?v=1.4.0">
-  <link rel="stylesheet" href="/css/ui-unify.css?v=1.4.0">
+  <link rel="stylesheet" href="/css/style.css?v=1.4.1">
+  <link rel="stylesheet" href="/css/grid-lightbox.css?v=1.4.1">
+  <link rel="stylesheet" href="/css/selection-menu.css?v=1.4.1">
+  <link rel="stylesheet" href="/css/inspector.css?v=1.4.1">
+  <link rel="stylesheet" href="/css/modals-features.css?v=1.4.1">
+  <link rel="stylesheet" href="/css/lab-map.css?v=1.4.1">
+  <link rel="stylesheet" href="/css/histogram.css?v=1.4.1">
+  <link rel="stylesheet" href="/css/compare.css?v=1.4.1">
+  <link rel="stylesheet" href="/css/ui-unify.css?v=1.4.1">
   <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
   <script src="/vendor/leaflet/leaflet.js"></script>
   <script>
@@ -108,14 +108,14 @@
 
         <div class="logo" id="headerAppLogo" title="Tetheract Photo Manager">
           <span class="logo-icon-wrap">
-            <img class="logo-app-icon" id="headerLogoStaticImg" src="/icons/icon-192.png?v=1.4.0" width="24" height="24" alt="" aria-hidden="true">
+            <img class="logo-app-icon" id="headerLogoStaticImg" src="/icons/icon-192.png?v=1.4.1" width="24" height="24" alt="" aria-hidden="true">
             <canvas class="logo-app-icon-canvas" id="headerTetheractCanvas" width="72" height="72" aria-hidden="true"></canvas>
           </span>
           <svg class="logo-lockup-svg" viewBox="64 8 248 48" width="134" height="26" fill="none" role="img" aria-label="TETHERACT pm">
             <text x="0" y="45.41" fill="var(--logo-text)" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif" font-size="44.38" font-weight="700" letter-spacing="2.8" textLength="269.4" lengthAdjust="spacingAndGlyphs" transform="translate(66, 0) scale(0.7071, 1)">TETHERACT</text>
             <text x="0" y="45.41" fill="var(--logo-pm)" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif" font-size="35.60" font-weight="600" letter-spacing="1.0" transform="translate(265, 0) scale(0.75, 1)">pm</text>
           </svg>
-          <span class="app-version" id="appVersion" title="v1.4.0 (最終更新: 2026-11-04 00:30)">v1.4.0</span>
+          <span class="app-version" id="appVersion" title="v1.4.1 (最終更新: 2026-11-04 10:05)">v1.4.1</span>
         </div>
 
         <!-- UI言語切替（日本語 JP ⇄ English EN） -->
@@ -430,7 +430,7 @@
               <!-- フォルダツリー操作ツールバー -->
               <div class="folder-toolbar" id="folderToolbar">
                 <div class="folder-toolbar-group">
-                  <button class="btn-mini-text" id="uploadFilesBtn" title="PCの写真ファイルを選んで storage（アプリ内ストレージ）へコピー＆取り込みます">取り込み</button>
+                  <button class="btn-mini-text" id="uploadFilesBtn" title="PCの写真ファイルを選んで Loome へコピー＆取り込みます">取り込み</button>
                   <input type="file" id="fileUploadInput" multiple accept="image/*,.rw2,.arw,.cr2,.cr3,.nef,.nrw,.dng,.raf,.orf,.pef,.srw,.x3f,.heic,.heif,.avif,.xmp,.pp3,.arp,.dop,.on1,.cos,.nksc,.spd" style="display:none;">
                   <button class="btn-mini-text" id="openManagedMediaModalBtn" title="管理対象として登録されているSDカード・外部メディアの一覧・収録枚数・識別名を管理します">メディア一覧</button>
                   <button class="btn-mini-text" id="folderAutoAiToggleBtn" title="スキャン完了後にAIタグを自動付与するかどうかを切り替えます">AI: OFF</button>
@@ -1231,7 +1231,7 @@
               <div class="help-feature-header">
                 <h4 class="help-feature-title">連写・ブラケット・重複写真のスタック表示</h4>
               </div>
-              <p class="help-feature-text">連写や露出ブラケット、別フォルダにある同一写真のコピーを自動で1つの束（スタック）に集約します。拡大表示中に上下の矢印キーでコマを切り替え、上部の「代表」ボタンで表紙を変更できます。</p>
+              <p class="help-feature-text">連写や露出ブラケット、別フォルダにある同一写真のコピーを自動で1つの束（スタック）に集約し、最も評価が高いコマを優先して代表表示します。拡大表示中に上下の矢印キーでコマを切り替え、上部の「代表」ボタンで表紙を変更できます。</p>
             </div>
 
             <div class="help-feature-item">
@@ -1252,7 +1252,7 @@
               <div class="help-feature-header">
                 <h4 class="help-feature-title">用途に合わせて選べる3つの表示レイアウト</h4>
               </div>
-              <p class="help-feature-text">画面上部のスリムヘッダーから、3つの表示モードや「JP / EN」言語表示を切り替えられます。カラーテーマ（Tetheract D / Tetheract L / 夜墨 / 和紙）は「設定」モーダルから切り替えられます。</p>
+              <p class="help-feature-text">メインツールバー（画面下部フッター／上部ヘッダー）から、3つの表示モードや「JP / EN」言語表示を切り替えられます。カラーテーマ（Tetheract D / Tetheract L / 夜墨 / 和紙）は「設定」モーダルから切り替えられます。</p>
               <div class="help-mode-grid">
                 <div class="help-mode-card">
                   <div class="help-mode-card-header">グリッド (標準)</div>
@@ -1278,7 +1278,7 @@
               <div class="help-flow-step">
                 <div class="help-flow-step-num">Step 1</div>
                 <div class="help-flow-step-name">フォルダ登録</div>
-                <p class="help-flow-step-desc">左サイドバー「フォルダ」から写真が入ったフォルダをクリックします。</p>
+                <p class="help-flow-step-desc">左サイドバー「Folder」から写真が入ったフォルダをクリックします。</p>
               </div>
               <div class="help-flow-step">
                 <div class="help-flow-step-num">Step 2</div>
@@ -1311,7 +1311,7 @@
 
           <div class="help-card" style="margin-top: 14px;">
             <h4>2. 写真フォルダを登録する・更新する</h4>
-            <p>新しく登録する：左サイドバーの「フォルダ」を開き、PCや外付けドライブのツリーから写真フォルダをクリックします。「子フォルダを含む（推奨）」か「直下のみ」を選ぶと、進行バーが表示されて読み込みが始まります。</p>
+            <p>新しく登録する：左サイドバーの「Folder」を開き、PCや外付けドライブのツリーから写真フォルダをクリックします。「子フォルダを含む（推奨）」か「直下のみ」を選ぶと、進行バーが表示されて読み込みが始まります。</p>
             <p>写真を追加・削除したあと：登録済みのフォルダを左サイドバーでクリックすると、変化を検知して「フォルダの内容が更新された可能性があります。リフレッシュしますか？」と確認画面が出るので、OKを押して更新します。</p>
           </div>
 
@@ -1351,19 +1351,19 @@
         <div class="help-tab-content" id="helpTab-advance">
           <div class="help-card">
             <h4>1. 連写・露出ブラケット・重複写真のスタック表示と2枚比較（Duel）</h4>
-            <p>上部ヘッダーの「スタック」ボタンがONのとき、連写・露出ブラケット（AEB）・別フォルダにある同一写真の重複コピーを自動で1つの束にまとめ、代表の1枚だけを表示します。</p>
+            <p>メインツールバーの「スタック」ボタンがONのとき、連写・露出ブラケット（AEB）・別フォルダにある同一写真の重複コピーを自動で1つの束にまとめ、代表の1枚だけを表示します（束の中で最も評価が高い「優 ＞ 良 ＞ 可 ＞ 棄」の写真が自動で代表に選ばれます）。</p>
             <ul>
               <li>束の中身を見比べる：ライトボックス（Spaceキー）を開き、上下の矢印キー（↑ / ↓）や下部のミニサムネイルバーで比較できます。</li>
-              <li>2枚並べて比較（Duel / Vキー）：キーボードの V キー、右クリックメニューの「2枚並べて比較 (V)」、左サイドバー「ラボ」の「2枚比較」、またはライトボックス上部の「隣と比較」ボタンを押すと、2枚の写真を左右に並べて同期ズーム＆ドラッグ移動でピントや描写を見比べられます。Wキーで右(B)の写真を左(A:基準)に残して次の候補へ進む勝ち抜き選別や、Sキーでの左右入れ替え、Hキーでの左右同時ヒストグラム表示に対応しています。</li>
+              <li>2枚並べて比較（Duel / Vキー）：キーボードの V キー、右クリックメニューの「2枚並べて比較 (V)」、左サイドバー「Lab」の「2枚比較」、またはライトボックス上部の「隣と比較」ボタンを押すと、2枚の写真を左右に並べて同期ズーム＆ドラッグ移動でピントや描写を見比べられます。Wキーで右(B)の写真を左(A:基準)に残して次の候補へ進む勝ち抜き選別や、Sキーでの左右入れ替え、Hキーでの左右同時ヒストグラム表示に対応しています。</li>
               <li>代表（表紙）を変える：ライトボックス上部（評価ボタンの左隣）の「代表」ボタン、または右インスペクタの「代表に設定」を押すと、現在表示しているコマを表紙に変更できます。</li>
-              <li>重複写真の確認：別フォルダに同じ写真がある場合はサムネイル右上角に折り目マークが付きます。左サイドバー「クイック」の「重複のある写真」から一覧表示し、右インスペクタで保存先フォルダを確認できます。</li>
+              <li>重複写真の確認：別フォルダに同じ写真がある場合はサムネイル右上角に折り目マークが付きます。メインツールバー中央の表示対象プルダウンから「重複のある写真」を選んで一覧表示し、右インスペクタで保存先フォルダを確認できます。</li>
             </ul>
           </div>
 
           <div class="help-card" style="margin-top: 14px;">
             <h4>2. 階層タグ・色ラベル・ローカルAI自動分類と排他検索</h4>
-            <p>階層タグとタグツリーエディタ：タグ入力時に「旅行/2026北海道/小樽」のようにスラッシュ（/）で区切ると親子ツリーとして整理されます。左サイドバー「タグ」の「枚数順」ボタンで枚数順と名前順を切り替えられるほか、「設定」（または右インスペクタの「ツリー編集」）の「タグツリーエディタ」でドラッグ＆ドロップによる階層組み替え・名前変更・削除が行えます。</p>
-            <p>色合い（12色パレット）：右インスペクタの「色合い」で写真にカラーラベルを登録し、左サイドバー「タグ」上部の「カラー」から色別に絞り込めます（右クリックでその色を除外）。</p>
+            <p>階層タグとタグツリーエディタ：タグ入力時に「旅行/2026北海道/小樽」のようにスラッシュ（/）で区切ると親子ツリーとして整理されます。左サイドバー「Tag」の「枚数順」ボタンで枚数順と名前順を切り替えられるほか、「設定」（または右インスペクタの「ツリー編集」）の「タグツリーエディタ」でドラッグ＆ドロップによる階層組み替え・名前変更・削除が行えます。</p>
+            <p>色合い（12色パレット）：右インスペクタの「色合い」で写真にカラーラベルを登録し、左サイドバー「Tag」上部の「カラー」から色別に絞り込めます（右クリックでその色を除外）。</p>
             <p>ローカルAI自動タグ付け：左サイドバーのフォルダを右クリックして「AIタグ付け」を選ぶと、ネット通信なしでPC内のAI（CLIP）が「青空」「海」「猫」「料理」「夜景」などのタグと主要カラーを自動付与します。写真の右クリック「AIカラータグを再判定」またはフォルダ右クリック「AIカラータグのみ再判定」から、手動タグや被写体タグを保護したまま12色のAIカラータグだけを再判定できます。</p>
             <p>タグ・機材の [+] 含む / [-] 除外検索と道標表示：タグツリーの一番上の親（1階層目）同士を [+] にすると既定で「かつ（AND）」で絞り込まれ、同じ親の下にある2階層目以降の子タグを複数 [+] にすると既定で「または（OR）」で候補が追加されます（画面下部フッターバーの「または」「かつ」をクリックすると、同グループ内のOR⇔ANDや異グループ間のAND⇔ORをその場で切り替えられます）。見たくない子タグは右クリックで [-]（除外）を明示して引き算できるため、「トヨタ [+]・プリウス [-]・ロードスター [+]」のように選べば「プリウス以外のトヨタ車とロードスター」を簡単に抽出できます。親階層を閉じていても、配下の子項目でフィルタが有効な場合は破線枠と件数バッジ（+1 / -1）の道標が表示されます。</p>
           </div>
@@ -1383,8 +1383,8 @@
 
           <div class="help-card" style="margin-top: 14px;">
             <h4>4. ジオタグ・47都道府県マップ・スマホGPS準用・撮影日時シフト補正</h4>
-            <p>場所ツリー：GPS情報付き写真は、左サイドバー「ジオタグ」から「国 ＞ 都道府県 ＞ 市区町村」の階層で絞り込めます。</p>
-            <p>47都道府県 撮影制覇白地図・ヒートマップ・さんぽ軌跡：左サイドバー「ジオタグ」上部の「制覇マップ」ボタンから、都道府県ごとの撮影枚数塗り分け白地図、よく訪れる場所の撮影密度ヒートマップ、日付ごとの移動ルートを結ぶ「撮影さんぽ軌跡」を表示できます。</p>
+            <p>場所ツリー：GPS情報付き写真は、左サイドバー「Place」から「国 ＞ 都道府県 ＞ 市区町村」の階層で絞り込めます。</p>
+            <p>47都道府県 撮影制覇白地図・ヒートマップ・さんぽ軌跡：左サイドバー「Place」上部の「制覇マップ」ボタンから、都道府県ごとの撮影枚数塗り分け白地図、よく訪れる場所の撮影密度ヒートマップ、日付ごとの移動ルートを結ぶ「撮影さんぽ軌跡」を表示できます。</p>
             <p>スマホから位置情報を引き継ぐ（スマホGPS準用）：GPSのないカメラで撮った写真でも、前後1時間以内に撮影したスマホ写真がライブラリにあれば、右インスペクタまたは右クリックメニューの「スマホGPS準用」から位置情報を引き継げます。</p>
             <p>撮影日時の一括シフト補正：カメラの内蔵時計ズレや海外旅行の時差がある場合は、右クリックメニュー（または右インスペクタ）の「撮影日時を一括補正...」から、元ファイルを書き換えずに日・時間・分・秒のオフセット補正（および元のEXIF日時への復元）が行えます。</p>
           </div>
@@ -1400,7 +1400,7 @@
 
           <div class="help-card" style="margin-top: 14px;">
             <h4>6. ラボ：勝ちレンズカルテ・太陽高度抽出・歴代の今日・未整理ガチャ</h4>
-            <p>左サイドバーの「ラボ」では、蓄積された写真データから撮影傾向の分析や過去写真の発掘を行えます。</p>
+            <p>左サイドバーの「Lab」では、蓄積された写真データから撮影傾向の分析や過去写真の発掘を行えます。</p>
             <ul>
               <li>勝ちレンズ・得意設定カルテ：これまでの評価（優・良）データから、高評価率（歩留まり）が高いレンズ・カメラや、よく使う焦点距離・F値・撮影時間帯を集計します。</li>
               <li>太陽高度・露出ラボ抽出：撮影日時とGPS座標から太陽の角度を計算し、マジックアワー（-4°〜+6°）、ブルーアワー（-8°〜-4°）、夜景・星景（-8°未満）、およびシャッター速度が 1/焦点距離 秒より遅い「手ブレ注意」の写真を抽出します。</li>
@@ -1409,11 +1409,11 @@
           </div>
 
           <div class="help-card" style="margin-top: 14px;">
-            <h4>7. プリセット保存・外部ソフト連携・Loome管理・DBメンテナンス</h4>
-            <p>プリセット保存：よく使う絞り込み条件は、左サイドバー「クイック」下部の保存フォームで名前を付けて保存し、ワンクリックで呼び出せます。</p>
+            <h4>7. Binder（条件セット保存）・外部ソフト連携・Loome管理・DBメンテナンス</h4>
+            <p>Binder（条件セット保存）：よく使う絞り込み条件は、左サイドバー「Binder」の保存フォームで名前を付けて保存し、ワンクリックでの呼び出しやスライドショー再生が行えます。</p>
             <p>外部ソフト連携とサムネイル更新：右インスペクタ上部のアイコンからエクスプローラーで保存先を開いたり、既定のソフトでファイルを開けます。外部ソフトで編集したあとは、右クリックメニューの「サムネイルを更新」で表示を最新化できます。</p>
             <p>設定とDBメンテナンス：画面右上の「設定」ボタンから、起動時のウィンドウサイズやタグの名前順ルールの変更、世代バックアップ付きデータベース最適化（VACUUM）が行えます。</p>
-            <p>Loome 管理：左サイドバー「フォルダ」先頭の「Loome」には、外部フォルダの写真を「Loomeへコピー」（またはドラッグ＆ドロップ）でコピー取り込みできます。また、接続中のドライブを右クリックして「このドライブに Loome を作成...」（または「登録メディア管理」の「Loome を作成」）を実行すると、外付けSSD・USBメモリ直下にも専用 Loome を追加できます。Loome内ではサブフォルダ作成・移動・ファイル名変更（F2キーで単一または一括連番リネーム）・外部エクスポートが行え、同名のサイドカーファイル（.xmp等）やペアRAWも自動で追従します。</p>
+            <p>Loome 管理：左サイドバー「Folder」先頭の「Loome」には、外部フォルダの写真を「Loomeへコピー」（またはドラッグ＆ドロップ）でコピー取り込みできます。また、接続中のドライブを右クリックして「このドライブに Loome を作成...」（または「登録メディア管理」の「Loome を作成」）を実行すると、外付けSSD・USBメモリ直下にも専用 Loome を追加できます。Loome内ではサブフォルダ作成・移動・ファイル名変更（F2キーで単一または一括連番リネーム）・外部エクスポートが行え、同名のサイドカーファイル（.xmp等）やペアRAWも自動で追従します。</p>
           </div>
         </div>
 
@@ -1422,9 +1422,9 @@
           <div class="help-card">
             <h4>1. USBメモリ・外付けSSDでの3つの持ち歩きスタイル</h4>
             <ul>
-              <li>スタイル1（写真もアプリもUSBに入れる）：Tetheract フォルダと写真（または storage）をUSBドライブに入れておけば、別のPCに挿して Tetheract.exe を開くだけで同じ環境で使えます。</li>
+              <li>スタイル1（写真もアプリもUSBに入れる）：Tetheract フォルダと写真（または Loome）をUSBドライブに入れておけば、別のPCに挿して Tetheract.exe を開くだけで同じ環境で使えます。</li>
               <li>スタイル2（元写真は自宅に置きカタログだけ持ち歩く）：大容量の元写真は自宅のHDDに置いたまま、Tetheract が入ったUSBメモリだけを持ち歩けます。元写真が未接続でも、全写真のサムネイル閲覧・評価・タグ付けが行えます。</li>
-              <li>スタイル3（ドライブ文字追従・複数SDカード識別・メタデータ引き継ぎ）：別のPCでドライブ文字（D: → E: 等）が変わっても固有のシリアル番号（VSN）で自動追従し、複数のSDカードを同じドライブ文字で差し替えても個別に管理されます。左サイドバー「フォルダ」上部の「登録メディア」や「メディア一覧」から接続状態・枚数・撮影期間・使用カメラの確認、絞り込み、登録解除、ニックネーム設定（または4桁PIN承認による半角11文字ラベル書き込み）が行えます。SDカード上で付けた評価・タグ・調整はPCへ移動した際にも自動で引き継がれます。</li>
+              <li>スタイル3（ドライブ文字追従・複数SDカード識別・メタデータ引き継ぎ）：別のPCでドライブ文字（D: → E: 等）が変わっても固有のシリアル番号（VSN）で自動追従し、複数のSDカードを同じドライブ文字で差し替えても個別に管理されます。左サイドバー「Folder」上部の「登録メディア」や「メディア一覧」から接続状態・枚数・撮影期間・使用カメラの確認、絞り込み、登録解除、ニックネーム設定（または4桁PIN承認による半角11文字ラベル書き込み）が行えます。SDカード上で付けた評価・タグ・調整はPCへ移動した際にも自動で引き継がれます。</li>
             </ul>
           </div>
 
@@ -1483,7 +1483,7 @@
                 <tr><td><kbd>C</kbd></td><td>選択中の写真の切り抜き・傾き・トーン調整画面を開く（調整中は \ 長押しで元画像比較）</td></tr>
                 <tr><td><kbd>Ctrl</kbd> + <kbd>C</kbd></td><td>選択中の写真をクリップボードへ画像コピー（調整反映済み ／ そのまま Ctrl+V で他アプリへ貼付可）</td></tr>
                 <tr><td><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>C</kbd> / <kbd>V</kbd></td><td>写真のトーン調整（明るさ・コントラスト・彩度）をコピー（C）／ 選択写真へ一括ペースト（V）</td></tr>
-                <tr><td><kbd>F2</kbd></td><td>storage（アプリ内ストレージ）内の写真のファイル名を変更（1枚：単一 ／ 2枚以上：一括連番リネーム）</td></tr>
+                <tr><td><kbd>F2</kbd></td><td>Loome 内の写真のファイル名を変更（1枚：単一 ／ 2枚以上：一括連番リネーム）</td></tr>
                 <tr><td><kbd>V</kbd></td><td>2枚並べて比較（Duel）モードを開く（同期ズーム・勝ち抜き選別）</td></tr>
                 <tr><td><kbd>H</kbd></td><td>RGB・輝度ヒストグラムの表示 / 非表示を切り替え</td></tr>
                 <tr><td><kbd>I</kbd></td><td>写真カード上の文字・バッジ表示を隠す / 表示する（クリーンモード切替）</td></tr>
@@ -1523,7 +1523,7 @@
           <div class="help-card" style="margin-top: 18px;">
             <h4>よくある質問（FAQ）</h4>
             <p>Q. 3 キーで「棄」にしたら写真が消えました。ファイルが削除されたのですか？</p>
-            <p>A. いいえ、PC内のファイルは削除されていません。左メニュー最上部の評価フィルタにある「棄」ボタンを押して点灯させればいつでも再表示でき、0キーで元に戻せます。</p>
+            <p>A. いいえ、PC内のファイルは削除されていません。メインツールバー（フッター／ヘッダー）中央の評価フィルタにある「棄」ボタンを押して点灯させればいつでも再表示でき、0キーで元に戻せます。</p>
             <p style="margin-top: 8px;">Q. 回転や明るさ調整をした写真を、実際の画像ファイルとして保存したいときは？</p>
             <p>A. アプリ内の調整は元ファイルを書き換えない非破壊方式です。調整結果を反映した画像ファイルを作るには、右クリックメニューの「テイクアウト」＞「スマート・テイクアウト...」から別フォルダへ書き出してください。</p>
             <p style="margin-top: 8px;">Q. 初回起動時に「Windows によって PC が保護されました」と表示されました。</p>
@@ -3060,23 +3060,23 @@
     </div>
   </div>
 
-  <script src="/js/common.js?v=1.4.0"></script>
-  <script src="/js/selection.js?v=1.4.0"></script>
-  <script src="/js/inspector.js?v=1.4.0"></script>
-  <script src="/js/lightbox.js?v=1.4.0"></script>
-  <script src="/js/adjust.js?v=1.4.0"></script>
-  <script src="/js/histogram.js?v=1.4.0"></script>
-  <script src="/js/compare.js?v=1.4.0"></script>
-  <script src="/js/takeout.js?v=1.4.0"></script>
-  <script src="/js/presets.js?v=1.4.0"></script>
-  <script src="/js/slideshow.js?v=1.4.0"></script>
-  <script src="/js/location_tree.js?v=1.4.0"></script>
-  <script src="/js/folder_tree.js?v=1.4.0"></script>
-  <script src="/js/location_map.js?v=1.4.0"></script>
-  <script src="/js/lab.js?v=1.4.0"></script>
-  <script src="/js/sidebar_filters.js?v=1.4.0"></script>
-  <script src="/js/storage.js?v=1.4.0"></script>
-  <script src="/js/app.js?v=1.4.0"></script>
-  <script src="/js/i18n.js?v=1.4.0"></script>
+  <script src="/js/common.js?v=1.4.1"></script>
+  <script src="/js/selection.js?v=1.4.1"></script>
+  <script src="/js/inspector.js?v=1.4.1"></script>
+  <script src="/js/lightbox.js?v=1.4.1"></script>
+  <script src="/js/adjust.js?v=1.4.1"></script>
+  <script src="/js/histogram.js?v=1.4.1"></script>
+  <script src="/js/compare.js?v=1.4.1"></script>
+  <script src="/js/takeout.js?v=1.4.1"></script>
+  <script src="/js/presets.js?v=1.4.1"></script>
+  <script src="/js/slideshow.js?v=1.4.1"></script>
+  <script src="/js/location_tree.js?v=1.4.1"></script>
+  <script src="/js/folder_tree.js?v=1.4.1"></script>
+  <script src="/js/location_map.js?v=1.4.1"></script>
+  <script src="/js/lab.js?v=1.4.1"></script>
+  <script src="/js/sidebar_filters.js?v=1.4.1"></script>
+  <script src="/js/storage.js?v=1.4.1"></script>
+  <script src="/js/app.js?v=1.4.1"></script>
+  <script src="/js/i18n.js?v=1.4.1"></script>
 </body>
 </html>

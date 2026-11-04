@@ -17,7 +17,7 @@ Photo Manager の最大の特徴は、**「USBメモリや外付けSSDに丸ご�
 - 実写真ファイルの読み込み時は、必ず `server.scanner.resolve_portable_path(stored_path, expected_serial=photo["volume_serial"])` を経由して動的に解決する。
   - `volume_serial` を持つレコードでは `expected_serial` を省略してはならない（省略すると、同じドライブ文字に挿さった別メディアの同名ファイルを誤って開く）。
 - 解決順序:
-  1. アプリ内 `storage/` 配下のパスであれば、アプリ自身の `storage/` で解決する
+  1. アプリ内 `Loome/`（または既存の `storage/`）配下のパスであれば、アプリ自身の `Loome/`（または `storage/`）で解決する（外付けドライブの `<Drive>:\Loome` は VSN 照合で解決）
   2. VSN 指定があり、ローカル／リムーバブルドライブ上のパスであれば、そのVSNを持つ接続中ドライブで解決する（ドライブ文字の変化に追従。該当VSNが未接続ならオフラインとし、別メディアへは絶対に誤一致させない）
   3. VSN 未指定、またはネットワークドライブ・UNC パス（VSN照合の対象外）は従来方式で解決する（元パスの存在確認 → 現在ドライブでの相対パス照合 → クラウド同期フォルダ照合 → プロジェクト直下 `photos/`）
   4. 見つからない場合は「未接続（オフライン）」フラグを返す
@@ -54,7 +54,7 @@ conn.execute("PRAGMA temp_store = MEMORY")
 - **ROWID直結 & クラスタ化（v1.2.0+）**:
   - `thumbnails` テーブルは `photo_id INTEGER PRIMARY KEY`（ROWID直結1発ルックアップ）とし、重複排除されたユニーク写真1枚につき1つのWebP BLOBを保持する。
   - `photo_tags` テーブルは `PRIMARY KEY (photo_id, tag) WITHOUT ROWID` のクラスタ化構造とし、同一写真のタグをディスク・RAMキャッシュ上で物理的に隣接配置する。
-  - 一覧取得時の重複枚数はサブクエリを回さず `photos.link_count` カラムを直読する。
+- **スレッドローカル常駐読み取り接続 & インメモリキャッシュ（v1.4.0+）**: `server/database/connection.py` の `get_read_connection()` によりスレッドごとにPRAGMA適用済みのSQLite読み取り接続を再利用し、かつ `frontend/js/app.js` 側でフィルタ切り替え時は不要な `/api/stats` 通信をスキップ（`skipStats=true`）＋30秒TTLキャッシュ（`_galleryResponseCache`）を組み合わせることで、2.7万枚環境でも初回約5ms・キャッシュヒット時0.01ms未満で瞬時に切り替える。
 - **安全なスキーマ再構築マイグレーション原則（v1.2.1+）**:
   - SQLite で親テーブル（`photos`）を再構築（`DROP TABLE` / `RENAME`）する際は、`ON DELETE CASCADE` による子テーブル（`photo_tags`, `thumbnails`, `photo_links`）の連動消失を防ぐため、必ずトランザクション外で `PRAGMA foreign_keys = OFF` を実行し、かつ再構築前に子テーブルを一時退避テーブルへコピーする二重保護を行うこと（万が一旧版で消失していた場合は `cache/backups/library_pre_ideal_photo_links_v1_*.db` から自動復元する）。
 
