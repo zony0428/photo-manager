@@ -154,6 +154,14 @@ echo [2/4] Copying startup, docs and setup files...
 :: --- Remove legacy filenames from dist/ if present ---
 if exist "%DIST%\PhotoManager.exe" del /q "%DIST%\PhotoManager.exe" >nul 2>&1
 if exist "%DIST%\PhotoManager_Mobile.html" del /q "%DIST%\PhotoManager_Mobile.html" >nul 2>&1
+if exist "%DIST%\.tetheract_instance" (
+    attrib -h "%DIST%\.tetheract_instance" >nul 2>&1
+    del /f /q "%DIST%\.tetheract_instance" >nul 2>&1
+)
+if exist "%DIST_UPD%\.tetheract_instance" (
+    attrib -h "%DIST_UPD%\.tetheract_instance" >nul 2>&1
+    del /f /q "%DIST_UPD%\.tetheract_instance" >nul 2>&1
+)
 
 :: --- Backend core scripts ---
 copy /y "%SRC%run.py" "%DIST%\server\run.py" >nul 2>&1

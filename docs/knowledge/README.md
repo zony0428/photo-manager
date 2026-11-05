@@ -20,7 +20,7 @@
 | [mobile-hybrid-architecture.md](mobile-hybrid-architecture.md) | **【Android / スマホ専用UI & ハイブリッドDB連携 (v2.30)】** Wi-Fi直結モード（`/m`）と WebAssembly SQLite (`sql.js`) によるUSB内 `library.db` 直接読込（ファイルロックエラー完全回避・BLOBサムネイル展開・3段階フォールバック差分同期）の設計と実装仕様 |
 | [storage-and-xmp-sidecar-architecture.md](storage-and-xmp-sidecar-architecture.md) | **【専用保管庫 `Loome` (`Loome/`・`storage/`・外付け `<Drive>:\Loome`) 完結管理 ＆ XMPサイドカー非破壊連携 (v2.42+ / v1.4.0+)】** `Loome` サブフォルダ管理・D&D移動・単一/一括連番リネーム、付随サイドカー/ペアRAW自動追従、`[👁️ XMPプレビュー]` ホールド比較・`XMP/...` 隔離取込の設計仕様 |
 | [ui-design-system-and-tiat-guidelines.md](ui-design-system-and-tiat-guidelines.md) | **【UI/UX デザインシステム ＆ Tiat志向設計仕様 (v3.00+ / v1.4.0+)】** 下部フッター既定の1段メインツールバー（中央3大基本フィルタ）、2段階左サイドバー（`Binder / Folder / Tag / Place / Historia / Gear / Lab / Search`）、4:3インスペクタ、脱カラー絵文字（単色細線SVG）、4カラーテーマ、カスタム確認モーダル（`#commonConfirmModal`）統一仕様 |
-| [security-architecture.md](security-architecture.md) | **【セキュリティアーキテクチャ ＆ 防御層設計書 (v3.0.1+)】** 4層防御（Hostヘッダ検証によるDNS Rebinding対策、Origin検証によるCSRF遮断、LANトークン認証＆Cookie化、LAN APIホワイトリスト）、30分無通信自動停止、回帰テスト仕様 |
+| [security-architecture.md](security-architecture.md) | **【セキュリティアーキテクチャ ＆ 3段階エシカル保護設計書 (v3.0.1+ / v1.7.0+)】** 4層ネットワーク防御（Hostヘッダ検証、Origin検証、LANトークン認証、APIホワイトリスト）、3段階エシカル保護（Lv.0 他人のLoome完全拒否＆DB単体引き抜き検知・3大救済手段／Lv.1 起動ロック＆サムネイルAEAD暗号化／Lv.2 Loome先頭64KBカプセル化 `TETHVLT1`）、および `Loome/.loome_seal` からの鍵自動サルベージ・セルフブリック防止仕様 |
 | [ui-ux-diagnosis-and-roadmap.md](ui-ux-diagnosis-and-roadmap.md) | **【UI/UX 総合診断・機能配置整理 ＆ ステップ1〜3完全実装記録 (v2.44〜v3.00過渡記録)】** v2.44時点のUI交通整理（ステップ1）・ビューア強化（ステップ2）およびv3.00で完結したステップ3の歴史的設計記録（現行仕様は `ui-design-system-and-tiat-guidelines.md` 参照） |
 
 ---

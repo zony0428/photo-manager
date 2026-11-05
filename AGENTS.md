@@ -190,6 +190,7 @@ photo-manager/
 │   └── vendor/                ★ オフライン同梱アセット（fonts/, leaflet/, sqljs/）
 └── server/                    ★ バックエンド（FastAPI）
     ├── app.py                 ★ APIエンドポイントルーティング
+    ├── security.py            ★ 3段階セキュリティ＆エシカル保護（Lv.0/1/2）・鍵サルベージ制御
     ├── lan_access.py          ★ LANアクセス制御・Hostヘッダ検証・トークン認証
     ├── storage_manager.py     ★ 内部ストレージ管理・ファイル操作
     ├── sidecar.py             ★ XMPサイドカーファイル読み書き・同期

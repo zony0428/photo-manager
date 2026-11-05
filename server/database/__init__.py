@@ -15,6 +15,7 @@ from .connection import (
     calc_solar_altitude,
     get_connection,
     close_thread_connection,
+    close_all_connections,
     switch_database_path,
     get_db_commit_seq,
     bump_db_commit_seq,

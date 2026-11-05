@@ -124,6 +124,45 @@ def _create_photos_indexes(cursor) -> None:
         """
     )
 
+    # v1.7.0 ダウングレード防止（v1.6.1以前へのDB放り込みによるエシカル保護バイパスを遮断）
+    cursor.execute("PRAGMA table_xinfo(photos)")
+    xcols = {row["name"] for row in cursor.fetchall()}
+    if "_v170_guard" not in xcols:
+        cursor.execute(
+            "ALTER TABLE photos ADD COLUMN _v170_guard INTEGER GENERATED ALWAYS AS (tetheract_v170_guard()) VIRTUAL"
+        )
+    cursor.execute("PRAGMA table_xinfo(thumbnails)")
+    th_xcols = {row["name"] for row in cursor.fetchall()}
+    if "_v170_guard" not in th_xcols:
+        cursor.execute(
+            "ALTER TABLE thumbnails ADD COLUMN _v170_guard INTEGER GENERATED ALWAYS AS (tetheract_v170_guard()) VIRTUAL"
+        )
+    for tbl in ("photos", "thumbnails", "photo_tags"):
+        for op in ("INSERT", "UPDATE", "DELETE"):
+            op_short = op[:3].lower()
+            cursor.execute(
+                f"""
+                CREATE TRIGGER IF NOT EXISTS trg_v170_guard_{tbl}_{op_short}
+                BEFORE {op} ON {tbl}
+                BEGIN
+                    SELECT tetheract_v170_guard();
+                END
+                """
+            )
+    cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='app_meta'")
+    if cursor.fetchone():
+        for op in ("INSERT", "UPDATE"):
+            op_short = op[:3].lower()
+            cursor.execute(
+                f"""
+                CREATE TRIGGER IF NOT EXISTS trg_v170_guard_app_meta_{op_short}
+                BEFORE {op} ON app_meta
+                BEGIN
+                    SELECT tetheract_v170_guard();
+                END
+                """
+            )
+
 
 def initialize_database() -> None:
     """データベースの初期テーブル構造を作成する"""
@@ -337,8 +376,6 @@ def initialize_database() -> None:
             """
         )
 
-        _create_photos_indexes(cursor)
-
         # スキャン登録ルートフォルダ管理テーブル（フィンガープリントによる別PC・別アカウント誤読防止対応）
         cursor.execute(
             """
@@ -399,6 +436,13 @@ def initialize_database() -> None:
             )
             """
         )
+
+        # v1.6.1 以前の既存DBに v1.7.0 保護スキーマを初回適用する前に安全バックアップを自動作成
+        cursor.execute("PRAGMA table_xinfo(photos)")
+        if "_v170_guard" not in {row["name"] for row in cursor.fetchall()}:
+            _create_pre_migration_backup(cursor, conn, "v170_security")
+
+        _create_photos_indexes(cursor)
         conn.commit()
 
         # --- マイグレーション: 既存タグに祖先ノードを追加 ---
@@ -483,65 +527,59 @@ def initialize_database() -> None:
         cursor.execute("DELETE FROM scan_roots WHERE length(rtrim(replace(folder_path, '/', '\\'), '\\')) <= 2 OR folder_path LIKE '%:'")
         conn.commit()
 
-        # 指紋未設定の既存スキャンルートについて、フォルダが存在すれば初期指紋を自動付与
-        cursor.execute("SELECT folder_path FROM scan_roots WHERE fingerprint IS NULL")
-        unfingerprinted = [r["folder_path"] for r in cursor.fetchall()]
-        for f_path in unfingerprinted:
-            norm = os.path.normpath(f_path).rstrip("\\/")
-            if len(norm) <= 2 or norm.endswith(":"):
-                continue
-            if os.path.exists(f_path) and os.path.isdir(f_path):
-                try:
-                    fp = extract_folder_fingerprint(f_path)
-                    if fp:
-                        cursor.execute(
-                            "UPDATE scan_roots SET fingerprint = ? WHERE folder_path = ?",
-                            (fp, f_path)
-                        )
-                        conn.commit()
-                except Exception as e:
-                    logger.warning(f"スキャンルートのフィンガープリント更新失敗 ({f_path}): {e}")
+    # セキュリティ状態（Lv.0 エシカル保護・別環境DB持ち込み検知・Lv.1/Lv.2 ロック判定）を
+    # ファイルシステム走査マイグレーションより先に初期化する
+    locked_now = False
+    try:
+        from ..security import initialize_security_state, is_app_locked
+        initialize_security_state(force_reload=True)
+        locked_now = is_app_locked()
+    except Exception as sec_err:
+        logger.warning(f"セキュリティ状態の初期化で警告: {sec_err}")
 
-        # --- マイグレーション: Exif（撮影日時）欠落画像の識別キー更新・重複統合 ---
-        cursor.execute("SELECT 1 FROM migrations WHERE name = 'exifless_content_hash_v1'")
-        if not cursor.fetchone():
-            conn.commit()
-            set_startup_status(
-                is_ready=False,
-                phase="exifless_hash",
-                message="Exifなし画像の識別キーを更新・重複統合中...",
-                detail="対象ファイルを確認しています...",
-                percent=75,
-            )
+    if not locked_now:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            # 指紋未設定の既存スキャンルートについて、フォルダが存在すれば初期指紋を自動付与（UNCパスは起動時SMBブロック回避のためスキップ）
+            cursor.execute("SELECT folder_path FROM scan_roots WHERE fingerprint IS NULL")
+            unfingerprinted = [r["folder_path"] for r in cursor.fetchall()]
+            for f_path in unfingerprinted:
+                norm = os.path.normpath(f_path).rstrip("\\/")
+                if len(norm) <= 2 or norm.endswith(":") or norm.startswith("\\\\"):
+                    continue
+                if os.path.exists(f_path) and os.path.isdir(f_path):
+                    try:
+                        fp = extract_folder_fingerprint(f_path)
+                        if fp:
+                            cursor.execute(
+                                "UPDATE scan_roots SET fingerprint = ? WHERE folder_path = ?",
+                                (fp, f_path)
+                            )
+                            conn.commit()
+                    except Exception as e:
+                        logger.warning(f"スキャンルートのフィンガープリント更新失敗 ({f_path}): {e}")
 
-            def _on_startup_exifless_progress(cur_i: int, tot_i: int, fname_i: str) -> None:
-                pct = 75 + int((cur_i / max(1, tot_i)) * 20)
-                set_startup_status(
-                    is_ready=False,
-                    phase="exifless_hash",
-                    message="Exifなし画像の識別キーを更新・重複統合中...",
-                    detail=f"{cur_i}/{tot_i} 枚を確認中 ({fname_i})",
-                    percent=pct,
-                )
+            # --- マイグレーション: Exif（撮影日時）欠落画像の識別キー更新・重複統合 ---
+            # ※ 大規模DB（写真500枚超）の場合はUvicornのポート待受開始をブロックしないようバックグラウンドで実行する
+            cursor.execute("SELECT 1 FROM migrations WHERE name = 'exifless_content_hash_v1'")
+            if not cursor.fetchone():
+                cursor.execute("SELECT COUNT(*) FROM photos")
+                total_photos_cnt = int(cursor.fetchone()[0] or 0)
+                if total_photos_cnt <= 500:
+                    conn.commit()
+                    try:
+                        exifless_res = migrate_and_merge_exifless_photos()
+                        set_startup_status(exifless_migration=exifless_res)
+                    except Exception as ex_mig_err:
+                        logger.warning(f"Exifなし画像の移行処理で警告: {ex_mig_err}")
+                    cursor.execute("INSERT OR IGNORE INTO migrations (name) VALUES ('exifless_content_hash_v1')")
+                    conn.commit()
 
-            try:
-                exifless_res = migrate_and_merge_exifless_photos(progress_callback=_on_startup_exifless_progress)
-                set_startup_status(exifless_migration=exifless_res)
-                if exifless_res.get("updated", 0) > 0 or exifless_res.get("merged", 0) > 0:
-                    print(
-                        f"[MIGRATE] exifless_content_hash_v1: "
-                        f"Exifなし画像 {exifless_res.get('updated', 0)} 枚の識別キーを更新し、"
-                        f"重複 {exifless_res.get('merged', 0)} 件を統合しました"
-                    )
-            except Exception as ex_mig_err:
-                logger.warning(f"Exifなし画像の移行処理で警告: {ex_mig_err}")
-            cursor.execute("INSERT OR IGNORE INTO migrations (name) VALUES ('exifless_content_hash_v1')")
+            # クエリオプティマイザのインデックス統計を最新化
+            cursor.execute("PRAGMA optimize")
             conn.commit()
 
-        # クエリオプティマイザのインデックス統計を最新化
-        cursor.execute("PRAGMA optimize")
-        conn.commit()
-        set_startup_status(is_ready=True, phase="ready", message="準備完了", detail="", percent=100)
+    set_startup_status(is_ready=True, phase="ready", message="準備完了", detail="", percent=100)
 
 
 def _upgrade_legacy_schema_ddl(cursor, conn) -> bool:
@@ -587,6 +625,9 @@ def _upgrade_legacy_schema_ddl(cursor, conn) -> bool:
     conn.execute("PRAGMA foreign_keys = OFF")
     try:
         cursor.execute("DROP TRIGGER IF EXISTS trg_photos_after_delete")
+        cursor.execute("DROP TRIGGER IF EXISTS trg_v170_guard_photos_ins")
+        cursor.execute("DROP TRIGGER IF EXISTS trg_v170_guard_photos_upd")
+        cursor.execute("DROP TRIGGER IF EXISTS trg_v170_guard_photos_del")
 
         # 先に子テーブル (photo_tags / thumbnails) のデータを退避し、旧テーブルを DROP して CASCADE DELETE を物理的に遮断
         if need_rebuild_pt:
@@ -1034,6 +1075,7 @@ def _restore_cascaded_tags_and_thumbs_from_backup(cursor, conn) -> None:
         for cand in candidates:
             try:
                 bc = sqlite3.connect(f"file:{cand.as_posix()}?mode=ro", uri=True)
+                bc.create_function("tetheract_v170_guard", 0, lambda: 1, deterministic=True)
                 try:
                     t_cnt = bc.execute("SELECT COUNT(*) FROM photo_tags").fetchone()[0]
                     th_cnt = bc.execute("SELECT COUNT(*) FROM thumbnails").fetchone()[0]
@@ -1050,6 +1092,7 @@ def _restore_cascaded_tags_and_thumbs_from_backup(cursor, conn) -> None:
             return
 
         bck_conn = sqlite3.connect(f"file:{best_bck.as_posix()}?mode=ro", uri=True)
+        bck_conn.create_function("tetheract_v170_guard", 0, lambda: 1, deterministic=True)
         bck_conn.row_factory = sqlite3.Row
         try:
             bck_cur = bck_conn.cursor()

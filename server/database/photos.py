@@ -3525,6 +3525,41 @@ def migrate_and_merge_exifless_photos(
 
         total_cand = len(candidates)
         updates_batch: List[Tuple[str, int]] = []
+        dir_exists_cache: Dict[str, bool] = {}
+
+        def _is_file_reachable_fast(p_obj: Any) -> bool:
+            if not p_obj:
+                return False
+            p_str = str(p_obj)
+            # UNCパスの場合は \\server\share ルート単位でも到達性をキャッシュしてSMBタイムアウト連鎖を防止
+            norm_p = p_str.replace("/", "\\")
+            if norm_p.startswith("\\\\"):
+                parts = [pt for pt in norm_p.split("\\") if pt]
+                if len(parts) >= 2:
+                    unc_root = f"\\\\{parts[0]}\\{parts[1]}"
+                    if unc_root in dir_exists_cache and not dir_exists_cache[unc_root]:
+                        return False
+                    if unc_root not in dir_exists_cache:
+                        try:
+                            dir_exists_cache[unc_root] = os.path.isdir(unc_root)
+                        except Exception:
+                            dir_exists_cache[unc_root] = False
+                        if not dir_exists_cache[unc_root]:
+                            return False
+            parent_dir = os.path.dirname(norm_p)
+            if parent_dir:
+                if parent_dir not in dir_exists_cache:
+                    try:
+                        dir_exists_cache[parent_dir] = os.path.isdir(parent_dir)
+                    except Exception:
+                        dir_exists_cache[parent_dir] = False
+                if not dir_exists_cache[parent_dir]:
+                    return False
+            try:
+                return os.path.isfile(norm_p)
+            except Exception:
+                return False
+
         for idx, row in enumerate(candidates, start=1):
             pid = int(row["id"])
             fname = row["file_name"] or ""
@@ -3540,7 +3575,7 @@ def migrate_and_merge_exifless_photos(
             if fp_str:
                 try:
                     rp, is_on = resolve_portable_path(fp_str, expected_serial=vsn)
-                    if is_on and rp and os.path.isfile(str(rp)):
+                    if is_on and rp and _is_file_reachable_fast(rp):
                         resolved_p = rp
                 except Exception:
                     resolved_p = None
@@ -3553,7 +3588,7 @@ def migrate_and_merge_exifless_photos(
                 for lk in cursor.fetchall():
                     try:
                         rp, is_on = resolve_portable_path(lk["file_path"], expected_serial=lk["volume_serial"] or None)
-                        if is_on and rp and os.path.isfile(str(rp)):
+                        if is_on and rp and _is_file_reachable_fast(rp):
                             resolved_p = rp
                             break
                     except Exception:

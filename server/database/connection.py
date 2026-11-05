@@ -156,6 +156,8 @@ DB_PATH = CACHE_DIR / "library.db"
 
 # スレッドローカルストレージ（スレッドごとのSQLite接続キャッシュ）
 _local_db = threading.local()
+_all_connections_lock = threading.Lock()
+_all_connections: list[sqlite3.Connection] = []
 _DB_COMMIT_SEQ: int = 0
 
 
@@ -192,6 +194,16 @@ def bump_db_commit_seq() -> None:
 def get_connection() -> sqlite3.Connection:
     """SQLite接続を取得し、行を辞書形式で扱えるように設定する（スレッドローカル再利用＋RAM常駐キャッシュチューニング済み）"""
     conn = getattr(_local_db, "connection", None)
+    conn_path = getattr(_local_db, "db_path", None)
+    if conn is not None and conn_path != DB_PATH:
+        close_thread_connection()
+        conn = None
+    if conn is not None:
+        try:
+            conn.execute("SELECT 1")
+        except sqlite3.ProgrammingError:
+            conn = None
+            _local_db.connection = None
     if conn is None:
         conn = sqlite3.connect(str(DB_PATH), timeout=20, check_same_thread=False, factory=_TrackedConnection)
         conn.row_factory = sqlite3.Row
@@ -208,7 +220,12 @@ def get_connection() -> sqlite3.Connection:
         conn.execute("PRAGMA temp_store = MEMORY")
         # 太陽高度角計算カスタムスカラ関数の登録（マジックアワー・ブルーアワー抽出用）
         conn.create_function("solar_altitude", 3, calc_solar_altitude)
+        # v1.7.0 セキュリティ＆ダウングレード防止ガード関数（v1.6.1以前へのDB放り込みによるエシカル保護回避を遮断）
+        conn.create_function("tetheract_v170_guard", 0, lambda: 1, deterministic=True)
         _local_db.connection = conn
+        _local_db.db_path = DB_PATH
+        with _all_connections_lock:
+            _all_connections.append(conn)
     return conn
 
 
@@ -222,16 +239,33 @@ def close_thread_connection() -> None:
             print(f"[WARN] SQLite接続クローズ時の警告: {e}")
         finally:
             _local_db.connection = None
+            _local_db.db_path = None
+            with _all_connections_lock:
+                if conn in _all_connections:
+                    _all_connections.remove(conn)
+
+
+def close_all_connections() -> None:
+    """全スレッドが開いているSQLite接続をすべて安全に閉じる（VACUUMやDB切り替え時用）"""
+    close_thread_connection()
+    with _all_connections_lock:
+        conns = list(_all_connections)
+        _all_connections.clear()
+    for c in conns:
+        try:
+            c.close()
+        except Exception:
+            pass
 
 
 def switch_database_path(new_path: Path) -> Path:
     """
-    テスト・ベンチマーク用: スレッドローカル接続を確実に閉じてから DB_PATH を切り替える。
+    テスト・ベンチマーク用: 全スレッドの接続を確実に閉じてから DB_PATH を切り替える。
     戻り値として切り替え前の旧 DB_PATH を返す。
     """
     global DB_PATH
     old_path = DB_PATH
-    close_thread_connection()
+    close_all_connections()
     DB_PATH = Path(new_path)
     bump_db_commit_seq()
     return old_path

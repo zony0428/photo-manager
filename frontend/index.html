@@ -4,22 +4,22 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Tetheract Photo Manager</title>
-  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=1.6.1">
-  <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32.png?v=1.6.1">
-  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png?v=1.6.1">
-  <link rel="apple-touch-icon" href="/icons/icon-192.png?v=1.6.1">
-  <link rel="manifest" href="/manifest.json?v=1.6.1">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=1.7.0">
+  <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32.png?v=1.7.0">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png?v=1.7.0">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png?v=1.7.0">
+  <link rel="manifest" href="/manifest.json?v=1.7.0">
   <meta name="theme-color" content="#191816">
   <link rel="stylesheet" href="/vendor/fonts/fonts.css">
-  <link rel="stylesheet" href="/css/style.css?v=1.6.1">
-  <link rel="stylesheet" href="/css/grid-lightbox.css?v=1.6.1">
-  <link rel="stylesheet" href="/css/selection-menu.css?v=1.6.1">
-  <link rel="stylesheet" href="/css/inspector.css?v=1.6.1">
-  <link rel="stylesheet" href="/css/modals-features.css?v=1.6.1">
-  <link rel="stylesheet" href="/css/lab-map.css?v=1.6.1">
-  <link rel="stylesheet" href="/css/histogram.css?v=1.6.1">
-  <link rel="stylesheet" href="/css/compare.css?v=1.6.1">
-  <link rel="stylesheet" href="/css/ui-unify.css?v=1.6.1">
+  <link rel="stylesheet" href="/css/style.css?v=1.7.0">
+  <link rel="stylesheet" href="/css/grid-lightbox.css?v=1.7.0">
+  <link rel="stylesheet" href="/css/selection-menu.css?v=1.7.0">
+  <link rel="stylesheet" href="/css/inspector.css?v=1.7.0">
+  <link rel="stylesheet" href="/css/modals-features.css?v=1.7.0">
+  <link rel="stylesheet" href="/css/lab-map.css?v=1.7.0">
+  <link rel="stylesheet" href="/css/histogram.css?v=1.7.0">
+  <link rel="stylesheet" href="/css/compare.css?v=1.7.0">
+  <link rel="stylesheet" href="/css/ui-unify.css?v=1.7.0">
   <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
   <script src="/vendor/leaflet/leaflet.js"></script>
   <script>
@@ -52,6 +52,105 @@
 </head>
 <body>
   <!-- 起動スプラッシュスクリーン ＆ DBマイグレーション進捗オーバーレイ -->
+  <!-- セキュリティロック ＆ DB引き継ぎ認証オーバーレイ (Lv.0 DB引き抜き検知 / Lv.1・Lv.2 起動ロック) -->
+  <div class="modal-backdrop" id="securityLockOverlay" style="display: none; z-index: 25000; background: rgba(12, 12, 11, 0.96); backdrop-filter: blur(12px);">
+    <div class="modal-card" style="max-width: 500px; width: 92vw; border: 1px solid rgba(200, 157, 102, 0.35); box-shadow: 0 20px 50px rgba(0,0,0,0.75);">
+      <div class="modal-header" style="border-bottom: 1px solid rgba(255,255,255,0.08); padding: 16px 20px;">
+        <div class="modal-header-title">
+          <h2 id="secLockOverlayTitle" style="display: flex; align-items: center; gap: 8px; font-size: 1.05rem;">
+            <span>🔒</span> <span>Tetheract セキュリティロック</span>
+          </h2>
+          <span class="modal-subtitle" id="secLockOverlaySubtitle">パスワードまたはリカバリーコードを入力してロックを解除してください</span>
+        </div>
+      </div>
+
+      <div class="modal-body" style="padding: 20px; display: flex; flex-direction: column; gap: 16px; font-size: 0.86rem;">
+        <!-- 通常起動ロック解除フォーム (Lv.1 / Lv.2) -->
+        <div id="secUnlockFormBox" style="display: flex; flex-direction: column; gap: 12px;">
+          <div id="secUnlockLevelBadge" style="font-size: 0.78rem; color: var(--accent-primary, #c89d66); background: rgba(200, 157, 102, 0.12); border: 1px solid rgba(200, 157, 102, 0.3); padding: 6px 10px; border-radius: 6px; font-weight: 600;">
+            🛡️ Lv.1 起動＆DBロック保護中
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <label for="secUnlockPasswordInput" style="font-weight: 600; color: var(--text-main, #eceae4);">パスワード（またはリカバリーコード <code>TETH-XXXX-...</code>）</label>
+            <input type="password" id="secUnlockPasswordInput" class="styled-input" placeholder="パスワードまたはリカバリーコードを入力..." autocomplete="current-password" style="width: 100%; padding: 10px 12px; font-size: 0.95rem; border-radius: 6px; border: 1px solid var(--border-soft, rgba(255,255,255,0.22)); background: var(--bg-primary, #141413); color: var(--text-main, #eceae4);">
+          </div>
+          <div id="secUnlockErrorMsg" style="display: none; color: #ef4444; font-size: 0.8rem; font-weight: 600;"></div>
+          <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px;">
+            <button type="button" class="btn btn-primary" id="secUnlockSubmitBtn" style="width: 100%; padding: 9px 16px; font-weight: 700;">ロックを解除して起動</button>
+          </div>
+        </div>
+
+        <!-- DB単体引き抜き検知・USB故障時の引き継ぎ救済フォーム (db_foreign_locked) -->
+        <div id="secDbForeignRecoveryBox" style="display: none; flex-direction: column; gap: 14px;">
+          <div style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.4); border-left: 4px solid #ef4444; border-radius: 6px; padding: 10px 12px; color: var(--text-main, #eceae4); line-height: 1.55; font-size: 0.81rem;">
+            <strong>🛡️ エシカル保護：未ペアリングのデータベース（library.db）を検出</strong><br>
+            <span style="color: var(--text-muted, #94a3b8);">この <code>library.db</code> は別の Tetheract 本体で作成されたか、単体でコピーされたため保護ロックされています。<br>
+            USBメモリの破損やPC移行により<strong>ご自身のバックアップDBを新しい本体へ引き継ぐ場合</strong>は、以下のいずれかの方法でオーナー確認を行ってください。</span>
+          </div>
+
+          <!-- 救済手段1: 所有メディア(VSN+実写真)の接続照合 -->
+          <div id="secRecoverMediaSection" style="background: var(--bg-secondary, rgba(255,255,255,0.04)); border: 1px solid var(--border-soft, rgba(255,255,255,0.12)); border-radius: 6px; padding: 12px; display: flex; flex-direction: column; gap: 8px;">
+            <div style="font-weight: 700; color: var(--text-main, #eceae4); font-size: 0.85rem;">方法①：所有ドライブ・SDカードの接続で自動照合（パスワード未設定時）</div>
+            <div style="font-size: 0.78rem; color: var(--text-muted, #94a3b8); line-height: 1.45;">
+              このDBに登録されている元の写真が入ったPCドライブまたはSDカードを接続した状態で下のボタンを押すと、ハードウェアVSNと実在ファイルを照合して引き継ぎます。
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm" id="secRecoverByMediaBtn" style="align-self: flex-start;">💿 接続中の所有メディアを照合して引き継ぐ</button>
+          </div>
+
+          <!-- 救済手段2・3: パスワードまたはリカバリーコード -->
+          <div style="background: var(--bg-secondary, rgba(255,255,255,0.04)); border: 1px solid var(--border-soft, rgba(255,255,255,0.12)); border-radius: 6px; padding: 12px; display: flex; flex-direction: column; gap: 8px;">
+            <div style="font-weight: 700; color: var(--text-main, #eceae4); font-size: 0.85rem;">方法②：パスワード または リカバリーコードで引き継ぐ</div>
+            <div style="font-size: 0.78rem; color: var(--text-muted, #94a3b8); line-height: 1.45;">
+              設定していたパスワード、またはDBバックアップ時に出力された <code>recovery_key.txt</code> 内のリカバリーコード（<code>TETH-XXXX-...</code>）を入力してください。
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <input type="password" id="secRecoverSecretInput" class="styled-input" placeholder="パスワード または TETH-XXXX-XXXX-XXXX-XXXX" autocomplete="off" style="flex: 1; padding: 8px 10px; border-radius: 4px; border: 1px solid var(--border-soft, rgba(255,255,255,0.2)); background: var(--bg-primary, #141413); color: var(--text-main, #eceae4);">
+              <button type="button" class="btn btn-primary btn-sm" id="secRecoverBySecretBtn" style="white-space: nowrap;">認証して引き継ぐ</button>
+            </div>
+          </div>
+
+          <div id="secRecoverErrorMsg" style="display: none; color: #ef4444; font-size: 0.8rem; font-weight: 600;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 他人の Loome ドライブ保護案内 ＆ パスワード承認モーダル -->
+  <div class="modal-backdrop" id="foreignLoomeModal" style="display: none; z-index: 12000;">
+    <div class="modal-card" style="max-width: 500px; width: 92vw;">
+      <div class="modal-header">
+        <div class="modal-header-title">
+          <h2>🔒 他人の Loome 保護ドライブ（エシカルモード）</h2>
+          <span class="modal-subtitle" id="foreignLoomeModalSubtitle">他者のメディア保護のためアクセスを制限しています</span>
+        </div>
+        <button class="modal-close-btn" id="closeForeignLoomeModalBtn">&times;</button>
+      </div>
+      <div class="modal-body" style="padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; font-size: 0.85rem;">
+        <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.35); border-left: 4px solid #ef4444; border-radius: 6px; padding: 10px 12px; line-height: 1.55; color: var(--text-main, #eceae4);">
+          <strong>🛡️ エシカル保護によりこのドライブは操作できません</strong><br>
+          <span style="color: var(--text-muted, #94a3b8); font-size: 0.8rem;">
+            ドライブ <strong id="foreignLoomeDriveLabel" style="color: var(--text-main, #eceae4);">-</strong> には別のオーナーの <code>Loome</code> が検出されました。<br>
+            Tetheract のエシカル設計により、<strong>① 他人の Loome の閲覧、② このドライブ内のフォルダの管理登録・スキャン、③ Loome の新規作成・上書き</strong> はすべて禁止されています（ドライブには1バイトも書き込みません）。
+          </span>
+        </div>
+
+        <div id="foreignLoomePasswordBox" style="background: var(--bg-secondary, rgba(255,255,255,0.04)); border: 1px solid var(--border-soft, rgba(255,255,255,0.12)); border-radius: 6px; padding: 12px; display: flex; flex-direction: column; gap: 8px;">
+          <div style="font-weight: 700; color: var(--text-main, #eceae4); font-size: 0.84rem;">🔑 ご自身の別PCでパスワード保護した Loome メディアの場合</div>
+          <div style="font-size: 0.78rem; color: var(--text-muted, #94a3b8); line-height: 1.45;">
+            ご自身の別の Tetheract（Lv.1 / Lv.2）で同じパスワードを設定した外付け <code>Loome</code> の場合は、パスワードを入力することでこの環境でもご自身のメディアとして承認・開くことができます。
+          </div>
+          <div style="display: flex; gap: 8px; margin-top: 2px;">
+            <input type="password" id="foreignLoomePasswordInput" class="styled-input" placeholder="設定したパスワードを入力..." autocomplete="off" style="flex: 1; padding: 7px 10px; border-radius: 4px; border: 1px solid var(--border-soft, rgba(255,255,255,0.22)); background: var(--bg-primary, #141413); color: var(--text-main, #eceae4);">
+            <button type="button" class="btn btn-primary btn-sm" id="foreignLoomeUnlockBtn" style="white-space: nowrap;">自分のLoomeとして承認</button>
+          </div>
+          <div id="foreignLoomeErrorMsg" style="display: none; color: #ef4444; font-size: 0.78rem; font-weight: 600;"></div>
+        </div>
+      </div>
+      <div class="modal-footer" style="display: flex; justify-content: flex-end; padding: 12px 20px;">
+        <button type="button" class="btn btn-secondary" id="closeForeignLoomeFooterBtn">閉じる (Esc)</button>
+      </div>
+    </div>
+  </div>
   <div class="startup-splash-overlay" id="startupSplashOverlay" role="status" aria-live="polite">
     <div class="startup-splash-frame">
       <span class="splash-corner splash-corner-tl" aria-hidden="true"></span>
@@ -108,14 +207,14 @@
 
         <div class="logo" id="headerAppLogo" title="Tetheract Photo Manager">
           <span class="logo-icon-wrap">
-            <img class="logo-app-icon" id="headerLogoStaticImg" src="/icons/icon-192.png?v=1.6.1" width="24" height="24" alt="" aria-hidden="true">
+            <img class="logo-app-icon" id="headerLogoStaticImg" src="/icons/icon-192.png?v=1.7.0" width="24" height="24" alt="" aria-hidden="true">
             <canvas class="logo-app-icon-canvas" id="headerTetheractCanvas" width="72" height="72" aria-hidden="true"></canvas>
           </span>
           <svg class="logo-lockup-svg" viewBox="64 8 248 48" width="134" height="26" fill="none" role="img" aria-label="TETHERACT pm">
             <text x="0" y="45.41" fill="var(--logo-text)" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif" font-size="44.38" font-weight="700" letter-spacing="2.8" textLength="269.4" lengthAdjust="spacingAndGlyphs" transform="translate(66, 0) scale(0.7071, 1)">TETHERACT</text>
             <text x="0" y="45.41" fill="var(--logo-pm)" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif" font-size="35.60" font-weight="600" letter-spacing="1.0" transform="translate(265, 0) scale(0.75, 1)">pm</text>
           </svg>
-          <span class="app-version" id="appVersion" title="v1.6.1 (最終更新: 2026-11-04 19:25)">v1.6.1</span>
+          <span class="app-version" id="appVersion" title="v1.7.0 (最終更新: 2026-11-04 23:55)">v1.7.0</span>
         </div>
 
         <!-- UI言語切替（日本語 JP ⇄ English EN） -->
@@ -1412,7 +1511,7 @@
             <h4>7. Binder（条件セット保存）・外部ソフト連携・Loome管理・DBメンテナンス</h4>
             <p>Binder（条件セット保存）：よく使う絞り込み条件は、左サイドバー「Binder」の保存フォームで名前を付けて保存し、ワンクリックでの呼び出しやスライドショー再生が行えます。</p>
             <p>外部ソフト連携と自動更新検知：右インスペクタ上部のアイコンからエクスプローラーで保存先を開いたり、既定のソフトでファイルを開けます。外部ソフトで編集・保存したり .xmp サイドカーを出力して Tetheract の画面へ戻ると自動で変更を検知してサムネイルや XMP バッジを最新化します（右クリックメニューの「サムネイルを更新」から手動更新も可能です）。</p>
-            <p>設定とDBメンテナンス：画面右上の「設定」ボタンから、起動時のウィンドウサイズやタグの名前順ルールの変更、世代バックアップ付きデータベース最適化（VACUUM）が行えます。</p>
+            <p>設定とDBメンテナンス：画面右上の「設定」ボタンから、起動時のウィンドウサイズやタグの名前順ルールの変更、3段階セキュリティ（Lv.0: エシカルモード［他人のLoomeドライブ完全拒否＆DB単体引き抜き防止］／ Lv.1: 起動ロック＆DBサムネイル暗号化 ／ Lv.2: フルロック＋Loome実ファイルカプセル化保護）、および世代バックアップ付きデータベース最適化（VACUUM）が行えます。</p>
             <p>Loome 管理：左サイドバー「Folder」先頭の「Loome」には、外部フォルダの写真を右クリックの「Loomeへコピー ▶」（マウスオーバーでドライブからサブフォルダ階層へと右展開するカスケードメニュー）またはドラッグ＆ドロップで高速に並列コピー取り込みできます。また、接続中のドライブを右クリックして「このドライブに Loome を作成...」（または「登録メディア管理」の「Loome を作成」）を実行すると、外付けSSD・USBメモリ直下にも専用 Loome を追加できます。Loome内ではサブフォルダ作成・移動（右クリック「Loome内で移動 ▶」）・ファイル名変更（F2キーで単一または一括連番リネーム）・外部エクスポートが行え、同名のサイドカーファイル（.xmp等）やペアRAWも自動で追従します。</p>
           </div>
         </div>
@@ -2034,6 +2133,37 @@
           </div>
 
           <!-- バックアップ作成・管理 -->
+          <div style="background: var(--bg-secondary, rgba(255,255,255,0.04)); border: 1px solid rgba(200, 157, 102, 0.28); border-radius: var(--radius-sm, 4px); padding: 12px; display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <div>
+                <div style="font-weight: 700; color: var(--text-main, #eceae4); display: flex; align-items: center; gap: 6px;">
+                  <span>🛡️ セキュリティ ＆ エシカル保護（3段階）</span>
+                  <span id="secSettingsCurrentBadge" style="font-size: 0.72rem; padding: 1px 6px; border-radius: 4px; background: rgba(200,157,102,0.18); color: var(--accent-primary, #c89d66);">Lv.0</span>
+                </div>
+                <div style="font-size: 0.74rem; color: var(--text-dim, #64748b); margin-top: 2px;">他人のLoome保護・DB引き抜き防止・起動ロック・Loomeカプセル化を設定します</div>
+              </div>
+              <button type="button" class="btn btn-secondary btn-xs" id="secLockNowBtn" style="display: none; white-space: nowrap;" title="画面を今すぐロックします">🔒 今すぐロック</button>
+            </div>
+
+            <select id="secLevelSelect" class="styled-select" style="width: 100%; font-size: 0.8rem;">
+              <option value="0">Lv.0: エシカルモード（標準：他人のLoome拒否 ＆ DB引き抜き防止）</option>
+              <option value="1">Lv.1: 起動ロック ＆ DBロック（パスワード起動 ＋ サムネイル暗号化）</option>
+              <option value="2">Lv.2: フルロック（Lv.1 ＋ Loome実ファイルのカプセル化保護）</option>
+            </select>
+
+            <div id="secPasswordFieldsBox" style="display: flex; flex-direction: column; gap: 6px; margin-top: 2px;">
+              <input type="password" id="secCurrentPassInput" class="styled-input" placeholder="現在のパスワード（Lv.1/2 から変更・解除時のみ）" autocomplete="new-password" style="width: 100%; padding: 6px 8px; font-size: 0.8rem; border-radius: 4px; border: 1px solid var(--border-soft, rgba(255,255,255,0.18)); background: var(--bg-primary, #141413); color: var(--text-main, #eceae4);">
+              <input type="password" id="secNewPassInput" class="styled-input" placeholder="設定するパスワード（4文字以上 / Lv.1・Lv.2 用）" autocomplete="new-password" style="width: 100%; padding: 6px 8px; font-size: 0.8rem; border-radius: 4px; border: 1px solid var(--border-soft, rgba(255,255,255,0.18)); background: var(--bg-primary, #141413); color: var(--text-main, #eceae4);">
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 2px;">
+              <div style="font-size: 0.72rem; color: var(--text-muted, #94a3b8); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                救済キー: <code id="secRecoveryCodeText" style="color: var(--accent-primary, #c89d66); font-weight: 600;">----</code>
+                <button type="button" class="btn btn-secondary btn-xs" id="secCopyRecoveryCodeBtn" style="font-size: 0.68rem; padding: 1px 6px; margin-left: 4px;">コピー</button>
+              </div>
+              <button type="button" class="btn btn-primary btn-sm" id="secApplyConfigBtn" style="white-space: nowrap;">設定を適用</button>
+            </div>
+          </div>
           <div style="background: var(--bg-secondary, rgba(255,255,255,0.04)); border: 1px solid var(--border-soft, rgba(255,255,255,0.1)); border-radius: var(--radius-sm, 4px); padding: 12px; display: flex; flex-direction: column; gap: 8px;">
             <div style="display: flex; justify-content: space-between; align-items: center;">
               <div>
@@ -3051,23 +3181,23 @@
     </div>
   </div>
 
-  <script src="/js/common.js?v=1.6.1"></script>
-  <script src="/js/selection.js?v=1.6.1"></script>
-  <script src="/js/inspector.js?v=1.6.1"></script>
-  <script src="/js/lightbox.js?v=1.6.1"></script>
-  <script src="/js/adjust.js?v=1.6.1"></script>
-  <script src="/js/histogram.js?v=1.6.1"></script>
-  <script src="/js/compare.js?v=1.6.1"></script>
-  <script src="/js/takeout.js?v=1.6.1"></script>
-  <script src="/js/presets.js?v=1.6.1"></script>
-  <script src="/js/slideshow.js?v=1.6.1"></script>
-  <script src="/js/location_tree.js?v=1.6.1"></script>
-  <script src="/js/folder_tree.js?v=1.6.1"></script>
-  <script src="/js/location_map.js?v=1.6.1"></script>
-  <script src="/js/lab.js?v=1.6.1"></script>
-  <script src="/js/sidebar_filters.js?v=1.6.1"></script>
-  <script src="/js/storage.js?v=1.6.1"></script>
-  <script src="/js/app.js?v=1.6.1"></script>
-  <script src="/js/i18n.js?v=1.6.1"></script>
+  <script src="/js/common.js?v=1.7.0"></script>
+  <script src="/js/selection.js?v=1.7.0"></script>
+  <script src="/js/inspector.js?v=1.7.0"></script>
+  <script src="/js/lightbox.js?v=1.7.0"></script>
+  <script src="/js/adjust.js?v=1.7.0"></script>
+  <script src="/js/histogram.js?v=1.7.0"></script>
+  <script src="/js/compare.js?v=1.7.0"></script>
+  <script src="/js/takeout.js?v=1.7.0"></script>
+  <script src="/js/presets.js?v=1.7.0"></script>
+  <script src="/js/slideshow.js?v=1.7.0"></script>
+  <script src="/js/location_tree.js?v=1.7.0"></script>
+  <script src="/js/folder_tree.js?v=1.7.0"></script>
+  <script src="/js/location_map.js?v=1.7.0"></script>
+  <script src="/js/lab.js?v=1.7.0"></script>
+  <script src="/js/sidebar_filters.js?v=1.7.0"></script>
+  <script src="/js/storage.js?v=1.7.0"></script>
+  <script src="/js/app.js?v=1.7.0"></script>
+  <script src="/js/i18n.js?v=1.7.0"></script>
 </body>
 </html>

@@ -212,6 +212,12 @@ def get_all_loome_roots(use_cache: bool = True, force_refresh: bool = False) -> 
     primary_key = primary_norm.lower()
     primary_vol_info = get_volume_info(primary_norm)
     primary_serial = (primary_vol_info.get("serial") or "").upper() if primary_vol_info else None
+    try:
+        from .security import LOOME_SEAL_FILENAME, write_loome_seal
+        if not (primary_dir / LOOME_SEAL_FILENAME).exists():
+            write_loome_seal(primary_dir, volume_serial=primary_serial)
+    except Exception:
+        pass
 
     roots: List[Dict[str, Any]] = [
         {
@@ -242,6 +248,13 @@ def get_all_loome_roots(use_cache: bool = True, force_refresh: bool = False) -> 
             if not mounted_drive:
                 continue
             ext_dir = Path(f"{mounted_drive}\\Loome")
+            try:
+                from .security import inspect_drive_loome_ownership
+                l_status, _ = inspect_drive_loome_ownership(ext_dir, volume_serial=vsn)
+                if l_status == "foreign":
+                    continue
+            except Exception:
+                pass
             try:
                 ext_resolved = ext_dir.resolve()
             except Exception:
@@ -517,10 +530,13 @@ def enable_volume_loome(volume_serial: str, drive_letter: Optional[str] = None) 
 
     mounted_drive = str(online_info["drive"]).rstrip("\\/")
     vol_label = online_info.get("label") or ""
+    from .security import assert_drive_not_blocked_by_foreign_loome, write_loome_seal
+    assert_drive_not_blocked_by_foreign_loome(f"{mounted_drive}\\", volume_serial=serial_clean)
     loome_dir = Path(f"{mounted_drive}\\Loome")
 
     try:
         loome_dir.mkdir(parents=True, exist_ok=True)
+        write_loome_seal(loome_dir, volume_serial=serial_clean)
     except Exception as e:
         raise ValueError(f"ドライブ {mounted_drive} への Loome フォルダ作成に失敗しました: {e}")
 
@@ -1624,6 +1640,16 @@ def import_photos_to_storage(photo_ids: List[int], destination: Optional[str] = 
                 ensure_thumbnail(nid, fp)
             except Exception as th_err:
                 logger.warning(f"インポート写真のサムネイル生成スキップ ({fp}): {th_err}")
+        try:
+            from .security import get_current_security_level, seal_loome_file
+            if get_current_security_level() == 2:
+                for plan in copied_plans:
+                    if plan.get("dest_file") and Path(plan["dest_file"]).exists():
+                        seal_loome_file(plan["dest_file"])
+                    if plan.get("dest_pair_file") and Path(plan["dest_pair_file"]).exists():
+                        seal_loome_file(plan["dest_pair_file"])
+        except Exception as seal_err:
+            logger.warning(f"Loome インポート後のLv.2カプセル化で警告: {seal_err}")
     finally:
         _update_storage_task_status(is_running=False, current=total_target, current_file="")
 
@@ -2258,7 +2284,11 @@ def export_storage_folder(
                 f_sz = s_f.stat().st_size
             except Exception:
                 f_sz = 0
-            fast_copy_file(s_f, d_f, file_size=f_sz)
+            from .security import copy_file_unsealed, is_vault_encrypted_file
+            if is_vault_encrypted_file(s_f):
+                copy_file_unsealed(s_f, d_f)
+            else:
+                fast_copy_file(s_f, d_f, file_size=f_sz)
             with exp_lock:
                 exported_count += 1
                 _update_storage_task_status(current=exported_count, current_file=s_f.name)

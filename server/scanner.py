@@ -637,14 +637,51 @@ def compute_file_sample_hash(file_path: Path) -> Optional[str]:
     Exif（撮影日時）を持たない画像を別フォルダへコピーした際にも同一画像として認識できるよう、
     ファイル先頭ヘッダー領域（先頭4KB）を避けた中間・後半の複数箇所サンプリングデータから
     軽量な64bit BLAKE2bハッシュ（16桁hex）を算出する。
+    Lv.2 カプセル化（TETHVLT1）されているファイルに対しても元の平文と完全一致するハッシュを算出する。
     """
     try:
+        from .security import (
+            VAULT_CHUNK_SIZE,
+            get_logical_file_size,
+            is_vault_encrypted_file,
+            read_loome_file_decrypted_bytes,
+        )
+
         p = Path(file_path)
-        fsize = p.stat().st_size
+        is_vault = is_vault_encrypted_file(p)
+        fsize = get_logical_file_size(p) if is_vault else p.stat().st_size
         if fsize <= 0:
             return None
         h = hashlib.blake2b(digest_size=8)
         h.update(f"sz:{fsize}|".encode("ascii"))
+
+        if is_vault:
+            if fsize <= 32768:
+                data = read_loome_file_decrypted_bytes(p)
+                h.update(data[512:] if len(data) > 1024 else data)
+            else:
+                chunk_size = 8192
+                offsets = (
+                    4096,
+                    max(4096, (fsize // 2) - (chunk_size // 2)),
+                    max(4096, fsize - chunk_size - 1024),
+                )
+                plain_head = read_loome_file_decrypted_bytes(p, max_bytes=VAULT_CHUNK_SIZE)
+                with open(p, "rb") as f:
+                    for off in offsets:
+                        end_off = min(fsize, off + chunk_size)
+                        if end_off <= len(plain_head):
+                            h.update(plain_head[off:end_off])
+                        elif off < len(plain_head):
+                            part1 = plain_head[off:]
+                            f.seek(len(plain_head))
+                            part2 = f.read(end_off - len(plain_head))
+                            h.update(part1 + part2)
+                        else:
+                            f.seek(off)
+                            h.update(f.read(end_off - off))
+            return h.hexdigest()
+
         with open(p, "rb") as f:
             if fsize <= 32768:
                 data = f.read()
@@ -671,6 +708,8 @@ def has_exif_datetime(file_path: Path) -> bool:
     Exif由来の撮影日時（DateTimeOriginal / DateTime）が存在するかどうかを高速判定する。
     """
     try:
+        from .security import is_vault_encrypted_file, read_loome_file_decrypted_bytes
+
         p = Path(file_path)
         if not p.is_file():
             return False
@@ -679,7 +718,8 @@ def has_exif_datetime(file_path: Path) -> bool:
             if raw_meta.get("has_exif_date"):
                 return True
         else:
-            with Image.open(p) as img:
+            img_src = io.BytesIO(read_loome_file_decrypted_bytes(p)) if is_vault_encrypted_file(p) else p
+            with Image.open(img_src) as img:
                 exif = img.getexif()
                 if exif:
                     exif_ifd = {}
@@ -806,7 +846,8 @@ def extract_metadata(file_path: Path) -> Dict[str, Any]:
         return _finalize_exifless_content_hash(_apply_xmp_hardware_fallback(raw_meta, file_path, fb_str), file_path)
 
     stat = file_path.stat()
-    file_size = stat.st_size
+    from .security import get_logical_file_size, is_vault_encrypted_file, read_loome_file_decrypted_bytes
+    file_size = get_logical_file_size(file_path)
 
     # デフォルト値（ファイル更新日時をフォールバックとして使用）
     fallback_dt = datetime.fromtimestamp(stat.st_mtime)
@@ -826,7 +867,7 @@ def extract_metadata(file_path: Path) -> Dict[str, Any]:
     longitude = None
 
     try:
-        with Image.open(file_path) as img:
+        with (Image.open(io.BytesIO(read_loome_file_decrypted_bytes(file_path))) if is_vault_encrypted_file(file_path) else Image.open(file_path)) as img:
             width, height = img.size
 
             # EXIFの向き情報（Orientation）に応じた自動回転を考慮
@@ -1145,7 +1186,8 @@ def render_thumbnail_webp(
                     img = raw_img
             else:
                 try:
-                    opened_img = Image.open(target_path)
+                    from .security import is_vault_encrypted_file, read_loome_file_decrypted_bytes
+                    opened_img = Image.open(io.BytesIO(read_loome_file_decrypted_bytes(target_path))) if is_vault_encrypted_file(target_path) else Image.open(target_path)
                     # P1-8: JPEGの場合は exif_transpose の前に draft を呼び出し、デコード負荷を大幅軽減
                     # ※ クロップや水平傾き補正がある場合は拡大切り抜き時にぼやけないよう4倍サイズでdraftする
                     if getattr(opened_img, "format", None) == "JPEG":
@@ -1562,6 +1604,16 @@ def scan_directory(
             volume_serial = vol_info["serial"]
             upsert_volume(vol_info["serial"], vol_info["label"], vol_info["drive"])
 
+        # エシカル保護（Lv.0）: 他人の Loome が存在するドライブはスキャン・管理登録を完全拒否する
+        from .security import (
+            assert_drive_not_blocked_by_foreign_loome,
+            get_current_security_level,
+            get_logical_file_size,
+            refresh_vsn_rescue_bundles_if_unlocked,
+            seal_all_files_in_directory,
+        )
+        assert_drive_not_blocked_by_foreign_loome(target_dir_str, volume_serial=volume_serial)
+
         # 指紋照合（別PC・別アカウントの同名ドライブ/フォルダ誤読防止）
         # ※ 明示的なリフレッシュ・リンク整理（cleanup_orphans=True）時や、
         #    ハードウェアVSNが登録済みリンクと完全一致している同一ドライブ上では、
@@ -1660,7 +1712,7 @@ def scan_directory(
             total_scanned += 1
             try:
                 stat = full_path.stat()
-                st_size = stat.st_size
+                st_size = get_logical_file_size(full_path)
                 st_mtime = stat.st_mtime
 
                 # 差分判定: size と mtime が両方一致したファイルは extract_metadata を呼ばず unchanged
@@ -1769,6 +1821,19 @@ def scan_directory(
             "exifless_updated": exifless_updated,
             "exifless_merged": exifless_merged,
         }
+        # Lv.2 フルロック有効時、スキャン対象が Loome 配下なら未保護ファイルをカプセル化保護する
+        try:
+            from .storage_manager import is_path_in_storage
+            if get_current_security_level() == 2 and is_path_in_storage(target_dir_str, volume_serial=volume_serial):
+                seal_all_files_in_directory(target_dir)
+        except Exception as seal_err:
+            print(f"[WARN] Lv.2 Loome カプセル化警告: {seal_err}")
+
+        # 所有メディアVSN照合用の救済バンドルを最新化
+        try:
+            refresh_vsn_rescue_bundles_if_unlocked()
+        except Exception as vsn_err:
+            print(f"[WARN] VSN救済バンドル更新警告: {vsn_err}")
         # スマホで cache/library.db 単体を開いた際にもスキャン結果がすべて含まれるようWALをフラッシュ
         try:
             with get_connection() as ck_conn:
@@ -1857,6 +1922,9 @@ def check_folder_diff(target_dir_str: str, volume_serial: Optional[str] = None) 
         vol_info = get_volume_info(probe_path)
         if vol_info and vol_info.get("serial"):
             eff_serial = vol_info["serial"]
+
+    from .security import assert_drive_not_blocked_by_foreign_loome
+    assert_drive_not_blocked_by_foreign_loome(target_dir_str, volume_serial=eff_serial)
 
     norm_win = os.path.normpath(target_dir_str).rstrip("\\/")
     norm_win_lower = norm_win.lower()
@@ -2041,7 +2109,7 @@ def check_folder_diff(target_dir_str: str, volume_serial: Optional[str] = None) 
     for k in (disk_keys & db_keys):
         d_sz, d_mt = disk_files[k]
         b_sz, b_mt = db_files[k]
-        if d_sz != b_sz or (b_mt > 0 and abs(d_mt - b_mt) >= 1e-4):
+        if (d_sz != b_sz and d_sz != b_sz + 72) or (b_mt > 0 and abs(d_mt - b_mt) >= 1e-4):
             direct_modified += 1
 
     # 4. 子フォルダおよび子フォルダ内ファイルの差分集計
@@ -2095,7 +2163,7 @@ def check_folder_diff(target_dir_str: str, volume_serial: Optional[str] = None) 
             for k in (ds_keys & bs_keys):
                 d_sz, d_mt = disk_sub_files[k]
                 b_sz, b_mt = sub_fmap[k]
-                if d_sz != b_sz or (b_mt > 0 and abs(d_mt - b_mt) >= 1e-4):
+                if (d_sz != b_sz and d_sz != b_sz + 72) or (b_mt > 0 and abs(d_mt - b_mt) >= 1e-4):
                     sub_modified += 1
 
         # (C) OS側で新規追加された未登録の直下子フォルダチェック（ドライブルート以外かつ実在時のみ）

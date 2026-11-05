@@ -482,6 +482,9 @@
       clearThumbUrlCache();
 
       const db = new SQL.Database(u8);
+      if (typeof db.create_function === 'function') {
+        db.create_function('tetheract_v170_guard', () => 1);
+      }
       // photosテーブルの存在確認
       const check = db.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='photos'");
       if (!check || check.length === 0) {

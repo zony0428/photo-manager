@@ -131,6 +131,7 @@ def vacuum_database() -> Dict[str, Any]:
 
     # VACUUM はアクティブなトランザクション外で実行する必要があるため、独立接続＆自動コミットで実行
     conn = sqlite3.connect(str(DB_PATH), timeout=60, isolation_level=None)
+    conn.create_function("tetheract_v170_guard", 0, lambda: 1, deterministic=True)
     try:
         conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
         conn.execute("VACUUM")
@@ -197,6 +198,15 @@ def backup_database(max_backups: int = 5) -> Dict[str, Any]:
         logger.warning(f"バックアップ世代管理クリーンアップエラー: {e}")
 
     info = get_backup_info()
+
+    # バックアップ時に復旧キー (recovery_key.txt) もバックアップフォルダへ同期出力する
+    try:
+        from ..security import get_security_status, save_recovery_key_file
+        sec = get_security_status()
+        if sec.get("recovery_code") and sec.get("owner_id_full"):
+            save_recovery_key_file(sec["recovery_code"], sec["owner_id_full"], target_dir=BACKUP_DIR)
+    except Exception as rec_err:
+        logger.debug(f"バックアップ時の復旧キー保存スキップ: {rec_err}")
 
     return {
         "status": "success",

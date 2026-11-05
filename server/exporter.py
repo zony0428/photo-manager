@@ -292,7 +292,8 @@ def load_photo_pil_image(photo: dict) -> Tuple[Optional[Image.Image], Optional[b
         if paired_path_str:
             p_pair, is_pair_online = resolve_portable_path(paired_path_str, expected_serial=photo.get("volume_serial"))
             if is_pair_online and p_pair.exists() and p_pair.suffix.lower() in (".jpg", ".jpeg"):
-                img = Image.open(p_pair)
+                from .security import is_vault_encrypted_file, read_loome_file_decrypted_bytes
+                img = Image.open(io.BytesIO(read_loome_file_decrypted_bytes(p_pair))) if is_vault_encrypted_file(p_pair) else Image.open(p_pair)
                 exif_bytes = img.info.get("exif")
                 if img.mode != "RGB":
                     img = img.convert("RGB")
@@ -300,7 +301,8 @@ def load_photo_pil_image(photo: dict) -> Tuple[Optional[Image.Image], Optional[b
 
     # 通常の画像ファイル (JPEG, PNG, WebP 等)
     try:
-        img = Image.open(real_path)
+        from .security import is_vault_encrypted_file, read_loome_file_decrypted_bytes
+        img = Image.open(io.BytesIO(read_loome_file_decrypted_bytes(real_path))) if is_vault_encrypted_file(real_path) else Image.open(real_path)
         # カメラ向きタグを物理適用
         img = ImageOps.exif_transpose(img)
         exif_bytes = img.info.get("exif")

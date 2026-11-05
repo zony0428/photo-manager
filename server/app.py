@@ -196,6 +196,21 @@ from .lan_access import (
     is_loopback_client,
     touch_lan_activity,
 )
+from .security import (
+    configure_security_level,
+    copy_file_unsealed,
+    get_current_security_level,
+    get_logical_file_size,
+    get_security_status,
+    is_app_locked,
+    is_vault_encrypted_file,
+    lock_session_now,
+    read_loome_file_decrypted_bytes,
+    recover_db_by_owned_media,
+    seal_loome_file,
+    unlock_foreign_loome_with_password,
+    unlock_with_password_or_recovery,
+)
 
 
 import logging
@@ -219,22 +234,60 @@ async def lifespan(app: FastAPI):
     """起動時にDBを初期化し、旧carryからstorage/Loomeへの移行・リンク切れ写真整理・無効な(0,0)GPSエラー整理を行い、単体モバイルHTMLを最新化する"""
     set_startup_status(is_ready=False, phase="init", message="データベースを初期化中...", detail="キャッシュとスキーマを確認しています", percent=10)
     initialize_database()
-    set_startup_status(is_ready=False, phase="storage", message="Loomeを確認中...", detail="Loome フォルダの整合性を確認しています", percent=88)
-    migrate_carry_to_storage()
-    active_loome_dir = ensure_storage_dir()
-    cleanup_missing_upload_photos(active_loome_dir)
-    cleanup_invalid_zero_gps()
+    locked_at_boot = is_app_locked()
+    if not locked_at_boot:
+        set_startup_status(is_ready=False, phase="storage", message="Loomeを確認中...", detail="Loome フォルダの整合性を確認しています", percent=88)
+        migrate_carry_to_storage()
+        active_loome_dir = ensure_storage_dir()
+        cleanup_missing_upload_photos(active_loome_dir)
+        cleanup_invalid_zero_gps()
     set_startup_status(is_ready=False, phase="mobile", message="モバイル同期バンドルを準備中...", detail="Tetheract_Mobile.html を確認しています", percent=95)
     ensure_standalone_mobile_html()
     start_media_watcher()
     set_startup_status(is_ready=True, phase="ready", message="準備完了", detail="", percent=100)
 
-    # 既存DBで lens_model が未設定の一眼カメラ写真（Panasonic MakerNote / XMP等）をバックグラウンドで自動補完
-    # ※起動直後の「すべての写真」読み込みとディスクI/O・GILが競合しないよう15秒遅延させ、かつ一度チェック済みの環境ではスキップする
-    def _bg_backfill_lenses():
+    # ロック解除後の遅延クリーンアップ・大規模Exifなし画像マイグレーション・レンズ機種名バックフィル
+    def _bg_post_unlock_maintenance():
         import time as _t
-        _t.sleep(15.0)
+        from .database import get_connection, migrate_and_merge_exifless_photos
+        _t.sleep(2.0)
         try:
+            while is_app_locked():
+                _t.sleep(2.0)
+
+            if locked_at_boot:
+                try:
+                    migrate_carry_to_storage()
+                    active_loome = ensure_storage_dir()
+                    cleanup_missing_upload_photos(active_loome)
+                    cleanup_invalid_zero_gps()
+                except Exception as clean_err:
+                    logger.warning(f"[PostUnlock] 起動時クリーンアップスキップ: {clean_err}")
+
+            # 保留されていた大規模DB向けの exifless_content_hash_v1 マイグレーションがあればバックグラウンドで実行
+            try:
+                with get_connection() as conn:
+                    cur = conn.cursor()
+                    cur.execute("SELECT 1 FROM migrations WHERE name = 'exifless_content_hash_v1'")
+                    need_exifless = cur.fetchone() is None
+                if need_exifless:
+                    exifless_res = migrate_and_merge_exifless_photos()
+                    set_startup_status(exifless_migration=exifless_res)
+                    with get_connection() as conn:
+                        conn.execute("INSERT OR IGNORE INTO migrations (name) VALUES ('exifless_content_hash_v1')")
+                        conn.commit()
+                    if exifless_res.get("updated", 0) > 0 or exifless_res.get("merged", 0) > 0:
+                        logger.info(
+                            f"[MIGRATE] exifless_content_hash_v1 (BG): "
+                            f"Exifなし画像 {exifless_res.get('updated', 0)} 枚の識別キーを更新し、"
+                            f"重複 {exifless_res.get('merged', 0)} 件を統合しました"
+                        )
+            except Exception as ex_err:
+                logger.warning(f"[MIGRATE] バックグラウンドExifなし画像移行スキップ: {ex_err}")
+
+            _t.sleep(10.0)
+            while is_app_locked():
+                _t.sleep(3.0)
             marker_file = BASE_DIR / "cache" / ".lens_backfill_done_v1"
             if marker_file.exists():
                 return
@@ -246,9 +299,9 @@ async def lifespan(app: FastAPI):
             marker_file.parent.mkdir(parents=True, exist_ok=True)
             marker_file.write_text("done", encoding="utf-8")
         except Exception as e:
-            logger.warning(f"[Backfill] レンズ機種名の自動補完スキップ: {e}")
+            logger.warning(f"[Backfill] バックグラウンド保守スキップ: {e}")
 
-    threading.Thread(target=_bg_backfill_lenses, daemon=True).start()
+    threading.Thread(target=_bg_post_unlock_maintenance, daemon=True).start()
     yield
 
 
@@ -352,6 +405,27 @@ async def add_no_cache_header(request: Request, call_next):
         if request.headers.get("access-control-request-private-network") == "true":
             headers["Access-Control-Allow-Private-Network"] = "true"
         return Response(status_code=204, headers=headers)
+
+    if path.startswith("/api/") and not (
+        path.startswith("/api/security/")
+        or path in ("/api/startup/status", "/api/version", "/api/heartbeat", "/api/shutdown", "/api/media/events")
+        or path.startswith("/api/window/")
+    ):
+        if is_app_locked():
+            sec_st = get_security_status()
+            return Response(
+                content=json.dumps(
+                    {
+                        "detail": "アプリケーションはロックされています。ロックを解除してください。",
+                        "is_locked": True,
+                        "security_level": sec_st.get("security_level", 0),
+                        "db_foreign_locked": sec_st.get("db_foreign_locked", False),
+                    },
+                    ensure_ascii=False,
+                ),
+                status_code=423,
+                media_type="application/json",
+            )
 
     response = await call_next(request)
     if set_lan_cookie:
@@ -726,7 +800,7 @@ async def api_check_external_updates(request: Request):
                             try:
                                 st = real_p.stat()
                                 cur_mtime = float(st.st_mtime)
-                                cur_size = int(st.st_size)
+                                cur_size = int(get_logical_file_size(real_p))
                                 if abs(cur_mtime - old_mtime) > 0.5 or cur_size != old_size:
                                     changed_rows.append((pid, fpath, cur_mtime, cur_size))
                             except Exception as e:
@@ -1072,10 +1146,18 @@ def api_get_photo_xmp_preview(photo_id: int, mode: str = Query(default="thumb"))
             elif photo.get("paired_raw_path"):
                 p_pair, is_pair_online = resolve_portable_path(photo["paired_raw_path"], expected_serial=vol_serial)
                 if is_pair_online and p_pair.exists():
-                    pil_img = _Image.open(p_pair)
+                    pil_img = (
+                        _Image.open(_io.BytesIO(read_loome_file_decrypted_bytes(p_pair)))
+                        if is_vault_encrypted_file(p_pair)
+                        else _Image.open(p_pair)
+                    )
                     pil_img = _ImageOps.exif_transpose(pil_img)
         else:
-            pil_img = _Image.open(real_path)
+            pil_img = (
+                _Image.open(_io.BytesIO(read_loome_file_decrypted_bytes(real_path)))
+                if is_vault_encrypted_file(real_path)
+                else _Image.open(real_path)
+            )
             pil_img = _ImageOps.exif_transpose(pil_img)
     except Exception as e:
         logger.warning(f"XMPプレビュー用元画像読み込み失敗 ({real_path}): {e}")
@@ -1764,7 +1846,11 @@ def api_get_photo_view(photo_id: int, request: Request, raw: int = Query(default
                         img_bytes, _, _, _ = preview_res
                         pil_img = _Image.open(_io.BytesIO(img_bytes))
                 else:
-                    pil_img = _Image.open(target_path)
+                    pil_img = (
+                        _Image.open(_io.BytesIO(read_loome_file_decrypted_bytes(target_path)))
+                        if is_vault_encrypted_file(target_path)
+                        else _Image.open(target_path)
+                    )
                     pil_img = _ImageOps.exif_transpose(pil_img)
 
                 if pil_img is not None:
@@ -1826,6 +1912,17 @@ def api_get_photo_view(photo_id: int, request: Request, raw: int = Query(default
             except Exception as e:
                 logger.debug(f"調整適用プレビュー生成失敗、スマートプレビューへフォールバック (id={photo_id}): {e}")
         else:
+            if is_vault_encrypted_file(target_path):
+                import mimetypes as _mimetypes
+                mime_guess = _mimetypes.guess_type(str(target_path))[0] or "image/jpeg"
+                return Response(
+                    content=read_loome_file_decrypted_bytes(target_path),
+                    media_type=mime_guess,
+                    headers={
+                        "Cache-Control": "no-cache, must-revalidate",
+                        "ETag": etag_val,
+                    },
+                )
             return FileResponse(
                 str(target_path),
                 headers={
@@ -2742,6 +2839,8 @@ def api_enable_volume_loome(volume_serial: str, req: Optional[EnableVolumeLoomeR
         invalidate_loome_roots_cache()
         clear_api_photos_cache()
         return res
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -2758,6 +2857,8 @@ def api_disable_volume_loome(volume_serial: str):
         invalidate_loome_roots_cache()
         clear_api_photos_cache()
         return res
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -2854,7 +2955,10 @@ def api_folder_tree_children(
         raise HTTPException(status_code=400, detail="path が指定されていません")
     if serial_mode not in ("any", "match", "match_or_null", "null"):
         raise HTTPException(status_code=400, detail="serial_mode が不正です")
-    return _fast_json(list_folder_tree_children(path, volume_serial, serial_mode, offline))
+    try:
+        return _fast_json(list_folder_tree_children(path, volume_serial, serial_mode, offline))
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
 
 
 @app.get("/api/browse")
@@ -3037,7 +3141,7 @@ def api_copy_to_import(req: CopyToImportRequest):
             counter += 1
 
         try:
-            shutil.copy2(src_path, target_file)
+            copy_file_unsealed(src_path, target_file)
             copied.append(target_file.name)
         except Exception as e:
             errors.append(f"{src_path.name}: {e}")
@@ -3186,6 +3290,11 @@ def api_upload_photos(req: PhotoUploadRequest):
             if upload_vsn:
                 meta["volume_serial"] = upload_vsn
             upsert_photo(meta)
+            if get_current_security_level() == 2:
+                try:
+                    seal_loome_file(dest_path)
+                except Exception as seal_err:
+                    logger.warning(f"アップロード後のLv.2カプセル化警告 ({dest_path}): {seal_err}")
             saved_photos.append(dest_path.name)
         except Exception as e:
             errors.append(f"{item.filename}: {str(e)}")
@@ -3269,6 +3378,8 @@ def api_create_storage_folder(req: StorageCreateFolderRequest):
         res = create_storage_subfolder(req.parent_path, req.folder_name)
         clear_folders_fs_cache()
         return res
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -3280,6 +3391,8 @@ def api_rename_storage_folder(req: StorageRenameFolderRequest):
         res = rename_storage_subfolder(req.folder_path, req.new_name)
         clear_folders_fs_cache()
         return res
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -3295,6 +3408,8 @@ def api_delete_storage_folder(
         res = delete_storage_subfolder(target_path)
         clear_folders_fs_cache()
         return res
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -3306,6 +3421,8 @@ def api_import_photos_to_storage(req: StorageImportPhotosRequest):
         res = import_photos_to_storage(req.photo_ids, req.destination)
         clear_folders_fs_cache()
         return res
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -3317,6 +3434,8 @@ def api_move_photos_in_storage(req: StorageMovePhotosRequest):
         res = move_photos_in_storage(req.photo_ids, req.destination)
         clear_folders_fs_cache()
         return res
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -3328,6 +3447,8 @@ def api_rename_photo_in_storage(req: StorageRenamePhotoRequest):
         res = rename_photo_in_storage(req.photo_id, req.new_name)
         clear_folders_fs_cache()
         return res
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -3344,6 +3465,8 @@ def api_batch_rename_photos_in_storage(req: StorageBatchRenamePhotosRequest):
         )
         clear_folders_fs_cache()
         return res
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -3901,6 +4024,128 @@ async def api_mobile_sync_import(request: Request):
         ]
 
     return _apply_mobile_sync_changes(raw_changes, used_file=used_file)
+
+
+# ==============================================================================
+# 3段階セキュリティ（Lv.0 エシカル / Lv.1 起動＆DBロック / Lv.2 フルロック）API
+# ==============================================================================
+
+
+class SecurityUnlockRequest(BaseModel):
+    password: str
+
+
+class SecurityConfigureRequest(BaseModel):
+    target_level: int
+    current_password: Optional[str] = None
+    new_password: Optional[str] = None
+
+
+class SecurityRecoverDbRequest(BaseModel):
+    mode: str = "owned_media"  # "owned_media" | "password" | "recovery_code"
+    secret: Optional[str] = None
+
+
+class SecurityUnlockForeignLoomeRequest(BaseModel):
+    volume_serial: str
+    password: str
+
+
+@app.get("/api/security/status")
+def api_get_security_status():
+    """現在のセキュリティ設定レベル・ロック状態・DB引き抜き検知状態を取得する"""
+    return get_security_status()
+
+
+@app.post("/api/security/unlock")
+def api_security_unlock(req: SecurityUnlockRequest):
+    """パスワードまたはリカバリーコードでアプリロック（またはDB引き継ぎロック）を解除する"""
+    try:
+        res = unlock_with_password_or_recovery(req.password)
+        clear_online_cache()
+        clear_folders_fs_cache()
+        invalidate_loome_roots_cache()
+        clear_api_photos_cache()
+        return res
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/security/lock")
+def api_security_lock():
+    """現在のセッションを即座にロック状態へ戻す（Lv.1 / Lv.2 設定時）"""
+    try:
+        res = lock_session_now()
+        clear_api_photos_cache()
+        return res
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/security/configure")
+def api_security_configure(req: SecurityConfigureRequest):
+    """セキュリティレベル（Lv.0 / Lv.1 / Lv.2）およびパスワードを設定・変更する"""
+    try:
+        res = configure_security_level(
+            target_level=req.target_level,
+            current_password=req.current_password,
+            new_password=req.new_password,
+        )
+        clear_online_cache()
+        clear_folders_fs_cache()
+        invalidate_loome_roots_cache()
+        clear_api_photos_cache()
+        return res
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/security/recover-db")
+def api_security_recover_db(req: SecurityRecoverDbRequest):
+    """
+    USB故障・新環境移行時に、バックアップされた library.db を正当なオーナーとして引き継ぐ。
+    - mode="owned_media": 接続中の所有ドライブ（VSN＋実在写真ファイル）照合により救済（Lv.0用）
+    - mode="password" / "recovery_code": パスワードまたはリカバリーコードにより救済
+    """
+    try:
+        mode_norm = (req.mode or "owned_media").strip().lower()
+        if mode_norm == "owned_media":
+            res = recover_db_by_owned_media()
+        else:
+            res = unlock_with_password_or_recovery(req.secret or "")
+        clear_online_cache()
+        clear_folders_fs_cache()
+        invalidate_loome_roots_cache()
+        clear_api_photos_cache()
+        return res
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/security/unlock-foreign-loome")
+def api_security_unlock_foreign_loome(req: SecurityUnlockForeignLoomeRequest):
+    """別環境のTetheractでパスワード設定された自分の外付け Loome を、同じパスワードの入力により承認する"""
+    try:
+        res = unlock_foreign_loome_with_password(req.volume_serial, req.password)
+        clear_online_cache()
+        clear_folders_fs_cache()
+        invalidate_loome_roots_cache()
+        clear_api_photos_cache()
+        return res
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # favicon

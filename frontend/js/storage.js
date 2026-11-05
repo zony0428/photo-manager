@@ -1886,8 +1886,11 @@ async function handleStorageRenameSubmit() {
    ========================================================================== */
 
 function initStorageFeatureEvents() {
-  // 初回に storage ルート・フォルダ一覧を取得しておく
-  fetchStorageFolders();
+  // 初回に storage ルート・フォルダ一覧を取得しておく（ロック中は refreshAll 側でロック解除後に取得）
+  const lockOverlay = document.getElementById('securityLockOverlay');
+  if (!lockOverlay || !lockOverlay.style.display || lockOverlay.style.display === 'none') {
+    fetchStorageFolders();
+  }
 
   // --- 1. 写真カードのドラッグ開始・終了（グリッドイベント委譲） ---
   const photoGrid = document.getElementById('photoGrid');

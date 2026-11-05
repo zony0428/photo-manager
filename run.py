@@ -59,6 +59,17 @@ def is_port_in_use(port: int, host: str = "127.0.0.1") -> bool:
         return s.connect_ex((host, port)) == 0
 
 
+def is_server_http_ready(url: str = APP_URL) -> bool:
+    """HTTPサーバーが実際にリクエストに応答可能（lifespan起動完了）になったか確認する"""
+    import urllib.request
+    try:
+        req = urllib.request.Request(f"{url}/api/version", method="GET")
+        with urllib.request.urlopen(req, timeout=0.8) as resp:
+            return resp.status == 200
+    except Exception:
+        return False
+
+
 from server.window_utils import (
     _find_photo_manager_hwnds,
     ensure_window_mode_loop,
@@ -306,11 +317,11 @@ def main() -> None:
 
     # 1. サーバー立ち上がり待機後にブラウザ/アプリウィンドウを起動するスレッド
     def _delayed_launch():
-        # サーバーがポートを開くまでポーリング待機（初回大規模DBマイグレーション等を考慮し最大180秒、0.2秒刻み）
+        # サーバーがHTTP応答可能になるまでポーリング待機（最大180秒、0.2秒刻み）
         for _ in range(900):
             time.sleep(0.2)
-            if is_port_in_use(PORT, HOST):
-                time.sleep(0.4)
+            if is_port_in_use(PORT, HOST) and is_server_http_ready(APP_URL):
+                time.sleep(0.2)
                 launch_app_window()
                 return
 

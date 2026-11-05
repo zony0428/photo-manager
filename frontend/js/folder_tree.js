@@ -64,7 +64,7 @@ function _ftDriveNode(d) {
     kind: 'drive', scope: 'on', key: _ftKey('on', d.path), name: d.name, path: d.path,
     icon: FOLDER_TREE_DRIVE_ICONS[d.drive_type] || DRIVE_SVG_DEFAULT, status: 'root', count: 0, total: d.total,
     hasManaged: !!d.has_managed, hasChildren: true, isMissing: false, isOffline: false,
-    volumeSerial: d.volume_serial || null, serialMode: d.serial_mode || 'any', driveType: d.drive_type, label: d.label || '', customName: d.custom_name || '', shortSerial: d.short_serial || '', letter: d.letter || '', loomeEnabled: !!d.loome_enabled,
+    volumeSerial: d.volume_serial || null, serialMode: d.serial_mode || 'any', driveType: d.drive_type, label: d.label || '', customName: d.custom_name || '', shortSerial: d.short_serial || '', letter: d.letter || '', loomeEnabled: !!d.loome_enabled, foreignLoome: !!d.foreign_loome, foreignLoomeInfo: d.foreign_loome_info || null, hasChildren: !d.foreign_loome,
   };
 }
 
@@ -272,6 +272,14 @@ function _ftTooltip(node) {
 }
 
 function _ftBadges(node) {
+  if (node.foreignLoome) {
+    const b = document.createElement('span');
+    b.className = 'badge-folder-missing';
+    b.style.cssText = 'background:rgba(239,68,68,0.16); color:#f87171; border:1px solid rgba(239,68,68,0.4); font-size:10px; padding:1px 5px; border-radius:4px;';
+    b.textContent = '🔒 他人のLoome';
+    b.title = '他者のLoomeが検出されたため、エシカル保護により閲覧・管理登録をブロックしています';
+    return [b];
+  }
   const badges = [];
   if (node.status === 'ignored') {
     const b = document.createElement('span');
@@ -552,6 +560,12 @@ function _ftToggle(node, li) {
    -------------------------------------------------------------------------- */
 /** 左クリック: 1回目でそのフォルダ（配下含む）に絞り込み、2回目で除外絞り込み、3回目で解除 */
 function _ftHandleClick(node) {
+  if (node.foreignLoome) {
+    if (typeof window.openForeignLoomeModal === 'function') {
+      window.openForeignLoomeModal(node);
+    }
+    return;
+  }
   const current = _ftFilterState(node);
   if (current === 'include') {
     // 2回目: 除外絞り込み
@@ -582,6 +596,14 @@ function _ftHandleClick(node) {
 
 /** 右クリック: フォルダ・ドライブ・ショートカット共通のコンテキストメニューを開く */
 function _ftHandleContextMenu(e, node) {
+  if (node.foreignLoome) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (typeof window.openForeignLoomeModal === 'function') {
+      window.openForeignLoomeModal(node);
+    }
+    return;
+  }
   e.preventDefault();
   e.stopPropagation();
   const directCnt = Number(node.count || 0);
@@ -2016,6 +2038,9 @@ function _ftInitDbMaintenanceModal() {
     }
     modal.style.display = 'flex';
     loadStats();
+    if (typeof window.refreshSecuritySettingsUI === 'function') {
+      window.refreshSecuritySettingsUI();
+    }
     renderSettingsTagTreeEditor();
     if (typeof fetchTags === 'function') {
       fetchTags();

@@ -32,6 +32,7 @@ from .database import (
 from .database.folders import normalize_folder_path
 from .storage_manager import get_all_loome_roots, is_loome_root_path, is_path_in_storage
 from .volume_info import get_volume_info_for_drive
+from .security import inspect_drive_loome_ownership
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -335,6 +336,12 @@ def build_roots(quick_access: List[Dict[str, Any]]) -> Dict[str, Any]:
             "total": total,
             "has_managed": has_managed,
             "loome_enabled": bool(vol_meta and int(vol_meta.get("loome_enabled") or 0)),
+            "foreign_loome": (inspect_drive_loome_ownership(d["path"], volume_serial=serial)[0] == "foreign"),
+            "foreign_loome_info": (
+                inspect_drive_loome_ownership(d["path"], volume_serial=serial)[1]
+                if inspect_drive_loome_ownership(d["path"], volume_serial=serial)[0] == "foreign"
+                else None
+            ),
             # 子ノード取得時のボリューム絞り込み条件
             "serial_mode": "match_or_null" if serial else "any",
         })
@@ -435,6 +442,11 @@ def list_children(
             info = get_volume_info_for_drive(base[:2])
             if info is None or (info.get("serial") and str(info["serial"]).upper() != str(volume_serial).upper()):
                 effective_offline = True
+
+    # 他人の Loome が存在するドライブは展開・閲覧をエシカル保護により完全ブロック
+    if not effective_offline:
+        from .security import assert_drive_not_blocked_by_foreign_loome
+        assert_drive_not_blocked_by_foreign_loome(parent, volume_serial=volume_serial)
 
     # 1. DB 集計（配下全ディレクトリの枚数を1クエリで取得し、直下の子ごとに合算）
     db_children: Dict[str, Dict[str, Any]] = {}

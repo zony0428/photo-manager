@@ -2299,6 +2299,10 @@ function initCommonModals() {
 
   // 起動時に未反映の mobile_sync.json があるかバックグラウンド確認して自動反映＆モーダル通知
   setTimeout(() => {
+    const lockEl = document.getElementById('securityLockOverlay');
+    if (lockEl && lockEl.style.display && lockEl.style.display !== 'none') {
+      return;
+    }
     loadMobileConnectionInfo(true);
   }, 1200);
 

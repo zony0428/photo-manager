@@ -14,6 +14,10 @@ scratch/
 uploads/
 carry/
 storage/
+Loome/
+.tetheract_instance
+.loome_seal
+recovery_key.txt
 
 # ユーザーデータ・データベース・サムネイル（個人写真情報）
 cache/

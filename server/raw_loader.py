@@ -92,7 +92,8 @@ def extract_fallback_lens_model(file_path: Union[str, Path]) -> Optional[str]:
     """
     try:
         with open(file_path, "rb") as f:
-            raw = f.read(131072)
+            from .security import read_loome_file_decrypted_bytes
+            raw = read_loome_file_decrypted_bytes(file_path, max_bytes=131072)
     except Exception as e:
         logger.debug(f"レンズ情報フォールバック読み取りスキップ ({file_path}): {e}")
         return None
@@ -180,7 +181,8 @@ def extract_raw_thumbnail_image(file_path: Union[str, Path]) -> Optional[Image.I
 
     # 1. rawpy (LibRaw) による埋め込みサムネイル抽出
     try:
-        with rawpy.imread(str(path_obj)) as raw:
+        from .security import decrypted_file_path_context
+        with decrypted_file_path_context(path_obj) as dec_p, rawpy.imread(str(dec_p)) as raw:
             try:
                 thumb = raw.extract_thumb()
             except rawpy.NoThumbnailError:
@@ -308,7 +310,8 @@ def extract_raw_metadata(file_path: Path) -> Dict[str, Any]:
     埋め込みプレビューのExif、およびRAWファイル構造から網羅的に取得する。
     """
     stat = file_path.stat()
-    file_size = stat.st_size
+    from .security import decrypted_file_path_context, get_logical_file_size, is_vault_encrypted_file
+    file_size = get_logical_file_size(file_path)
 
     # デフォルト値（ファイル更新日時フォールバック）
     fallback_dt = datetime.fromtimestamp(stat.st_mtime)
@@ -330,7 +333,7 @@ def extract_raw_metadata(file_path: Path) -> Dict[str, Any]:
     exif_ifd = {}
 
     try:
-        with rawpy.imread(str(file_path)) as raw:
+        with decrypted_file_path_context(file_path) as dec_raw_path, rawpy.imread(str(dec_raw_path)) as raw:
             # RAWセンサーの有効ピクセル解像度
             if hasattr(raw, "sizes"):
                 width = int(raw.sizes.width)

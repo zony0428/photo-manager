@@ -17,9 +17,9 @@ if str(ROOT_DIR) not in sys.path:
 from server.version import get_version
 
 # 配布ZIPに含めてはならない個人データ・実行時生成物（dist/ でアプリを試用した場合の誤混入防止）
-EXCLUDED_TOP_DIRS = {"cache", ".cache", "storage", "carry", "take_out"}
+EXCLUDED_TOP_DIRS = {"cache", ".cache", "storage", "loome", "carry", "take_out"}
 EXCLUDED_DIR_NAMES = {"__pycache__", ".git"}
-EXCLUDED_FILE_PATTERNS = ("*.log", "mobile_sync*.json", "*.orig_backup", "autorun.inf")
+EXCLUDED_FILE_PATTERNS = ("*.log", "mobile_sync*.json", "*.orig_backup", "autorun.inf", ".tetheract_instance", ".loome_seal", "recovery_key.txt")
 
 
 def _is_excluded(rel_path: Path) -> bool:
