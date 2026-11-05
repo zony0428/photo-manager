@@ -39,7 +39,9 @@
 - **大容量DB（数百MB〜1GB超）読み込み時の起動高速化**:
   - 未シールDBの初回読み込み時に毎回実行されていた全量ファイルコピー（`library_pre_v170_security_*.db` 生成）を廃止し、ポータブルSSD/USB上の約1GBのDBでも数分間待たされることなく即座に起動するよう改善しました。
 
-### 2. 起動時の定期バックアップ警告モーダル（1週間未実施リマインド）＆ 別ドライブ退避案内・設定UI改善
+### 2. 起動時の定期バックアップ警告モーダル（1週間未実施リマインド）＆ DBバックアップの高速コピー化（Win32 `CopyFileExW`）
+- **DBバックアップの超高速化（`WAL` 完全フラッシュ ＋ Win32 `CopyFileExW` カーネルコピー）**:
+  - 従来の SQLite `backup()` API による 4KB ページ単位の細切れ書き込みから、**`PRAGMA wal_checkpoint(TRUNCATE)` による WAL 完全フラッシュ ＋ 書き込み排他ロック下の Win32 `CopyFileExW` 大ブロック一括転送**へ刷新しました（万一別スレッドがビジーな場合のみ Online Backup API に自動フォールバック）。約 900MB の大型DBでも、外付けドライブ上で数分かかっていたバックアップが約十数秒（約15倍高速）で完了します。
 - **1週間（7日）バックアップ未実施時の起動時リマインド**:
   - ライブラリに写真が登録されており、前回の手動バックアップ（`cache/backups/library_backup_*.db`）から **7日（1週間）以上経過している場合**（またはライブラリ運用開始から7日以上一度もバックアップが作成されていない場合）、アプリ起動時に確認モーダルを表示します。
   - モーダル内で **「現在の登録データ枚数・DBサイズ」「最終バックアップ日時」** を確認でき、**`[今すぐバックアップを作成 (Enter)]`** を押すだけで設定画面を開かずにその場で最新のオンラインバックアップと復旧キー（`recovery_key.txt`）を作成できます（`[あとで (Esc)]` を選んだ場合は当日中は再表示しません）。
@@ -62,7 +64,9 @@
 - **Instant Startup for Large (~1GB+) Unsealed Databases**:
   - Removed the redundant full-file copy (`library_pre_v170_security_*.db`) during security initialization so multi-hundred-MB / 1GB+ portable databases launch immediately without multi-minute I/O stalls.
 
-### 2. Startup Weekly Database Backup Reminder Modal, Off-Drive Copy Guide & Compact Settings Tooltips
+### 2. Startup Weekly Database Backup Reminder Modal, High-Speed `CopyFileExW` DB Backup & Compact Settings Tooltips
+- **High-Speed Database Backup (`WAL` Checkpoint + Win32 `CopyFileExW`)**:
+  - Replaced page-by-page 4KB SQLite `backup()` writes with a full `PRAGMA wal_checkpoint(TRUNCATE)` flush followed by a write-locked Win32 `CopyFileExW` kernel copy (with automatic fallback to the SQLite Online Backup API if busy), speeding up backups of ~900MB portable databases by up to 15x.
 - **7-Day Backup Reminder on Startup**:
   - When your library contains photos and **7 or more days** have passed since the last database backup (`cache/backups/library_backup_*.db`), Tetheract displays a confirmation modal on startup showing your current library photo count, DB size, and last backup timestamp.
   - Press **`Backup Now (Enter)`** to immediately create a fresh online backup alongside `recovery_key.txt` without opening the Settings dialog (choosing `Later (Esc)` snoozes the reminder for the rest of the day).

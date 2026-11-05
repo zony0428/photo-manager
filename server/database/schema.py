@@ -1336,13 +1336,32 @@ def _create_pre_migration_backup(cursor, conn, migration_name: str) -> str:
         ts_str = datetime.now().strftime("%Y%m%d_%H%M%S")
         backup_path = backup_dir / f"library_pre_{migration_name}_{ts_str}.db"
 
-        # 現在のトランザクションを確定してからオンラインバックアップを実行
+        # 現在のトランザクションを確定してからWAL完全フラッシュ＋高速カーネルコピー（ビジー時はOnline Backup API）を実行
         conn.commit()
-        bck_conn = sqlite3.connect(str(backup_path))
+        copied_fast = False
         try:
-            conn.backup(bck_conn)
-        finally:
-            bck_conn.close()
+            from .stats import _fast_copy_db_file
+            chk_row = conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+            busy = int(chk_row[0]) if chk_row else 1
+            if busy == 0 and db_path_obj.exists():
+                copied_fast = _fast_copy_db_file(db_path_obj, backup_path)
+        except Exception as fast_err:
+            logger.debug(f"[MIGRATE] {migration_name}: 高速コピーからOnline Backup APIへフォールバック: {fast_err}")
+            copied_fast = False
+
+        if not copied_fast:
+            if backup_path.exists():
+                try:
+                    backup_path.unlink()
+                except Exception:
+                    pass
+            bck_conn = sqlite3.connect(str(backup_path))
+            try:
+                bck_conn.execute("PRAGMA journal_mode = OFF")
+                bck_conn.execute("PRAGMA synchronous = OFF")
+                conn.backup(bck_conn)
+            finally:
+                bck_conn.close()
 
         # 同種バックアップが増えすぎないよう最新5世代を残して古いものを整理
         existing_backups = sorted(

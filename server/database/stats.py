@@ -3,20 +3,58 @@
 ファイルサイズ統計の取得、VACUUM によるDB最適化、およびオンラインバックアップ・世代管理を提供する。
 """
 
+import ctypes
 import logging
 import os
+import shutil
 import sqlite3
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .connection import CACHE_DIR, DB_PATH, _local_db, get_connection
+from .connection import CACHE_DIR, DB_PATH, _local_db, close_all_connections, get_connection
 
 logger = logging.getLogger(__name__)
 
 BACKUP_DIR = CACHE_DIR / "backups"
 WEEKLY_BACKUP_REMINDER_DAYS = 7
+_backup_lock = threading.Lock()
+
+# Win32 CopyFileExW セットアップ（Windows 環境でのみ有効化）
+_win32_copy_file_ex = None
+if os.name == "nt":
+    try:
+        _k32 = ctypes.windll.kernel32
+        _fn = _k32.CopyFileExW
+        _fn.argtypes = [
+            ctypes.c_wchar_p,
+            ctypes.c_wchar_p,
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+            ctypes.c_uint32,
+        ]
+        _fn.restype = ctypes.c_int
+        _win32_copy_file_ex = _fn
+    except Exception as _win_err:
+        logger.debug(f"Win32 CopyFileExW 初期化スキップ: {_win_err}")
+
+
+def _fast_copy_db_file(src: Path, dst: Path) -> bool:
+    """
+    Win32 API CopyFileExW（OSキャッシュ経由・事前サイズ確保）を用いてDBファイルを高速コピーする。
+    ※ SQLite が直前に書き込んだOSページキャッシュと100%整合するよう flags=0（バッファード転送）を使用する。
+    """
+    src_str = os.path.abspath(str(src))
+    dst_str = os.path.abspath(str(dst))
+    if _win32_copy_file_ex is not None:
+        res = _win32_copy_file_ex(src_str, dst_str, None, None, None, 0)
+        if res != 0 and dst.exists() and dst.stat().st_size > 0:
+            return True
+    shutil.copy2(src_str, dst_str)
+    return dst.exists() and dst.stat().st_size > 0
 
 
 def format_bytes(size_bytes: int) -> str:
@@ -165,19 +203,14 @@ def get_database_stats() -> Dict[str, Any]:
 def vacuum_database() -> Dict[str, Any]:
     """
     データベースの空き領域を回収し、ファイルを最適化・圧縮する（VACUUM実行）。
-    WALログのチェックポイントおよびスレッドローカル接続の一時解放を行う。
+    WALログのチェックポイントおよび全スレッドのキャッシュ接続解放を行う。
     """
     # 実行前の総ディスク使用量
     before_stats = get_database_stats()
     before_size = before_stats["file_size"]
 
-    # スレッドローカルの既存接続があれば安全に解放
-    if hasattr(_local_db, "connection") and _local_db.connection:
-        try:
-            _local_db.connection.close()
-        except Exception as e:
-            logger.warning(f"VACUUM前のスレッドローカル接続クローズで警告: {e}")
-        _local_db.connection = None
+    # 全スレッドの既存接続を安全に解放（別スレッドのアイドル接続によるSQLITE_BUSYを防止）
+    close_all_connections()
 
     # VACUUM はアクティブなトランザクション外で実行する必要があるため、独立接続＆自動コミットで実行
     conn = sqlite3.connect(str(DB_PATH), timeout=60, isolation_level=None)
@@ -206,7 +239,8 @@ def vacuum_database() -> Dict[str, Any]:
 
 def backup_database(max_backups: int = 5) -> Dict[str, Any]:
     """
-    SQLite の Online Backup API を使用して、稼働中のDBを安全にバックアップする。
+    WALチェックポイント完全フラッシュ ＋ Win32 CopyFileExW 高速カーネルコピーにより、
+    稼働中のDBを100%整合性を保ったまま高速にバックアップする（チェックポイントビジー時は Online Backup API に自動フォールバック）。
     最大保持数 (max_backups) を超える古いバックアップは自動削除（世代管理）する。
     """
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
@@ -214,18 +248,45 @@ def backup_database(max_backups: int = 5) -> Dict[str, Any]:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_path = BACKUP_DIR / f"library_backup_{timestamp}.db"
 
-    # WALの保留ログをフラッシュ
-    with get_connection() as src_conn:
-        try:
-            src_conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
-        except Exception as e:
-            logger.warning(f"WALチェックポイント失敗 (バックアップ継続): {e}")
+    with _backup_lock:
+        # アイドル状態のスレッドローカル接続がWALチェックポイントを阻害しないよう一旦解放
+        close_all_connections()
 
-        dest_conn = sqlite3.connect(str(backup_path), timeout=60)
+        copied_fast = False
+        conn = sqlite3.connect(str(DB_PATH), timeout=60, isolation_level=None)
+        conn.create_function("tetheract_v170_guard", 0, lambda: 1, deterministic=True)
         try:
-            src_conn.backup(dest_conn)
+            try:
+                # 1. WALログを本体 library.db へ100%書き戻して切り詰める
+                chk_row = conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+                busy = int(chk_row[0]) if chk_row else 1
+                if busy == 0 and DB_PATH.exists():
+                    # 2. コピー中の新規書き込みをブロックした状態で OS カーネル高速コピーを実行
+                    conn.execute("BEGIN IMMEDIATE")
+                    try:
+                        copied_fast = _fast_copy_db_file(DB_PATH, backup_path)
+                    finally:
+                        conn.execute("COMMIT")
+            except Exception as fast_err:
+                logger.warning(f"高速DBコピーからOnline Backup APIへフォールバックします: {fast_err}")
+                copied_fast = False
+
+            # 3. 万一別スレッドの読み取り等でWALが完全に空にならなかった場合は SQLite Online Backup API で安全にコピー
+            if not copied_fast:
+                if backup_path.exists():
+                    try:
+                        backup_path.unlink()
+                    except Exception:
+                        pass
+                dest_conn = sqlite3.connect(str(backup_path), timeout=60)
+                try:
+                    dest_conn.execute("PRAGMA journal_mode = OFF")
+                    dest_conn.execute("PRAGMA synchronous = OFF")
+                    conn.backup(dest_conn)
+                finally:
+                    dest_conn.close()
         finally:
-            dest_conn.close()
+            conn.close()
 
     backup_size = backup_path.stat().st_size if backup_path.exists() else 0
 
