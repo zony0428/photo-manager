@@ -507,7 +507,7 @@ def test_red_blue_team_failsafe_and_salvage(tmp_path: Path):
         assert st_stolen["db_foreign_locked"] is True
 
         # [検証5] v1.7.0未満で作られた別PC環境（別ホスト名 / 別CドライブVSN）の未刻印DB（security_meta無し・写真あり）が
-        # 放り込まれた場合でも、初回起動時に別環境DBとして検知され db_foreign_locked = True になること
+        # 放り込まれた場合でも、初回起動時に別環境DBとして検知され db_foreign_locked = True になり、かつDB自体は汚染されないこと
         with get_connection() as conn:
             conn.execute("DROP TABLE IF EXISTS security_meta")
             conn.execute(
@@ -526,6 +526,28 @@ def test_red_blue_team_failsafe_and_salvage(tmp_path: Path):
         st_legacy_foreign = initialize_security_state(force_reload=True)
         assert st_legacy_foreign["is_locked"] is True
         assert st_legacy_foreign["db_foreign_locked"] is True
+        with get_connection() as conn:
+            row_cnt = conn.execute("SELECT COUNT(*) FROM security_meta").fetchone()[0]
+            assert row_cnt == 0, "未刻印DBのロック判定時にDBファイルを汚染してはならない"
+
+        # [検証5-B] 本体 Loome/.loome_seal に別DBの刻印が残っている環境でも、自環境の正規バックアップDB（未刻印）を
+        # 戻した際は誤ロックされず正常にペアリング起動すること
+        (internal_loome / ".loome_seal").write_text(
+            '{"version": 2, "owner_id": "other_session_owner", "vsn": "TEST", "seal_mac": "00"}',
+            encoding="utf-8",
+        )
+        with get_connection() as conn:
+            conn.execute("DELETE FROM app_meta WHERE key = 'server_candidates'")
+            conn.execute("DELETE FROM volumes WHERE volume_serial = 'DEADC0DE'")
+            conn.execute(
+                "INSERT INTO photos (file_path, file_name, directory_path, file_size, volume_serial) "
+                "VALUES (?, 'own_backup.jpg', ?, 1024, 'OWN-VSN')",
+                (str(loome_photo), str(internal_loome)),
+            )
+            conn.commit()
+        st_own_backup = initialize_security_state(force_reload=True)
+        assert st_own_backup["is_locked"] is False
+        assert st_own_backup["db_foreign_locked"] is False
 
         # [検証6] v1.7.0 で起動した DB を v1.6.1 以前の環境（tetheract_v170_guard 未搭載の旧版 SQLite 接続）に
         # 放り込んだ場合（ダウングレード攻撃）、SELECT p.* FROM photos p および app_meta 更新が OperationalError で完全に拒絶されること

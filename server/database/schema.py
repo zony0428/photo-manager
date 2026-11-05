@@ -437,11 +437,6 @@ def initialize_database() -> None:
             """
         )
 
-        # v1.6.1 以前の既存DBに v1.7.0 保護スキーマを初回適用する前に安全バックアップを自動作成
-        cursor.execute("PRAGMA table_xinfo(photos)")
-        if "_v170_guard" not in {row["name"] for row in cursor.fetchall()}:
-            _create_pre_migration_backup(cursor, conn, "v170_security")
-
         _create_photos_indexes(cursor)
         conn.commit()
 

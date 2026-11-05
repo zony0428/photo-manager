@@ -199,18 +199,23 @@ Red Team（破壊的セキュリティ・アップデート批判）と Blue Tea
   1. `write_loome_seal()` は本体 `Loome/.loome_seal` に `owner_id`, `security_level`, パスワードラップ (`wrapped_owner_bundle`), リカバリーコードラップ (`dek_wrapped_recovery`), 個体鍵ラップ (`bound_instances`) をすべて保存し、さらに既存シールに異なる鍵情報があれば **`previous_seals` 配列（最大10世代）に自動退避して絶対に上書き消去しない**。
   2. 起動時の `initialize_security_state()` で `library.db` の `security_meta` が空だった場合、新規乱数を作る前に `_try_salvage_meta_from_internal_loome_seal()` を実行し、**本体 `Loome/.loome_seal` から元の `owner_id`・セキュリティレベル・ラップ鍵一式を新しい `library.db` へ自動サルベージ**する。ユーザーはそのまま元のパスワードまたはリカバリーコードを入力するだけで元の `DEK` を復元でき、`Loome/` 内の暗号化写真を100%復号できる。
 
-### ③ Lv.0 でフル版ZIP展開フォルダへ `cache/` ＋ `Loome/` を手動引っ越しした際の自動再ペアリング
-- **問題**: ユーザーが新しいフル版ZIPを別フォルダへ展開し、`cache/` と `Loome/` フォルダだけを手動コピペ引っ越しした際、ドット始まりの隠しファイル `.tetheract_instance` をコピーし忘れることがある。
-- **対策**: Lv.0 では本体 `Loome/.loome_seal` に `lv0_cohesion_bundle` を記録している。起動時に `.tetheract_instance` が未知であっても、同じ本体フォルダ内に **`cache/library.db` と一致する `owner_id` ＆ HMAC署名を持つ `Loome/.loome_seal` がセットで存在すれば**、`_try_auto_pair_lv0_by_internal_loome_seal()` が正当なフォルダ引っ越しと判定して新しい `.tetheract_instance` を自動ペアリングし、ロック画面を出さずに即時起動する（`library.db` 単体だけが別環境へ引き抜かれた場合は対になる `Loome/.loome_seal` が存在しないため、従来通り引き抜きロックが発動する）。
+### ③ Lv.0 でフル版ZIP展開フォルダへ `cache/` ＋ `Loome/` を手動引っ越し・DB差し替えした際の自動再ペアリング ＆ 自己修復 (v1.7.1 強化)
+- **問題**: ユーザーが新しいフル版ZIPを別フォルダへ展開し、`cache/` と `Loome/` フォルダだけを手動コピペ引っ越しした際、ドット始まりの隠しファイル `.tetheract_instance` をコピーし忘れたり、複数のバックアップDBを差し替えて起動したりすることがある。
+- **対策**:
+  1. Lv.0 では `write_loome_seal()` 実行時に常に本体 `Loome/.loome_seal` へ `lv0_cohesion_bundle` を記録する。
+  2. 起動時に `.tetheract_instance` が未知であっても、同じ本体フォルダ内に **`cache/library.db` と一致する `owner_id` ＆ HMAC署名を持つ `Loome/.loome_seal`（または `previous_seals` 履歴内のエントリ）**、あるいは **`cache/recovery_key.txt`（過去の発行履歴含む）** がセットで存在すれば、`_try_auto_pair_lv0_by_internal_loome_seal()` および `_try_auto_pair_lv0_by_local_recovery_file()` が正当な自環境と判定して新しい `.tetheract_instance` を自動ペアリングし、ロック画面を出さずに即時起動する（`library.db` 単体だけが別環境へ引き抜かれた場合は対になる `.loome_seal` も `recovery_key.txt` も存在しないため、引き抜きロックが発動する）。
+  3. 万一、過去の不具合等で `bound_instances == "{}"`（空オブジェクト）が記録されてしまった Lv.0 DB を読み込んだ場合でも、自環境の写真パス・ドライブVSNまたは本体 `.loome_seal` / `recovery_key.txt` が確認できれば起動時に自動修復（セルフヒーリング）してペアリングを復旧する。
 
 ### ④ 先行鍵コミット（Write-Ahead Key Commit）とフッター先行フラッシュ
 - `configure_security_level()` では、サムネイルや `Loome` ファイルの暗号化マイグレーションを開始する**前（Step 0）**に、新しい `pw_salt` と `dek_wrapped_pw` を DB の `security_meta` と `.loome_seal` の双方へ先行コミットする。
 - `seal_loome_file()` では、先頭64KBを暗号文で上書きする**前**に末尾72Bフッターを書き込んで `flush()` し、万一その隙間に電源断が発生して残った未コミットフッターも次回実行時にHMAC検証で自動クリーンアップする。
 - `save_recovery_key_file()` でも、既存の `recovery_key.txt` に過去の発行コードが存在する場合は上書き消去せず、`# --- 過去の発行履歴 (自動保持) ---` としてファイル末尾に自動保持する。
 
-### ⑤ 旧バージョン（v1.7.0未満）の別環境DB持ち込み検知と起動時ロック優先シーケンス
-- **`security_meta` 未作成の別環境DB検知 (`_is_unsealed_db_from_foreign_environment`)**:
-  - v1.7.0 より前のバージョンで作られた `library.db`（`security_meta` テーブル無し）が別環境へ単体で放り込まれた場合でも、①本体 `Loome/.loome_seal` の既存刻印との矛盾、②`app_meta.server_candidates` に記録された作成元ホスト名と現PCホスト名の不一致、③`volumes` テーブルの物理ドライブVSN（`C:` ドライブ等）と現PC接続ドライブVSNの不一致の3重チェックにより「別環境で作られたDBの持ち込み」を自動識別し、即座に `db_foreign_locked = True`（エシカル保護ロック）を発動する。
+### ⑤ 旧バージョン（v1.7.0未満）の別環境DB持ち込み検知と起動時ロック優先シーケンス (v1.7.1 強化)
+- **`security_meta` 未作成の別環境DB検知と元DBファイル非破壊ロック (`_is_unsealed_db_from_foreign_environment`)**:
+  - v1.7.0 より前のバージョンで作られた `library.db`（`security_meta` テーブル無し）が読み込まれた場合、まず①ポータブルドライブ稼働（`C:` 以外）か、②DB内の `scan_roots` や写真パス・物理ドライブVSNが現環境に1つでも実在するかを検査し、実在すれば正当な自環境DB（またはポータブルDB）として即時ペアリングする（本体 `Loome/.loome_seal` の存在だけで別環境とみなすことはないため、過去のバックアップDBを戻しても誤ロックされない）。
+  - 管理ドライブやパスが1つも存在せず、かつ `app_meta.server_candidates` の記録ホスト名および `volumes` の `C:` ドライブ物理VSNが現PCと不一致の場合のみ「別環境DBの単体持ち込み」と識別し、**元のDBファイルには `security_meta` を一切書き込まず（非破壊）オンメモリのみで `db_foreign_locked = True`（エシカル保護ロック）を発動**する。これにより、誤って別環境のDBやテスト用DBを読み込ませてもDBファイル自体がロック状態で汚染されることがない。
+  - また、未シールDB読み込み時に全量ファイルコピー（`library_pre_v170_security_*.db`）を作成しない設計とすることで、約1GBの大型DBでもポータブルドライブ上で数分間ブロックされることなく即座に起動する。
   - なお、Google Drive for Desktop 等の全PC・全アカウント共通の仮想ボリュームシリアル番号（`19831116` 等）は `SHARED_VIRTUAL_VSNS` として個体識別・所有メディア救済の対象から除外している。
 - **起動時ロック優先シーケンス（SMB・クラウドI/Oによる起動ハング防止）**:
   - `initialize_database()` では、ファイルシステムにアクセスする処理（`scan_roots` 指紋抽出や `exifless_content_hash_v1` マイグレーション）よりも**前**に `initialize_security_state()` を実行する。ロック状態（別環境DB持ち込みロック・パスワードロック）である場合は起動時のファイルI/Oやストレージクリーンアップを一切行わず、0.3秒以内にHTTPサーバーを立ち上げてロック画面を即時表示する。

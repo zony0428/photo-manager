@@ -133,6 +133,171 @@ async function initializeApp() {
       dismissStartupSplash();
     }
   }
+  setTimeout(() => {
+    checkWeeklyBackupReminderOnStartup();
+  }, 1500);
+}
+
+/**
+ * ローカルタイム基準の今日の日付文字列 (YYYY-MM-DD) を返す
+ */
+function _getLocalTodayDateString() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+/**
+ * バックアップ保存先フォルダ (cache/backups) をエクスプローラーで開く
+ */
+async function openBackupFolderInExplorer() {
+  try {
+    const res = await fetch('/api/database/open-backup-dir', { method: 'POST' });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.detail || 'バックアップフォルダを開けませんでした');
+    }
+    showToast('バックアップ保存先フォルダ (cache/backups) を開きました', 'info', 3000);
+  } catch (err) {
+    showToast(`エラー: ${err.message}`, 'error');
+  }
+}
+window.openBackupFolderInExplorer = openBackupFolderInExplorer;
+
+/**
+ * 起動時に前回のバックアップから1週間（7日）以上経過している場合、
+ * 確認モーダルでバックアップ作成と外部保管（別ドライブへのコピー）を案内する
+ */
+async function checkWeeklyBackupReminderOnStartup() {
+  try {
+    const todayStr = _getLocalTodayDateString();
+    if (localStorage.getItem('pm_backup_reminder_dismissed_date') === todayStr) {
+      return;
+    }
+
+    const res = await fetch('/api/database/stats');
+    if (!res.ok) return;
+    const data = await res.json();
+    const stats = data.stats || data;
+    const bi = stats && stats.backup_info;
+    if (!bi || !bi.is_overdue) return;
+
+    // 他のモーダル（スマホ同期完了モーダル等）が表示中の場合は閉じてから表示する
+    for (let waitIdx = 0; waitIdx < 60; waitIdx++) {
+      const anyModalOpen = Array.from(document.querySelectorAll('.modal-overlay')).some((el) => {
+        const disp = el.style && el.style.display;
+        return disp && disp !== 'none';
+      });
+      if (!anyModalOpen) break;
+      await new Promise((r) => setTimeout(r, 500));
+    }
+
+    const photoCount = Number(stats.photo_count || 0);
+    const dbSizeFmt = stats.file_size_formatted || '';
+    const backupDirPath = bi.backup_dir_path || 'cache\\backups';
+    const hasLatest = Boolean(bi.latest);
+    const daysElapsed = hasLatest ? Number(bi.days_since_last_backup || 7) : Number(bi.library_age_days || 7);
+
+    const confirmed = await showConfirmModal({
+      title: 'データベースの定期バックアップのお勧め',
+      subtitle: '1週間以上バックアップが作成されていません — 大切な評価・タグ・アルバム情報の保護',
+      icon: 'database',
+      headingText: hasLatest
+        ? `前回のバックアップから ${daysElapsed} 日が経過しています`
+        : 'まだデータベースの定期バックアップが作成されていません',
+      subPath: `保存先フォルダ: ${backupDirPath}`,
+      detailRows: [
+        {
+          label: '現在の登録データ:',
+          value: `${photoCount.toLocaleString()} 枚 (${dbSizeFmt})`,
+          color: '#3b82f6',
+        },
+        {
+          label: '最終バックアップ:',
+          value: hasLatest ? `${bi.latest.created_at} (${daysElapsed}日前)` : '未作成',
+          subText: hasLatest ? bi.latest.filename : '',
+          color: '#f59e0b',
+        },
+        {
+          label: '別ドライブへ保管推奨:',
+          value: 'library_backup_*.db ＆ recovery_key.txt',
+          subText: '（または cache\\library.db）',
+          color: '#22c55e',
+          actionText: '📂 保存先フォルダを開く',
+          onAction: () => openBackupFolderInExplorer(),
+        },
+      ],
+      descriptionLines: [
+        '万が一のドライブ故障や誤操作に備え、「今すぐバックアップを作成」で最新のバックアップを保存することをお勧めします。',
+        '💡 ポータブルSSDやUSBメモリ自体の故障・紛失に備え、作成後に「📂 保存先フォルダを開く」から cache/backups/ 内の最新ファイル（library_backup_*.db と recovery_key.txt）をPC本体や別ドライブ・クラウド等へコピーして保管しておくと万全です。',
+      ],
+      cancelText: 'あとで (Esc)',
+      confirmText: '今すぐバックアップを作成 (Enter)',
+    });
+
+    // 当日中は再表示しないよう記録
+    localStorage.setItem('pm_backup_reminder_dismissed_date', todayStr);
+
+    if (!confirmed) return;
+
+    if (typeof setGlobalActivity === 'function') {
+      setGlobalActivity('maint', {
+        title: 'データベースをバックアップ中...',
+        indeterminate: true,
+      });
+    }
+    let backupResData = null;
+    try {
+      const bRes = await fetch('/api/database/backup', { method: 'POST' });
+      backupResData = await bRes.json();
+      if (!bRes.ok) {
+        throw new Error(backupResData.detail || 'バックアップの作成に失敗しました');
+      }
+      showToast(`バックアップを作成しました (${backupResData.filename || ''})`, 'success', 4500);
+    } finally {
+      if (typeof clearGlobalActivity === 'function') {
+        clearGlobalActivity('maint');
+      }
+    }
+
+    if (backupResData && backupResData.filename) {
+      const openNow = await showConfirmModal({
+        title: 'バックアップ作成完了 — 別ドライブへの退避案内',
+        subtitle: '作成されたバックアップファイルを別のドライブやPC本体へコピーしておくと安心です',
+        icon: 'database',
+        headingPrefix: '最新のバックアップ ',
+        targetName: backupResData.filename,
+        headingSuffix: ' を保存しました',
+        subPath: `${backupDirPath}\\${backupResData.filename}`,
+        detailRows: [
+          {
+            label: 'バックアップDB:',
+            value: `${backupResData.filename} (${backupResData.size_formatted || ''})`,
+            color: '#22c55e',
+          },
+          {
+            label: '復旧キーファイル:',
+            value: 'recovery_key.txt',
+            subText: '（同じ cache/backups/ フォルダ内に自動保存済み）',
+            color: '#3b82f6',
+          },
+        ],
+        descriptionLines: [
+          '現在のドライブ（USBメモリやSSD）自体が故障した場合でもデータを100%復元できるよう、上記2つのファイルをPC本体や別ドライブへコピーして保管しておくことをお勧めします。',
+          '今すぐ保存先フォルダ（エクスプローラー）を開きますか？',
+        ],
+        cancelText: '閉じる (Esc)',
+        confirmText: '📂 保存先フォルダを開く (Enter)',
+      });
+      if (openNow) {
+        await openBackupFolderInExplorer();
+      }
+    }
+  } catch (err) {
+    console.warn('定期バックアップ確認エラー:', err);
+  }
 }
 
 
@@ -6892,6 +7057,22 @@ function _formatSecurityLevelBadge(level) {
   return 'Lv.0: エシカルモード';
 }
 
+/**
+ * 設定モーダルのセキュリティレベル選択に応じた説明テキストを更新する
+ */
+function _updateSecurityLevelDesc(level) {
+  const descEl = document.getElementById('secLevelDescText');
+  if (!descEl) return;
+  const lv = Number(level || 0);
+  if (lv === 2) {
+    descEl.textContent = 'Lv.1の保護に加え、Loome内の実ファイルもカプセル化保護し、外部からの直接閲覧を遮断します。';
+  } else if (lv === 1) {
+    descEl.textContent = 'Lv.0の保護に加え、アプリ起動時のパスワード要求とDB内サムネイルの暗号化を行います。';
+  } else {
+    descEl.textContent = 'パスワード不要。他人のLoome保護と、library.db単体の不正コピー・引き抜き防止が有効になります。';
+  }
+}
+
 function showSecurityLockOverlay(secStatus) {
   const overlay = document.getElementById('securityLockOverlay');
   if (!overlay) return;
@@ -7003,6 +7184,7 @@ async function refreshSecuritySettingsUI() {
     if (sel) {
       sel.value = String(lv);
     }
+    _updateSecurityLevelDesc(lv);
     const curPass = document.getElementById('secCurrentPassInput');
     const newPass = document.getElementById('secNewPassInput');
     if (curPass) {
@@ -7190,6 +7372,7 @@ function initSecurityUI() {
   const secSelect = document.getElementById('secLevelSelect');
   secSelect?.addEventListener('change', () => {
     const nextLv = Number(secSelect.value || 0);
+    _updateSecurityLevelDesc(nextLv);
     const newPass = document.getElementById('secNewPassInput');
     if (newPass) {
       newPass.style.display = nextLv >= 1 ? 'block' : 'none';

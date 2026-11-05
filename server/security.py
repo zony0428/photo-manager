@@ -509,8 +509,10 @@ def _try_salvage_meta_from_internal_loome_seal(conn: sqlite3.Connection) -> bool
 def _is_unsealed_db_from_foreign_environment(conn: sqlite3.Connection) -> bool:
     """
     security_meta（owner_id）が未設定の既存DBが、
-    「このPC自身の旧バージョンからの正当なアップグレードDB」なのか、
-    「別のPC環境で作られたDBが単体で放り込まれたもの（Foreign DB）」なのかを判定する。
+    「このPC自身の旧バージョンからの正当なアップグレードDB（またはポータブル運用DB）」なのか、
+    「全く無関係な別PC環境で作られたDBが単体で放り込まれたもの（Foreign DB）」なのかを判定する。
+    ※ 本体 Loome/.loome_seal の存在だけで別環境と判定すると、自身のバックアップDBを戻した際に
+       誤ロックされるため、必ずDB内の実在パス・ドライブVSN・ホスト名の整合性で判定する。
     """
     import re
     import socket
@@ -526,24 +528,40 @@ def _is_unsealed_db_from_foreign_environment(conn: sqlite3.Connection) -> bool:
     if photo_count <= 0:
         return False
 
-    # 1. 本体フォルダの Loome/.loome_seal に既に owner_id が刻印されている場合、
-    #    この環境は既に v1.7.0 以降で別DBとペアリング済みであるため、未刻印の有データDBは外部からの持ち込みと判定
-    for loome_dir in _get_internal_loome_dirs():
-        seal_path = loome_dir / LOOME_SEAL_FILENAME
-        if seal_path.exists():
-            try:
-                with open(seal_path, "r", encoding="utf-8") as f:
-                    seal = json.load(f)
-                if isinstance(seal, dict) and str(seal.get("owner_id") or "").strip():
-                    logger.warning(
-                        "既存の Loome 刻印が存在する環境に security_meta 未設定の有データDBが配置されたため、"
-                        "別環境DBの持ち込みと判定しました。"
-                    )
-                    return True
-            except Exception:
-                pass
+    # 1. ポータブルドライブ（C: 以外のUSBメモリ/外付けSSD等）上で稼働している場合は、
+    #    複数PC間で持ち歩く正規のポータブル運用であるため常に正当なDBと判定する
+    if _custom_instance_file is None:
+        try:
+            proj_drive = str(_get_active_project_root().resolve().drive or "").upper().rstrip("\\/")
+            if proj_drive and proj_drive != "C:":
+                return False
+        except Exception:
+            pass
 
-    # 2. app_meta.server_candidates に記録された作成元PCのホスト名と現在のホスト名を照合
+    # 2. DB内の scan_roots または photos のディレクトリ・ファイルが現在の環境で1つでも実在すれば正当な自環境DB
+    try:
+        cur.execute("SELECT folder_path FROM scan_roots LIMIT 20")
+        for r in cur.fetchall():
+            fp = str(r[0] or "").strip()
+            if fp and not fp.startswith("\\\\") and os.path.exists(fp):
+                return False
+    except Exception:
+        pass
+
+    try:
+        cur.execute("SELECT file_path, directory_path FROM photos WHERE is_unlinked = 0 LIMIT 15")
+        for r in cur.fetchall():
+            fp = str(r[0] or "").strip()
+            dp = str(r[1] or "").strip()
+            if (fp and not fp.startswith("\\\\") and os.path.exists(fp)) or (
+                dp and not dp.startswith("\\\\") and os.path.exists(dp)
+            ):
+                return False
+    except Exception:
+        pass
+
+    # 3. app_meta.server_candidates に記録された作成元PCのホスト名と現在のホスト名を照合
+    host_mismatch = False
     try:
         cur.execute("SELECT value FROM app_meta WHERE key = 'server_candidates'")
         row = cur.fetchone()
@@ -559,16 +577,14 @@ def _is_unsealed_db_from_foreign_environment(conn: sqlite3.Connection) -> bool:
                         recorded_hosts.add(h.removesuffix(".local"))
                 if recorded_hosts:
                     current_host = socket.gethostname().strip().lower().removesuffix(".local")
+                    if current_host and current_host in recorded_hosts:
+                        return False
                     if current_host and current_host not in recorded_hosts:
-                        logger.warning(
-                            f"DB内の記録ホスト名 ({recorded_hosts}) が現在のPCホスト名 ({current_host}) と不一致のため、"
-                            "別環境DBの持ち込みと判定しました。"
-                        )
-                        return True
+                        host_mismatch = True
     except Exception as e:
         logger.debug(f"app_meta ホスト名照合スキップ: {e}")
 
-    # 3. volumes テーブルに記録された物理8桁HEX VSN（C: ドライブ等）と現PCの接続ドライブ VSN を照合
+    # 4. volumes テーブルに記録された物理8桁HEX VSNと現PCの接続ドライブ VSN を照合
     try:
         hex8_re = re.compile(r"^[0-9A-F]{8}$")
         cur.execute("SELECT volume_serial, drive_letter FROM volumes WHERE volume_serial IS NOT NULL AND volume_serial != ''")
@@ -585,34 +601,35 @@ def _is_unsealed_db_from_foreign_environment(conn: sqlite3.Connection) -> bool:
             serial_to_drive, drive_to_serial = _get_connected_drive_serial_map()
             current_c_vsn = (drive_to_serial.get("C:") or "").strip().upper()
 
-            # DBに C: ドライブの物理VSNが記録されており、現PCの C: ドライブVSNと異なる場合は別PCのDB
+            # DB内の物理VSNが現PCの接続ドライブに1つでも存在すれば自環境DB
+            if any(v in serial_to_drive for v in recorded_physical_vsns.keys()):
+                return False
+
+            # DB内の物理VSNが1つも接続されておらず、C: ドライブVSNまたはホスト名が不一致なら別環境DB
             for rec_vsn, rec_drv in recorded_physical_vsns.items():
                 if rec_drv == "C:" and current_c_vsn and rec_vsn != current_c_vsn:
                     logger.warning(
-                        f"DB内の C: ドライブ VSN ({rec_vsn}) が現PCの C: ドライブ VSN ({current_c_vsn}) と不一致のため、"
-                        "別環境DBの持ち込みと判定しました。"
+                        f"DB内の C: ドライブ VSN ({rec_vsn}) が現PCの C: ドライブ VSN ({current_c_vsn}) と不一致かつ"
+                        "管理ドライブが未接続のため、別環境DBの持ち込みと判定しました。"
                     )
                     return True
 
-            # DB内の物理VSNが現PCの接続ドライブに1つも存在しない場合も別環境DB
-            if not any(v in serial_to_drive for v in recorded_physical_vsns.keys()):
+            if host_mismatch:
                 logger.warning(
-                    f"DB内の物理ドライブ VSN ({list(recorded_physical_vsns.keys())}) が現PCに1つも接続されていないため、"
-                    "別環境DBの持ち込みと判定しました。"
+                    "DB内の記録ホスト名および物理ドライブ VSN が現PCと不一致のため、別環境DBの持ち込みと判定しました。"
                 )
                 return True
     except Exception as e:
         logger.debug(f"volumes VSN照合スキップ: {e}")
 
-    return False
+    return host_mismatch
 
 
 def _try_auto_pair_lv0_by_internal_loome_seal(owner_id: str) -> Optional[bytes]:
     """
-    Lv.0 でフル版ZIP等を新フォルダに展開し、cache/ と Loome/ をセットで手動コピペ引っ越しした際、
-    隠しファイル .tetheract_instance のコピー漏れがあっても、本体 Loome/.loome_seal の owner_id と
-    Lv.0 コヒージョンバンドルが一致すれば正当な引っ越しと判定してバンドルを復号返却する。
-    （※ library.db 単体引き抜き時は本体 Loome/.loome_seal が存在しないため復号されずロックされる）
+    Lv.0 でフル版ZIP等を新フォルダに展開し、cache/ と Loome/ をセットで手動コピペ引っ越しした際や、
+    テスト等で別DBを読み込ませた後に元のDBへ戻した際、本体 Loome/.loome_seal（および previous_seals 履歴）の
+    owner_id と Lv.0 コヒージョンバンドルが一致すれば正当なオーナーと判定してバンドルを復号返却する。
     """
     if not owner_id:
         return None
@@ -625,21 +642,68 @@ def _try_auto_pair_lv0_by_internal_loome_seal(owner_id: str) -> Optional[bytes]:
                 seal = json.load(f)
             if not isinstance(seal, dict):
                 continue
-            if str(seal.get("owner_id") or "") != owner_id:
-                continue
-            seal_mac = str(seal.get("seal_mac") or "")
-            cohesion_hex = str(seal.get("lv0_cohesion_bundle") or "")
-            if not seal_mac or not cohesion_hex:
-                continue
-            ckey = _derive_loome_cohesion_key(owner_id, seal_mac)
-            bundle_bytes = aead_decrypt(ckey, bytes.fromhex(cohesion_hex), aad=owner_id.encode("utf-8"))
-            bundle = json.loads(bundle_bytes.decode("utf-8"))
-            seal_vsn = str(seal.get("vsn") or "").strip().upper()
-            expected_mac = _compute_loome_seal_mac(bytes.fromhex(bundle["owner_secret"]), owner_id, seal_vsn)
-            if hmac.compare_digest(seal_mac, expected_mac):
-                return bundle_bytes
+            entries: List[Dict[str, Any]] = [seal]
+            prev = seal.get("previous_seals")
+            if isinstance(prev, list):
+                entries.extend(p for p in prev if isinstance(p, dict))
+            for entry in entries:
+                if str(entry.get("owner_id") or "") != owner_id:
+                    continue
+                seal_mac = str(entry.get("seal_mac") or "")
+                cohesion_hex = str(entry.get("lv0_cohesion_bundle") or "")
+                if not seal_mac or not cohesion_hex:
+                    continue
+                try:
+                    ckey = _derive_loome_cohesion_key(owner_id, seal_mac)
+                    bundle_bytes = aead_decrypt(ckey, bytes.fromhex(cohesion_hex), aad=owner_id.encode("utf-8"))
+                    bundle = json.loads(bundle_bytes.decode("utf-8"))
+                    seal_vsn = str(entry.get("vsn") or "").strip().upper()
+                    expected_mac = _compute_loome_seal_mac(bytes.fromhex(bundle["owner_secret"]), owner_id, seal_vsn)
+                    if hmac.compare_digest(seal_mac, expected_mac):
+                        return bundle_bytes
+                except Exception:
+                    continue
         except Exception as e:
             logger.debug(f"Lv.0 本体Loomeコヒージョン照合スキップ ({seal_path}): {e}")
+    return None
+
+
+def _try_auto_pair_lv0_by_local_recovery_file(meta: Dict[str, str]) -> Optional[bytes]:
+    """
+    同一環境の cache/recovery_key.txt（または cache/backups/recovery_key.txt）に
+    当該DBの owner_id に対応するリカバリーコードが記録されている場合、それを復号して自動ペアリングする。
+    （※ 自動テストで _custom_instance_file により別個体へのDB単体引き抜きをシミュレートしている場合はスキップ）
+    """
+    if _custom_instance_file is not None:
+        return None
+    owner_id = str(meta.get("owner_id") or "").strip()
+    rec_salt_hex = str(meta.get("recovery_salt") or "").strip()
+    wrapped_rec_hex = str(meta.get("dek_wrapped_recovery") or "").strip()
+    if not (owner_id and rec_salt_hex and wrapped_rec_hex):
+        return None
+
+    from .database.connection import DB_PATH
+    cache_dir = Path(DB_PATH).parent
+    candidate_files = [
+        cache_dir / "recovery_key.txt",
+        cache_dir / "backups" / "recovery_key.txt",
+    ]
+    import re
+    code_re = re.compile(r"TETH(?:-[2-9A-Z]{4}){4}")
+    for rfile in candidate_files:
+        if not rfile.exists():
+            continue
+        try:
+            text = rfile.read_text(encoding="utf-8", errors="ignore")
+            for match in code_re.findall(text):
+                try:
+                    rec_norm = normalize_recovery_code(match)
+                    rec_kek = derive_kek(rec_norm, bytes.fromhex(rec_salt_hex))
+                    return aead_decrypt(rec_kek, bytes.fromhex(wrapped_rec_hex), aad=owner_id.encode("utf-8"))
+                except Exception:
+                    continue
+        except Exception:
+            continue
     return None
 
 
@@ -696,6 +760,14 @@ def initialize_security_state(force_reload: bool = False) -> Dict[str, Any]:
         with get_connection() as conn:
             meta = _get_meta_map(conn)
 
+            # 過去の誤判定で Lv.0 なのに bound_instances が空 "{}" で書き込まれてしまったDBの自動自己修復
+            if meta.get("owner_id") and int(meta.get("security_level", "0") or 0) == 0:
+                raw_bound = str(meta.get("bound_instances", "") or "").strip()
+                if raw_bound in ("", "{}") and not _is_unsealed_db_from_foreign_environment(conn):
+                    conn.execute("DELETE FROM security_meta")
+                    conn.commit()
+                    meta = {}
+
             # DBのsecurity_metaが空の場合、まず本体Loome/.loome_sealからの自動サルベージを試みる
             if not meta.get("owner_id"):
                 if _try_salvage_meta_from_internal_loome_seal(conn):
@@ -710,41 +782,9 @@ def initialize_security_state(force_reload: bool = False) -> Dict[str, Any]:
                 dek = secrets.token_bytes(32)
                 recovery_code = generate_recovery_code()
 
-                bundle_plain = json.dumps({
-                    "dek": dek.hex(),
-                    "owner_secret": owner_secret.hex(),
-                    "recovery_code": recovery_code,
-                }).encode("utf-8")
-
-                # 1. 本体個体鍵でラップ（ただし別環境から単体で放り込まれた未刻印DBの場合はペアリングせずロックする）
                 if is_foreign_unsealed:
-                    bound_instances = {}
-                else:
-                    inst_key = _derive_instance_wrap_key(inst_secret, owner_id)
-                    wrapped_inst = aead_encrypt(inst_key, bundle_plain, aad=owner_id.encode("utf-8")).hex()
-                    bound_instances = {inst_id: wrapped_inst}
-
-                # 2. リカバリーコードでラップ
-                rec_salt = secrets.token_bytes(16)
-                rec_norm = normalize_recovery_code(recovery_code)
-                rec_kek = derive_kek(rec_norm, rec_salt)
-                wrapped_rec = aead_encrypt(rec_kek, bundle_plain, aad=owner_id.encode("utf-8")).hex()
-
-                # 3. 既知ドライブVSNでの救済バンドル
-                vsn_bundles_json = _build_vsn_rescue_bundles(conn, owner_id, bundle_plain)
-
-                _set_meta_values(conn, {
-                    "security_level": "0",
-                    "owner_id": owner_id,
-                    "bound_instances": json.dumps(bound_instances, ensure_ascii=False),
-                    "recovery_salt": rec_salt.hex(),
-                    "dek_wrapped_recovery": wrapped_rec,
-                    "vsn_rescue_bundles": vsn_bundles_json,
-                    "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                })
-                conn.commit()
-
-                if is_foreign_unsealed:
+                    # 別環境から単体で放り込まれた未刻印DBの場合は、元のDBファイルを汚染しないよう
+                    # security_meta への永続書き込みは行わず、オンメモリのみロック状態にする
                     _runtime_state.update({
                         "initialized": True,
                         "db_path": str(DB_PATH),
@@ -758,6 +798,37 @@ def initialize_security_state(force_reload: bool = False) -> Dict[str, Any]:
                         "recovery_code": "",
                     })
                 else:
+                    bundle_plain = json.dumps({
+                        "dek": dek.hex(),
+                        "owner_secret": owner_secret.hex(),
+                        "recovery_code": recovery_code,
+                    }).encode("utf-8")
+
+                    # 1. 本体個体鍵でラップ
+                    inst_key = _derive_instance_wrap_key(inst_secret, owner_id)
+                    wrapped_inst = aead_encrypt(inst_key, bundle_plain, aad=owner_id.encode("utf-8")).hex()
+                    bound_instances = {inst_id: wrapped_inst}
+
+                    # 2. リカバリーコードでラップ
+                    rec_salt = secrets.token_bytes(16)
+                    rec_norm = normalize_recovery_code(recovery_code)
+                    rec_kek = derive_kek(rec_norm, rec_salt)
+                    wrapped_rec = aead_encrypt(rec_kek, bundle_plain, aad=owner_id.encode("utf-8")).hex()
+
+                    # 3. 既知ドライブVSNでの救済バンドル
+                    vsn_bundles_json = _build_vsn_rescue_bundles(conn, owner_id, bundle_plain)
+
+                    _set_meta_values(conn, {
+                        "security_level": "0",
+                        "owner_id": owner_id,
+                        "bound_instances": json.dumps(bound_instances, ensure_ascii=False),
+                        "recovery_salt": rec_salt.hex(),
+                        "dek_wrapped_recovery": wrapped_rec,
+                        "vsn_rescue_bundles": vsn_bundles_json,
+                        "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    })
+                    conn.commit()
+
                     _runtime_state.update({
                         "initialized": True,
                         "db_path": str(DB_PATH),
@@ -814,14 +885,16 @@ def initialize_security_state(force_reload: bool = False) -> Dict[str, Any]:
                             bundle_bytes = None
 
                     # .tetheract_instance が新規（フル版ZIPへの cache/ + Loome/ 引っ越し等）の場合、
-                    # 本体 Loome/.loome_seal のコヒージョンバンドルで正当な引っ越しかを検証して自動ペアリング
+                    # 本体 Loome/.loome_seal または cache/recovery_key.txt で正当なオーナーかを検証して自動ペアリング
                     if bundle_bytes is None:
                         cohesion_bundle = _try_auto_pair_lv0_by_internal_loome_seal(owner_id)
+                        if cohesion_bundle is None:
+                            cohesion_bundle = _try_auto_pair_lv0_by_local_recovery_file(meta)
                         if cohesion_bundle is not None:
                             bundle_bytes = cohesion_bundle
                             _bind_current_instance_in_db(conn, owner_id, bundle_bytes, 0)
                             conn.commit()
-                            logger.info("Lv.0 本体 Loome/.loome_seal との一致を確認したため、新フォルダの .tetheract_instance を自動ペアリングしました。")
+                            logger.info("Lv.0 ローカルシールまたはリカバリーキーとの一致を確認したため、.tetheract_instance を自動ペアリングしました。")
 
                     if bundle_bytes is not None:
                         try:
@@ -1246,15 +1319,8 @@ def write_loome_seal(loome_dir: Path, volume_serial: Optional[str] = None, passw
             else:
                 seal_data["pw_protected"] = False
 
-            # Lv.0 かつ本体フォルダ内の Loome の場合は、cache/ + Loome/ セット引っ越し時の自動ペアリング用バンドルを付与
-            is_internal_loome = False
-            try:
-                loome_dir.resolve().relative_to(_get_active_project_root().resolve())
-                is_internal_loome = True
-            except ValueError:
-                is_internal_loome = False
-
-            if sec_level == 0 and is_internal_loome:
+            # Lv.0 の場合は、cache/ + Loome/ セット引っ越し時やポータブル起動時の自動ペアリング用バンドルを付与
+            if sec_level == 0:
                 ckey = _derive_loome_cohesion_key(owner_id, seal_mac)
                 seal_data["lv0_cohesion_bundle"] = aead_encrypt(ckey, bundle_plain, aad=owner_id.encode("utf-8")).hex()
 

@@ -4,22 +4,22 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Tetheract Photo Manager</title>
-  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=1.7.0">
-  <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32.png?v=1.7.0">
-  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png?v=1.7.0">
-  <link rel="apple-touch-icon" href="/icons/icon-192.png?v=1.7.0">
-  <link rel="manifest" href="/manifest.json?v=1.7.0">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=1.7.1">
+  <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32.png?v=1.7.1">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png?v=1.7.1">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png?v=1.7.1">
+  <link rel="manifest" href="/manifest.json?v=1.7.1">
   <meta name="theme-color" content="#191816">
   <link rel="stylesheet" href="/vendor/fonts/fonts.css">
-  <link rel="stylesheet" href="/css/style.css?v=1.7.0">
-  <link rel="stylesheet" href="/css/grid-lightbox.css?v=1.7.0">
-  <link rel="stylesheet" href="/css/selection-menu.css?v=1.7.0">
-  <link rel="stylesheet" href="/css/inspector.css?v=1.7.0">
-  <link rel="stylesheet" href="/css/modals-features.css?v=1.7.0">
-  <link rel="stylesheet" href="/css/lab-map.css?v=1.7.0">
-  <link rel="stylesheet" href="/css/histogram.css?v=1.7.0">
-  <link rel="stylesheet" href="/css/compare.css?v=1.7.0">
-  <link rel="stylesheet" href="/css/ui-unify.css?v=1.7.0">
+  <link rel="stylesheet" href="/css/style.css?v=1.7.1">
+  <link rel="stylesheet" href="/css/grid-lightbox.css?v=1.7.1">
+  <link rel="stylesheet" href="/css/selection-menu.css?v=1.7.1">
+  <link rel="stylesheet" href="/css/inspector.css?v=1.7.1">
+  <link rel="stylesheet" href="/css/modals-features.css?v=1.7.1">
+  <link rel="stylesheet" href="/css/lab-map.css?v=1.7.1">
+  <link rel="stylesheet" href="/css/histogram.css?v=1.7.1">
+  <link rel="stylesheet" href="/css/compare.css?v=1.7.1">
+  <link rel="stylesheet" href="/css/ui-unify.css?v=1.7.1">
   <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
   <script src="/vendor/leaflet/leaflet.js"></script>
   <script>
@@ -207,14 +207,14 @@
 
         <div class="logo" id="headerAppLogo" title="Tetheract Photo Manager">
           <span class="logo-icon-wrap">
-            <img class="logo-app-icon" id="headerLogoStaticImg" src="/icons/icon-192.png?v=1.7.0" width="24" height="24" alt="" aria-hidden="true">
+            <img class="logo-app-icon" id="headerLogoStaticImg" src="/icons/icon-192.png?v=1.7.1" width="24" height="24" alt="" aria-hidden="true">
             <canvas class="logo-app-icon-canvas" id="headerTetheractCanvas" width="72" height="72" aria-hidden="true"></canvas>
           </span>
           <svg class="logo-lockup-svg" viewBox="64 8 248 48" width="134" height="26" fill="none" role="img" aria-label="TETHERACT pm">
             <text x="0" y="45.41" fill="var(--logo-text)" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif" font-size="44.38" font-weight="700" letter-spacing="2.8" textLength="269.4" lengthAdjust="spacingAndGlyphs" transform="translate(66, 0) scale(0.7071, 1)">TETHERACT</text>
             <text x="0" y="45.41" fill="var(--logo-pm)" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif" font-size="35.60" font-weight="600" letter-spacing="1.0" transform="translate(265, 0) scale(0.75, 1)">pm</text>
           </svg>
-          <span class="app-version" id="appVersion" title="v1.7.0 (最終更新: 2026-11-04 23:55)">v1.7.0</span>
+          <span class="app-version" id="appVersion" title="v1.7.1 (最終更新: 2026-11-05 18:05)">v1.7.1</span>
         </div>
 
         <!-- UI言語切替（日本語 JP ⇄ English EN） -->
@@ -1511,7 +1511,7 @@
             <h4>7. Binder（条件セット保存）・外部ソフト連携・Loome管理・DBメンテナンス</h4>
             <p>Binder（条件セット保存）：よく使う絞り込み条件は、左サイドバー「Binder」の保存フォームで名前を付けて保存し、ワンクリックでの呼び出しやスライドショー再生が行えます。</p>
             <p>外部ソフト連携と自動更新検知：右インスペクタ上部のアイコンからエクスプローラーで保存先を開いたり、既定のソフトでファイルを開けます。外部ソフトで編集・保存したり .xmp サイドカーを出力して Tetheract の画面へ戻ると自動で変更を検知してサムネイルや XMP バッジを最新化します（右クリックメニューの「サムネイルを更新」から手動更新も可能です）。</p>
-            <p>設定とDBメンテナンス：画面右上の「設定」ボタンから、起動時のウィンドウサイズやタグの名前順ルールの変更、3段階セキュリティ（Lv.0: エシカルモード［他人のLoomeドライブ完全拒否＆DB単体引き抜き防止］／ Lv.1: 起動ロック＆DBサムネイル暗号化 ／ Lv.2: フルロック＋Loome実ファイルカプセル化保護）、および世代バックアップ付きデータベース最適化（VACUUM）が行えます。</p>
+            <p>設定とDBメンテナンス：画面右上の「設定」ボタンから、起動時のウィンドウサイズやタグの名前順ルールの変更、3段階セキュリティ（Lv.0: エシカルモード［他人のLoomeドライブ完全拒否＆DB単体引き抜き防止］／ Lv.1: 起動ロック＆DBサムネイル暗号化 ／ Lv.2: フルロック＋Loome実ファイルカプセル化保護）、および世代バックアップ付きデータベース最適化（VACUUM）が行えます。また、1週間（7日）以上バックアップを作成していない場合は起動時にリマインドモーダルが表示され、ワンクリックで最新バックアップを作成して保存先フォルダ（<code>cache/backups/</code>）を開き、別ドライブ等へ安全に退避できます。</p>
             <p>Loome 管理：左サイドバー「Folder」先頭の「Loome」には、外部フォルダの写真を右クリックの「Loomeへコピー ▶」（マウスオーバーでドライブからサブフォルダ階層へと右展開するカスケードメニュー）またはドラッグ＆ドロップで高速に並列コピー取り込みできます。また、接続中のドライブを右クリックして「このドライブに Loome を作成...」（または「登録メディア管理」の「Loome を作成」）を実行すると、外付けSSD・USBメモリ直下にも専用 Loome を追加できます。Loome内ではサブフォルダ作成・移動（右クリック「Loome内で移動 ▶」）・ファイル名変更（F2キーで単一または一括連番リネーム）・外部エクスポートが行え、同名のサイドカーファイル（.xmp等）やペアRAWも自動で追従します。</p>
           </div>
         </div>
@@ -2058,9 +2058,9 @@
         <div class="settings-left-pane">
           <!-- カラーテーマ（外観）設定 -->
           <div style="background: var(--bg-secondary, rgba(255,255,255,0.04)); border: 1px solid var(--border-soft, rgba(255,255,255,0.1)); border-radius: var(--radius-sm, 4px); padding: 12px; display: flex; flex-direction: column; gap: 8px;">
-            <div>
-              <div style="font-weight: 600; color: var(--text-main, #eceae4);">カラーテーマ（外観）</div>
-              <div style="font-size: 0.76rem; color: var(--text-dim, #64748b); margin-top: 2px;">画面全体の配色テーマを切り替えます（選択すると即座に反映されます）</div>
+            <div class="settings-hover-caption">
+              <span style="font-weight: 600; color: var(--text-main, #eceae4);">カラーテーマ（外観）</span>
+              <div class="settings-caption-tooltip">画面全体の配色テーマを切り替えます（選択すると即座に反映されます）</div>
             </div>
             <select id="settingThemeSelect" class="styled-select" style="width: 100%;">
               <option value="tetheract-d">Tetheract D（ダーク：シャンパン＆モノトーン）</option>
@@ -2072,9 +2072,9 @@
 
           <!-- ツールバーの配置（フッター / ヘッダー）設定 -->
           <div style="background: var(--bg-secondary, rgba(255,255,255,0.04)); border: 1px solid var(--border-soft, rgba(255,255,255,0.1)); border-radius: var(--radius-sm, 4px); padding: 12px; display: flex; flex-direction: column; gap: 8px;">
-            <div>
-              <div style="font-weight: 600; color: var(--text-main, #eceae4);">ツールバーの配置</div>
-              <div style="font-size: 0.76rem; color: var(--text-dim, #64748b); margin-top: 2px;">メインツールバーを画面下部（フッター）または上部（ヘッダー）に配置します</div>
+            <div class="settings-hover-caption">
+              <span style="font-weight: 600; color: var(--text-main, #eceae4);">ツールバーの配置</span>
+              <div class="settings-caption-tooltip">メインツールバーを画面下部（フッター）または上部（ヘッダー）に配置します</div>
             </div>
             <select id="settingToolbarPositionSelect" class="styled-select" style="width: 100%;">
               <option value="bottom">下部（フッター表示・上部ヘッダーなし）</option>
@@ -2084,9 +2084,9 @@
 
           <!-- 起動時のウィンドウサイズ設定 -->
           <div style="background: var(--bg-secondary, rgba(255,255,255,0.04)); border: 1px solid var(--border-soft, rgba(255,255,255,0.1)); border-radius: var(--radius-sm, 4px); padding: 12px; display: flex; flex-direction: column; gap: 8px;">
-            <div>
-              <div style="font-weight: 600; color: var(--text-main, #eceae4);">起動時のウィンドウサイズ</div>
-              <div style="font-size: 0.76rem; color: var(--text-dim, #64748b); margin-top: 2px;">アプリ起動時のウィンドウ状態を設定します（選択すると即座に現在の画面にも反映されます）</div>
+            <div class="settings-hover-caption">
+              <span style="font-weight: 600; color: var(--text-main, #eceae4);">起動時のウィンドウサイズ</span>
+              <div class="settings-caption-tooltip">アプリ起動時のウィンドウ状態を設定します（選択すると即座に現在の画面にも反映されます）</div>
             </div>
             <select id="settingStartupWindowModeSelect" class="styled-select" style="width: 100%;">
               <option value="maximized">最大化（標準・タスクバーあり）</option>
@@ -2100,9 +2100,9 @@
 
           <!-- タグツリーの並び順設定（左ペイン＆右インスペクタ共通） -->
           <div style="background: var(--bg-secondary, rgba(255,255,255,0.04)); border: 1px solid var(--border-soft, rgba(255,255,255,0.1)); border-radius: var(--radius-sm, 4px); padding: 12px; display: flex; flex-direction: column; gap: 8px;">
-            <div>
-              <div style="font-weight: 600; color: var(--text-main, #eceae4);">タグの名前順ルール</div>
-              <div style="font-size: 0.76rem; color: var(--text-dim, #64748b); margin-top: 2px;">左ペインの「枚数順」がオフのときに使われる名前ソート順を保存します</div>
+            <div class="settings-hover-caption">
+              <span style="font-weight: 600; color: var(--text-main, #eceae4);">タグの名前順ルール</span>
+              <div class="settings-caption-tooltip">左ペインの「枚数順」がオフのときに使われる名前ソート順を保存します</div>
             </div>
             <select id="settingTagSortModeSelect" class="styled-select" style="width: 100%;">
               <option value="natural">数値の自然順・昇順（標準 / 例: 1 → 2 → 10 / 24 → 25 → 2410）</option>
@@ -2125,22 +2125,22 @@
 
           <!-- 最適化 (VACUUM) -->
           <div style="background: var(--bg-secondary, rgba(255,255,255,0.04)); border: 1px solid var(--border-soft, rgba(255,255,255,0.1)); border-radius: var(--radius-sm, 4px); padding: 12px; display: flex; justify-content: space-between; align-items: center; gap: 12px;">
-            <div>
-              <div style="font-weight: 600; color: var(--text-main, #eceae4);">データベース最適化 (VACUUM)</div>
-              <div style="font-size: 0.76rem; color: var(--text-dim, #64748b); margin-top: 2px;">不要領域を解放してファイルサイズを縮小し、読み書きを高速化します</div>
+            <div class="settings-hover-caption">
+              <span style="font-weight: 600; color: var(--text-main, #eceae4);">データベース最適化 (VACUUM)</span>
+              <div class="settings-caption-tooltip">不要領域を解放してファイルサイズを縮小し、読み書きを高速化します</div>
             </div>
             <button class="btn btn-secondary btn-sm" id="dbMaintVacuumBtn" style="white-space: nowrap;">最適化を実行</button>
           </div>
 
-          <!-- バックアップ作成・管理 -->
+          <!-- セキュリティ設定 -->
           <div style="background: var(--bg-secondary, rgba(255,255,255,0.04)); border: 1px solid rgba(200, 157, 102, 0.28); border-radius: var(--radius-sm, 4px); padding: 12px; display: flex; flex-direction: column; gap: 8px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
-              <div>
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
+              <div style="min-width: 0; flex: 1;">
                 <div style="font-weight: 700; color: var(--text-main, #eceae4); display: flex; align-items: center; gap: 6px;">
-                  <span>🛡️ セキュリティ ＆ エシカル保護（3段階）</span>
+                  <span>セキュリティ設定</span>
                   <span id="secSettingsCurrentBadge" style="font-size: 0.72rem; padding: 1px 6px; border-radius: 4px; background: rgba(200,157,102,0.18); color: var(--accent-primary, #c89d66);">Lv.0</span>
                 </div>
-                <div style="font-size: 0.74rem; color: var(--text-dim, #64748b); margin-top: 2px;">他人のLoome保護・DB引き抜き防止・起動ロック・Loomeカプセル化を設定します</div>
+                <div id="secLevelDescText" style="font-size: 0.74rem; color: var(--text-dim, #64748b); margin-top: 3px; line-height: 1.45;">パスワード不要。他人のLoome保護と、library.db単体の不正コピー・引き抜き防止が有効になります。</div>
               </div>
               <button type="button" class="btn btn-secondary btn-xs" id="secLockNowBtn" style="display: none; white-space: nowrap;" title="画面を今すぐロックします">🔒 今すぐロック</button>
             </div>
@@ -2164,11 +2164,15 @@
               <button type="button" class="btn btn-primary btn-sm" id="secApplyConfigBtn" style="white-space: nowrap;">設定を適用</button>
             </div>
           </div>
+          <!-- バックアップ作成・管理 -->
           <div style="background: var(--bg-secondary, rgba(255,255,255,0.04)); border: 1px solid var(--border-soft, rgba(255,255,255,0.1)); border-radius: var(--radius-sm, 4px); padding: 12px; display: flex; flex-direction: column; gap: 8px;">
             <div style="display: flex; justify-content: space-between; align-items: center;">
-              <div>
-                <div style="font-weight: 600; color: var(--text-main, #eceae4);">データベースのバックアップ</div>
-                <div id="dbMaintBackupInfoText" style="font-size: 0.76rem; color: var(--text-dim, #64748b); margin-top: 2px;">確認中...</div>
+              <div class="settings-hover-caption">
+                <span style="font-weight: 600; color: var(--text-main, #eceae4);">データベースのバックアップ</span>
+                <div class="settings-caption-tooltip tooltip-up">
+                  <div>評価・タグ・サムネイルを含むライブラリDBの世代バックアップを作成・管理します</div>
+                  <div id="dbMaintBackupInfoText" style="margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--border-soft, rgba(255,255,255,0.12)); color: var(--accent-primary, #c89d66); font-size: 0.72rem;">確認中...</div>
+                </div>
               </div>
               <button class="btn btn-primary btn-sm" id="dbMaintBackupBtn" style="white-space: nowrap;">今すぐ作成</button>
             </div>
@@ -2181,9 +2185,9 @@
         <!-- 右ペイン: タグツリーエディタ（構造・名前の編集専用） -->
         <div class="settings-right-pane">
           <div class="settings-tag-editor-header">
-            <div>
-              <div style="font-weight: 700; font-size: 0.92rem; color: var(--text-main, #eceae4);">タグツリーエディタ（構造・名前の編集専用）</div>
-              <div style="font-size: 0.75rem; color: var(--text-dim, #64748b); margin-top: 2px;">タグをドラッグ＆ドロップして他のタグの配下へ移動、またはリネーム・子タグ追加（+子）・全体削除が行えます</div>
+            <div class="settings-hover-caption">
+              <span style="font-weight: 700; font-size: 0.92rem; color: var(--text-main, #eceae4);">タグツリーエディタ（構造・名前の編集専用）</span>
+              <div class="settings-caption-tooltip tooltip-wide">タグをドラッグ＆ドロップして他のタグの配下へ移動、またはリネーム・子タグ追加（+子）・全体削除が行えます</div>
             </div>
             <div style="display: flex; gap: 4px; flex-shrink: 0;">
               <button type="button" class="tag-sort-count-toggle-btn" id="settingsTagSortToggleBtn" style="height: 24px !important; padding: 0 8px; font-size: 0.72rem;" title="クリックで「名前順（自然順）」と「枚数順」を切り替え（エディタのみ独立）">名前順</button>
@@ -3181,23 +3185,23 @@
     </div>
   </div>
 
-  <script src="/js/common.js?v=1.7.0"></script>
-  <script src="/js/selection.js?v=1.7.0"></script>
-  <script src="/js/inspector.js?v=1.7.0"></script>
-  <script src="/js/lightbox.js?v=1.7.0"></script>
-  <script src="/js/adjust.js?v=1.7.0"></script>
-  <script src="/js/histogram.js?v=1.7.0"></script>
-  <script src="/js/compare.js?v=1.7.0"></script>
-  <script src="/js/takeout.js?v=1.7.0"></script>
-  <script src="/js/presets.js?v=1.7.0"></script>
-  <script src="/js/slideshow.js?v=1.7.0"></script>
-  <script src="/js/location_tree.js?v=1.7.0"></script>
-  <script src="/js/folder_tree.js?v=1.7.0"></script>
-  <script src="/js/location_map.js?v=1.7.0"></script>
-  <script src="/js/lab.js?v=1.7.0"></script>
-  <script src="/js/sidebar_filters.js?v=1.7.0"></script>
-  <script src="/js/storage.js?v=1.7.0"></script>
-  <script src="/js/app.js?v=1.7.0"></script>
-  <script src="/js/i18n.js?v=1.7.0"></script>
+  <script src="/js/common.js?v=1.7.1"></script>
+  <script src="/js/selection.js?v=1.7.1"></script>
+  <script src="/js/inspector.js?v=1.7.1"></script>
+  <script src="/js/lightbox.js?v=1.7.1"></script>
+  <script src="/js/adjust.js?v=1.7.1"></script>
+  <script src="/js/histogram.js?v=1.7.1"></script>
+  <script src="/js/compare.js?v=1.7.1"></script>
+  <script src="/js/takeout.js?v=1.7.1"></script>
+  <script src="/js/presets.js?v=1.7.1"></script>
+  <script src="/js/slideshow.js?v=1.7.1"></script>
+  <script src="/js/location_tree.js?v=1.7.1"></script>
+  <script src="/js/folder_tree.js?v=1.7.1"></script>
+  <script src="/js/location_map.js?v=1.7.1"></script>
+  <script src="/js/lab.js?v=1.7.1"></script>
+  <script src="/js/sidebar_filters.js?v=1.7.1"></script>
+  <script src="/js/storage.js?v=1.7.1"></script>
+  <script src="/js/app.js?v=1.7.1"></script>
+  <script src="/js/i18n.js?v=1.7.1"></script>
 </body>
 </html>

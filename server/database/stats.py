@@ -6,15 +6,17 @@
 import logging
 import os
 import sqlite3
+import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from .connection import CACHE_DIR, DB_PATH, _local_db, get_connection
 
 logger = logging.getLogger(__name__)
 
 BACKUP_DIR = CACHE_DIR / "backups"
+WEEKLY_BACKUP_REMINDER_DAYS = 7
 
 
 def format_bytes(size_bytes: int) -> str:
@@ -33,14 +35,20 @@ def get_backup_info() -> Dict[str, Any]:
     """
     既存のバックアップ一覧および最新バックアップのサマリーを取得する。
     """
+    backup_dir_str = str(BACKUP_DIR.resolve())
+    db_file_str = str(DB_PATH.resolve())
     if not BACKUP_DIR.exists():
         return {
             "count": 0,
             "latest": None,
             "backups": [],
+            "backup_dir_path": backup_dir_str,
+            "db_file_path": db_file_str,
+            "days_since_last_backup": None,
         }
 
     backups: List[Dict[str, Any]] = []
+    now_ts = time.time()
     try:
         files = sorted(
             BACKUP_DIR.glob("library_backup_*.db"),
@@ -50,20 +58,29 @@ def get_backup_info() -> Dict[str, Any]:
         for p in files:
             st = p.stat()
             mtime_dt = datetime.fromtimestamp(st.st_mtime)
+            age_sec = max(0.0, now_ts - float(st.st_mtime))
+            age_days = int(age_sec // 86400)
             backups.append({
                 "filename": p.name,
+                "file_path": str(p.resolve()),
                 "size": st.st_size,
                 "size_formatted": format_bytes(st.st_size),
                 "created_at": mtime_dt.strftime("%Y-%m-%d %H:%M:%S"),
                 "created_at_short": mtime_dt.strftime("%m/%d %H:%M"),
+                "mtime_epoch": round(float(st.st_mtime), 2),
+                "age_days": age_days,
             })
     except Exception as e:
         logger.warning(f"バックアップ情報取得エラー: {e}")
 
+    latest_item = backups[0] if backups else None
     return {
         "count": len(backups),
-        "latest": backups[0] if backups else None,
+        "latest": latest_item,
         "backups": backups,
+        "backup_dir_path": backup_dir_str,
+        "db_file_path": db_file_str,
+        "days_since_last_backup": latest_item["age_days"] if latest_item else None,
     }
 
 
@@ -82,6 +99,7 @@ def get_database_stats() -> Dict[str, Any]:
     freelist_bytes = 0
     photo_count = 0
     thumbnail_count = 0
+    oldest_photo_created_at: Optional[str] = None
 
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -91,13 +109,45 @@ def get_database_stats() -> Dict[str, Any]:
         freelist_count = cursor.fetchone()[0]
         freelist_bytes = freelist_count * page_size
 
-        cursor.execute("SELECT count(*) FROM photos")
-        photo_count = cursor.fetchone()[0]
+        cursor.execute("SELECT count(*), min(created_at) FROM photos")
+        row_p = cursor.fetchone()
+        photo_count = int(row_p[0] or 0) if row_p else 0
+        oldest_photo_created_at = str(row_p[1]) if (row_p and row_p[1]) else None
 
         cursor.execute("SELECT count(*) FROM thumbnails")
         thumbnail_count = cursor.fetchone()[0]
 
     reclaimable_ratio = (freelist_bytes / file_size) if file_size > 0 else 0.0
+    b_info = get_backup_info()
+
+    # ライブラリの運用経過日数および1週間（7日）バックアップ未実施の判定
+    library_age_days = 0
+    if photo_count > 0:
+        if oldest_photo_created_at:
+            try:
+                dt_oldest = datetime.strptime(oldest_photo_created_at[:19], "%Y-%m-%d %H:%M:%S")
+                library_age_days = max(0, int((datetime.now() - dt_oldest).total_seconds() // 86400))
+            except Exception:
+                library_age_days = 0
+        if library_age_days == 0 and DB_PATH.exists():
+            try:
+                st_db = DB_PATH.stat()
+                oldest_ts = min(float(st_db.st_ctime), float(st_db.st_mtime))
+                library_age_days = max(0, int((time.time() - oldest_ts) // 86400))
+            except Exception:
+                library_age_days = 0
+
+    days_since_bck = b_info.get("days_since_last_backup")
+    is_overdue = False
+    if photo_count > 0:
+        if days_since_bck is not None:
+            is_overdue = days_since_bck >= WEEKLY_BACKUP_REMINDER_DAYS
+        else:
+            is_overdue = library_age_days >= WEEKLY_BACKUP_REMINDER_DAYS
+
+    b_info["library_age_days"] = library_age_days
+    b_info["reminder_threshold_days"] = WEEKLY_BACKUP_REMINDER_DAYS
+    b_info["is_overdue"] = is_overdue
 
     return {
         "file_size": file_size,
@@ -108,7 +158,7 @@ def get_database_stats() -> Dict[str, Any]:
         "reclaimable_percent": int(reclaimable_ratio * 100),
         "photo_count": photo_count,
         "thumbnail_count": thumbnail_count,
-        "backup_info": get_backup_info(),
+        "backup_info": b_info,
     }
 
 
