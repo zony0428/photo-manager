@@ -46,10 +46,12 @@ USBメモリやポータブルSSDでの持ち歩き運用（完全スタンド�
 
 ## 3. コーディング規約 (Coding Standards)
 
-### 言語 & コメント
-- **コード内コメント・docstring**: すべて**日本語**で記述する。
+### 言語 & コメント（簡潔・現在形原則）
+- **コード内コメント・docstring**: すべて**日本語**で記述する。ただし、関数名やコードから自明な処理に過剰な長文コメント・逐語解説を書かない（docstringは原則1〜3行で簡潔に要点を書く）。
+- **歴史コメント・死にコードの禁止**: 「旧vX.Xでは〜だったが廃止」といった変更履歴コメントや未使用の互換ラッパー・非表示DOMをソースコード内に残さない。設計の歴史・背景は docs/knowledge/ または Git 履歴に逃がし、コード自体は常に「現在の仕様」のみをクリーンに保つ。
 - **変数名・関数名・クラス名**: 英語で明確に命名する（ローマ字命名は厳禁）。
 - **ユーザーへの説明・計画書**: すべて**日本語**で行う。
+- **母艦ファイルへの安易な追記禁止**: 新機能やUIを追加する際は、rontend/js/app.js や server/app.py に漫然と追記せず、機能別モジュール（rontend/js/*.js）やルーター（server/routers/*_router.py）に適切に配置する。
 
 ### Python
 - **エラーハンドリング**:
@@ -115,11 +117,13 @@ USBメモリやポータブルSSDでの持ち歩き運用（完全スタンド�
   - バージョン値の出所はプロジェクトルートの `VERSION` ファイルのみとする（`server/version.py` は `VERSION` を読み取るだけなので直接編集しない）。
   - `VERSION` ファイルにはバージョン番号とあわせて **最終更新日時（`Updated: YYYY-MM-DD HH:MM`）** を記載し、改修時は最終更新日時を最新化する（UIの `#appVersion` および `/api/version` へ反映させる）。
 
-### ドキュメンテーション & 操作マニュアル・リリースノート同期規約
-- **マニュアル同時更新義務**:
-  - 新機能の追加、UIレイアウトの変更、キーボードショートカットの変更・追加を行った際は、必ずプロジェクトルートの `MANUAL.md` およびアプリ内ヘルプモーダル（`frontend/index.html` の `#helpModal`）を**同時に更新**する。
-  - 詳細手順は `.agents/skills/documentation-manual/` を参照。
-  - 配布用バッチ `build_dist.bat` にも `MANUAL.md` および `RELEASE_NOTES.md` の同梱設定を維持する。
+### 作業規模に応じた2段階ワークフロー（Fast Path / Full Path）とドキュメント同期
+- **軽微な修正時（Fast Path：テキスト修正・ラベル変更・CSS微調整・内部リファクタリング）**:
+  - 該当ファイル（および翻訳対象ラベルの場合のみ rontend/js/i18n_dict.js）のみをピンポイントで素早く修正する。
+  - 試行錯誤や微調整のたびに毎回 MANUAL.md 更新・バージョン番号更新・フルテスト実行を行う必要はない（ユーザーの待ち時間を最小化する）。
+- **新機能追加・操作変更・コミット時（Full Path）**:
+  - 新機能の追加、操作フローやキーボードショートカットの変更を行った際は、コミット前にプロジェクトルートの MANUAL.md およびアプリ内ヘルプモーダル（rontend/index.html の #helpModal）を同期更新する（詳細手順は .agents/skills/documentation-manual/ 参照）。
+  - 配布用バッチ uild_dist.bat にも MANUAL.md および RELEASE_NOTES.md の同梱設定を維持する。
 - **リリースノート自動生成義務**:
   - バージョン番号を更新してリリースビルド（`build_dist.bat` による `Tetheract_v<VERSION>.zip` / `Tetheract_v<VERSION>diff.zip` 生成）を行う際は、必ずプロジェクト配下に以下のリリースノートを生成・更新する：
     1. **`docs/release_notes/RELEASE_NOTES_v<VERSION>.md`**: バージョン別のリリースノート保存用（GitHub Releases 投稿用に Tag・Title・差分版 `Tetheract_v<VERSION>diff.zip` 上書き案内・フル版案内・日本語/英語の更新内容を完備）。
@@ -189,7 +193,8 @@ photo-manager/
 │   ├── icons/                 ★ アプリアイコン群
 │   └── vendor/                ★ オフライン同梱アセット（fonts/, leaflet/, sqljs/）
 └── server/                    ★ バックエンド（FastAPI）
-    ├── app.py                 ★ APIエンドポイントルーティング
+    ├── app.py                 ★ メインAPI・ミドルウェア・ルーター統合
+    ├── routers/               ★ 機能別APIルーターパッケージ（ai, gps_lab, storage_volumes, export_import, mobile, security）
     ├── security.py            ★ 3段階セキュリティ＆エシカル保護（Lv.0/1/2）・鍵サルベージ制御
     ├── lan_access.py          ★ LANアクセス制御・Hostヘッダ検証・トークン認証
     ├── storage_manager.py     ★ 内部ストレージ管理・ファイル操作

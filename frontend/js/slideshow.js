@@ -139,20 +139,6 @@
   }
 
   /**
-   * HTMLエスケープヘルパー
-   */
-  function escapeHtml(str) {
-    if (typeof str !== 'string') return String(str);
-    return str.replace(/[&<>"']/g, m => ({
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      '"': '&quot;',
-      "'": '&#39;'
-    })[m]);
-  }
-
-  /**
    * 現在のスライドを表示 (クロスフェード)
    */
   function renderCurrentSlide() {

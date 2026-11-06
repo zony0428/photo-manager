@@ -411,8 +411,6 @@ function showSingleInspector(photo) {
   elements.inspectorSingleView.style.display = 'block';
   elements.inspectorBatchView.style.display = 'none';
   if (elements.inspectorFixedPreview) elements.inspectorFixedPreview.style.display = 'block';
-  elements.inspectorTitle.textContent = photo.file_name;
-  elements.inspectorTitle.title = photo.file_name;
 
   // プレビューサムネイル
   if (elements.inspectorPreviewWrapper) {
@@ -658,7 +656,7 @@ function showSingleInspector(photo) {
     }
   }
 
-  // ヘッダーのフォルダ・ファイルを開くボタン
+  // クイックアクションバーのフォルダ・ファイルを開くボタン
   if (elements.inspectorOpenFolderBtn) {
     elements.inspectorOpenFolderBtn.style.display = photo.is_unlinked ? 'none' : 'inline-flex';
     elements.inspectorOpenFolderBtn.onclick = (e) => {
@@ -678,19 +676,9 @@ function showSingleInspector(photo) {
     };
   }
 
-  // storage内写真のみファイル名変更ボタン（✏️）を表示
-  const renameHeaderBtn = document.getElementById('inspectorRenameHeaderBtn');
+  // storage内写真のみファイル名変更ボタンを表示
   const renameExifBtn = document.getElementById('inspectorRenameExifBtn');
   const inStorage = typeof window.isPhotoInStorage === 'function' ? window.isPhotoInStorage(photo) : false;
-  if (renameHeaderBtn) {
-    renameHeaderBtn.style.display = inStorage ? 'inline-flex' : 'none';
-    renameHeaderBtn.onclick = (e) => {
-      e.stopPropagation();
-      if (typeof window.openStorageRenameModal === 'function') {
-        window.openStorageRenameModal([photo.id]);
-      }
-    };
-  }
   if (renameExifBtn) {
     renameExifBtn.style.display = inStorage ? 'inline-flex' : 'none';
     renameExifBtn.onclick = (e) => {
@@ -900,16 +888,12 @@ function showSingleInspector(photo) {
           elements.inspectorBracketList.querySelectorAll('.inspector-bracket-item').forEach(it => it.classList.remove('active'));
           item.classList.add('active');
 
-          // 上部の固定プレビュー画像とタイトルを即時更新
+          // 上部の固定プレビュー画像を即時更新
           if (elements.inspectorThumb) {
             elements.inspectorThumb.src = getThumbnailUrl(sp);
             if (elements.inspectorThumb.complete && typeof window.refreshInspectorHistogram === 'function') {
               window.refreshInspectorHistogram();
             }
-          }
-          if (elements.inspectorTitle) {
-            elements.inspectorTitle.textContent = sp.file_name;
-            elements.inspectorTitle.title = sp.file_name;
           }
           updateQuickExifSummary(sp);
 
@@ -921,7 +905,7 @@ function showSingleInspector(photo) {
             };
           }
 
-          // ヘッダーのフォルダ・ファイルを開くボタンの対象もこの sp に切り替え
+          // クイックアクションバーのフォルダ・ファイルを開くボタンの対象もこの sp に切り替え
           if (elements.inspectorOpenFolderBtn) {
             elements.inspectorOpenFolderBtn.onclick = (e) => {
               e.stopPropagation();
@@ -936,15 +920,6 @@ function showSingleInspector(photo) {
           }
 
           const spInStorage = typeof window.isPhotoInStorage === 'function' ? window.isPhotoInStorage(sp) : false;
-          if (renameHeaderBtn) {
-            renameHeaderBtn.style.display = spInStorage ? 'inline-flex' : 'none';
-            renameHeaderBtn.onclick = (e) => {
-              e.stopPropagation();
-              if (typeof window.openStorageRenameModal === 'function') {
-                window.openStorageRenameModal([sp.id]);
-              }
-            };
-          }
           if (renameExifBtn) {
             renameExifBtn.style.display = spInStorage ? 'inline-flex' : 'none';
             renameExifBtn.onclick = (e) => {
@@ -1571,11 +1546,6 @@ function showBatchInspector() {
   elements.inspectorSingleView.style.display = 'none';
   elements.inspectorBatchView.style.display = 'block';
   if (elements.inspectorFixedPreview) elements.inspectorFixedPreview.style.display = 'none';
-  elements.inspectorTitle.textContent = '一括編集';
-  const renameHeaderBtn = document.getElementById('inspectorRenameHeaderBtn');
-  if (renameHeaderBtn) {
-    renameHeaderBtn.style.display = 'none';
-  }
   if (elements.inspectorOpenFolderBtn) {
     elements.inspectorOpenFolderBtn.style.display = 'none';
   }
@@ -2340,9 +2310,6 @@ async function batchToggleTag(tagName, shouldAdd) {
   }
 }
 
-// 後方互換性エイリアス
-const batchToggleTagWithoutClearing = batchToggleTag;
-
 /**
  * 単一写真からタグを削除 (即時DOM反映 ＆ キャッシュ即時同期)
  */
@@ -2429,29 +2396,6 @@ async function removeTagFromPhoto(photoId, tag, chipEl = null, photoObj = null) 
 }
 
 /**
- * 選択中の写真すべてからタグを一括削除
- */
-async function batchRemoveTagFromSelection(tag) {
-  if (state.selectedPhotoIds.size === 0) return;
-  try {
-    const res = await fetch('/api/photos/batch-tags', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        photo_ids: Array.from(state.selectedPhotoIds),
-        tag: tag,
-        action: 'remove',
-      }),
-    });
-    if (!res.ok) throw new Error('一括タグ削除に失敗しました');
-    clearSelection();
-    await Promise.all([fetchPhotos(), fetchTags()]);
-  } catch (err) {
-    if (typeof showToast === 'function') showToast('エラー: ' + err.message, 'error');
-  }
-}
-
-/**
  * フィルタ切り替え
 
 
@@ -2462,11 +2406,8 @@ function initInspectorEvents() {
   if (elements.toggleInspectorBtn) {
     elements.toggleInspectorBtn.addEventListener('click', () => toggleInspector());
   }
-  if (elements.closeInspectorBtn) {
-    elements.closeInspectorBtn.addEventListener('click', () => toggleInspector(false));
-  }
 
-  // 単一インスペクタ: 上部クイックアクションバー（調整・波形・左回転・右回転）
+  // 単一インスペクタ: 上部クイックアクションバー（調整・波形・左回転・右回転・フォルダ/アプリで開く）
   const quickAdjustBtn = document.getElementById('inspectorQuickAdjustBtn');
   if (quickAdjustBtn) {
     quickAdjustBtn.addEventListener('click', (e) => {

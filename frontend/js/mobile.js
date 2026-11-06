@@ -1507,9 +1507,12 @@
         }
         mState.localDb.run('COMMIT');
       } catch (e) {
+        console.error('[MobileDB] 一括評価更新エラー:', e);
         try {
           mState.localDb.run('ROLLBACK');
         } catch (re) {}
+        showToast('! ローカルDBの更新に失敗しました');
+        return;
       }
     }
 
@@ -2246,9 +2249,12 @@
         }
         mState.localDb.run('COMMIT');
       } catch (e) {
+        console.error('[MobileDB] 一括タグ追加エラー:', e);
         try {
           mState.localDb.run('ROLLBACK');
         } catch (re) {}
+        showToast('! ローカルDBのタグ更新に失敗しました');
+        return;
       }
     }
 
@@ -2258,7 +2264,6 @@
         pObj.tags = [...new Set([...(pObj.tags || []), ...expanded])].sort();
       }
     }
-    renderBatchTagSheet();
     await fetchFilterSummaries();
     renderBatchTagSheet();
     showToast(`${ids.length}枚に #${tag} を追加しました`);

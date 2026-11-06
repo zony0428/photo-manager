@@ -270,10 +270,6 @@ body.selection-active .card-select-checkbox {
   transform: translateY(-1px);
 }
 
-.context-import-action-icon {
-  font-size: 0.9rem;
-}
-
 .context-import-action-text {
   flex: 1;
 }
@@ -664,14 +660,6 @@ body.selection-active .card-select-checkbox {
   margin: 2px 0;
 }
 
-.ns-empty-hint {
-  padding: 10px 12px;
-  font-size: 0.74rem;
-  color: #78716c;
-  text-align: center;
-  font-style: italic;
-}
-
 /* メニュー各行（ドライブ行・フォルダ行・直下アクション行共通） */
 .ns-menu-item,
 .submenu-folder-item {
@@ -736,31 +724,6 @@ body.selection-active .card-select-checkbox {
   text-overflow: ellipsis;
   white-space: nowrap;
   line-height: 1.25;
-}
-
-.ns-item-sub {
-  font-size: 0.67rem;
-  font-weight: 400;
-  color: #6b665e;
-  font-family: monospace;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  line-height: 1.15;
-}
-
-.ns-menu-item:hover .ns-item-sub,
-.ns-menu-item.is-active-cascade .ns-item-sub,
-.ns-menu-item.is-cascade-open .ns-item-sub {
-  color: inherit;
-  opacity: 0.85;
-}
-
-.ns-item-right {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
 }
 
 .ns-item-count,
@@ -872,28 +835,6 @@ body.selection-active .card-select-checkbox {
   opacity: 0.9;
 }
 
-.ns-open-explorer-btn {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  width: 100%;
-  background: transparent;
-  border: none;
-  text-align: left;
-  padding: 5px 7px;
-  font-size: 0.73rem;
-  font-weight: 500;
-  color: #57534e;
-  border-radius: 3px;
-  cursor: pointer;
-  transition: background 0.1s ease, color 0.1s ease;
-}
-
-.ns-open-explorer-btn:hover {
-  background: rgba(var(--accent-rgb, 225, 77, 42), 0.14);
-  color: var(--accent-primary, #e14d2a);
-}
-
 /* ダークテーマ（Sumi / Tetheract D）対応 */
 [data-theme="sumi"] .ns-cascade-panel {
   background: rgba(24, 26, 30, 0.99);
@@ -909,18 +850,10 @@ body.selection-active .card-select-checkbox {
   background: rgba(255, 255, 255, 0.1);
 }
 
-[data-theme="sumi"] .ns-empty-hint {
-  color: #94a3b8;
-}
-
 [data-theme="sumi"] .ns-menu-item,
 [data-theme="sumi"] .submenu-folder-item {
   color: #f1f5f9;
   border-bottom: 1px solid rgba(255, 255, 255, 0.07);
-}
-
-[data-theme="sumi"] .ns-item-sub {
-  color: #94a3b8;
 }
 
 [data-theme="sumi"] .ns-menu-item:hover,
@@ -965,15 +898,6 @@ body.selection-active .card-select-checkbox {
   color: #f8fafc;
 }
 
-[data-theme="sumi"] .ns-open-explorer-btn {
-  color: #94a3b8;
-}
-
-[data-theme="sumi"] .ns-open-explorer-btn:hover {
-  background: rgba(var(--accent-rgb, 225, 77, 42), 0.22);
-  color: var(--accent-primary, #ff8a65);
-}
-
 /* 右クリックメニュー本体のセクションキャプション（Loome 保管庫操作など） */
 .context-menu-section-caption {
   padding: 4px 10px 3px 10px;
@@ -998,12 +922,6 @@ body.selection-active .card-select-checkbox {
   pointer-events: none;
 }
 
-.ns-section-caption.ns-footer-caption {
-  padding: 0 2px 2px 2px;
-  background: transparent;
-  border-bottom: none;
-}
-
 [data-theme="sumi"] .context-menu-section-caption {
   color: #94a3b8;
 }
@@ -1014,6 +932,3 @@ body.selection-active .card-select-checkbox {
   border-bottom-color: rgba(255, 255, 255, 0.06);
 }
 
-[data-theme="sumi"] .ns-section-caption.ns-footer-caption {
-  background: transparent;
-}

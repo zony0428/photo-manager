@@ -6,20 +6,10 @@
 
 import os
 from pathlib import Path
-import re
 import string
 import sys
 import time
 from typing import Any, Dict, List, Optional, Tuple
-
-
-def _natural_sort_key(text: Any) -> List[Tuple[int, Any]]:
-    """文字列内の数値部分を整数として評価する自然順ソートキーを生成する"""
-    return [
-        (0, int(part)) if part.isdigit() else (1, part.lower())
-        for part in re.split(r"(\d+)", str(text or ""))
-    ]
-
 
 from .database import (
     SYSTEM_IGNORE_NAMES,
@@ -29,7 +19,7 @@ from .database import (
     get_ignored_folders,
     get_scan_roots,
 )
-from .database.folders import normalize_folder_path
+from .database.folders import _natural_sort_key, normalize_folder_path
 from .storage_manager import get_all_loome_roots, is_loome_root_path, is_path_in_storage
 from .volume_info import get_volume_info_for_drive
 from .security import inspect_drive_loome_ownership

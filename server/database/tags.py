@@ -494,26 +494,6 @@ def batch_remove_tag(photo_ids: List[int], tag: str) -> int:
         return total_deleted
 
 
-def batch_update_rating(photo_ids: List[int], rating: int) -> int:
-    """複数の写真の評価を一括更新する（-1:棄, 0:可, 1:良, 2:優）"""
-    if not photo_ids:
-        return 0
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        updated = 0
-        chunk_size = 500
-        for i in range(0, len(photo_ids), chunk_size):
-            chunk = photo_ids[i : i + chunk_size]
-            placeholders = ",".join(["?"] * len(chunk))
-            cursor.execute(
-                f"UPDATE photos SET rating = ?, updated_at = CURRENT_TIMESTAMP WHERE id IN ({placeholders})",
-                [rating] + chunk,
-            )
-            updated += cursor.rowcount
-        conn.commit()
-        return updated
-
-
 def _ensure_tag_definitions_table(cursor) -> None:
     """tag_definitions テーブルおよび拡張カラム（tag_key, short_name, is_pinned, updated_at）が存在することを保証する"""
     cursor.execute(

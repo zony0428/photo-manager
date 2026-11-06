@@ -274,13 +274,6 @@
 }
 
 .tag-sort-count-toggle-btn.active { background: var(--accent-primary, #e14d2a) !important; color: #ffffff !important; border-color: var(--accent-primary, #e14d2a) !important; font-weight: 600 !important; }
-.tag-sort-count-toggle-btn.active-legacy {
-  background: var(--bg-hover) !important;
-  color: var(--text-main) !important;
-  border-color: var(--text-muted) !important;
-  box-shadow: none !important;
-}
-
 /* 2枚比較ヘッダー「同期: [🖐️ ビュー] [🔍 ズーム]」（両方ON可能な独立トグル） */
 .compare-sync-group {
   display: inline-flex;
@@ -798,7 +791,6 @@
   }
 }
 
-
 /* 第1段階: 左端 垂直タブレール (Activity Bar: 54px〜108px 可変スケール) */
 .sidebar-rail {
   width: var(--rail-width, 54px);
@@ -860,6 +852,20 @@ body.resizing .sidebar-rail-resizer::before {
   pointer-events: auto !important;
 }
 
+.rail-divider {
+  width: calc(var(--rail-width, 54px) - 18px);
+  height: 1px;
+  margin: calc(4px * (0.7 + 0.3 * var(--rail-scale, 1))) 0;
+  background: var(--border-color);
+  flex-shrink: 0;
+}
+
+.rail-gap {
+  width: 100%;
+  height: calc(8px * (0.7 + 0.3 * var(--rail-scale, 1)));
+  flex-shrink: 0;
+}
+
 .rail-spacer {
   flex: 1 1 auto;
 }
@@ -917,6 +923,7 @@ body.resizing .sidebar-rail-resizer::before {
   height: calc(6px * (0.75 + 0.25 * var(--rail-scale, 1)));
   border-radius: 50%;
   background: var(--accent-primary);
+  box-shadow: 0 0 6px var(--accent-primary);
 }
 
 .rail-tab-icon {
@@ -955,10 +962,6 @@ body.resizing .sidebar-rail-resizer::before {
 }
 
 /* 上部バーでは一括開閉ボタンを非表示（タブ切替式のため不要） */
-.sidebar-two-stage #sidebarToggleAllBtn {
-  display: none !important;
-}
-
 .sidebar-two-stage .sidebar-top-bar {
   padding: 6px 8px;
   min-height: 36px;
@@ -1024,7 +1027,6 @@ body.resizing .sidebar-rail-resizer::before {
   max-height: none !important;
 }
 
-
 /* ==========================================================================
    10. 上部1段統合ツールバー (.unified-single-header) ＆ システムメニュー
    ========================================================================== */
@@ -1049,11 +1051,6 @@ body.resizing .sidebar-rail-resizer::before {
   order: 3;
   border-bottom: none;
   border-top: 1px solid var(--border-color);
-}
-
-[data-toolbar-pos="bottom"] .header-system-dropdown {
-  top: auto !important;
-  bottom: calc(100% + 6px) !important;
 }
 
 [data-toolbar-pos="bottom"] #globalScanBanner.unified-activity-dock {
@@ -1100,32 +1097,6 @@ body.resizing .sidebar-rail-resizer::before {
 }
 
 /* 左上：現在の表示タイトル ＋ 枚数バッジ */
-.header-view-status {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  min-width: 0;
-  max-width: 240px;
-  flex-shrink: 1;
-}
-
-.header-view-status .hinomaru-disc {
-  width: 9px;
-  height: 9px;
-  flex-shrink: 0;
-}
-
-.header-view-status .view-title {
-  font-size: 0.86rem !important;
-  font-weight: 600 !important;
-  color: var(--text-main);
-  margin: 0 !important;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  line-height: 1.2;
-}
-
 .unified-single-header .photos-count-badge,
 .header-view-status .photos-count-badge {
   display: inline-flex;
@@ -1145,13 +1116,6 @@ body.resizing .sidebar-rail-resizer::before {
 }
 
 /* ヘッダー内に統合された属性・評価フィルタ群 */
-.header-filter-bar {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
 /* ヘッダー内すべてのボタン・セレクト高さを「グリッド・びっしり・マウント」(28px) に完全統一 */
 .unified-single-header .view-mode-group {
   height: 28px !important;
@@ -1249,128 +1213,15 @@ body.resizing .sidebar-rail-resizer::before {
   box-sizing: border-box !important;
 }
 
-.unified-single-header .unused-placeholder {
-}
-
 /* 画面幅が狭い時（1360px以下）は再生・スタック・情報・レイアウトのテキストラベルを自動でアイコン化して1行維持 */
 @media (max-width: 1560px) {
   .unified-single-header .header-compact-btn .btn-label,
   .unified-single-header .view-mode-group .mode-label {
     display: none !important;
   }
-  .header-view-status {
-    max-width: 170px;
   }
-}
 
 /* システムメニュードロップダウン */
-.header-system-menu-wrap {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-}
-
-.header-system-menu-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 0 8px !important;
-  height: 26px !important;
-}
-
-.header-system-dropdown {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  width: 224px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 6px !important;
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
-  padding: 6px;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  z-index: 1200;
-}
-
-[data-theme="paper"] .header-system-dropdown {
-  background: #fbf9f4;
-  box-shadow: 0 8px 24px rgba(42, 41, 38, 0.16);
-}
-
-.header-system-brand-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 4px 8px 6px;
-  border-bottom: 1px solid var(--border-soft);
-  margin-bottom: 2px;
-  color: var(--text-muted);
-}
-
-.header-menu-item {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  border: none;
-  border-radius: 4px !important;
-  background: transparent;
-  color: var(--text-main);
-  font-size: 0.78rem;
-  font-weight: 500;
-  text-align: left;
-  cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease;
-}
-
-.header-menu-item:hover {
-  background: var(--bg-hover);
-}
-
-.header-menu-item.header-menu-danger {
-  color: #dc2626;
-}
-
-.header-menu-item.header-menu-danger:hover {
-  background: rgba(220, 38, 38, 0.1);
-}
-
-.header-menu-inline-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px;
-  padding: 2px 0;
-}
-
-.header-menu-pill-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 3px;
-  height: 26px;
-  padding: 0 6px;
-  border-radius: 4px !important;
-  border: 1px solid var(--border-color);
-  background: var(--bg-tertiary);
-  color: var(--text-main);
-  font-size: 0.73rem;
-  cursor: pointer;
-  transition: background 0.12s ease;
-}
-
-.header-menu-pill-btn:hover {
-  background: var(--bg-hover);
-}
-
-.header-menu-divider {
-  height: 1px;
-  background: var(--border-soft);
-  margin: 3px 2px;
-}
-
 /* 適用中フィルタチップ・サブバー（条件がある時だけ薄く表示） */
 .view-header.view-chip-bar {
   min-height: 28px !important;
@@ -1454,15 +1305,6 @@ body.resizing .sidebar-rail-resizer::before {
   color: var(--text-main);
   border-color: rgba(var(--accent-rgb, 225, 77, 42), 0.45);
   background: rgba(var(--accent-rgb, 225, 77, 42), 0.08);
-}
-
-.rail-tab-btn.has-filter::after {
-  width: 7px;
-  height: 7px;
-  top: 4px;
-  right: 4px;
-  background: var(--accent-primary);
-  box-shadow: 0 0 6px var(--accent-primary);
 }
 
 /* 親ノード右側に表示する「配下にフィルタあり」ミニ通知ピル */
@@ -1611,8 +1453,6 @@ body.resizing .sidebar-rail-resizer::before {
 .filter-jump-highlight {
   animation: pmFilterJumpPulse 1.2s ease-out;
 }
-
-
 
 /* Tetheract L (ソフトモノトーン・ライト) 用の各ペイン背景オーバーライド */
 [data-scheme="tetheract-l"] .sidebar-rail {

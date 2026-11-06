@@ -39,8 +39,6 @@ from .photos import (
     batch_update_rating,
     delete_photo_by_id,
     delete_photos_by_ids,
-    find_missing_photo_match,
-    relink_photo_path,
     cleanup_missing_photos_in_folder,
     cleanup_missing_upload_photos,
     get_missing_photos,
@@ -113,7 +111,6 @@ from .thumbnails import (
     delete_thumbnail,
     thumbnail_exists,
     find_existing_thumbnail_for_duplicate,
-    clone_thumbnail,
 )
 
 # 重複写真スマート管理
@@ -144,12 +141,10 @@ from .folders import (
     get_cameras_summary,
     remove_folder_photos,
     add_scan_root,
-    remove_scan_root,
     get_scan_roots,
     add_ignored_folder,
     remove_ignored_folder,
     get_ignored_folders,
-    is_folder_ignored,
     get_drive_photo_counts,
     get_directory_counts_under,
     SYSTEM_IGNORE_NAMES,

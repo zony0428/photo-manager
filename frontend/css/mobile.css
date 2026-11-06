@@ -156,14 +156,6 @@ body {
   display: block;
 }
 
-.m-hinomaru-disc {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background-color: var(--accent-primary, #e14d2a);
-  flex-shrink: 0;
-}
-
 .m-brand-titles {
   display: flex;
   flex-direction: column;
@@ -1294,7 +1286,6 @@ body.m-select-mode .m-card-check {
   font-weight: 700;
   cursor: pointer;
 }
-
 
 /* Exif一覧テーブル */
 .m-exif-grid {

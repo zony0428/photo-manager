@@ -67,6 +67,8 @@ GitHub Releases 投稿用に作成されたバージョン別リリースノー�
 
 | バージョン | 主な更新内容 | ファイル |
 | :--- | :--- | :--- |
+| **v1.7.2** | フロントエンドJS・バックエンドAPI・CSSのモジュール分割（モノリス解消）、双方向監査によるデッドコード＆未使用CSS（2,562行）の撤去、2階建てテーマ属性（`paper`/`sumi`）修正、423ロック中の不要通信抑止＆エラーハンドリング整備 | [RELEASE_NOTES_v1.7.2.md](release_notes/RELEASE_NOTES_v1.7.2.md) |
+| **v1.7.1** | Lv.0 エシカルモードの誤ロック修正・DB非破壊オンメモリロック・自己修復、大容量DB起動高速化 ＆ Win32 `CopyFileExW` DBバックアップ高速化、1週間バックアップ未実施リマインドモーダル | [RELEASE_NOTES_v1.7.1.md](release_notes/RELEASE_NOTES_v1.7.1.md) |
 | **v1.7.0** | 3段階セキュリティ＆エシカル保護（Lv.0 他人のLoome完全拒否＆DB単体引き抜き検知・3大救済手段、Lv.1 起動パスワードロック＆DBサムネイルAEAD暗号化、Lv.2 Loome先頭64KBカプセル化保護 `TETHVLT1` ＆1ビット完全復元）、`Loome/.loome_seal` からの鍵自動サルベージ・セルフブリック防止 | [RELEASE_NOTES_v1.7.0.md](release_notes/RELEASE_NOTES_v1.7.0.md) |
 | **v1.6.1** | リンク消失写真の選択削除＆絞り込み削除・矛盾操作防止と混在選択スキップ通知、Exif欠落画像のサンプリングハッシュ同一認識＆重複自動統合、フッター三大フィルタの意図しない解除防止 | [RELEASE_NOTES_v1.6.1.md](release_notes/RELEASE_NOTES_v1.6.1.md) |
 | **v1.6.0** | `Loome` への超高速並列ファイルコピー（Win32 `CopyFileExW` ＋ドライブ種別自動並列化＋EXIF再解析スキップ）、NeXTSTEP風右展開カスケードメニュー、空フォルダ化時のリンク整理＆空サブフォルダ誤検知修正 | [RELEASE_NOTES_v1.6.0.md](release_notes/RELEASE_NOTES_v1.6.0.md) |

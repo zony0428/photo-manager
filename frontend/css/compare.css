@@ -214,6 +214,7 @@
   min-height: 0;
   overflow: hidden;
   border: 2px solid transparent;
+  border-radius: 6px;
   transition: border-color 0.14s ease;
 }
 

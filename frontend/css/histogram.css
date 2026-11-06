@@ -75,12 +75,6 @@ body.theme-washi .inspector-histogram-drawer {
 }
 
 /* 画像調整モーダルヘッダー内のヒストグラムトグルボタン */
-.image-adjust-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
 .adjust-hist-toggle-btn {
   display: inline-flex;
   align-items: center;
@@ -307,27 +301,3 @@ body.theme-washi .inspector-histogram-drawer {
 }
 
 /* EXIFタブ内のヒストグラム呼び出しリンクボタン */
-.meta-hist-trigger-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  border-radius: 4px;
-  border: 1px solid var(--border-soft, rgba(255, 255, 255, 0.15));
-  background: var(--bg-secondary, rgba(255, 255, 255, 0.05));
-  color: var(--text-secondary, #b5b2a8);
-  font-size: 0.72rem;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.meta-hist-trigger-btn:hover {
-  border-color: var(--accent-primary, #e14d2a);
-  color: var(--text-main, #eceae4);
-}
-
-.meta-hist-trigger-btn.active {
-  background: rgba(var(--accent-rgb, 225, 77, 42), 0.16);
-  border-color: var(--accent-primary, #e14d2a);
-  color: var(--accent-primary, #e14d2a);
-}

@@ -183,12 +183,14 @@ def refresh_windows_exe_icon(exe_path: Path) -> None:
 
 def _compile_tetheract_launcher(root_dir: Path) -> bool:
     """
-    Windows 標準の csc.exe を用いて、最新の frontend/favicon.ico と launcher/Launcher.cs から
+    Windows 標準の csc.exe を用いて、最新の frontend/favicon.ico と Launcher.cs から
     Tetheract.exe をクリーンビルドする。
     """
     if sys.platform != "win32":
         return False
     cs_path = root_dir / "launcher" / "Launcher.cs"
+    if not cs_path.exists():
+        cs_path = root_dir / "tools" / "Launcher.cs"
     ico_path = root_dir / "frontend" / "favicon.ico"
     out_path = root_dir / "Tetheract.exe"
     tmp_path = root_dir / "Tetheract.new.exe"
@@ -212,6 +214,8 @@ def _compile_tetheract_launcher(root_dir: Path) -> bool:
                 "/nologo",
                 "/target:winexe",
                 "/optimize+",
+                "/r:System.IO.Compression.dll",
+                "/r:System.IO.Compression.FileSystem.dll",
                 f"/win32icon:{ico_path}",
                 f"/out:{tmp_path}",
                 str(cs_path),

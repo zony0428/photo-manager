@@ -416,14 +416,6 @@ def add_scan_root(folder_path: str) -> None:
         conn.commit()
 
 
-def remove_scan_root(folder_path: str) -> None:
-    """登録ルートフォルダを削除する"""
-    norm_path = os.path.normpath(folder_path)
-    with get_connection() as conn:
-        conn.execute("DELETE FROM scan_roots WHERE folder_path = ?", (norm_path,))
-        conn.commit()
-
-
 def get_scan_roots() -> List[str]:
     """登録されているルートフォルダ一覧を取得する"""
     with get_connection() as conn:
@@ -460,14 +452,6 @@ def get_ignored_folders() -> List[str]:
         cursor = conn.cursor()
         cursor.execute("SELECT folder_path FROM ignored_folders ORDER BY folder_path ASC")
         return [row["folder_path"] for row in cursor.fetchall()]
-
-
-def is_folder_ignored(folder_path: str, ignored_set: Optional[set] = None) -> bool:
-    """指定されたフォルダが除外対象（自身または除外フォルダの配下）であるか判定する"""
-    norm = os.path.normpath(folder_path).lower()
-    if ignored_set is None:
-        ignored_set = {os.path.normpath(p).lower() for p in get_ignored_folders()}
-    return any(norm == ig or norm.startswith(ig + os.sep) for ig in ignored_set)
 
 
 def get_scan_roots_summary() -> List[Dict[str, Any]]:

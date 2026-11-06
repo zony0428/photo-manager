@@ -2,7 +2,14 @@
 setlocal enabledelayedexpansion
 title Tetheract Photo Manager (Portable)
 
-cd /d "%~dp0"
+:: Identify application root directory (supports running from root or tools/ subfolder)
+set "ROOT_DIR=%~dp0"
+if not exist "%ROOT_DIR%server\run.py" (
+    if exist "%~dp0..\server\run.py" (
+        for %%I in ("%~dp0..") do set "ROOT_DIR=%%~fI\"
+    )
+)
+cd /d "%ROOT_DIR%"
 
 echo ============================================================
 echo   Tetheract Photo Manager - Portable Launcher
@@ -12,19 +19,19 @@ set "PY_EXE="
 set "PYW_EXE="
 
 :: 1. Check for USB portable Python
-if exist "%~dp0python\python.exe" (
-    set "PY_EXE=%~dp0python\python.exe"
-    if exist "%~dp0python\pythonw.exe" (
-        set "PYW_EXE=%~dp0python\pythonw.exe"
+if exist "%ROOT_DIR%python\python.exe" (
+    set "PY_EXE=%ROOT_DIR%python\python.exe"
+    if exist "%ROOT_DIR%python\pythonw.exe" (
+        set "PYW_EXE=%ROOT_DIR%python\pythonw.exe"
     )
     goto :FOUND_PYTHON
 )
 
 :: 2. Check for venv Python
-if exist "%~dp0.venv\Scripts\python.exe" (
-    set "PY_EXE=%~dp0.venv\Scripts\python.exe"
-    if exist "%~dp0.venv\Scripts\pythonw.exe" (
-        set "PYW_EXE=%~dp0.venv\Scripts\pythonw.exe"
+if exist "%ROOT_DIR%.venv\Scripts\python.exe" (
+    set "PY_EXE=%ROOT_DIR%.venv\Scripts\python.exe"
+    if exist "%ROOT_DIR%.venv\Scripts\pythonw.exe" (
+        set "PYW_EXE=%ROOT_DIR%.venv\Scripts\pythonw.exe"
     )
     goto :FOUND_PYTHON
 )
@@ -52,8 +59,8 @@ pause
 exit /b 1
 
 :FOUND_PYTHON
-set "RUN_PY=%~dp0server\run.py"
-if not exist "!RUN_PY!" set "RUN_PY=%~dp0run.py"
+set "RUN_PY=%ROOT_DIR%server\run.py"
+if not exist "!RUN_PY!" set "RUN_PY=%ROOT_DIR%run.py"
 
 :: Launch in background with pythonw if available, then exit console window immediately
 if defined PYW_EXE (

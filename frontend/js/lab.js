@@ -38,17 +38,7 @@
    * @param {*} str エスケープ対象
    * @returns {string} エスケープ済み文字列
    */
-  function escHtml(str) {
-    if (str === null || str === undefined) return '';
-    if (typeof _escHtml === 'function') return _escHtml(String(str));
-    if (typeof window.escapeHtml === 'function') return window.escapeHtml(String(str));
-    return String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  }
+  const escHtml = _escHtml;
 
   /**
    * ローカルタイム基準で今日の「MM-DD」文字列と月・日オブジェクトを取得する

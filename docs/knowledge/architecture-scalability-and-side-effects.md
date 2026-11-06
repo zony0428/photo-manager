@@ -115,12 +115,12 @@ flowchart TD
 ### Phase 4: 後方互換を維持したモジュール整理 & 自動回帰テスト基盤
 
 #### 4.1 副作用ゼロのモジュール整理原則
-1. **`frontend/css/style.css` は分割しない**:
-   - CSSの `@import` 分割はHTTPリクエスト増加とセレクタ優先順位（詳細度）の事故を招くため単一ファイルを維持し、ファイル冒頭にセクション目次コメントを整備する。
+1. **`frontend/css/` の分割は `@import` ではなく `<link>` タグの順次読み込みで行う**:
+   - CSS内の `@import` は直列ラウンドトリップを招くため使用せず、`frontend/index.html` の `<link rel="stylesheet">` でカスケード順序を100%維持して読み込む（全11ファイル構成：`style.css`, `grid-lightbox.css`, `selection-menu.css`, `inspector.css`, `modals-features.css`, `modals-tools.css`, `lab-map.css`, `histogram.css`, `compare.css`, `ui-unify.css`, およびモバイル用 `mobile.css`）。
 2. **`server/database/` の分割は `__init__.py` の再エクスポートで隠蔽する**:
-   - `server/database/photos.py` から GPS操作（`gps.py`）や画像調整操作（`adjustments.py`）を切り出す際は、必ず `server/database/__init__.py` で同じ関数名を export し、`server/app.py` や `server/scanner.py` 側の import 文を一切壊さない。
-3. **`frontend/js/` の分割はローカル変数の共有がない単位に限定する**:
-   - バンドラを使わない `<script>` 順次読み込み構造のため、複数ファイルから参照される状態は必ず `common.js` の `state` オブジェクトに格納する。
+   - `server/database/photos.py` からサブモジュールを切り出す際は、必ず `server/database/__init__.py` で同じ関数名を export し、呼び出し側の import 文を一切壊さない。
+3. **`frontend/js/` の分割はグローバル関数と `common.js` の `state` / `elements` 共有を基準に行う**:
+   - バンドラを使わない `<script>` 順次読み込み構造のため、複数ファイルから参照される状態は必ず `common.js` の `state` オブジェクトに格納し、`app.js` に漫然と機能を追加せず機能別モジュール（`filter_chips.js`, `media_volumes.js`, `security_ui.js`, `maintenance_reminders.js`, `i18n_dict.js` 等）へ分離する。
 
 #### 4.2 ポータブルPython標準 `unittest` による安全な回帰テスト基盤
 - **対象**: 新規 `tests/` ディレクトリ（`build_dist.bat` の配布対象からは除外）
@@ -165,3 +165,23 @@ flowchart TD
    - **対策**: `_PHOTO_DIR_SCAN_CACHE`（TTL 45秒、`clear_folders_fs_cache()` 連動）を導入し、未キャッシュのディレクトリも `ThreadPoolExecutor(max_workers=8)` で並列走査。
 4. **`get_photos()` のタプルカーソル化・タグ一括取得とフロントエンド `refreshAll()` の優先制御 (`server/database/photos.py`, `frontend/js/app.js`)**:
    - **対策**: `sqlite3.Row` 経由の辞書変換を `cursor.row_factory = None` + `dict(zip(col_names, row))` に置き換え、1,500枚超のクエリでは19回に分割されていた `photo_tags` / `stack_photos` の `IN (...)` クエリを単一クエリに統合。さらにフロントエンドの `refreshAll()` では `fetchPhotos()` と `fetchTags()` を先行実行し、初期グリッド描画後にサイドバー集計（`/api/folders` 等）を取得することでGIL競合を排除。
+
+---
+
+### Phase 6: モノリス解消・機能別モジュール分割・双方向デッドコード除去・CSS整理 ＆ エラー制御規約 (v1.7.2)
+
+機能の蓄積に伴い肥大化していたフロントエンドJS・バックエンドPython・CSSを、単体完結性（USBポータブル・ビルドツール不要・`Tetheract_Mobile.html` 単一ファイル生成）を100%維持したままモジュール分割し、双方向監査によりデッドコードと潜在エラーを一掃した。
+
+1. **フロントエンドJSの責務分離（`app.js` 7,530行 ➜ 3,798行、`i18n.js` 2,477行 ➜ 332行）**:
+   - `frontend/js/i18n.js` から巨大辞書データ（`EXACT_MAP`, `PREF_ROMAJI_MAP`, `PATTERN_RULES`）を `frontend/js/i18n_dict.js`（2,146行）へ分離し、翻訳ロジック本体を332行に軽量化。
+   - `frontend/js/app.js` から独立性の高い4ドメインを `filter_chips.js`（1,726行）、`media_volumes.js`（900行）、`security_ui.js`（471行）、`maintenance_reminders.js`（386行）へ分離。
+2. **バックエンドAPIの FastAPI `APIRouter` 分割（`server/app.py` 4,169行 ➜ 2,728行）**:
+   - `server/routers/` パッケージを新設し、共有ヘルパー（`common.py`）と6つの機能別ルーター（`ai_router.py`, `gps_lab_router.py`, `storage_volumes_router.py`, `export_import_router.py`, `mobile_router.py`, `security_router.py`）へ35本のエンドポイントを分離。
+3. **双方向デッドコード監査と CSS スリム化（-2,562行）・旧テーマ属性修正**:
+   - 順方向（呼び出し側検索）と逆方向（動的文字列連結・HTML属性・テスト参照）の双方向チェックを行い、100%未参照と確定した死にコード・旧UIの非表示DOMのみを外科的に撤去。
+   - CSS 全10ファイル（18,065行）から完全未使用の348ブロック（2,528行）の撤去と同一ファイル内重複セレクタ統合を行い、最大の `modals-features.css` を `modals-features.css`（1,542行）と `modals-tools.css`（1,893行）に2分割（計11ファイル・15,503行）。
+   - `lab-map.css` の `[data-theme="washi"]`（6箇所）を `[data-theme="paper"]` に、`inspector.css` の `[data-theme="dark"]` を `[data-theme="sumi"]` に修正し、ライト/ダーク両テーマでのスタイル適用漏れを解消。
+4. **コンソールエラー防止と例外ロギングの適正化**:
+   - 起動ロック（`423 Locked`）中にバックグラウンドで `/api/ai/status`・`/api/scan/status` ポーリングや `/api/media/events` SSE接続が走ってコンソールに赤エラーが出る問題を、`state.securityLocked` ガードにより完全遮断。
+   - `server/app.py` の削除・パージ・リフレッシュ系APIや `server/storage_manager.py` のロールバック処理で `except Exception: pass` により握りつぶされていた異常系に `logger.warning(..., exc_info=True)` を追加し、逆に無害なキャッシュ参照等の過剰な try/except ネストを簡素化。
+

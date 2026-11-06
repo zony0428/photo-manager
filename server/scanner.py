@@ -21,7 +21,6 @@ from PIL import Image, ExifTags, ImageOps, ImageDraw, ImageEnhance
 logger = logging.getLogger("scanner")
 
 from .database import (
-    CACHE_DIR,
     get_connection,
     close_thread_connection,
     upsert_photo,
@@ -65,9 +64,6 @@ from .raw_loader import (
 from .volume_info import get_volume_info, get_volume_info_for_drive
 from .shell_thumbnail import get_shell_thumbnail, is_cloud_or_ondemand_path
 
-
-# サムネイルキャッシュ用ディレクトリ（旧ファイル方式・移行時の参照用に保持）
-THUMBNAIL_DIR = CACHE_DIR / "thumbnails"
 
 # 対象画像拡張子（通常画像 + 各社RAW）
 SUPPORTED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".tiff", ".tif", ".heic", ".heif", ".avif"}
@@ -1040,11 +1036,6 @@ def extract_metadata(file_path: Path) -> Dict[str, Any]:
     }
     meta["has_exif_date"] = has_exif_date
     return _finalize_exifless_content_hash(_apply_xmp_hardware_fallback(meta, file_path, fallback_dt.strftime("%Y-%m-%d %H:%M:%S")), file_path)
-
-
-def get_thumbnail_path(photo_id: int) -> Path:
-    """写真IDに対応するWebPサムネイルの旧ファイルパスを返す（移行互換用）"""
-    return THUMBNAIL_DIR / f"{photo_id}.webp"
 
 
 def apply_photo_adjustments_pil(

@@ -105,17 +105,7 @@
    * @param {*} str
    * @returns {string}
    */
-  function escHtml(str) {
-    if (str === null || str === undefined) return '';
-    if (typeof _escHtml === 'function') return _escHtml(String(str));
-    if (typeof window.escapeHtml === 'function') return window.escapeHtml(String(str));
-    return String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  }
+  const escHtml = _escHtml;
 
   /**
    * 制覇都道府県数に応じた称号ランクを返す
@@ -350,23 +340,6 @@
     }
 
     return modal;
-  }
-
-  /**
-   * ジオタグツリーツールバー内に「🗾 制覇マップ」起動ボタンが未配置の場合に追加する
-   */
-  function ensureSidebarTriggerButton() {
-    if (document.getElementById('openLocationMapModalBtn')) return;
-    const locToolbar = document.getElementById('locationToolbar');
-    if (!locToolbar) return;
-    const firstGroup = locToolbar.querySelector('.location-toolbar-group') || locToolbar;
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.id = 'openLocationMapModalBtn';
-    btn.className = 'btn-mini-text';
-    btn.title = '47都道府県 撮影制覇白地図・ヒートマップ・撮影さんぽ軌跡を開く';
-    btn.innerHTML = '制覇マップ';
-    firstGroup.insertBefore(btn, firstGroup.firstChild);
   }
 
   /**

@@ -506,21 +506,6 @@ function navigateStackByVerticalKey(keyDir) {
 }
 
 /**
- * ライトボックス内でスタックメンバー写真に表示を切り替える (後方互換ラッパー)
- */
-function switchLightboxStackMember(sp, parentPhoto) {
-  if (!sp) return;
-  if (state.currentLightboxStackPhotos && state.currentLightboxStackPhotos.length > 0) {
-    const idx = state.currentLightboxStackPhotos.findIndex(p => p.id === sp.id);
-    if (idx !== -1) {
-      selectLightboxStackMember(idx);
-      return;
-    }
-  }
-  updateLightboxContent(sp);
-}
-
-/**
  * スタック内の特定メンバー写真（sp）を指定してライトボックスを開く
  */
 function openLightboxForStackMember(sp, parentPhoto) {

@@ -17,9 +17,19 @@ if str(ROOT_DIR) not in sys.path:
 from server.version import get_version
 
 # 配布ZIPに含めてはならない個人データ・実行時生成物（dist/ でアプリを試用した場合の誤混入防止）
-EXCLUDED_TOP_DIRS = {"cache", ".cache", "storage", "loome", "carry", "take_out"}
+EXCLUDED_TOP_DIRS = {"cache", ".cache", "storage", "loome", "carry", "take_out", "launcher"}
 EXCLUDED_DIR_NAMES = {"__pycache__", ".git"}
-EXCLUDED_FILE_PATTERNS = ("*.log", "mobile_sync*.json", "*.orig_backup", "autorun.inf", ".tetheract_instance", ".loome_seal", "recovery_key.txt")
+EXCLUDED_FILE_PATTERNS = (
+    "*.log",
+    "mobile_sync*.json",
+    "*.orig_backup",
+    "autorun.inf",
+    ".tetheract_instance",
+    ".loome_seal",
+    "recovery_key.txt",
+    "*.old",
+    "Tetheract_*diff.zip",
+)
 
 
 def _is_excluded(rel_path: Path) -> bool:
@@ -37,9 +47,12 @@ def _read_version() -> str:
     return get_version()
 
 
-def _create_zip_from_dir(src_dir: Path, zip_path: Path) -> float:
+def _create_zip_from_dir(src_dir: Path, zip_path: Path, include_empty_work_dirs: bool = False) -> float:
     """指定ディレクトリの中身をZIP圧縮し、生成サイズ(MB)を返す"""
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
+        if include_empty_work_dirs:
+            for d_name in ("Loome/", "take_out/"):
+                zf.writestr(d_name, "")
         for file_path in src_dir.rglob("*"):
             if file_path.is_file():
                 arcname = file_path.relative_to(src_dir)
@@ -57,14 +70,14 @@ def main() -> None:
     dist_update_dir = ROOT_DIR / "dist_update"
     if dist_update_dir.exists():
         diff_zip = ROOT_DIR / f"Tetheract_v{ver}diff.zip"
-        size_mb = _create_zip_from_dir(dist_update_dir, diff_zip)
+        size_mb = _create_zip_from_dir(dist_update_dir, diff_zip, include_empty_work_dirs=False)
         print(f"       [OK] {diff_zip.name} ({size_mb:.2f} MB)")
 
     dist_full_dir = ROOT_DIR / "dist"
     if dist_full_dir.exists():
         full_zip = ROOT_DIR / f"Tetheract_v{ver}.zip"
         print(f"       Creating {full_zip.name} (compressing python/ & models/, please wait)...")
-        size_mb = _create_zip_from_dir(dist_full_dir, full_zip)
+        size_mb = _create_zip_from_dir(dist_full_dir, full_zip, include_empty_work_dirs=True)
         print(f"       [OK] {full_zip.name} ({size_mb:.2f} MB)")
 
 

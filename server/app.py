@@ -4,12 +4,11 @@ FastAPI バックエンドメインアプリケーション
 """
 
 import base64
-import concurrent.futures
 import hashlib
 import json
+import logging
 import os
 import re
-import shutil
 import threading
 import time
 from contextlib import asynccontextmanager
@@ -62,11 +61,6 @@ from .database import (
     get_thumbnail as db_get_thumbnail,
     get_thumbnails_batch,
     save_thumbnail,
-    get_all_volumes,
-    get_volume_by_serial,
-    remove_volume_by_serial,
-    update_volume_custom_name,
-    update_photo_gps,
     update_photo_adjustments,
     batch_update_photo_tone,
     batch_shift_photo_dates,
@@ -75,22 +69,11 @@ from .database import (
     reset_photo_adjustments,
     batch_reset_photo_adjustments,
     batch_rotate_photos,
-    find_nearby_gps_photos,
-    batch_copy_gps,
-    batch_infer_gps,
-    clear_inferred_gps,
-    clear_photo_gps,
     cleanup_invalid_zero_gps,
-    backfill_photo_locations,
     backfill_missing_lens_models,
-    get_location_tree_summary,
-    get_location_heatmap_data,
-    get_lab_karte_data,
-    get_random_unrated_folder,
     cleanup_missing_upload_photos,
     delete_photo_by_id,
     delete_photos_by_ids,
-    get_all_duplicate_groups,
     get_database_stats,
     vacuum_database,
     backup_database,
@@ -128,25 +111,12 @@ from .database.folders import (
     _PHOTO_DIR_SCAN_TTL,
 )
 from .storage_manager import (
-    STORAGE_DIR,
     ensure_storage_dir,
     migrate_carry_to_storage,
     is_path_in_storage,
     is_photo_in_storage,
-    resolve_storage_target_dir,
     resolve_storage_target_with_root,
-    enable_volume_loome,
-    disable_volume_loome,
     invalidate_loome_roots_cache,
-    get_storage_folders,
-    create_storage_subfolder,
-    rename_storage_subfolder,
-    delete_storage_subfolder,
-    import_photos_to_storage,
-    move_photos_in_storage,
-    rename_photo_in_storage,
-    batch_rename_photos_in_storage,
-    export_storage_folder,
     get_storage_task_status,
 )
 from .heartbeat import (
@@ -164,32 +134,18 @@ from .media_watcher import (
     get_media_watcher_state,
     subscribe_media_events,
     unsubscribe_media_events,
-    update_known_volume_meta,
     broadcast_app_event,
 )
-from .version import get_version, get_version_info, __version__
-from .exporter import (
-    run_smart_export,
-    run_contact_sheet_export,
-    pick_folder_dialog,
-    open_folder_in_windows_explorer,
-    DEFAULT_TAKEOUT_DIR,
-)
-from .mobile_bundle import (
-    ensure_standalone_mobile_html,
-    STANDALONE_HTML_FILENAME,
-)
+from .version import get_version_info, __version__
+from .mobile_bundle import ensure_standalone_mobile_html
 from .sidecar import (
     is_sidecar_file,
     parse_xmp_for_photo,
 )
 from .lan_access import (
-    LAN_TOKEN,
     LAN_TOKEN_COOKIE,
     LAN_TOKEN_QUERY,
     build_lan_cookie_header,
-    detect_local_ip_addresses as _detect_local_ip_addresses,
-    ensure_lan_listeners,
     is_host_header_allowed,
     is_lan_path_allowed,
     is_lan_token_valid,
@@ -197,36 +153,27 @@ from .lan_access import (
     touch_lan_activity,
 )
 from .security import (
-    configure_security_level,
-    copy_file_unsealed,
     get_current_security_level,
     get_logical_file_size,
     get_security_status,
     is_app_locked,
     is_vault_encrypted_file,
-    lock_session_now,
     read_loome_file_decrypted_bytes,
-    recover_db_by_owned_media,
     seal_loome_file,
-    unlock_foreign_loome_with_password,
-    unlock_with_password_or_recovery,
+)
+from .routers.common import (
+    BASE_DIR,
+    FRONTEND_DIR,
+    IMPORT_DIR,
+    UPLOAD_DIR,
+    _API_PHOTOS_RESPONSE_CACHE,
+    _fast_json,
+    _mobile_sync_event,
+    _require_localhost,
+    clear_api_photos_cache,
 )
 
-
-import logging
-
 logger = logging.getLogger("photo_manager.app")
-
-# プロジェクトルートディレクトリ
-BASE_DIR = Path(__file__).resolve().parent.parent
-FRONTEND_DIR = BASE_DIR / "frontend"
-UPLOAD_DIR = STORAGE_DIR
-IMPORT_DIR = BASE_DIR / "take_out"
-IMPORT_DIR.mkdir(parents=True, exist_ok=True)
-
-
-# モバイルからのWi-Fi直接同期イベント通知用カウンタ（PC画面の自動リロード連動用）
-_mobile_sync_event: Dict[str, int] = {"seq": 0, "applied_count": 0}
 
 
 @asynccontextmanager
@@ -303,14 +250,6 @@ async def lifespan(app: FastAPI):
 
     threading.Thread(target=_bg_post_unlock_maintenance, daemon=True).start()
     yield
-
-
-def _fast_json(obj: Any) -> Response:
-    """FastAPI標準のjsonable_encoderを回避し、json.dumpsで高速にJSONレスポンスを生成する"""
-    return Response(
-        content=json.dumps(obj, ensure_ascii=False, separators=(",", ":"), default=str),
-        media_type="application/json",
-    )
 
 
 # アプリ初期化
@@ -454,27 +393,6 @@ class ScanRequest(BaseModel):
     volume_serial: Optional[str] = None
 
 
-class AITagFolderRequest(BaseModel):
-    folder_path: Optional[str] = None
-    force_retag: bool = False
-    color_only: bool = False
-    photo_ids: Optional[List[int]] = None
-
-
-class AITagColorBatchRequest(BaseModel):
-    photo_ids: List[int]
-
-
-class AIPromoteTagRequest(BaseModel):
-    photo_id: int
-    tag: str
-
-
-class AIClearTagsRequest(BaseModel):
-    photo_id: Optional[int] = None
-    folder_path: Optional[str] = None
-
-
 class DeleteFolderRequest(BaseModel):
     folder_path: str
     recursive: bool = True
@@ -542,22 +460,6 @@ class UpdateTagMetaRequest(BaseModel):
     tag_key: Optional[str] = None
     short_name: Optional[str] = None
     is_pinned: Optional[bool] = None
-
-
-class CreateImportFolderRequest(BaseModel):
-    name: Optional[str] = None
-    folder_name: Optional[str] = None
-
-
-class CopyToImportRequest(BaseModel):
-    photo_ids: List[int]
-    folder_name: Optional[str] = None
-    destination: Optional[str] = None
-
-
-class OpenImportFolderRequest(BaseModel):
-    folder_name: Optional[str] = None
-    destination: Optional[str] = None
 
 
 class WindowSettingsRequest(BaseModel):
@@ -717,21 +619,6 @@ def api_get_duplicates_count():
     """ライブラリ全体で他フォルダに重複（同一撮影日時＋サイズ）が存在する写真の件数を取得する"""
     count = get_duplicate_photos_count()
     return {"count": count}
-
-
-_API_PHOTOS_RESPONSE_CACHE: Dict[Tuple, Tuple[float, Response]] = {}
-
-
-def clear_api_photos_cache() -> None:
-    """写真一覧APIのレスポンスキャッシュをクリアする"""
-    _API_PHOTOS_RESPONSE_CACHE.clear()
-
-
-def _require_localhost(request: Request) -> None:
-    """ローカルホストからのアクセスのみ許可する（二重ガード）"""
-    client_host = request.client.host if request.client else ""
-    if not is_loopback_client(client_host):
-        raise HTTPException(status_code=403, detail="この操作はPC本体（localhost）からのみ実行できます。")
 
 
 class CheckExternalUpdatesRequest(BaseModel):
@@ -1434,151 +1321,6 @@ def api_batch_delete(req: BatchDeleteRequest):
 
 
 # ==============================================================================
-# AI 自動タグ付け機能 (CLIP INT8 Vision)
-# ==============================================================================
-
-@app.get("/api/ai/status")
-def api_ai_status():
-    """AIモデルの状態および実行中ジョブの進捗を取得する"""
-    from .ai import get_ai_worker
-    worker = get_ai_worker()
-    return worker.get_status()
-
-
-@app.post("/api/ai/tag-folder")
-def api_ai_tag_folder(req: AITagFolderRequest):
-    """指定フォルダ（または全未処理写真）のAI自動タグ付けジョブを開始する"""
-    from .ai import get_ai_worker
-    worker = get_ai_worker()
-    success = worker.start_tagging(
-        folder_path=req.folder_path,
-        photo_ids=req.photo_ids,
-        force_retag=req.force_retag,
-        color_only=req.color_only,
-    )
-    if not success:
-        return {"status": "busy", "message": "他のAIタグ付けジョブが実行中です"}
-    return {"status": "ok", "message": "AIタグ付けジョブを開始しました"}
-
-
-@app.post("/api/ai/cancel")
-def api_ai_cancel():
-    """実行中のAIタグ付けジョブをキャンセルする"""
-    from .ai import get_ai_worker
-    worker = get_ai_worker()
-    worker.cancel()
-    return {"status": "ok", "message": "キャンセルを要求しました"}
-
-
-@app.post("/api/ai/tag-photo/{photo_id}")
-def api_ai_tag_single_photo(photo_id: int, color_only: bool = False):
-    """指定写真1枚に対して即座にAI推論を実行しタグを付与する"""
-    photo = get_photo_by_id(photo_id)
-    if not photo:
-        raise HTTPException(status_code=404, detail="写真が見つかりません")
-
-    # サムネイルBLOBを取得（未生成ならオンデマンド生成）
-    thumb = db_get_thumbnail(photo_id)
-    thumb_bytes = thumb["data"] if thumb else None
-    if not thumb_bytes:
-        try:
-            thumb_bytes = ensure_thumbnail(photo["id"], photo["file_path"])
-        except Exception as e:
-            logger.warning(f"Could not generate thumbnail for AI tagging: {e}")
-
-    if not thumb_bytes:
-        raise HTTPException(status_code=500, detail="サムネイルの読み込みに失敗しました")
-
-    from .ai import get_ai_tagger
-    from .database import add_ai_tags_to_photo, replace_ai_color_tags_for_photo, get_photo_tags_details
-    tagger = get_ai_tagger()
-    if not tagger.load():
-        raise HTTPException(status_code=503, detail="AIモデルを読み込めませんでした（既存のタグは変更していません）")
-    matches = tagger.predict_from_bytes(thumb_bytes, top_k=3, color_only=color_only)
-    if color_only:
-        replace_ai_color_tags_for_photo(photo_id, matches)
-    elif matches:
-        add_ai_tags_to_photo(photo_id, matches)
-
-    updated_tags = get_photo_tags_details(photo_id)
-    return {"status": "ok", "photo_id": photo_id, "predicted": matches, "tags": updated_tags}
-
-
-@app.post("/api/ai/tag-color-photos")
-def api_ai_tag_color_photos(req: AITagColorBatchRequest):
-    """選択中の複数写真に対してAIカラータグ（12色）のみを再判定する"""
-    if not req.photo_ids:
-        raise HTTPException(status_code=400, detail="対象の写真が指定されていません")
-
-    # 32枚を超える大量選択時はバックグラウンドワーカーで処理
-    if len(req.photo_ids) > 32:
-        from .ai import get_ai_worker
-        worker = get_ai_worker()
-        success = worker.start_tagging(
-            photo_ids=req.photo_ids,
-            force_retag=True,
-            color_only=True,
-        )
-        if not success:
-            return {"status": "busy", "message": "他のAIタグ付けジョブが実行中です"}
-        return {"status": "background", "total": len(req.photo_ids)}
-
-    from .ai import get_ai_tagger
-    from .database import replace_ai_color_tags_for_photo, get_photo_tags_details
-    tagger = get_ai_tagger()
-    if not tagger.load():
-        raise HTTPException(status_code=503, detail="AIモデルを読み込めませんでした（既存のタグは変更していません）")
-    results: Dict[int, List[Dict[str, Any]]] = {}
-    predicted_colors: Dict[int, List[str]] = {}
-    tagged_count = 0
-
-    for pid in req.photo_ids:
-        photo = get_photo_by_id(pid)
-        if not photo:
-            continue
-        thumb = db_get_thumbnail(pid)
-        thumb_bytes = thumb["data"] if thumb else None
-        if not thumb_bytes:
-            try:
-                thumb_bytes = ensure_thumbnail(photo["id"], photo["file_path"])
-            except Exception as e:
-                logger.warning(f"Could not generate thumbnail for AI color tagging ({pid}): {e}")
-        if not thumb_bytes:
-            continue
-
-        matches = tagger.predict_from_bytes(thumb_bytes, top_k=3, color_only=True)
-        replace_ai_color_tags_for_photo(pid, matches)
-        if matches:
-            tagged_count += 1
-            predicted_colors[pid] = [m["tag"] for m in matches]
-        results[pid] = get_photo_tags_details(pid)
-
-    return {
-        "status": "ok",
-        "tagged_count": tagged_count,
-        "total": len(req.photo_ids),
-        "predicted_colors": predicted_colors,
-        "results": results,
-    }
-
-
-@app.post("/api/ai/promote-tag")
-def api_ai_promote_tag(req: AIPromoteTagRequest):
-    """AIタグを手動タグに昇格（確定）する"""
-    from .database import promote_ai_tag
-    success = promote_ai_tag(req.photo_id, req.tag)
-    return {"status": "ok", "photo_id": req.photo_id, "tag": req.tag, "success": success}
-
-
-@app.delete("/api/ai/tags")
-def api_ai_clear_tags(photo_id: Optional[int] = None, folder_path: Optional[str] = None):
-    """AIタグのみを一括削除する（手動タグは保護）"""
-    from .database import remove_ai_tags
-    deleted_count = remove_ai_tags(photo_id=photo_id, folder_path=folder_path)
-    return {"status": "ok", "deleted_count": deleted_count}
-
-
-# ==============================================================================
 # 非破壊画像調整（回転・クロップ）API
 # ==============================================================================
 
@@ -2210,138 +1952,6 @@ def api_rate_photo(photo_id: int, req: RateRequest):
     return {"status": "ok", "photo_id": photo_id, "rating": req.rating}
 
 
-# --- GPS ジオタグ機能 ---
-
-class CopyGpsRequest(BaseModel):
-    source_photo_id: int
-
-class BatchCopyGpsRequest(BaseModel):
-    source_photo_id: int
-    target_ids: List[int]
-
-
-class BatchInferGpsRequest(BaseModel):
-    photo_ids: Optional[List[int]] = None
-    folder: Optional[str] = None
-    max_minutes: int = 60
-
-class ClearInferredGpsRequest(BaseModel):
-    photo_ids: Optional[List[int]] = None
-    folder: Optional[str] = None
-
-
-class ClearGpsRequest(BaseModel):
-    photo_ids: Optional[List[int]] = None
-    folder: Optional[str] = None
-
-
-@app.get("/api/photo/{photo_id}/gps-candidates")
-def api_gps_candidates(photo_id: int, minutes: int = Query(default=60, ge=1, le=1440)):
-    """指定写真の撮影時刻 ±N分（デフォルト60分）以内のGPS付き写真を候補として返す（直前・直後を分離）"""
-    photo = get_photo_by_id(photo_id)
-    if not photo:
-        raise HTTPException(status_code=404, detail="写真が見つかりません")
-    if not photo.get("date_taken"):
-        return {"candidates": [], "before": None, "after": None}
-    res = find_nearby_gps_photos(photo["date_taken"], minutes=minutes, exclude_id=photo_id)
-    return res
-
-
-@app.delete("/api/photo/{photo_id}/gps")
-def api_delete_photo_gps(photo_id: int):
-    """指定写真のSQLite上のジオタグ情報（緯度・経度・国・県・市）を削除する"""
-    cleared = clear_photo_gps(photo_ids=[photo_id])
-    if cleared == 0:
-        raise HTTPException(status_code=404, detail="写真が見つかりません")
-    return {"status": "ok", "photo_id": photo_id}
-
-
-@app.post("/api/photo/{photo_id}/copy-gps")
-def api_copy_gps(photo_id: int, req: CopyGpsRequest):
-    """別の写真からGPSをコピーする"""
-    source = get_photo_by_id(req.source_photo_id)
-    if not source or source.get("latitude") is None:
-        raise HTTPException(status_code=400, detail="コピー元の写真にGPS情報がありません")
-    success = update_photo_gps(photo_id, source["latitude"], source["longitude"], "copied")
-    if not success:
-        raise HTTPException(status_code=404, detail="写真が見つかりません")
-    return {"status": "ok", "photo_id": photo_id, "latitude": source["latitude"], "longitude": source["longitude"]}
-
-
-@app.post("/api/photos/batch-copy-gps")
-def api_batch_copy_gps(req: BatchCopyGpsRequest):
-    """指定写真のGPSを複数の写真に一括コピーする"""
-    count = batch_copy_gps(req.source_photo_id, req.target_ids)
-    return {"status": "ok", "updated_count": count}
-
-
-@app.post("/api/photos/batch-infer-gps")
-def api_batch_infer_gps(req: BatchInferGpsRequest):
-    """GPS情報のない写真に対して、撮影時刻が近いスマホ写真のGPSを一括準用する"""
-    res = batch_infer_gps(photo_ids=req.photo_ids, folder=req.folder, max_minutes=req.max_minutes)
-    return {"status": "ok", **res}
-
-
-@app.post("/api/photos/clear-inferred-gps")
-def api_clear_inferred_gps(req: ClearInferredGpsRequest):
-    """準用されたGPS情報をクリアして元に戻す"""
-    cleared = clear_inferred_gps(photo_ids=req.photo_ids, folder=req.folder)
-    return {"status": "ok", "cleared_count": cleared}
-
-
-@app.post("/api/photos/clear-gps")
-def api_clear_gps(req: ClearGpsRequest):
-    """指定写真（またはフォルダ内写真）のSQLite上のジオタグ情報（緯度・経度・地名）を一括削除する"""
-    cleared = clear_photo_gps(photo_ids=req.photo_ids, folder=req.folder)
-    return {"status": "ok", "cleared_count": cleared}
-
-
-@app.post("/api/photos/cleanup-zero-gps")
-def api_cleanup_zero_gps():
-    """無効な(0, 0)のGPSエラーデータをSQLite上でクリーンアップする"""
-    cleared = cleanup_invalid_zero_gps()
-    return {"status": "ok", "cleared_count": cleared}
-
-
-@app.post("/api/locations/backfill")
-def api_backfill_locations(limit: int = Query(default=5000, ge=1, le=50000)):
-    """既存のGPS付き写真（地名未設定）に対してローカル逆ジオコーディングを一括実行する"""
-    count = backfill_photo_locations(limit=limit)
-    return {"status": "ok", "updated_count": count}
-
-
-@app.get("/api/locations/tree")
-def api_get_locations_tree():
-    """左ペイン表示用の国・都道府県・市区町村の階層ツリーと写真枚数を取得する"""
-    data = get_location_tree_summary()
-    return _fast_json(data)
-
-
-@app.get("/api/locations/heatmap")
-def api_get_locations_heatmap(
-    date_filter: Optional[str] = None,
-    date: Optional[str] = None,
-):
-    """ジオタグ47都道府県制覇マップ・ヒートマップ・撮影軌跡（フォトラリー）用の集計データを取得する"""
-    target_date = date_filter or date
-    data = get_location_heatmap_data(date_filter=target_date)
-    return _fast_json(data)
-
-
-@app.get("/api/lab/karte")
-def api_get_lab_karte(today_mmdd: Optional[str] = None):
-    """パーソナル撮影ラボ＆機材相性カルテ（歩留まりランキング・焦点距離/F値統計・太陽高度別枚数・時間帯分布）を取得する"""
-    data = get_lab_karte_data(today_mmdd=today_mmdd)
-    return _fast_json(data)
-
-
-@app.get("/api/lab/random-unrated-folder")
-def api_get_random_unrated_folder():
-    """未整理（評価: 可）の写真が残っているフォルダをランダムに1つ抽選して返す（未整理フォルダ発掘ガチャ用）"""
-    data = get_random_unrated_folder()
-    return _fast_json(data)
-
-
 @app.get("/api/timeline")
 def api_get_timeline():
     """年・月ごとの写真枚数集計を取得する"""
@@ -2674,197 +2284,6 @@ def api_get_cameras():
     return _fast_json({"cameras": cameras})
 
 
-# ボリュームラベル物理書き込み承認用の一時PIN管理（serial -> (pin, issued_monotonic)）
-_VOLUME_LABEL_PINS: Dict[str, Tuple[str, float]] = {}
-
-
-def issue_volume_label_pin(volume_serial: str) -> str:
-    """指定VSNに対する物理ボリュームラベル書き込み承認用のランダム4桁PINを発行する"""
-    import secrets
-
-    serial_clean = (volume_serial or "").strip().upper()
-    pin = f"{secrets.randbelow(9000) + 1000:04d}"
-    _VOLUME_LABEL_PINS[serial_clean] = (pin, time.monotonic())
-    return pin
-
-
-def verify_volume_label_pin(volume_serial: str, pin: Optional[str]) -> bool:
-    """発行済みの4桁承認PINを検証する（有効期限10分・使い捨て）"""
-    serial_clean = (volume_serial or "").strip().upper()
-    if not serial_clean or not pin:
-        return False
-    entry = _VOLUME_LABEL_PINS.get(serial_clean)
-    if not entry:
-        return False
-    expected_pin, issued_at = entry
-    if time.monotonic() - issued_at > 600.0:
-        _VOLUME_LABEL_PINS.pop(serial_clean, None)
-        return False
-    if str(pin).strip() != expected_pin:
-        return False
-    _VOLUME_LABEL_PINS.pop(serial_clean, None)
-    return True
-
-
-class UpdateVolumeNameRequest(BaseModel):
-    custom_name: str = ""
-    volume_label: Optional[str] = None
-    drive_letter: Optional[str] = None
-    write_volume_label: bool = False
-    new_volume_label: Optional[str] = None
-    approval_pin: Optional[str] = None
-
-
-@app.get("/api/volumes")
-def api_get_volumes():
-    """登録済みの全メディア（ボリューム）一覧と各メディアの写真枚数・撮影期間・カメラ機種・接続状態を取得する"""
-    volumes = get_all_volumes()
-    return {"volumes": volumes}
-
-
-@app.delete("/api/volumes/{volume_serial}")
-def api_delete_volume(volume_serial: str):
-    """指定されたボリューム（SDカード・外部メディア）の写真登録と管理情報をDBから一括解除する（実ファイルは削除しない）"""
-    serial_clean = (volume_serial or "").strip().upper()
-    if not serial_clean:
-        raise HTTPException(status_code=400, detail="ボリュームシリアル番号が指定されていません")
-    res = remove_volume_by_serial(serial_clean)
-    clear_online_cache()
-    clear_folders_fs_cache()
-    invalidate_loome_roots_cache()
-    clear_api_photos_cache()
-    return {"status": "ok", **res}
-
-
-@app.get("/api/volumes/{volume_serial}/status")
-def api_get_volume_status(volume_serial: str):
-    """指定されたボリュームの接続状態・ファイルシステム種別・承認用ランダム4桁PINを取得する"""
-    from .volume_info import find_online_drive_for_serial
-
-    serial_clean = (volume_serial or "").strip().upper()
-    if not serial_clean:
-        raise HTTPException(status_code=400, detail="ボリュームシリアル番号が指定されていません")
-
-    db_vol = get_volume_by_serial(serial_clean) or {}
-    online_info = find_online_drive_for_serial(serial_clean)
-    approval_pin = issue_volume_label_pin(serial_clean)
-
-    return {
-        "status": "ok",
-        "volume_serial": serial_clean,
-        "custom_name": db_vol.get("custom_name") or "",
-        "volume_label": (online_info.get("label") if online_info else db_vol.get("volume_label")) or "",
-        "drive_letter": (online_info.get("drive") if online_info else db_vol.get("drive_letter")) or "",
-        "filesystem": (online_info.get("filesystem") if online_info else "") or "",
-        "is_online": bool(online_info),
-        "approval_pin": approval_pin,
-    }
-
-
-@app.put("/api/volumes/{volume_serial}")
-def api_update_volume_name(volume_serial: str, req: UpdateVolumeNameRequest):
-    """
-    指定されたボリューム（SDカード・外付けメディア等）のカスタム識別名（ニックネーム）を設定・更新する。
-    write_volume_label=True の場合は、2バイト文字禁止チェックおよびランダム4桁PIN承認を検証した上で
-    メディア本体の物理ボリュームラベルも書き換える（未承認時は一切触らない）。
-    """
-    from .volume_info import set_physical_volume_label, validate_ascii_volume_label
-
-    serial_clean = (volume_serial or "").strip().upper()
-    if not serial_clean:
-        raise HTTPException(status_code=400, detail="ボリュームシリアル番号が指定されていません")
-
-    try:
-        updated_phys_label: Optional[str] = req.volume_label
-        updated_drive: Optional[str] = req.drive_letter
-        wrote_physical = False
-
-        if req.write_volume_label:
-            # 1. まず文字種（2バイト文字禁止・11文字以内）を検証
-            clean_phys_label = validate_ascii_volume_label(req.new_volume_label or "")
-            # 2. ランダム4桁PINによる承認チェック
-            if not verify_volume_label_pin(serial_clean, req.approval_pin):
-                raise ValueError("承認用の4桁PIN番号が一致しないため、メディアのボリュームラベル書き込みを中止しました。")
-            # 3. 物理ボリュームラベルの書き込み
-            phys_res = set_physical_volume_label(serial_clean, clean_phys_label)
-            updated_phys_label = phys_res.get("volume_label", clean_phys_label)
-            updated_drive = phys_res.get("drive") or updated_drive
-            wrote_physical = True
-
-        vol = update_volume_custom_name(
-            volume_serial=serial_clean,
-            custom_name=req.custom_name,
-            volume_label=updated_phys_label,
-            drive_letter=updated_drive,
-        )
-        clear_online_cache()
-        clear_folders_fs_cache()
-        invalidate_loome_roots_cache()
-        clear_api_photos_cache()
-        update_known_volume_meta(
-            serial_clean,
-            custom_name=vol.get("custom_name", ""),
-            label=vol.get("volume_label", ""),
-            drive=vol.get("drive_letter"),
-        )
-        return {
-            "status": "ok",
-            "volume": vol,
-            "custom_name": vol.get("custom_name", ""),
-            "volume_label": vol.get("volume_label", ""),
-            "wrote_physical_label": wrote_physical,
-        }
-    except PermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e))
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except RuntimeError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-class EnableVolumeLoomeRequest(BaseModel):
-    drive_letter: Optional[str] = None
-
-
-@app.post("/api/volumes/{volume_serial}/loome")
-def api_enable_volume_loome(volume_serial: str, req: Optional[EnableVolumeLoomeRequest] = None):
-    """接続中の指定ボリューム（ドライブ）直下に Loome フォルダを作成し、外部 Loome として登録する"""
-    try:
-        drive_letter = req.drive_letter if req else None
-        res = enable_volume_loome(volume_serial, drive_letter=drive_letter)
-        clear_online_cache()
-        clear_folders_fs_cache()
-        invalidate_loome_roots_cache()
-        clear_api_photos_cache()
-        return res
-    except PermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e))
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.delete("/api/volumes/{volume_serial}/loome")
-def api_disable_volume_loome(volume_serial: str):
-    """指定ボリュームの Loome 登録を解除する（実フォルダおよび写真ファイルは削除しない）"""
-    try:
-        res = disable_volume_loome(volume_serial)
-        clear_online_cache()
-        clear_folders_fs_cache()
-        invalidate_loome_roots_cache()
-        clear_api_photos_cache()
-        return res
-    except PermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e))
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 def _get_windows_quick_access() -> list:
     """Windowsの主要な特殊フォルダ（よく使う場所）の正確なパスを取得する"""
     home = Path.home()
@@ -3023,160 +2442,6 @@ def api_browse_folders(path: Optional[str] = None):
     return {"folders": children, "parent": parent, "current": str(target)}
 
 
-# ==============================================================================
-# インポート（送る / ピックアップ）機能 (JPG限定)
-# ==============================================================================
-
-@app.get("/api/import/destinations")
-def api_get_import_destinations():
-    """take_out フォルダ直下の送り先フォルダ一覧を返す"""
-    IMPORT_DIR.mkdir(parents=True, exist_ok=True)
-    root_count = sum(1 for f in IMPORT_DIR.iterdir() if f.is_file())
-    destinations = [
-        {
-            "name": "take_out (直下)",
-            "folder_name": "",
-            "path": "",
-            "file_count": root_count,
-            "count": root_count,
-            "is_root": True,
-        }
-    ]
-    try:
-        for entry in sorted(IMPORT_DIR.iterdir()):
-            if entry.is_dir() and not entry.name.startswith("."):
-                count = sum(1 for f in entry.iterdir() if f.is_file())
-                destinations.append({
-                    "name": entry.name,
-                    "folder_name": entry.name,
-                    "path": entry.name,
-                    "file_count": count,
-                    "count": count,
-                    "is_root": False,
-                })
-    except Exception as e:
-        logger.warning(f"送り先フォルダ一覧走査で警告 ({IMPORT_DIR}): {e}")
-
-    return {
-        "destinations": destinations,
-        "root_file_count": root_count,
-        "import_dir": str(IMPORT_DIR),
-    }
-
-
-@app.post("/api/import/folders")
-def api_create_import_folder(req: CreateImportFolderRequest):
-    """import フォルダ内に新規サブフォルダを作成する"""
-    IMPORT_DIR.mkdir(parents=True, exist_ok=True)
-    raw_name = (req.name or req.folder_name or "").strip()
-    if not raw_name:
-        raise HTTPException(status_code=400, detail="フォルダ名を入力してください")
-
-    # Windows ファイル名禁止文字を置換
-    sanitized = re.sub(r'[\\/*?:"<>|]', '_', raw_name).strip()
-    if not sanitized or sanitized.startswith("."):
-        raise HTTPException(status_code=400, detail="無効なフォルダ名です")
-
-    target_dir = IMPORT_DIR / sanitized
-    target_dir.mkdir(parents=True, exist_ok=True)
-    return {
-        "status": "ok",
-        "folder": {"name": sanitized, "folder_name": sanitized, "path": str(target_dir)},
-        "folder_name": sanitized,
-    }
-
-
-@app.post("/api/import/copy")
-def api_copy_to_import(req: CopyToImportRequest):
-    """選択された写真を import フォルダ（または指定サブフォルダ）へコピーする (JPG限定)"""
-    IMPORT_DIR.mkdir(parents=True, exist_ok=True)
-
-    folder_target = (req.folder_name or req.destination or "").strip()
-    if folder_target:
-        sanitized = re.sub(r'[\\/*?:"<>|]', '_', folder_target).strip()
-        dest_dir = IMPORT_DIR / sanitized
-    else:
-        dest_dir = IMPORT_DIR
-    dest_dir.mkdir(parents=True, exist_ok=True)
-
-    copied = []
-    skipped = []
-    errors = []
-
-    for pid in req.photo_ids:
-        photo = get_photo_by_id(pid)
-        if not photo:
-            continue
-
-        # JPG/JPEG ファイルの特定（RAW限定ファイルはスキップ、RAW+JPGペアはJPG側）
-        src_path = None
-
-        vol_serial = photo.get("volume_serial")
-        main_raw = photo.get("file_path")
-        if main_raw:
-            p_main, is_main_online = resolve_portable_path(main_raw, expected_serial=vol_serial)
-            if is_main_online and p_main.suffix.lower() in (".jpg", ".jpeg"):
-                src_path = p_main
-
-        if not src_path:
-            # RAW+JPG ペアの場合、ペアのJPG側を探す
-            paired_raw = photo.get("paired_raw_path")
-            if paired_raw:
-                p_paired, is_paired_online = resolve_portable_path(paired_raw, expected_serial=vol_serial)
-                if is_paired_online and p_paired.suffix.lower() in (".jpg", ".jpeg"):
-                    src_path = p_paired
-
-        if not src_path or not src_path.exists():
-            skipped.append(photo.get("file_name", str(pid)))
-            continue
-
-        stem = src_path.stem
-        ext = src_path.suffix.lower()
-
-        # 同名衝突回避のためのナンバリング
-        target_file = dest_dir / f"{stem}{ext}"
-        counter = 1
-        while target_file.exists():
-            target_file = dest_dir / f"{stem}_{counter}{ext}"
-            counter += 1
-
-        try:
-            copy_file_unsealed(src_path, target_file)
-            copied.append(target_file.name)
-        except Exception as e:
-            errors.append(f"{src_path.name}: {e}")
-
-    return {
-        "status": "ok",
-        "copied_count": len(copied),
-        "skipped_count": len(skipped),
-        "copied_files": copied,
-        "skipped_files": skipped,
-        "errors": errors,
-        "destination_name": dest_dir.name if dest_dir != IMPORT_DIR else "take_out (直下)",
-        "destination_path": str(dest_dir),
-    }
-
-
-@app.post("/api/import/open")
-def api_open_import_folder(req: Optional[OpenImportFolderRequest] = None):
-    """import フォルダ（または指定サブフォルダ）をエクスプローラーで開く"""
-    IMPORT_DIR.mkdir(parents=True, exist_ok=True)
-    target_dir = IMPORT_DIR
-    folder_target = (req.folder_name or req.destination or "").strip() if req else ""
-    if folder_target:
-        sanitized = re.sub(r'[\\/*?:"<>|]', '_', folder_target).strip()
-        sub = IMPORT_DIR / sanitized
-        if sub.exists():
-            target_dir = sub
-
-    try:
-        os.startfile(str(target_dir))
-        return {"status": "ok", "path": str(target_dir)}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"フォルダを開けませんでした: {e}")
-
-
 @app.get("/api/scan/status")
 def api_get_scan_status():
     """現在実行中のスキャン進捗状態を取得する"""
@@ -3317,835 +2582,129 @@ def api_upload_photos(req: PhotoUploadRequest):
 
 
 # ==============================================================================
-# アプリ内ストレージ (storage) 管理 API
+# 分割ルーター登録 & 後方互換シンボル re-export
 # ==============================================================================
-
-class StorageCreateFolderRequest(BaseModel):
-    parent_path: Optional[str] = ""
-    folder_name: str
-
-
-class StorageRenameFolderRequest(BaseModel):
-    folder_path: str
-    new_name: str
-
-
-class StorageDeleteFolderRequest(BaseModel):
-    folder_path: str
-
-
-class StorageImportPhotosRequest(BaseModel):
-    photo_ids: List[int]
-    destination: Optional[str] = ""
-
-
-class StorageMovePhotosRequest(BaseModel):
-    photo_ids: List[int]
-    destination: Optional[str] = ""
-
-
-class StorageRenamePhotoRequest(BaseModel):
-    photo_id: int
-    new_name: str
-
-
-class StorageBatchRenamePhotosRequest(BaseModel):
-    photo_ids: List[int]
-    naming_rule: str = "date_seq"
-    custom_prefix: Optional[str] = "Photo"
-    start_number: int = 1
-
-
-class StorageExportFolderRequest(BaseModel):
-    folder_path: Optional[str] = ""
-    destination_dir: Optional[str] = None
-    open_after: bool = True
-
-
-@app.get("/api/storage/folders")
-def api_get_storage_folders():
-    """storage 配下の全フォルダ階層と各フォルダの写真枚数を取得する"""
-    try:
-        return get_storage_folders()
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.post("/api/storage/folders")
-def api_create_storage_folder(req: StorageCreateFolderRequest):
-    """storage 内に新しいサブフォルダを作成する"""
-    try:
-        res = create_storage_subfolder(req.parent_path, req.folder_name)
-        clear_folders_fs_cache()
-        return res
-    except PermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e))
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.put("/api/storage/folders/rename")
-def api_rename_storage_folder(req: StorageRenameFolderRequest):
-    """storage 内のサブフォルダ名を変更し、DB内の写真パスも追従更新する"""
-    try:
-        res = rename_storage_subfolder(req.folder_path, req.new_name)
-        clear_folders_fs_cache()
-        return res
-    except PermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e))
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.delete("/api/storage/folders")
-def api_delete_storage_folder(
-    req: Optional[StorageDeleteFolderRequest] = None,
-    folder_path: Optional[str] = Query(default=None),
-):
-    """storage 内の空サブフォルダを削除する"""
-    target_path = (req.folder_path if req and req.folder_path else folder_path) or ""
-    try:
-        res = delete_storage_subfolder(target_path)
-        clear_folders_fs_cache()
-        return res
-    except PermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e))
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.post("/api/storage/import-photos")
-def api_import_photos_to_storage(req: StorageImportPhotosRequest):
-    """選択された写真を storage の指定フォルダへ物理コピーし、メタデータ・タグ・評価・調整値を引き継いでDB登録する"""
-    try:
-        res = import_photos_to_storage(req.photo_ids, req.destination)
-        clear_folders_fs_cache()
-        return res
-    except PermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e))
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.post("/api/storage/move-photos")
-def api_move_photos_in_storage(req: StorageMovePhotosRequest):
-    """storage 内の写真を別の storage フォルダへ移動し、DBパスを更新する"""
-    try:
-        res = move_photos_in_storage(req.photo_ids, req.destination)
-        clear_folders_fs_cache()
-        return res
-    except PermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e))
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.post("/api/storage/rename-photo")
-def api_rename_photo_in_storage(req: StorageRenamePhotoRequest):
-    """storage 内の単一写真のファイル名を変更する"""
-    try:
-        res = rename_photo_in_storage(req.photo_id, req.new_name)
-        clear_folders_fs_cache()
-        return res
-    except PermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e))
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.post("/api/storage/batch-rename-photos")
-def api_batch_rename_photos_in_storage(req: StorageBatchRenamePhotosRequest):
-    """storage 内の複数写真を撮影日時昇順で一括連番リネームする"""
-    try:
-        res = batch_rename_photos_in_storage(
-            req.photo_ids,
-            naming_rule=req.naming_rule,
-            custom_prefix=req.custom_prefix or "Photo",
-            start_number=req.start_number,
-        )
-        clear_folders_fs_cache()
-        return res
-    except PermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e))
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.post("/api/storage/export-folder")
-def api_export_storage_folder(req: StorageExportFolderRequest):
-    """storage 内のフォルダをサブフォルダ構造ごと外部の指定先へコピー出力する"""
-    try:
-        return export_storage_folder(
-            folder_path=req.folder_path or "",
-            destination_dir=req.destination_dir,
-            open_after=req.open_after,
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.get("/api/duplicates")
-def api_get_duplicates(limit: int = 100):
-    """ライブラリ内の重複写真グループ一覧および品質スコアに基づく代表写真情報を高速取得する"""
-    groups = get_all_duplicate_groups(limit=limit)
-    return _fast_json(groups)
-
-
-class DuplicatesResolveRequest(BaseModel):
-    photo_ids: Optional[List[int]] = None
-    delete_photo_ids: Optional[List[int]] = None
-
-
-@app.post("/api/duplicates/resolve")
-def api_resolve_duplicates(req: DuplicatesResolveRequest):
-    """重複解消として指定された写真群をライブラリから一括解除し、キャッシュを即時無効化する"""
-    target_ids = req.delete_photo_ids or req.photo_ids or []
-    deleted = delete_photos_by_ids(target_ids) if target_ids else 0
-    clear_folders_fs_cache()
-    invalidate_loome_roots_cache()
-    clear_api_photos_cache()
-    return {"status": "ok", "deleted": deleted}
-
-
-# -------------------------------------------------------------
-# スマート・テイクアウト（高機能エクスポート）API
-# -------------------------------------------------------------
-
-class SmartExportRequest(BaseModel):
-    photo_ids: List[int]
-    destination: Optional[str] = None
-    format: str = "jpeg"
-    quality: int = 90
-    resize_mode: str = "original"
-    custom_long_edge: Optional[int] = 1920
-    naming_rule: str = "original"
-    custom_prefix: Optional[str] = "Photo"
-    apply_adjustments: bool = True
-    exif_sync_db: bool = True
-    exif_remove_gps: bool = False
-    exif_remove_exposure: bool = False
-    exif_remove_camera: bool = False
-    exif_remove_other: bool = False
-    exif_remove_all: bool = False
-    export_xmp_sidecar: bool = False
-    open_folder_after: bool = True
-
-
-class ContactSheetExportRequest(BaseModel):
-    photo_ids: List[int]
-    title: Optional[str] = "Contact Sheet"
-    theme: str = "darkroom"
-    columns: int = 5
-    destination_dir: Optional[str] = None
-    destination: Optional[str] = None
-    open_after: bool = True
-
-
-class PickFolderRequest(BaseModel):
-    initial_dir: Optional[str] = None
-
-
-class OpenFolderRequest(BaseModel):
-    folder_path: str
-
-
-@app.get("/api/export/default-dir")
-def api_get_default_export_dir():
-    """テイクアウトの標準保存先パスを取得する"""
-    return {"default_dir": str(DEFAULT_TAKEOUT_DIR)}
-
-
-@app.post("/api/export/smart")
-def api_smart_export(req: SmartExportRequest):
-    """
-    スマート・テイクアウト実行
-    回転・クロップ・リサイズ・リネーム・Exif選択消去を一括適用して指定先へエクスポートする。
-    """
-    if not req.photo_ids:
-        raise HTTPException(status_code=400, detail="エクスポート対象の写真が選択されていません")
-
-    opts = req.model_dump() if hasattr(req, "model_dump") else req.dict()
-    result = run_smart_export(opts)
-
-    # 完了後にフォルダを開く指定があれば開く
-    if req.open_folder_after and result.get("destination"):
-        open_folder_in_windows_explorer(Path(result["destination"]))
-
-    return _fast_json(result)
-
-
-@app.post("/api/export/contact-sheet")
-def api_export_contact_sheet(req: ContactSheetExportRequest):
-    """
-    ベタ焼き（コンタクトシート）単一HTML出力を実行する。
-    """
-    if not req.photo_ids:
-        raise HTTPException(status_code=400, detail="コンタクトシートに出力する写真が選択されていません")
-
-    opts = req.model_dump() if hasattr(req, "model_dump") else req.dict()
-    result = run_contact_sheet_export(opts)
-    if result.get("status") == "error":
-        raise HTTPException(status_code=400, detail=result.get("message") or "コンタクトシート出力エラー")
-    return _fast_json(result)
-
-
-@app.post("/api/export/pick-folder")
-def api_pick_export_folder(req: Optional[PickFolderRequest] = None):
-    """Windows標準のフォルダ選択ダイアログを表示してパスを取得する"""
-    init_dir = req.initial_dir if req else None
-    selected = pick_folder_dialog(init_dir)
-    return {"selected_path": selected}
-
-
-@app.post("/api/export/open-folder")
-def api_open_export_folder(req: OpenFolderRequest):
-    """指定されたフォルダをWindowsエクスプローラーで開く"""
-    p = Path(req.folder_path)
-    ok = open_folder_in_windows_explorer(p)
-    return {"status": "ok" if ok else "error"}
-
-
-# -------------------------------------------------------------
-# Android / モバイル専用ビューア & オフライン差分同期 API
-# -------------------------------------------------------------
-
-class MobileSyncChangeItem(BaseModel):
-    photo_id: Optional[int] = None
-    file_path: Optional[str] = None
-    file_name: Optional[str] = None
-    date_taken: Optional[str] = None
-    rating: Optional[int] = None
-    add_tags: Optional[List[str]] = None
-    remove_tags: Optional[List[str]] = None
-    add_tag_keys: Optional[Any] = None
-    remove_tag_keys: Optional[Any] = None
-
-
-class MobileSyncImportRequest(BaseModel):
-    changes: Optional[List[MobileSyncChangeItem]] = None
-    use_detected_file: bool = False
-
-
-def _find_detected_sync_file() -> Optional[Path]:
-    """
-    プロジェクト直下、cache 内、またはUSB親フォルダに置かれた mobile_sync*.json を探索する。
-    Androidが重複保存時に自動付与する連番ファイル名 (mobile_sync (1).json 等) にも対応し、最新ファイルを返す。
-    """
-    search_dirs = [
-        BASE_DIR,
-        BASE_DIR / "cache",
-        BASE_DIR / ".cache",
-        BASE_DIR.parent,
-    ]
-    found: List[Path] = []
-    for d in search_dirs:
-        try:
-            if not d.exists() or not d.is_dir():
-                continue
-            for p in d.glob("mobile_sync*.json"):
-                if p.is_file() and not p.name.endswith(".applied") and p.stat().st_size > 0:
-                    found.append(p)
-        except Exception:
-            continue
-    if not found:
-        return None
-    found.sort(key=lambda x: x.stat().st_mtime, reverse=True)
-    return found[0]
-
-
-@app.get("/m", include_in_schema=False)
-def mobile_app_entry():
-    """スマートフォン専用画面 (mobile.html) を返すショートカットルート"""
-    mobile_html = FRONTEND_DIR / "mobile.html"
-    if mobile_html.exists():
-        return FileResponse(
-            mobile_html,
-            media_type="text/html",
-            headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
-        )
-    raise HTTPException(status_code=404, detail="mobile.html が見つかりません")
-
-
-@app.get("/api/mobile/standalone", include_in_schema=False)
-def api_mobile_standalone():
-    """
-    CSS・JS・sql.js(WASM)を1ファイルに完全内蔵したオフライン用単体HTML (PhotoManager_Mobile.html) を生成・配信する。
-    スマートフォン本体やUSBメモリに保存しておくことで、PC電源OFF・圏外でもファイルアプリから直接起動できる。
-    """
-    out_path = ensure_standalone_mobile_html()
-    if out_path and out_path.exists():
-        return FileResponse(
-            out_path,
-            media_type="text/html; charset=utf-8",
-            filename=STANDALONE_HTML_FILENAME,
-            headers={
-                "Content-Disposition": f'attachment; filename="{STANDALONE_HTML_FILENAME}"',
-                "Cache-Control": "no-cache, no-store, must-revalidate",
-            },
-        )
-    raise HTTPException(status_code=500, detail="単体モバイルHTMLの生成に失敗しました")
-
-
-def _lan_mobile_url(ip: str, port: int) -> str:
-    """LAN接続トークン付きのスマホ版URLを生成する（QRコード読み取り時に自動でCookie化される）"""
-    return f"http://{ip}:{port}/m?{LAN_TOKEN_QUERY}={LAN_TOKEN}"
-
-
-@app.get("/api/mobile/qr.svg", include_in_schema=False)
-def api_mobile_qr_svg(request: Request, url: Optional[str] = None):
-    """スマホ版 (/m) にアクセスするためのQRコードSVGを返す"""
-    from .qr_svg import generate_qr_svg
-
-    target_url = (url or "").strip()
-    if not target_url:
-        port = request.url.port or 8088
-        ips = _detect_local_ip_addresses()
-        target_url = _lan_mobile_url(ips[0], port) if ips else f"http://127.0.0.1:{port}/m"
-
-    svg_str = generate_qr_svg(target_url)
-    return Response(
-        content=svg_str,
-        media_type="image/svg+xml",
-        headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
-    )
-
-
-@app.get("/api/mobile/info")
-def api_mobile_info(request: Request, enable_lan: int = Query(default=0)):
-    """スマホ版 (/m) 接続用URL・QRコード情報、およびUSB内の未反映 mobile_sync.json の有無を返す"""
-    import datetime
-
-    port = request.url.port or 8088
-    if enable_lan:
-        ips = ensure_lan_listeners(app, port=port)
-    else:
-        ips = _detect_local_ip_addresses()
-    urls = [_lan_mobile_url(ip, port) for ip in ips]
-    if not urls:
-        urls = [f"http://127.0.0.1:{port}/m"]
-    primary_url = urls[0]
-
-    sync_file = _find_detected_sync_file()
-    detected_info = None
-    if sync_file:
-        try:
-            with open(sync_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            changes_list = data.get("changes", []) if isinstance(data, dict) else []
-            detected_info = {
-                "file_path": str(sync_file),
-                "file_name": sync_file.name,
-                "exported_at": data.get("exported_at", "") if isinstance(data, dict) else "",
-                "change_count": len(changes_list),
-            }
-        except Exception as e:
-            logger.warning(f"mobile_sync.json の読み取りに失敗しました: {e}")
-
-    last_applied_info = None
-    applied_bak = BASE_DIR / "cache" / "mobile_sync.json.applied"
-    if applied_bak.exists():
-        try:
-            with open(applied_bak, "r", encoding="utf-8") as f:
-                bak_data = json.load(f)
-            bak_changes = bak_data.get("changes", []) if isinstance(bak_data, dict) else []
-            mtime_dt = datetime.datetime.fromtimestamp(applied_bak.stat().st_mtime)
-            last_applied_info = {
-                "exported_at": bak_data.get("exported_at", "") if isinstance(bak_data, dict) else "",
-                "applied_at": mtime_dt.strftime("%Y-%m-%d %H:%M:%S"),
-                "change_count": len(bak_changes),
-            }
-        except Exception as e:
-            logger.debug(f"mobile_sync.json.applied の読み取りスキップ: {e}")
-
-    db_path = BASE_DIR / "cache" / "library.db"
-    db_size_mb = round(db_path.stat().st_size / (1024 * 1024), 2) if db_path.exists() else 0.0
-
-    return {
-        "mobile_urls": urls,
-        "primary_url": primary_url,
-        "local_preview_url": f"http://127.0.0.1:{port}/m",
-        "standalone_filename": STANDALONE_HTML_FILENAME,
-        "db_path": str(db_path),
-        "db_size_mb": db_size_mb,
-        "detected_sync_file": detected_info,
-        "last_applied_sync": last_applied_info,
-    }
-
-
-def _sanitize_mobile_tag(raw_tag: Any) -> str:
-    """モバイル同期データに含まれるタグ文字列を検証・無害化する（制御文字・HTMLタグ混入防止）"""
-    if not raw_tag:
-        return ""
-    s = str(raw_tag).strip()
-    # 制御文字やHTMLタグ記号(<, >)を除去し、最大100文字に制限
-    s = re.sub(r"[\x00-\x1f\x7f<>\"'`]", "", s).strip()
-    return s[:100]
-
-
-def _apply_mobile_sync_changes(
-    raw_changes: List[Dict[str, Any]],
-    used_file: Optional[Path] = None,
-) -> Dict[str, Any]:
-    """モバイル選別差分リストをPC本体の library.db に適用する"""
-    from .database.connection import get_connection
-
-    if not raw_changes:
-        return {
-            "status": "ok",
-            "applied_count": 0,
-            "skipped_count": 0,
-            "source_file": used_file.name if used_file else None,
-            "applied_items": [],
-        }
-
-    applied_count = 0
-    skipped_count = 0
-    applied_items: List[Dict[str, Any]] = []
-
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        for item in raw_changes:
-            if not isinstance(item, dict):
-                continue
-            target_id: Optional[int] = None
-            matched_file_name: str = ""
-            pid = item.get("photo_id")
-            fpath = item.get("file_path")
-            fname = item.get("file_name")
-            dtaken = item.get("date_taken")
-
-            # 1. photo_id (+ file_name) で照合
-            if pid:
-                if fname:
-                    cursor.execute(
-                        "SELECT id, file_name FROM photos WHERE id = ? AND file_name = ?",
-                        (int(pid), str(fname)),
-                    )
-                else:
-                    cursor.execute("SELECT id, file_name FROM photos WHERE id = ?", (int(pid),))
-                row = cursor.fetchone()
-                if row:
-                    target_id = int(row["id"])
-                    matched_file_name = str(row["file_name"] or "")
-
-            # 2. file_path で照合
-            if target_id is None and fpath:
-                cursor.execute("SELECT id, file_name FROM photos WHERE file_path = ?", (str(fpath),))
-                row = cursor.fetchone()
-                if row:
-                    target_id = int(row["id"])
-                    matched_file_name = str(row["file_name"] or "")
-
-            # 3. file_name + date_taken で照合（ドライブレター変動・再スキャン対策）
-            if target_id is None and fname and dtaken:
-                cursor.execute(
-                    "SELECT id, file_name FROM photos WHERE file_name = ? AND date_taken = ? LIMIT 1",
-                    (str(fname), str(dtaken)),
-                )
-                row = cursor.fetchone()
-                if row:
-                    target_id = int(row["id"])
-                    matched_file_name = str(row["file_name"] or "")
-
-            # 4. file_name 単体で照合（一意に特定できる場合のフォールバック）
-            if target_id is None and fname:
-                cursor.execute(
-                    "SELECT id, file_name FROM photos WHERE file_name = ? LIMIT 2",
-                    (str(fname),),
-                )
-                rows = cursor.fetchall()
-                if len(rows) == 1:
-                    target_id = int(rows[0]["id"])
-                    matched_file_name = str(rows[0]["file_name"] or "")
-
-            if target_id is None:
-                skipped_count += 1
-                continue
-
-            # 評価の更新 (-1: 棄, 0: 可, 1: 良, 2: 優)
-            rating_val = item.get("rating")
-            applied_rating: Optional[int] = None
-            if rating_val is not None:
-                r_int = max(-1, min(2, int(rating_val)))
-                update_rating(target_id, r_int)
-                applied_rating = r_int
-
-            def _resolve_mobile_tags_list(raw_tags_val: Any, raw_keys_val: Any) -> List[str]:
-                resolved_list: List[str] = []
-                seen = set()
-
-                def _push(t_str: str) -> None:
-                    c = _sanitize_mobile_tag(t_str)
-                    if c and c not in seen:
-                        seen.add(c)
-                        resolved_list.append(c)
-
-                raw_tags_seq = list(raw_tags_val)[:50] if isinstance(raw_tags_val, list) else []
-                if isinstance(raw_keys_val, dict):
-                    # {"tk_xxx": "旧タグ名", ...} 形式
-                    covered_fallbacks = set()
-                    for k_str, fb_name in list(raw_keys_val.items())[:50]:
-                        clean_k = _sanitize_mobile_tag(k_str)
-                        clean_fb = _sanitize_mobile_tag(fb_name)
-                        if clean_fb:
-                            covered_fallbacks.add(clean_fb)
-                        resolved_name = resolve_tag_by_key_or_name(cursor, clean_k, clean_fb)
-                        if resolved_name:
-                            _push(resolved_name)
-                    for rt in raw_tags_seq:
-                        clean_rt = _sanitize_mobile_tag(rt)
-                        if clean_rt and clean_rt not in covered_fallbacks:
-                            resolved_name = resolve_tag_by_key_or_name(
-                                cursor,
-                                clean_rt if clean_rt.startswith("tk_") else None,
-                                clean_rt,
-                            )
-                            _push(resolved_name)
-                elif isinstance(raw_keys_val, list) and raw_keys_val:
-                    keys_seq = list(raw_keys_val)[:50]
-                    max_len = max(len(raw_tags_seq), len(keys_seq))
-                    for idx in range(max_len):
-                        k_item = keys_seq[idx] if idx < len(keys_seq) else None
-                        t_item = raw_tags_seq[idx] if idx < len(raw_tags_seq) else None
-                        if isinstance(k_item, dict):
-                            clean_k = _sanitize_mobile_tag(k_item.get("tag_key") or k_item.get("key"))
-                            clean_fb = _sanitize_mobile_tag(k_item.get("tag") or t_item)
-                        else:
-                            clean_k = _sanitize_mobile_tag(k_item)
-                            clean_fb = _sanitize_mobile_tag(t_item)
-                        resolved_name = resolve_tag_by_key_or_name(cursor, clean_k, clean_fb)
-                        if resolved_name:
-                            _push(resolved_name)
-                else:
-                    for rt in raw_tags_seq:
-                        clean_rt = _sanitize_mobile_tag(rt)
-                        if clean_rt:
-                            resolved_name = resolve_tag_by_key_or_name(
-                                cursor,
-                                clean_rt if clean_rt.startswith("tk_") else None,
-                                clean_rt,
-                            )
-                            _push(resolved_name)
-                return resolved_list
-
-            # タグ削除（tag_key があればPC側の最新リネーム後パスへ解決して削除）
-            removed_tags: List[str] = _resolve_mobile_tags_list(
-                item.get("remove_tags"),
-                item.get("remove_tag_keys"),
-            )
-            for clean_r_tag in removed_tags:
-                remove_tag_from_photo(target_id, clean_r_tag)
-
-            # タグ追加（tag_key があればPC側の最新リネーム後パスへ解決して追加）
-            added_tags: List[str] = _resolve_mobile_tags_list(
-                item.get("add_tags"),
-                item.get("add_tag_keys"),
-            )
-            for clean_a_tag in added_tags:
-                add_tag_to_photo(target_id, clean_a_tag)
-
-            applied_count += 1
-            if len(applied_items) < 50:
-                applied_items.append({
-                    "photo_id": target_id,
-                    "file_name": matched_file_name or str(fname or f"ID:{target_id}"),
-                    "rating": applied_rating,
-                    "add_tags": added_tags,
-                    "remove_tags": removed_tags,
-                })
-
-        conn.commit()
-        try:
-            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-        except Exception as e:
-            logger.debug(f"モバイル同期後のWALチェックポイントスキップ: {e}")
-
-    # 自動検知ファイルを使用した場合は cache/mobile_sync.json.applied に退避して二重適用を防ぎ、USBルートを綺麗に保つ
-    if used_file and used_file.exists():
-        try:
-            cache_dir = BASE_DIR / "cache"
-            cache_dir.mkdir(parents=True, exist_ok=True)
-            bak_path = cache_dir / "mobile_sync.json.applied"
-            if bak_path.exists():
-                bak_path.unlink()
-            used_file.replace(bak_path)
-        except Exception as e:
-            logger.warning(f"適用済み mobile_sync.json の退避失敗: {e}")
-
-    if applied_count > 0:
-        _mobile_sync_event["seq"] += 1
-        _mobile_sync_event["applied_count"] = applied_count
-        clear_folders_fs_cache()
-        clear_api_photos_cache()
-        broadcast_app_event(
-            "mobile_synced",
-            {"applied": applied_count, "seq": _mobile_sync_event["seq"]},
-        )
-
-    return {
-        "status": "ok",
-        "applied_count": applied_count,
-        "skipped_count": skipped_count,
-        "source_file": used_file.name if used_file else None,
-        "applied_items": applied_items,
-    }
-
-
-@app.post("/api/mobile/sync-import")
-async def api_mobile_sync_import(request: Request):
-    """
-    スマートフォン（オフラインDBモード）で選別した評価・タグ差分 (mobile_sync.json) をPC本体の library.db に一括反映する。
-    photo_id -> file_path -> (file_name + date_taken) の4段階フォールバックで確実に写真を特定する。
-    """
-    try:
-        body_bytes = await request.body()
-        body_data = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
-        req = MobileSyncImportRequest(**(body_data if isinstance(body_data, dict) else {}))
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"リクエストデータの解析失敗: {e}")
-
-    raw_changes: List[Dict[str, Any]] = []
-    used_file: Optional[Path] = None
-
-    if req.use_detected_file:
-        used_file = _find_detected_sync_file()
-        if not used_file:
-            raise HTTPException(status_code=404, detail="mobile_sync.json が見つかりません")
-        try:
-            with open(used_file, "r", encoding="utf-8") as f:
-                payload = json.load(f)
-            raw_changes = payload.get("changes", []) if isinstance(payload, dict) else []
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"差分ファイルの読み込み失敗: {e}")
-    elif req.changes:
-        raw_changes = [
-            c.model_dump() if hasattr(c, "model_dump") else c.dict()
-            for c in req.changes
-        ]
-
-    return _apply_mobile_sync_changes(raw_changes, used_file=used_file)
-
-
-# ==============================================================================
-# 3段階セキュリティ（Lv.0 エシカル / Lv.1 起動＆DBロック / Lv.2 フルロック）API
-# ==============================================================================
-
-
-class SecurityUnlockRequest(BaseModel):
-    password: str
-
-
-class SecurityConfigureRequest(BaseModel):
-    target_level: int
-    current_password: Optional[str] = None
-    new_password: Optional[str] = None
-
-
-class SecurityRecoverDbRequest(BaseModel):
-    mode: str = "owned_media"  # "owned_media" | "password" | "recovery_code"
-    secret: Optional[str] = None
-
-
-class SecurityUnlockForeignLoomeRequest(BaseModel):
-    volume_serial: str
-    password: str
-
-
-@app.get("/api/security/status")
-def api_get_security_status():
-    """現在のセキュリティ設定レベル・ロック状態・DB引き抜き検知状態を取得する"""
-    return get_security_status()
-
-
-@app.post("/api/security/unlock")
-def api_security_unlock(req: SecurityUnlockRequest):
-    """パスワードまたはリカバリーコードでアプリロック（またはDB引き継ぎロック）を解除する"""
-    try:
-        res = unlock_with_password_or_recovery(req.password)
-        clear_online_cache()
-        clear_folders_fs_cache()
-        invalidate_loome_roots_cache()
-        clear_api_photos_cache()
-        return res
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/security/lock")
-def api_security_lock():
-    """現在のセッションを即座にロック状態へ戻す（Lv.1 / Lv.2 設定時）"""
-    try:
-        res = lock_session_now()
-        clear_api_photos_cache()
-        return res
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/security/configure")
-def api_security_configure(req: SecurityConfigureRequest):
-    """セキュリティレベル（Lv.0 / Lv.1 / Lv.2）およびパスワードを設定・変更する"""
-    try:
-        res = configure_security_level(
-            target_level=req.target_level,
-            current_password=req.current_password,
-            new_password=req.new_password,
-        )
-        clear_online_cache()
-        clear_folders_fs_cache()
-        invalidate_loome_roots_cache()
-        clear_api_photos_cache()
-        return res
-    except PermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e))
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/security/recover-db")
-def api_security_recover_db(req: SecurityRecoverDbRequest):
-    """
-    USB故障・新環境移行時に、バックアップされた library.db を正当なオーナーとして引き継ぐ。
-    - mode="owned_media": 接続中の所有ドライブ（VSN＋実在写真ファイル）照合により救済（Lv.0用）
-    - mode="password" / "recovery_code": パスワードまたはリカバリーコードにより救済
-    """
-    try:
-        mode_norm = (req.mode or "owned_media").strip().lower()
-        if mode_norm == "owned_media":
-            res = recover_db_by_owned_media()
-        else:
-            res = unlock_with_password_or_recovery(req.secret or "")
-        clear_online_cache()
-        clear_folders_fs_cache()
-        invalidate_loome_roots_cache()
-        clear_api_photos_cache()
-        return res
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/security/unlock-foreign-loome")
-def api_security_unlock_foreign_loome(req: SecurityUnlockForeignLoomeRequest):
-    """別環境のTetheractでパスワード設定された自分の外付け Loome を、同じパスワードの入力により承認する"""
-    try:
-        res = unlock_foreign_loome_with_password(req.volume_serial, req.password)
-        clear_online_cache()
-        clear_folders_fs_cache()
-        invalidate_loome_roots_cache()
-        clear_api_photos_cache()
-        return res
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+from .routers.ai_router import (
+    AIClearTagsRequest,
+    AIPromoteTagRequest,
+    AITagColorBatchRequest,
+    AITagFolderRequest,
+    api_ai_cancel,
+    api_ai_clear_tags,
+    api_ai_promote_tag,
+    api_ai_status,
+    api_ai_tag_color_photos,
+    api_ai_tag_folder,
+    api_ai_tag_single_photo,
+    router as _ai_router,
+)
+from .routers.export_import_router import (
+    ContactSheetExportRequest,
+    CopyToImportRequest,
+    CreateImportFolderRequest,
+    OpenImportFolderRequest,
+    PickFolderRequest,
+    SmartExportRequest,
+    api_copy_to_import,
+    api_create_import_folder,
+    api_export_contact_sheet,
+    api_get_default_export_dir,
+    api_get_import_destinations,
+    api_open_export_folder,
+    api_open_import_folder,
+    api_pick_export_folder,
+    api_smart_export,
+    router as _export_import_router,
+)
+from .routers.gps_lab_router import (
+    BatchCopyGpsRequest,
+    BatchInferGpsRequest,
+    ClearGpsRequest,
+    ClearInferredGpsRequest,
+    CopyGpsRequest,
+    api_backfill_locations,
+    api_batch_copy_gps,
+    api_batch_infer_gps,
+    api_cleanup_zero_gps,
+    api_clear_gps,
+    api_clear_inferred_gps,
+    api_copy_gps,
+    api_delete_photo_gps,
+    api_get_lab_karte,
+    api_get_locations_heatmap,
+    api_get_locations_tree,
+    api_get_random_unrated_folder,
+    api_gps_candidates,
+    router as _gps_lab_router,
+)
+from .routers.mobile_router import (
+    MobileSyncChangeItem,
+    MobileSyncImportRequest,
+    _apply_mobile_sync_changes,
+    _find_detected_sync_file,
+    _lan_mobile_url,
+    _sanitize_mobile_tag,
+    api_mobile_info,
+    api_mobile_qr_svg,
+    api_mobile_standalone,
+    api_mobile_sync_import,
+    mobile_app_entry,
+    router as _mobile_router,
+)
+from .routers.security_router import (
+    SecurityConfigureRequest,
+    SecurityRecoverDbRequest,
+    SecurityUnlockForeignLoomeRequest,
+    SecurityUnlockRequest,
+    api_get_security_status,
+    api_security_configure,
+    api_security_lock,
+    api_security_recover_db,
+    api_security_unlock,
+    api_security_unlock_foreign_loome,
+    router as _security_router,
+)
+from .routers.storage_volumes_router import (
+    DuplicatesResolveRequest,
+    EnableVolumeLoomeRequest,
+    StorageBatchRenamePhotosRequest,
+    StorageCreateFolderRequest,
+    StorageDeleteFolderRequest,
+    StorageExportFolderRequest,
+    StorageImportPhotosRequest,
+    StorageMovePhotosRequest,
+    StorageRenameFolderRequest,
+    StorageRenamePhotoRequest,
+    UpdateVolumeNameRequest,
+    _VOLUME_LABEL_PINS,
+    api_batch_rename_photos_in_storage,
+    api_create_storage_folder,
+    api_delete_storage_folder,
+    api_delete_volume,
+    api_disable_volume_loome,
+    api_enable_volume_loome,
+    api_export_storage_folder,
+    api_get_duplicates,
+    api_get_storage_folders,
+    api_get_volume_status,
+    api_get_volumes,
+    api_import_photos_to_storage,
+    api_move_photos_in_storage,
+    api_rename_photo_in_storage,
+    api_rename_storage_folder,
+    api_resolve_duplicates,
+    api_update_volume_name,
+    issue_volume_label_pin,
+    router as _storage_volumes_router,
+    verify_volume_label_pin,
+)
+
+app.include_router(_ai_router)
+app.include_router(_gps_lab_router)
+app.include_router(_storage_volumes_router)
+app.include_router(_export_import_router)
+app.include_router(_mobile_router)
+app.include_router(_security_router)
 
 
 # favicon

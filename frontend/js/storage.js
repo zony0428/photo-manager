@@ -677,14 +677,6 @@ async function renderStorageFolderListInContainers(containers, actionMode) {
    ========================================================================== */
 
 /**
- * 選択中の写真構成に応じて、下部フローティングバーの storage 関連ボタン表示を更新する
- */
-function updateStorageSelectionUI() {
-  // 廃止済み下部フローティングバー用関数の互換スタブ
-}
-window.updateStorageSelectionUI = updateStorageSelectionUI;
-
-/**
  * 写真の右クリックコンテキストメニューにおける Loome 関連項目（コピー・移動・リネーム）の表示を更新する
  */
 function updateStorageContextMenu() {
@@ -825,7 +817,6 @@ async function importPhotosToStorage(photoIds, destination, displayName = '') {
   ids.splice(0, ids.length, ...linkPart.linkedIds);
 
   if (typeof closeContextMenu === 'function') closeContextMenu();
-  if (typeof closeAllFloatingPopovers === 'function') closeAllFloatingPopovers();
 
   try {
     const data = await _withStorageProgressPolling(
@@ -909,7 +900,6 @@ async function movePhotosInStorage(photoIds, destination, displayName = '') {
   }
 
   if (typeof closeContextMenu === 'function') closeContextMenu();
-  if (typeof closeAllFloatingPopovers === 'function') closeAllFloatingPopovers();
 
   try {
     const data = await _withStorageProgressPolling(
@@ -1027,7 +1017,6 @@ window.handleDropPhotosToStorageFolder = handleDropPhotosToStorageFolder;
  */
 async function openStorageFolderInExplorer(targetPath = '') {
   if (typeof closeContextMenu === 'function') closeContextMenu();
-  if (typeof closeAllFloatingPopovers === 'function') closeAllFloatingPopovers();
 
   let pathToOpen = targetPath || storageState.storageRoot || '';
   if (!pathToOpen) {
@@ -1533,7 +1522,6 @@ window.removeLoomeFromVolume = removeLoomeFromVolume;
  */
 function openStorageRenameModal(explicitPhotoIds = null) {
   if (typeof closeContextMenu === 'function') closeContextMenu();
-  if (typeof closeAllFloatingPopovers === 'function') closeAllFloatingPopovers();
 
   let targetIds = [];
   if (Array.isArray(explicitPhotoIds) && explicitPhotoIds.length > 0) {

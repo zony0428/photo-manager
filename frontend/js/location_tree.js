@@ -451,13 +451,6 @@ function collapseAllLocations() {
 }
 
 /**
- * 国名アイコン（フォールバック）
- */
-function getCountryEmoji(countryName) {
-  return '';
-}
-
-/**
  * 現在選択中のジオタグ地域の親階層を展開してツリーを再描画する
  */
 async function revealActiveLocationInTree() {

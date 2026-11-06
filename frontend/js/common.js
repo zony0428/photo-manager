@@ -374,8 +374,6 @@ const elements = {
   inspectorToggleLabel: document.getElementById('inspectorToggleLabel'),
   inspectorPane: document.getElementById('inspectorPane'),
   inspectorBody: document.getElementById('inspectorBody'),
-  closeInspectorBtn: document.getElementById('closeInspectorBtn'),
-  inspectorTitle: document.getElementById('inspectorTitle'),
   inspectorSingleView: document.getElementById('inspectorSingleView'),
   inspectorBatchView: document.getElementById('inspectorBatchView'),
   inspectorFixedPreview: document.getElementById('inspectorFixedPreview'),
@@ -1005,7 +1003,16 @@ function initMediaWatcher() {
   }
 
   // 保険チェック: WM_DEVICECHANGE を送出しない古い外付けカードリーダー対策 ＆ 外部アプリからのフォーカス復帰時同期
+  let _lastFocusCheckTime = 0;
   const checkOnFocus = async () => {
+    const now = Date.now();
+    if (now - _lastFocusCheckTime < 1500) return;
+    _lastFocusCheckTime = now;
+
+    // アプリロック画面表示中は423エラー防止のためAPIチェックをスキップ
+    const lockOverlay = document.getElementById('securityLockOverlay');
+    if (lockOverlay && lockOverlay.style.display !== 'none') return;
+
     fetch('/api/media/check', { method: 'POST' })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
@@ -1225,14 +1232,10 @@ function initHeartbeat() {
   // 起動時に初回送信
   sendHeartbeat();
 
-  // 3秒間隔で定期送信
-  setInterval(sendHeartbeat, 3000);
-
-  // ウィンドウ再フォーカス時や可視化時にも即座に送信
-  document.addEventListener('visibilitychange', () => {
+  // 3秒間隔で定期送信（バックグラウンドタブ時は無駄な通信をスキップ）
+  setInterval(() => {
     if (!document.hidden) sendHeartbeat();
-  });
-  window.addEventListener('focus', sendHeartbeat);
+  }, 3000);
 }
 
 async function initAppVersion() {
@@ -1603,8 +1606,6 @@ function toggleHelpModal() {
 // ============================================================
 // アプリ終了確認モーダル制御 (Photo Manager Shutdown)
 // ============================================================
-let isShuttingDownGracefully = false;
-
 function openShutdownModal() {
   if (elements.shutdownModal) {
     elements.shutdownModal.style.display = 'flex';
@@ -1619,7 +1620,6 @@ function closeShutdownModal() {
 
 // サーバー停止＆終了の実行
 async function confirmShutdown() {
-  isShuttingDownGracefully = true;
   const btn = elements.btnConfirmShutdown;
   if (btn) {
     btn.disabled = true;

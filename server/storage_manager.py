@@ -192,11 +192,6 @@ def _sanitize_single_name(name: str) -> str:
     return cleaned
 
 
-def _storage_root_key() -> str:
-    """比較用の正規化済みプライマリ Loome ルートパス（小文字・末尾区切りなし）を返す"""
-    return _STORAGE_ROOT_KEY
-
-
 def get_all_loome_roots(use_cache: bool = True, force_refresh: bool = False) -> List[Dict[str, Any]]:
     """
     本体プライマリ Loome および現在接続中の外部 VSN メディアの Loome ルート一覧を返す。
@@ -501,12 +496,6 @@ def resolve_storage_target_with_root(
             raise ValueError(f"指定されたフォルダが存在しません: {dest}")
 
     return target, matched_root
-
-
-def resolve_storage_target_dir(dest: Optional[str], must_exist: bool = False) -> Path:
-    """Loome 内のターゲットフォルダパスを解決して Path を返す"""
-    target, _ = resolve_storage_target_with_root(dest, must_exist=must_exist)
-    return target
 
 
 def enable_volume_loome(volume_serial: str, drive_letter: Optional[str] = None) -> Dict[str, Any]:

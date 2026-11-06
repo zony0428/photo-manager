@@ -405,8 +405,3 @@ def ensure_window_mode_loop(
             time.sleep(0.25)
         else:
             time.sleep(0.12)
-
-
-def ensure_maximized_loop(port: int = 8088, timeout_sec: float = 6.0, hold_sec: float = 2.5) -> None:
-    """後方互換ラッパー: 起動時の設定モードに応じてループ制御を行う"""
-    ensure_window_mode_loop(mode=None, port=port, timeout_sec=timeout_sec, hold_sec=hold_sec)

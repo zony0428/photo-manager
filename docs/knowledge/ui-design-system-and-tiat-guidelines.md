@@ -101,6 +101,20 @@
   - フォルダ右クリックメニューは「このフォルダを再スキャン（直下のみ）」と「再スキャン（子を含む）」（時間警告モーダル付き）に統一し、どちらも消失写真のリンク整理（`cleanup_orphans: true`）を自動で行う。
   - `[消失]` フォルダの右クリックメニューでは、最上部ヘッダーのフォルダ名右横にコンパクトな `[リンク消去]` ボタン（`#folderMenuHeaderUnlinkBtn`）を配置する。
 
+### 4.8 4つのカラーテーマと2階建て属性構造（`data-scheme` ＆ `data-theme`）
+- `frontend/js/common.js` の `applyTheme(scheme)` は、`<html>` 要素（`document.documentElement`）に以下の **2階建ての属性** を同時付与する：
+  1. **`data-scheme`（4種類の個別パレット）**:
+     - `tetheract-d`（Tetheract D (黄昏)：既定ダークテーマ、アクセント `#3b82f6`）
+     - `tetheract-l`（Tetheract L (昼光)：ライトテーマ、アクセント `#2563eb`）
+     - `sumi`（Hinomaru (夜墨)：純黒系ダークテーマ、アクセント朱色 `#e14d2a`）
+     - `paper`（Hinomaru (白磁)：和紙系ライトテーマ、アクセント朱色 `#c83e1d`）
+  2. **`data-theme`（明暗2種類のベース分類）**:
+     - ダーク系2種（`tetheract-d` / `sumi`）のときは `data-theme="sumi"`
+     - ライト系2種（`tetheract-l` / `paper`）のときは `data-theme="paper"`
+- **CSS記述時の鉄則**:
+  - 特定パレット固有の配色は `[data-scheme="..."]` で定義し、ライト系共通（`tetheract-l` と `paper` の両方）・ダーク系共通（`tetheract-d` と `sumi` の両方）の明暗調整は `[data-theme="paper"]` / `[data-theme="sumi"]` で記述する。
+  - プロトタイプ時代の旧名称（`washi`, `urusi`, `dark`, `light`）は存在しないため、CSSセレクタに使用してはならない。
+
 ---
 
 ## 5. ドキュメント & リリースノート編集規約 (OSS Editorial Standards)

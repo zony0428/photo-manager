@@ -734,37 +734,6 @@ function _ftFindItemByPath(folderPath) {
 }
 
 /**
- * インラインプログレス要素を取得または生成して対象ノードの直下に挿入する
- */
-function _ftGetOrCreateInlineProgress(targetItem) {
-  if (!_inlineScanProgressEl) {
-    _inlineScanProgressEl = document.createElement('div');
-    _inlineScanProgressEl.className = 'folder-inline-scan-progress';
-    _inlineScanProgressEl.id = 'folderInlineScanProgress';
-    _inlineScanProgressEl.innerHTML = `
-      <div class="folder-inline-progress-header">
-        <span class="folder-inline-progress-title">スキャン準備中...</span>
-        <span class="folder-inline-progress-count"></span>
-      </div>
-      <div class="folder-inline-progress-track">
-        <div class="folder-inline-progress-fill indeterminate"></div>
-      </div>
-      <div class="folder-inline-progress-filename"></div>
-    `;
-  }
-
-  if (targetItem && targetItem.parentElement) {
-    const parentLi = targetItem.parentElement; // li.folder-tree-node
-    // item の直後（かつ子フォルダ ul の前）に挿入
-    if (_inlineScanProgressEl.parentElement !== parentLi || targetItem.nextSibling !== _inlineScanProgressEl) {
-      parentLi.insertBefore(_inlineScanProgressEl, targetItem.nextSibling);
-    }
-    _inlineScanProgressEl.style.display = 'block';
-  }
-  return _inlineScanProgressEl;
-}
-
-/**
  * インラインプログレス要素とスキャン対象ハイライトを解除する
  */
 function _ftRemoveInlineScanProgress() {
@@ -877,12 +846,17 @@ function _ftStartScanPolling() {
     })
     .catch(() => {});
 
+  let scanPollFailCount = 0;
   _ftScanPollTimer = setInterval(async () => {
     if (pollId !== _ftScanPollSessionId) return;
     try {
       const res = await fetch('/api/scan/status');
       if (pollId !== _ftScanPollSessionId || !_ftScanPollTimer) return;
-      if (!res.ok) return;
+      if (!res.ok) {
+        if (++scanPollFailCount >= 5) _ftStopScanPolling();
+        return;
+      }
+      scanPollFailCount = 0;
       const status = await res.json();
       if (pollId !== _ftScanPollSessionId || !_ftScanPollTimer) return;
       if (status.is_scanning) {
@@ -899,7 +873,9 @@ function _ftStartScanPolling() {
         _ftRenderScanProgress(null);
         refreshFolderTree();
       }
-    } catch (_) {}
+    } catch (_) {
+      if (++scanPollFailCount >= 5) _ftStopScanPolling();
+    }
   }, 250);
 }
 
@@ -965,23 +941,32 @@ function startAiProgressPolling() {
   const aiPollId = ++_ftAiPollSessionId;
   let lastRunningStatus = null;
 
+  let aiPollFailCount = 0;
+  const stopAiTimer = () => {
+    _ftAiPollSessionId++;
+    if (_ftAiPollTimer) {
+      clearInterval(_ftAiPollTimer);
+      _ftAiPollTimer = null;
+    }
+  };
+
   const checkStatus = async () => {
     if (aiPollId !== _ftAiPollSessionId) return;
     try {
       const res = await fetch('/api/ai/status');
       if (aiPollId !== _ftAiPollSessionId) return;
-      if (!res.ok) return;
+      if (!res.ok) {
+        if (++aiPollFailCount >= 5) stopAiTimer();
+        return;
+      }
+      aiPollFailCount = 0;
       const status = await res.json();
       if (aiPollId !== _ftAiPollSessionId) return;
       if (status.is_running) {
         lastRunningStatus = status;
         _ftRenderAiProgress(status);
       } else {
-        _ftAiPollSessionId++;
-        if (_ftAiPollTimer) {
-          clearInterval(_ftAiPollTimer);
-          _ftAiPollTimer = null;
-        }
+        stopAiTimer();
         _ftRenderAiProgress(null);
         await Promise.all([
           typeof fetchPhotos === 'function' ? fetchPhotos() : Promise.resolve(),
@@ -1013,7 +998,9 @@ function startAiProgressPolling() {
           }
         }
       }
-    } catch (_) {}
+    } catch (_) {
+      if (++aiPollFailCount >= 5) stopAiTimer();
+    }
   };
 
   checkStatus();
@@ -1183,18 +1170,6 @@ function _ftInitDbMaintenanceModal() {
   const closeBtn = elements.closeDbMaintenanceModalBtn;
   const footerCloseBtn = elements.closeDbMaintenanceFooterBtn;
   if (!openBtn || !modal) return;
-
-  const formatBytes = (bytes) => {
-    if (!bytes || bytes <= 0) return '0 B';
-    const units = ['B', 'KB', 'MB', 'GB'];
-    let i = 0;
-    let b = Number(bytes);
-    while (b >= 1024 && i < units.length - 1) {
-      b /= 1024;
-      i++;
-    }
-    return `${b.toFixed(1)} ${units[i]}`;
-  };
 
   const loadStats = async () => {
     try {

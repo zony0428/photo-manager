@@ -172,14 +172,6 @@ body {
   display: block;
 }
 
-.m-hinomaru-disc {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background-color: var(--accent-primary, #e14d2a);
-  flex-shrink: 0;
-}
-
 .m-brand-titles {
   display: flex;
   flex-direction: column;
@@ -1310,7 +1302,6 @@ body.m-select-mode .m-card-check {
   font-weight: 700;
   cursor: pointer;
 }
-
 
 /* Exif一覧テーブル */
 .m-exif-grid {
@@ -3519,9 +3510,12 @@ else if (typeof exports === 'object'){
         }
         mState.localDb.run('COMMIT');
       } catch (e) {
+        console.error('[MobileDB] 一括評価更新エラー:', e);
         try {
           mState.localDb.run('ROLLBACK');
         } catch (re) {}
+        showToast('! ローカルDBの更新に失敗しました');
+        return;
       }
     }
 
@@ -4258,9 +4252,12 @@ else if (typeof exports === 'object'){
         }
         mState.localDb.run('COMMIT');
       } catch (e) {
+        console.error('[MobileDB] 一括タグ追加エラー:', e);
         try {
           mState.localDb.run('ROLLBACK');
         } catch (re) {}
+        showToast('! ローカルDBのタグ更新に失敗しました');
+        return;
       }
     }
 
@@ -4270,7 +4267,6 @@ else if (typeof exports === 'object'){
         pObj.tags = [...new Set([...(pObj.tags || []), ...expanded])].sort();
       }
     }
-    renderBatchTagSheet();
     await fetchFilterSummaries();
     renderBatchTagSheet();
     showToast(`${ids.length}枚に #${tag} を追加しました`);

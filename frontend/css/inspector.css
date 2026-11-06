@@ -26,132 +26,9 @@
   to { transform: translateX(0); opacity: 1; }
 }
 
-.inspector-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--border-soft);
-  background: rgba(0, 0, 0, 0.15);
-  gap: 8px;
-  min-height: 48px;
-}
-
-[data-theme="paper"] .inspector-header {
-  background: #f4efe6;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-}
-
-.inspector-title-area {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  overflow: hidden;
-  flex: 1;
-  min-width: 0;
-}
-
-.inspector-icon {
-  flex-shrink: 0;
-  font-size: 1rem;
-}
-
-.inspector-title {
-  font-family: 'Outfit', sans-serif;
-  font-size: 0.92rem;
-  font-weight: 600;
-  color: var(--text-main);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-  flex-shrink: 1;
-}
-
-/* インスペクタヘッダーのフォルダ・ファイルを開くボタン（アイコンのみ） */
-.inspector-header-folder-btn,
-.inspector-header-file-btn {
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm, 3px);
-  color: var(--text-main);
-  font-size: 0.85rem;
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: all var(--transition-fast);
-  flex-shrink: 0;
-}
-
-.inspector-header-folder-btn:hover,
-.inspector-header-file-btn:hover {
-  background: var(--bg-hover);
-  border-color: var(--accent-primary);
-  color: var(--accent-primary);
-  transform: translateY(-1px);
-}
-
-.inspector-header-folder-btn:active,
-.inspector-header-file-btn:active {
-  transform: translateY(0);
-}
-
-.inspector-header-folder-btn .folder-btn-icon,
-.inspector-header-file-btn .file-btn-icon {
-  font-size: 0.85rem;
-  line-height: 1;
-}
-
-/* 和紙テーマ用調整 */
-[data-theme="paper"] .inspector-header-folder-btn,
-[data-theme="paper"] .inspector-header-file-btn {
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
-  color: var(--text-main);
-}
-
-[data-theme="paper"] .inspector-header-folder-btn:hover,
-[data-theme="paper"] .inspector-header-file-btn:hover {
-  background: #ffffff;
-  border-color: var(--accent-primary);
-  color: var(--accent-primary);
-}
-
-/* パネル閉じるボタン */
-.inspector-close-btn {
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  font-size: 1.15rem;
-  border-radius: var(--radius-sm, 3px);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  flex-shrink: 0;
-}
-
-.inspector-close-btn:hover {
-  color: var(--text-main);
-  background: rgba(255, 255, 255, 0.08);
-}
-
-[data-theme="paper"] .inspector-close-btn:hover {
-  color: var(--text-main);
-  background: rgba(0, 0, 0, 0.06);
-}
-
 /* インスペクタ上部固定プレビューサムネイル（省スペース化） */
 .inspector-fixed-preview {
-  padding: 8px 14px 8px 14px;
+  padding: 10px 14px 8px 14px;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-soft);
   flex-shrink: 0;
@@ -303,10 +180,10 @@
   white-space: nowrap;
 }
 
-.inspector-quick-action-btn.icon-only {
-  flex: 0 0 32px;
+.inspector-quick-action-btn.is-icon-only {
+  flex: 0 0 28px;
+  width: 28px;
   padding: 0;
-  font-size: 0.9rem;
 }
 
 .inspector-quick-action-btn:hover {
@@ -334,8 +211,6 @@
   border-color: var(--accent-primary, #c53d2f);
   color: var(--accent-primary, #c53d2f);
 }
-
-
 
 /* インスペクタ 一体型タブカードコンテナ（タブヘッダー＋コンテンツ全体を美しく囲む） */
 .inspector-tabs-card {
@@ -608,26 +483,6 @@
 }
 
 /* タグ追加ボックス */
-.inspector-add-tag-box {
-  display: flex;
-  gap: 6px;
-}
-
-.inspector-add-tag-box input {
-  flex: 1;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  padding: 6px 10px;
-  color: var(--text-main);
-  font-size: 0.8rem;
-  outline: none;
-}
-
-.inspector-add-tag-box input:focus {
-  border-color: var(--accent-primary);
-}
-
 /* クイック選択タグツリー */
 .inspector-quick-tags {
   margin-top: 4px;
@@ -635,22 +490,6 @@
   border-radius: var(--radius-sm);
   background: rgba(0, 0, 0, 0.15);
   overflow: hidden;
-}
-
-.inspector-quick-header {
-  padding: 6px 10px;
-  font-size: 0.72rem;
-  color: var(--text-muted);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  background: var(--bg-tertiary);
-  user-select: none;
-}
-
-.inspector-quick-header:hover {
-  color: var(--text-main);
 }
 
 .inspector-quick-tree, .batch-quick-tree {
@@ -858,7 +697,6 @@
   color: #0b1329;
 }
 
-
 /* インスペクタ専用 カラーパレット (複数選択・トグル・エキスパンダ対応 v1.88) */
 .inspector-color-palette-block {
   margin-top: 10px;
@@ -878,16 +716,6 @@
 
 .inspector-color-palette-block.color-palette-expander .color-palette-body {
   padding: 8px;
-}
-
-.inspector-sublabel {
-  font-size: 0.72rem;
-  color: var(--text-dim);
-  margin-bottom: 5px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
 }
 
 .inspector-color-grid {
@@ -1047,14 +875,6 @@
 
 .meta-val-with-action .path-val {
   flex: 1;
-}
-
-.btn-xxs {
-  padding: 1px 6px;
-  font-size: 0.7rem;
-  line-height: 1.2;
-  border-radius: 3px;
-  flex-shrink: 0;
 }
 
 .inspector-gps-empty-msg {
@@ -1502,32 +1322,6 @@ body.layout-mount .photo-card.is-offline:hover .card-mount-bottom {
   color: var(--text-dim);
 }
 
-.bracket-primary-badge {
-  font-size: 0.65rem;
-  background: var(--accent-primary);
-  color: #ffffff;
-  font-weight: 700;
-  padding: 1px 6px;
-  border-radius: var(--radius-sm);
-}
-
-.btn-make-primary {
-  font-size: 0.65rem;
-  padding: 2px 7px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  color: var(--text-main);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.btn-make-primary:hover {
-  background: var(--accent-primary);
-  color: #ffffff;
-  border-color: var(--accent-primary);
-}
-
 /* ライトボックス内のブラケット・連写比較バー */
 .lightbox-bracket-bar {
   position: absolute;
@@ -1815,7 +1609,6 @@ body.layout-mount .photo-card.is-offline:hover .card-mount-bottom {
   background: var(--accent-primary-hover);
 }
 
-
 /* ==========================================================================
    GPS ミニマップ & ジオタグ UI
    ========================================================================== */
@@ -1829,7 +1622,7 @@ body.layout-mount .photo-card.is-offline:hover .card-mount-bottom {
 }
 
 /* ダークモード時にOpenStreetMapタイルをやや暗くする */
-[data-theme="dark"] .inspector-minimap .leaflet-tile-pane {
+[data-theme="sumi"] .inspector-minimap .leaflet-tile-pane {
   filter: brightness(0.75) contrast(1.1) saturate(0.8);
 }
 
@@ -1882,7 +1675,7 @@ body.layout-mount .photo-card.is-offline:hover .card-mount-bottom {
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
-  max-width: 520px;
+  max-width: 580px;
   width: 90%;
   max-height: 70vh;
   display: flex;
@@ -1958,23 +1751,7 @@ body.layout-mount .photo-card.is-offline:hover .card-mount-bottom {
   font-size: 0.85rem;
 }
 
-.gps-candidate-minimap {
-  height: 120px;
-  margin: 0 8px 8px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-color);
-  overflow: hidden;
-}
-
-[data-theme="dark"] .gps-candidate-minimap .leaflet-tile-pane {
-  filter: brightness(0.75) contrast(1.1) saturate(0.8);
-}
-
 /* --- GPS候補 直前/直後 スプリット比較ビュー --- */
-.gps-candidate-modal {
-  max-width: 580px;
-}
-
 .gps-candidate-body {
   flex: 1 1 auto;
   min-height: 0;
@@ -2098,23 +1875,6 @@ body.layout-mount .photo-card.is-offline:hover .card-mount-bottom {
 }
 
 /* クイックタブ（サイドバー）内での評価トグル */
-.sidebar-rating-toggles {
-  width: 100%;
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 4px;
-  padding: 4px;
-  box-sizing: border-box;
-}
-
-.sidebar-rating-toggles .rating-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 6px 2px;
-  font-size: 0.75rem;
-}
-
 /* トースト通知 (通知バナー) */
 .toast-container {
   position: fixed;
@@ -2166,6 +1926,4 @@ body.layout-mount .photo-card.is-offline:hover .card-mount-bottom {
   border-color: rgba(239, 68, 68, 0.4);
   background: rgba(15, 23, 42, 0.88);
 }
-
-
 

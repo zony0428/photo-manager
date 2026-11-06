@@ -36,6 +36,7 @@ photos/
 # ビルド成果物・配布パッケージ（GitHub Releases配布用 / 開発時はBuild.batまたはbuild_dist.batで生成）
 dist/
 dist_update/
+zip/
 *.zip
 PhotoManager.exe
 Tetheract.exe

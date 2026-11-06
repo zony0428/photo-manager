@@ -146,20 +146,13 @@ def recalculate_stacks(directory_path: Optional[str] = None, recursive: bool = T
                         else:
                             p["is_online"] = os.path.normcase(os.path.abspath(p["file_path"])) in norm_existing_paths
                 else:
-                    try:
-                        from ..scanner import resolve_portable_path
-                    except Exception:
-                        resolve_portable_path = None
+                    from ..scanner import resolve_portable_path
                     for p in photos:
-                        if str(p["file_path"]).startswith("vsn://"):
-                            if resolve_portable_path and p.get("volume_serial"):
-                                res_p, is_on = resolve_portable_path(p["file_path"], expected_serial=p.get("volume_serial"))
-                                p["is_online"] = bool(is_on and res_p.exists())
-                            else:
-                                p["is_online"] = False
-                        elif resolve_portable_path and p.get("volume_serial"):
+                        if p.get("volume_serial"):
                             res_p, is_on = resolve_portable_path(p["file_path"], expected_serial=p.get("volume_serial"))
                             p["is_online"] = bool(is_on and res_p.exists())
+                        elif str(p["file_path"]).startswith("vsn://"):
+                            p["is_online"] = False
                         else:
                             p["is_online"] = os.path.exists(p["file_path"])
 

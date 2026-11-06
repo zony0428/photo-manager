@@ -12,12 +12,12 @@ title Tetheract Photo Manager - Build Distribution (Full ^& Lightweight Update)
 ::                     Uses robocopy /MIR differential sync so unchanged
 ::                     python/ and models/ are not re-copied from scratch!
 ::   2. dist_update/ - Lightweight update package (~few MBs, excludes
-::                     python/ and models/ for fast overwrite updates)
+::                     python/ and models/ for fast clean updates)
 ::
 :: Excluded from both:
 ::   cache/       - User photo DB & thumbnails (and legacy .cache/)
-::   storage/     - App internal storage (and legacy carry/)
-::   take_out/    - Export preparation files
+::   Loome/       - User vault storage (and legacy storage/ / carry/)
+::   take_out/    - Export files
 ::   docs/        - Dev documentation
 ::   scratch/     - Debug scripts
 ::   .agents/     - AI customization
@@ -76,7 +76,7 @@ if exist "%DIST_UPD%" rmdir /s /q "%DIST_UPD%" 2>nul
 if not exist "%DIST_UPD%" mkdir "%DIST_UPD%" 2>nul
 
 :START_COPY
-echo [1/4] Syncing folders (Incremental /MIR)...
+echo [1/5] Syncing folders (Incremental /MIR)...
 
 :: --- frontend/ ---
 echo        frontend/       -^> dist/ ^& dist_update/
@@ -149,11 +149,16 @@ goto :FAILED
 
 :COPY_FILES
 echo.
-echo [2/4] Copying startup, docs and setup files...
+echo [2/5] Organizing startup, tools, and documentation files...
 
-:: --- Remove legacy filenames from dist/ if present ---
-if exist "%DIST%\PhotoManager.exe" del /q "%DIST%\PhotoManager.exe" >nul 2>&1
-if exist "%DIST%\PhotoManager_Mobile.html" del /q "%DIST%\PhotoManager_Mobile.html" >nul 2>&1
+:: --- Clean up legacy & root clutter from dist/ if present ---
+if exist "%DIST%\PhotoManager.exe" del /f /q "%DIST%\PhotoManager.exe" >nul 2>&1
+if exist "%DIST%\PhotoManager_Mobile.html" del /f /q "%DIST%\PhotoManager_Mobile.html" >nul 2>&1
+if exist "%DIST%\run.py" del /f /q "%DIST%\run.py" >nul 2>&1
+if exist "%DIST%\start.bat" del /f /q "%DIST%\start.bat" >nul 2>&1
+if exist "%DIST%\Build.bat" del /f /q "%DIST%\Build.bat" >nul 2>&1
+if exist "%DIST%\launcher" rmdir /s /q "%DIST%\launcher" >nul 2>&1
+if exist "%DIST%\storage" rd "%DIST%\storage" >nul 2>&1
 if exist "%DIST%\.tetheract_instance" (
     attrib -h "%DIST%\.tetheract_instance" >nul 2>&1
     del /f /q "%DIST%\.tetheract_instance" >nul 2>&1
@@ -163,34 +168,33 @@ if exist "%DIST_UPD%\.tetheract_instance" (
     del /f /q "%DIST_UPD%\.tetheract_instance" >nul 2>&1
 )
 
-:: --- Backend core scripts ---
+:: --- Backend entry script (placed cleanly inside server/) ---
 copy /y "%SRC%run.py" "%DIST%\server\run.py" >nul 2>&1
-copy /y "%SRC%run.py" "%DIST%\run.py" >nul 2>&1
 copy /y "%SRC%run.py" "%DIST_UPD%\server\run.py" >nul 2>&1
-copy /y "%SRC%run.py" "%DIST_UPD%\run.py" >nul 2>&1
 if not exist "%DIST%\server\run.py" goto :ERR_FILES
 
-:: --- Optional fallback start.bat ---
-copy /y "%SRC%start.bat" "%DIST%\server\start.bat" >nul 2>&1
-copy /y "%SRC%start.bat" "%DIST%\start.bat" >nul 2>&1
-copy /y "%SRC%start.bat" "%DIST_UPD%\server\start.bat" >nul 2>&1
-copy /y "%SRC%start.bat" "%DIST_UPD%\start.bat" >nul 2>&1
+:: --- Helper & compile tools (placed cleanly inside tools/) ---
+echo        tools/          -^> dist/ ^& dist_update/ (Build.bat, start.bat, Launcher.cs)
+if exist "%DIST%\tools" rmdir /s /q "%DIST%\tools" >nul 2>&1
+if exist "%DIST_UPD%\tools" rmdir /s /q "%DIST_UPD%\tools" >nul 2>&1
+mkdir "%DIST%\tools" 2>nul
+mkdir "%DIST_UPD%\tools" 2>nul
 
-:: --- Launcher source & fallback Build.bat ---
-if not exist "%DIST%\launcher" mkdir "%DIST%\launcher" 2>nul
-if not exist "%DIST_UPD%\launcher" mkdir "%DIST_UPD%\launcher" 2>nul
 if exist "%SRC%launcher\Launcher.cs" (
-    copy /y "%SRC%launcher\Launcher.cs" "%DIST%\launcher\Launcher.cs" >nul 2>&1
-    copy /y "%SRC%launcher\Launcher.cs" "%DIST_UPD%\launcher\Launcher.cs" >nul 2>&1
+    copy /y "%SRC%launcher\Launcher.cs" "%DIST%\tools\Launcher.cs" >nul 2>&1
+    copy /y "%SRC%launcher\Launcher.cs" "%DIST_UPD%\tools\Launcher.cs" >nul 2>&1
 )
 if exist "%SRC%Build.bat" (
-    copy /y "%SRC%Build.bat" "%DIST%\Build.bat" >nul 2>&1
-    copy /y "%SRC%Build.bat" "%DIST_UPD%\Build.bat" >nul 2>&1
+    copy /y "%SRC%Build.bat" "%DIST%\tools\Build.bat" >nul 2>&1
+    copy /y "%SRC%Build.bat" "%DIST_UPD%\tools\Build.bat" >nul 2>&1
 )
-if not exist "%DIST%\launcher\Launcher.cs" goto :ERR_FILES
+if exist "%SRC%start.bat" (
+    copy /y "%SRC%start.bat" "%DIST%\tools\start.bat" >nul 2>&1
+    copy /y "%SRC%start.bat" "%DIST_UPD%\tools\start.bat" >nul 2>&1
+)
+if not exist "%DIST%\tools\Launcher.cs" goto :ERR_FILES
 
 :: --- User Documentation, License & Version ---
-:: (NOTICE.txt は LICENSES\NOTICE.txt として LICENSES/ ごと同梱済み)
 for %%F in (README.md README_EN.md MANUAL.md README_USB.md RELEASE_NOTES.md LICENSE VERSION) do (
     if exist "%SRC%%%F" (
         copy /y "%SRC%%%F" "%DIST%\%%F" >nul 2>&1
@@ -208,20 +212,20 @@ if exist "%SRC%Tetheract_Mobile.html" (
     copy /y "%SRC%Tetheract_Mobile.html" "%DIST_UPD%\Tetheract_Mobile.html" >nul 2>&1
 )
 
-:: --- Working directories for portable USB (storage & take_out) ---
-if not exist "%DIST%\storage" mkdir "%DIST%\storage" 2>nul
+:: --- Standard working directories (Loome & take_out) ---
+if not exist "%DIST%\Loome" mkdir "%DIST%\Loome" 2>nul
 if not exist "%DIST%\take_out" mkdir "%DIST%\take_out" 2>nul
 
 goto :BUILD_LAUNCHER
 
 :ERR_FILES
-echo [ERROR] Failed to copy startup files.
+echo [ERROR] Failed to copy startup or tools files.
 goto :FAILED
 
 :: --- Build / Copy Tetheract.exe ---
 :BUILD_LAUNCHER
 echo.
-echo [3/4] Generating Tetheract.exe...
+echo [3/5] Generating Tetheract.exe...
 
 set "CSC=C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
 if not exist "%CSC%" (
@@ -229,7 +233,7 @@ if not exist "%CSC%" (
 )
 
 if exist "%CSC%" (
-    "%CSC%" /nologo /target:winexe /optimize+ /win32icon:"%SRC%frontend\favicon.ico" /out:"%DIST%\Tetheract.exe" "%SRC%launcher\Launcher.cs" >nul 2>&1
+    "%CSC%" /nologo /target:winexe /optimize+ /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll /win32icon:"%SRC%frontend\favicon.ico" /out:"%DIST%\Tetheract.exe" "%SRC%launcher\Launcher.cs" >nul 2>&1
     if exist "%DIST%\Tetheract.exe" (
         if exist "%SRC%PhotoManager.exe" del /f /q "%SRC%PhotoManager.exe" >nul 2>&1
         if exist "%SRC%Tetheract.exe" del /f /q "%SRC%Tetheract.exe" >nul 2>&1
@@ -268,17 +272,18 @@ set "OK=1"
 if not exist "%DIST%\frontend" set "OK=0"
 if not exist "%DIST%\server" set "OK=0"
 if not exist "%DIST%\server\run.py" set "OK=0"
-if not exist "%DIST%\run.py" set "OK=0"
+if not exist "%DIST%\tools\Launcher.cs" set "OK=0"
 if not exist "%DIST%\Tetheract.exe" set "OK=0"
 if not exist "%DIST%\MANUAL.md" set "OK=0"
 if not exist "%DIST_UPD%\frontend" set "OK=0"
 if not exist "%DIST_UPD%\server" set "OK=0"
+if not exist "%DIST_UPD%\tools\Launcher.cs" set "OK=0"
 if not exist "%DIST_UPD%\Tetheract.exe" set "OK=0"
 if exist "%SRC%models" (
     if not exist "%DIST%\models" set "OK=0"
 )
 
-if "%OK%"=="0" goto :MAKE_ZIPS_FAIL
+if "%OK%"=="0" goto :VERIFY_FAIL
 
 echo.
 echo ============================================================
@@ -289,9 +294,9 @@ echo   1. Full Package (for first-time users):
 echo      %DIST%
 echo      (Includes python/ ^& models/)
 echo.
-echo   2. Lightweight Update Package (for existing users / USB update):
+echo   2. Lightweight Update Package (for existing users / clean update):
 echo      %DIST_UPD%
-echo      (Only frontend/, server/, launcher ^& docs - overwrites in 1 sec!)
+echo      (Place Tetheract_v*diff.zip in app root and launch Tetheract.exe!)
 echo ============================================================
 echo.
 if not defined NO_PAUSE pause

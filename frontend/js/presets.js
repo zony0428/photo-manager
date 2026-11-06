@@ -219,29 +219,29 @@ function renderFilterPresetsList() {
     card.dataset.presetId = p.id;
 
     const f = p.filters || {};
-    const condBadges = [];
+    const condLines = [];
     if (f.currentFilter && f.currentFilter.type === 'folder' && f.currentFilter.value) {
       const name = f.currentFilter.value.replaceAll('\\', '/').split('/').filter(Boolean).pop() || f.currentFilter.value;
-      condBadges.push(`\u{1F4C1} ${escapeHtml(name)}`);
+      condLines.push(`\u{1F4C1} ${name}`);
     }
     if (f.selectedYearMonths && f.selectedYearMonths.length > 0) {
-      condBadges.push(`\u{1F4C5} ${escapeHtml(f.selectedYearMonths.join(', '))}`);
+      condLines.push(`\u{1F4C5} ${f.selectedYearMonths.join(', ')}`);
     }
     if (f.selectedDates && f.selectedDates.length > 0) {
-      condBadges.push(`\u{1F4C5} ${escapeHtml(f.selectedDates.join(', '))}`);
+      condLines.push(`\u{1F4C5} ${f.selectedDates.join(', ')}`);
     }
     if (f.cameraFilters && Object.keys(f.cameraFilters).length > 0) {
       const cams = Object.keys(f.cameraFilters).map(c => (f.cameraFilters[c] === 'include' ? `+${c}` : `\u2212${c}`));
-      condBadges.push(`\u{1F4F7} ${escapeHtml(cams.join(' '))}`);
+      condLines.push(`\u{1F4F7} ${cams.join(' ')}`);
     } else if (f.selectedCameras && f.selectedCameras.length > 0) {
-      condBadges.push(`\u{1F4F7} ${escapeHtml(f.selectedCameras.join(', '))}`);
+      condLines.push(`\u{1F4F7} ${f.selectedCameras.join(', ')}`);
     }
     if (f.lensFilters && Object.keys(f.lensFilters).length > 0) {
       const lenses = Object.keys(f.lensFilters).map(k => {
         const name = k.includes('::') ? k.split('::')[1] : k;
         return f.lensFilters[k] === 'include' ? `+${name}` : `\u2212${name}`;
       });
-      condBadges.push(`\u{1F52D} ${escapeHtml(lenses.join(' '))}`);
+      condLines.push(`\u{1F52D} ${lenses.join(' ')}`);
     }
     if (f.labFilter) {
       const labNames = {
@@ -251,48 +251,41 @@ function renderFilterPresetsList() {
         night: '夜景・星景',
         shake_risk: '手ブレ注意',
       };
-      condBadges.push(`\u{1F9EA} ${escapeHtml(labNames[f.labFilter] || f.labFilter)}`);
+      condLines.push(`\u{1F9EA} ${labNames[f.labFilter] || f.labFilter}`);
     }
     if (f.onThisDay) {
-      condBadges.push(`\u{1F382} ${escapeHtml(f.onThisDay)}`);
+      condLines.push(`\u{1F382} ${f.onThisDay}`);
     }
     if (f.focalRange) {
-      condBadges.push(`\u{1F52D} ${escapeHtml(f.focalRangeLabel || f.focalRange)}`);
+      condLines.push(`\u{1F52D} ${f.focalRangeLabel || f.focalRange}`);
     }
     if (f.apertureRange) {
-      condBadges.push(`\u{1F4A0} ${escapeHtml(f.apertureRangeLabel || f.apertureRange)}`);
+      condLines.push(`\u{1F4A0} ${f.apertureRangeLabel || f.apertureRange}`);
     }
     if (f.tagFilters) {
       const tags = Object.keys(f.tagFilters).map(t => (f.tagFilters[t] === 'include' ? `+${t}` : `\u2212${t}`));
-      if (tags.length > 0) condBadges.push(`\u{1F3F7}\uFE0F ${escapeHtml(tags.join(' '))}`);
+      if (tags.length > 0) condLines.push(`\u{1F3F7}\uFE0F ${tags.join(' ')}`);
     }
-    if (f.untaggedOnly) condBadges.push('\u{1F3F7}\uFE0F \u672A\u5206\u985E');
-    if (f.searchQuery) condBadges.push(`\u{1F50D} "${escapeHtml(f.searchQuery)}"`);
+    if (f.untaggedOnly) condLines.push('\u{1F3F7}\uFE0F \u672A\u5206\u985E');
+    if (f.searchQuery) condLines.push(`\u{1F50D} "${f.searchQuery}"`);
     if (f.ratingFilter && f.ratingFilter.length > 0 && f.ratingFilter.length < 3) {
       const rMap = { 2: '\u511A', 1: '\u826F', 0: '\u53EF', '-1': '\u68C4' };
-      condBadges.push(`\u2B50 ${f.ratingFilter.map(r => rMap[r] || r).join('/')}`);
+      condLines.push(`\u2B50 ${f.ratingFilter.map(r => rMap[r] || r).join('/')}`);
     }
     if (f.attrFilter && f.attrFilter !== 'all') {
       const attrLabels = { raw: 'RAW', adjusted: '調整済' };
-      condBadges.push(escapeHtml(attrLabels[f.attrFilter] || f.attrFilter));
+      condLines.push(attrLabels[f.attrFilter] || f.attrFilter);
     }
 
-    const condHtml = condBadges.length > 0
-      ? condBadges.map(b => `<span class="preset-cond-badge">${b}</span>`).join('')
-      : '<span class="preset-cond-badge">\u3059\u3079\u3066\u306E\u5199\u771F</span>';
-
+    const condSummary = condLines.length > 0 ? condLines.join('\n') : '\u3059\u3079\u3066\u306E\u5199\u771F\uFF08\u6761\u4EF6\u306A\u3057\uFF09';
     const dateStr = p.updated_at ? p.updated_at.substring(0, 10) : '';
+    const applyTooltip = `\u3053\u306E\u30D5\u30A3\u30EB\u30BF\u30BB\u30C3\u30C8\u3092\u9069\u7528\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n${condSummary}`;
+    const nameTooltip = dateStr ? `${p.name} (${dateStr})\n${condLines.join(' / ') || '\u3059\u3079\u3066\u306E\u5199\u771F'}` : p.name;
 
     card.innerHTML = `
-      <div class="preset-item-header">
-        <span class="preset-item-name" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}</span>
-        <span class="preset-item-date">${escapeHtml(dateStr)}</span>
-      </div>
-      <div class="preset-item-conditions">
-        ${condHtml}
-      </div>
+      <span class="preset-item-name" title="${escapeHtml(nameTooltip)}">${escapeHtml(p.name)}</span>
       <div class="preset-item-actions">
-        <button type="button" class="preset-action-btn apply-btn" title="\u3053\u306E\u30D5\u30A3\u30EB\u30BF\u30BB\u30C3\u30C8\u3092\u9069\u7528">
+        <button type="button" class="preset-action-btn apply-btn" title="${escapeHtml(applyTooltip)}">
           <span>\u9069\u7528</span>
         </button>
         <button type="button" class="preset-action-btn play-btn" title="\u3053\u306E\u30BB\u30C3\u30C8\u3067\u30B9\u30E9\u30A4\u30C9\u30B7\u30E7\u30FC\u3092\u518D\u751F">

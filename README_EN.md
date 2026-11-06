@@ -63,7 +63,7 @@ A visually quiet interface where photo colors stand out naturally, designed for 
 Every feature runs locally offline. Place the folder on an external SSD or USB drive to carry your entire environment across PCs and smartphones.
 
 - 100% Local Execution: Never uploads photos or loads external CDNs (only map tiles connect to OpenStreetMap). Local AI auto-tagging (CLIP & color re-evaluation) and offline GPS reverse geocoding run entirely on your PC.
-- No Installation Required: The portable Python runtime and SQLite database live in a single folder, launching directly via `Tetheract.exe` on any PC. Updates require only overwriting with a lightweight diff ZIP.
+- No Installation Required: The portable Python runtime and SQLite database live in a single folder, launching directly via `Tetheract.exe` on any PC. Updates can be applied cleanly by placing the lightweight diff ZIP in the app folder and launching `Tetheract.exe`.
 - Multi-SD Card & Drive Tracking by VSN: Tracks Volume Serial Numbers (VSN) to follow drive-letter changes automatically and distinguish multiple SD cards even on the same drive letter. Ratings, tags, and edits made on an SD card automatically carry over when files are moved to your PC.
 - Unplugged Browsing & Smartphone Culling: Browse thumbnails, search, and rate even when external drives are unplugged. Cull on your phone via home Wi-Fi (QR token) or offline USB (WebAssembly) and sync changes back to your PC.
 
@@ -90,20 +90,22 @@ Every feature runs locally offline. Place the folder on an external SSD or USB d
 
 No prior Python installation is required.
 
-1. First-Time Setup (Full Package `Tetheract_vX.X.X.zip`): Extract the ZIP and run `Tetheract.exe`.
-2. Updating (Lightweight Diff `Tetheract_vX.X.Xdiff.zip`): Extract and overwrite your existing folder to update while keeping `cache/` and `Loome/` (`storage/`) intact.
+1. First-Time Setup (Full Package `Tetheract_vX.X.X.zip`): Extract the ZIP and run `Tetheract.exe` (on first launch, you can optionally create `autorun.inf` for custom drive icon & label).
+2. Updating (Lightweight Diff `Tetheract_vX.X.Xdiff.zip`):
+   - **From v1.8.0+ (Automatic Clean Update)**: Simply place the downloaded `Tetheract_vX.X.Xdiff.zip` (without extracting) into the app folder and launch `Tetheract.exe`. It will automatically purge obsolete program files and perform a clean update while keeping `cache/` and `Loome/` untouched.
+   - **Upgrading from v1.7.2 or earlier**: Extract `diff.zip` and overwrite your existing folder, then launch `Tetheract.exe` (legacy root files such as `Build.bat`, `start.bat`, `run.py`, and `launcher/` are automatically tidied up on startup).
 
 > [!NOTE]
 > Upgrading from Photo Manager v3.x
-> - Legacy `PhotoManager.exe` and `PhotoManager_Mobile.html` are automatically cleaned up when launching `Tetheract.exe`.
+> - Legacy `PhotoManager.exe`, `PhotoManager_Mobile.html`, and old root scripts are automatically cleaned up when launching `Tetheract.exe`.
 > - A pre-migration DB snapshot is saved to `cache/backups/` on first launch, and backward compatibility with v3.x is preserved.
-> - If you use `autorun.inf` on a USB root, delete the existing `autorun.inf` and re-run `Build.bat` to regenerate it with the new icon and `TETHERACT pm` label.
+> - On first launch or after an update, `Tetheract.exe` will ask if you want to place `autorun.inf` if not already present.
 
 > [!IMPORTANT]
 > If Windows Defender SmartScreen Appears on First Launch
 > Because this personal project does not use a commercial code-signing certificate, SmartScreen may appear on first launch:
 > 1. Run directly: Click "More info" → "Run anyway".
-> 2. Build locally: Double-click `Build.bat` to compile `Tetheract.exe` locally from plain-text source ([`launcher/Launcher.cs`](launcher/Launcher.cs)) using the standard Windows C# compiler.
+> 2. Build locally: Double-click `tools/Build.bat` to compile `Tetheract.exe` locally from plain-text source (`tools/Launcher.cs`) using the standard Windows C# compiler.
 
 ### Option B: Cloning from GitHub
 

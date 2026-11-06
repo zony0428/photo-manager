@@ -221,14 +221,3 @@ def find_existing_thumbnail_for_duplicate(
                 "source_photo_id": src_pid,
             }
         return None
-
-
-def clone_thumbnail(source_photo_id: int, target_photo_id: int, file_hash: Optional[str] = None) -> bool:
-    """既存写真のサムネイルBLOBを別の写真レコードへ高速複製する"""
-    if source_photo_id == target_photo_id:
-        return False
-    thumb = get_thumbnail(source_photo_id)
-    if not thumb:
-        return False
-    save_thumbnail(target_photo_id, thumb["data"], thumb["width"], thumb["height"], file_hash)
-    return True

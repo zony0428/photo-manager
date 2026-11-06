@@ -176,10 +176,7 @@ def get_all_duplicate_groups(limit: int = 100) -> List[Dict[str, Any]]:
         if not dup_photos:
             return []
 
-        try:
-            from ..scanner import strip_vsn_prefix
-        except Exception:
-            strip_vsn_prefix = None
+        from ..scanner import strip_vsn_prefix
 
         results: List[Dict[str, Any]] = []
         for p in dup_photos:
@@ -540,18 +537,14 @@ def get_duplicates_for_photo(photo_id: int) -> List[Dict[str, Any]]:
         if len(links) <= 1:
             return []
 
-        try:
-            from ..scanner import resolve_portable_path, strip_vsn_prefix
-        except Exception:
-            resolve_portable_path = None
-            strip_vsn_prefix = None
+        from ..scanner import resolve_portable_path, strip_vsn_prefix
 
         rows: List[Dict[str, Any]] = []
         for lk in links:
             r = dict(base_photo)
             fp = lk.get("file_path") or ""
             vol_ser = lk.get("volume_serial") or None
-            clean_fp = strip_vsn_prefix(fp) if strip_vsn_prefix else fp
+            clean_fp = strip_vsn_prefix(fp)
             r["link_id"] = lk["id"]
             r["file_path"] = clean_fp
             r["directory_path"] = lk.get("directory_path") or base_photo.get("directory_path")
@@ -560,7 +553,7 @@ def get_duplicates_for_photo(photo_id: int) -> List[Dict[str, Any]]:
             r["volume_label"] = lk.get("volume_label")
             r["volume_custom_name"] = lk.get("volume_custom_name") or ""
 
-            if resolve_portable_path and fp:
+            if fp:
                 resolved_p, is_online = resolve_portable_path(fp, expected_serial=vol_ser)
                 r["is_offline"] = not (is_online and resolved_p.exists())
                 resolved_str = str(resolved_p)

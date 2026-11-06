@@ -4,22 +4,23 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Tetheract Photo Manager</title>
-  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=1.7.1">
-  <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32.png?v=1.7.1">
-  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png?v=1.7.1">
-  <link rel="apple-touch-icon" href="/icons/icon-192.png?v=1.7.1">
-  <link rel="manifest" href="/manifest.json?v=1.7.1">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=1.8.1">
+  <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32.png?v=1.8.1">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png?v=1.8.1">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png?v=1.8.1">
+  <link rel="manifest" href="/manifest.json?v=1.8.1">
   <meta name="theme-color" content="#191816">
   <link rel="stylesheet" href="/vendor/fonts/fonts.css">
-  <link rel="stylesheet" href="/css/style.css?v=1.7.1">
-  <link rel="stylesheet" href="/css/grid-lightbox.css?v=1.7.1">
-  <link rel="stylesheet" href="/css/selection-menu.css?v=1.7.1">
-  <link rel="stylesheet" href="/css/inspector.css?v=1.7.1">
-  <link rel="stylesheet" href="/css/modals-features.css?v=1.7.1">
-  <link rel="stylesheet" href="/css/lab-map.css?v=1.7.1">
-  <link rel="stylesheet" href="/css/histogram.css?v=1.7.1">
-  <link rel="stylesheet" href="/css/compare.css?v=1.7.1">
-  <link rel="stylesheet" href="/css/ui-unify.css?v=1.7.1">
+  <link rel="stylesheet" href="/css/style.css?v=1.8.1">
+  <link rel="stylesheet" href="/css/grid-lightbox.css?v=1.8.1">
+  <link rel="stylesheet" href="/css/selection-menu.css?v=1.8.1">
+  <link rel="stylesheet" href="/css/inspector.css?v=1.8.1">
+  <link rel="stylesheet" href="/css/modals-features.css?v=1.8.1">
+  <link rel="stylesheet" href="/css/modals-tools.css?v=1.8.1">
+  <link rel="stylesheet" href="/css/lab-map.css?v=1.8.1">
+  <link rel="stylesheet" href="/css/histogram.css?v=1.8.1">
+  <link rel="stylesheet" href="/css/compare.css?v=1.8.1">
+  <link rel="stylesheet" href="/css/ui-unify.css?v=1.8.1">
   <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
   <script src="/vendor/leaflet/leaflet.js"></script>
   <script>
@@ -207,14 +208,14 @@
 
         <div class="logo" id="headerAppLogo" title="Tetheract Photo Manager">
           <span class="logo-icon-wrap">
-            <img class="logo-app-icon" id="headerLogoStaticImg" src="/icons/icon-192.png?v=1.7.1" width="24" height="24" alt="" aria-hidden="true">
+            <img class="logo-app-icon" id="headerLogoStaticImg" src="/icons/icon-192.png?v=1.8.1" width="24" height="24" alt="" aria-hidden="true">
             <canvas class="logo-app-icon-canvas" id="headerTetheractCanvas" width="72" height="72" aria-hidden="true"></canvas>
           </span>
           <svg class="logo-lockup-svg" viewBox="64 8 248 48" width="134" height="26" fill="none" role="img" aria-label="TETHERACT pm">
             <text x="0" y="45.41" fill="var(--logo-text)" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif" font-size="44.38" font-weight="700" letter-spacing="2.8" textLength="269.4" lengthAdjust="spacingAndGlyphs" transform="translate(66, 0) scale(0.7071, 1)">TETHERACT</text>
             <text x="0" y="45.41" fill="var(--logo-pm)" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif" font-size="35.60" font-weight="600" letter-spacing="1.0" transform="translate(265, 0) scale(0.75, 1)">pm</text>
           </svg>
-          <span class="app-version" id="appVersion" title="v1.7.1 (最終更新: 2026-11-05 18:24)">v1.7.1</span>
+          <span class="app-version" id="appVersion" title="v1.8.1 (最終更新: 2026-11-06 13:35)">v1.8.1</span>
         </div>
 
         <!-- UI言語切替（日本語 JP ⇄ English EN） -->
@@ -298,12 +299,7 @@
           </div>
 
           <!-- 4. スタック ON/OFF ＆ 5. 情報 ON/OFF -->
-          <template id="deprecatedHeaderSlideshow" style="display:none;">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-            <span class="btn-label">スライドショー</span></template><!--
-          </button>
-
-          --><button id="toggleStackBtn" class="btn btn-icon-toggle header-compact-btn active" title="露出ブラケット・連写のスタック表示切り替え (ONで代表写真のみ表示、OFFで全枚数展開)">
+          <button id="toggleStackBtn" class="btn btn-icon-toggle header-compact-btn active" title="露出ブラケット・連写のスタック表示切り替え (ONで代表写真のみ表示、OFFで全枚数展開)">
             <svg class="icon-stack" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
               <polygon points="12 2 2 7 12 12 22 7 12 2"/>
               <polyline points="2 17 12 22 22 17"/>
@@ -369,35 +365,37 @@
       <aside class="sidebar accordion-sidebar sidebar-two-stage" id="sidebar">
         <!-- 第1段階: 左端 垂直タブレール (Activity Bar) -->
         <nav class="sidebar-rail" id="sidebarRail" aria-label="サイドバー切替タブ">
-          <button type="button" class="rail-tab-btn active" data-section="quick" title="Binder — 絞り込み条件セットの保存・呼び出し">
-            <span class="rail-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span>
-            <span class="rail-tab-label">Binder</span>
-          </button>
           <button type="button" class="rail-tab-btn" data-section="folder" title="Folder — フォルダツリー・メディア管理">
             <span class="rail-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>
             <span class="rail-tab-label">Folder</span>
           </button>
-          <button type="button" class="rail-tab-btn" data-section="tags" title="Tag — タグ・カラーフィルタ">
+          <div class="rail-divider" aria-hidden="true"></div>
+          <button type="button" class="rail-tab-btn active" data-section="quick" title="Binder — 絞り込み条件セットの保存・呼び出し">
             <span class="rail-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="10" y="10" width="7.5" height="7.5"/><line x1="3.6" y1="3.6" x2="10" y2="10"/><line x1="20.4" y1="3.6" x2="17.5" y2="10"/><line x1="20.4" y1="20.4" x2="17.5" y2="17.5"/><line x1="3.6" y1="20.4" x2="10" y2="17.5"/></svg></span>
-            <span class="rail-tab-label">Tag</span>
+            <span class="rail-tab-label">Binder</span>
           </button>
-          <button type="button" class="rail-tab-btn" data-section="location" title="Place — 撮影地・制覇マップ">
-            <span class="rail-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M19.5 9.5c0 5.5-7.5 10.5-7.5 10.5S4.5 15 4.5 9.5a7.5 7.5 0 0 1 15 0z"/><circle cx="12" cy="9.5" r="2.6"/><path d="M17.9 19a7.5 2 0 1 1-11.8 0"/></svg></span>
-            <span class="rail-tab-label">Place</span>
+          <div class="rail-gap" aria-hidden="true"></div>
+          <button type="button" class="rail-tab-btn" data-section="tags" title="Tag — タグ・カラーフィルタ">
+            <span class="rail-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg></span>
+            <span class="rail-tab-label">Tag</span>
           </button>
           <button type="button" class="rail-tab-btn" data-section="timeline" title="Historia — 撮影年月・カレンダー">
             <span class="rail-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span>
             <span class="rail-tab-label">Historia</span>
           </button>
+          <button type="button" class="rail-tab-btn" data-section="location" title="Place — 撮影地・制覇マップ">
+            <span class="rail-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M19.5 9.5c0 5.5-7.5 10.5-7.5 10.5S4.5 15 4.5 9.5a7.5 7.5 0 0 1 15 0z"/><circle cx="12" cy="9.5" r="2.6"/><path d="M17.9 19a7.5 2 0 1 1-11.8 0"/></svg></span>
+            <span class="rail-tab-label">Place</span>
+          </button>
           <button type="button" class="rail-tab-btn" data-section="camera" title="Gear — カメラ・レンズ">
             <span class="rail-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></span>
             <span class="rail-tab-label">Gear</span>
           </button>
+          <div class="rail-spacer" aria-hidden="true"></div>
           <button type="button" class="rail-tab-btn" data-section="lab" title="Lab — 撮影カルテ・スマート抽出">
             <span class="rail-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v7.31"/><path d="M14 9.3V1.99"/><path d="M8.5 2h7"/><path d="M14 9.3a6.5 6.5 0 1 1-4 0"/><path d="M5.52 16h12.96"/></svg></span>
             <span class="rail-tab-label">Lab</span>
           </button>
-          <div class="rail-spacer"></div>
           <button type="button" class="rail-tab-btn rail-tab-search" data-section="search" title="Search — ファイル名検索">
             <span class="rail-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
             <span class="rail-tab-label">Search</span>
@@ -448,7 +446,7 @@
           <div class="accordion-item is-open" data-section="quick" id="accordionItem-quick">
             <div class="accordion-header" data-section="quick">
               <span class="accordion-arrow">▶</span>
-              <span class="accordion-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span>
+              <span class="accordion-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="10" y="10" width="7.5" height="7.5"/><line x1="3.6" y1="3.6" x2="10" y2="10"/><line x1="20.4" y1="3.6" x2="17.5" y2="10"/><line x1="20.4" y1="20.4" x2="17.5" y2="17.5"/><line x1="3.6" y1="20.4" x2="10" y2="17.5"/></svg></span>
               <span class="accordion-title">Binder</span>
               <span class="badge-sub">条件セット保存</span>
             </div>
@@ -476,7 +474,7 @@
                 </li>
                 <li class="nav-divider" aria-hidden="true"></li>
                 <li class="nav-item" data-filter-type="untagged" id="untaggedNavItem">
-                  <span class="nav-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="10" y="10" width="7.5" height="7.5"/><line x1="3.6" y1="3.6" x2="10" y2="10"/><line x1="20.4" y1="3.6" x2="17.5" y2="10"/><line x1="20.4" y1="20.4" x2="17.5" y2="17.5"/><line x1="3.6" y1="20.4" x2="10" y2="17.5"/></svg></span>
+                  <span class="nav-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg></span>
                   <span class="nav-text">未分類の写真</span>
                   <span class="nav-count" id="untaggedPhotosCount">0</span>
                 </li>
@@ -596,7 +594,7 @@
           <div class="accordion-item" data-section="tags" id="accordionItem-tags">
             <div class="accordion-header" data-section="tags">
               <span class="accordion-arrow">▶</span>
-              <span class="accordion-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="10" y="10" width="7.5" height="7.5"/><line x1="3.6" y1="3.6" x2="10" y2="10"/><line x1="20.4" y1="3.6" x2="17.5" y2="10"/><line x1="20.4" y1="20.4" x2="17.5" y2="17.5"/><line x1="3.6" y1="20.4" x2="10" y2="17.5"/></svg></span>
+              <span class="accordion-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg></span>
               <span class="accordion-title">Tag</span>
               <span class="badge-sub">タグ・カラー</span>
             </div>
@@ -902,33 +900,12 @@
 
       <!-- 右インスペクタ・ペイン（単一写真詳細 ＆ 複数写真一括編集） -->
       <aside class="inspector-pane" id="inspectorPane" style="display: none;">
-        <!-- ヘッダー -->
-        <div class="inspector-header">
-          <div class="inspector-title-area">
-            <span class="inspector-icon" id="inspectorIcon" style="display:inline-flex;align-items:center;color:var(--text-muted);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></span>
-            <h3 class="inspector-title" id="inspectorTitle">写真情報</h3>
-            <!-- フォルダを開くボタン（ファイル名の横に配置・アイコンのみ） -->
-            <button type="button" class="inspector-header-folder-btn" id="inspectorOpenFolderBtn" title="元データが格納されているフォルダを開く (Explorer)" style="display: none;">
-              <span class="folder-btn-icon" style="display:inline-flex;align-items:center;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>
-            </button>
-            <!-- ファイル名を変更ボタン（storage内写真のみ表示・アイコンのみ） -->
-            <button type="button" class="inspector-header-file-btn inspector-rename-btn" id="inspectorRenameHeaderBtn" title="ファイル名を変更 (F2)" style="display: none;">
-              <span class="file-btn-icon" style="display:inline-flex;align-items:center;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></span>
-            </button>
-            <!-- ファイルを開くボタン（規定のアプリで開く・アイコンのみ） -->
-            <button type="button" class="inspector-header-file-btn" id="inspectorOpenFileBtn" title="写真を関連付けられた規定のアプリで開く" style="display: none;">
-              <span class="file-btn-icon" style="display:inline-flex;align-items:center;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></span>
-            </button>
-          </div>
-          <button class="btn-icon inspector-close-btn" id="closeInspectorBtn" title="パネルを閉じる">&times;</button>
-        </div>
-
         <!-- 上部固定プレビューサムネイル（スクロールしても常に固定表示） -->
         <div class="inspector-fixed-preview" id="inspectorFixedPreview">
           <div class="inspector-preview-wrapper inspector-preview-container" id="inspectorPreviewWrapper" title="ダブルクリックでライトボックスを開く">
             <img id="inspectorThumb" src="" alt="プレビュー">
           </div>
-          <!-- クイックアクションバー（画像調整・ヒストグラム・回転） -->
+          <!-- クイックアクションバー（画像調整・ヒストグラム・回転・フォルダ/アプリで開く） -->
           <div class="inspector-quick-actions-bar" id="inspectorQuickActionsBar">
             <button type="button" class="inspector-quick-action-btn" id="inspectorQuickAdjustBtn" title="切り抜き・傾き・明るさを調整 (Cキー)">
               <span id="inspectorQuickAdjustLabel">調整</span>
@@ -941,6 +918,12 @@
             </button>
             <button type="button" class="inspector-quick-action-btn is-icon-only" id="inspectorQuickRotateRightBtn" title="時計回りに90°回転 (Rキー)">
               <span>↻</span>
+            </button>
+            <button type="button" class="inspector-quick-action-btn is-icon-only" id="inspectorOpenFolderBtn" title="元データが格納されているフォルダを開く (Explorer)" style="display: none;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            </button>
+            <button type="button" class="inspector-quick-action-btn is-icon-only" id="inspectorOpenFileBtn" title="写真を関連付けられた規定のアプリで開く" style="display: none;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
             </button>
           </div>
           <!-- XMPサイドカー検出・プレビュー・取込バー -->
@@ -1441,7 +1424,7 @@
           <div class="help-card" style="margin-top: 14px;">
             <h4>5. 複数の写真をまとめて操作する・絞り込み検索</h4>
             <p>複数選択：Ctrl + クリックで追加選択、Shift + クリックで範囲選択、Ctrl + A で全選択できます。複数枚を選ぶと、右インスペクタの一括編集パネルや右クリックメニューから、まとめて評価付け・タグ付け・回転・テイクアウト・日時シフト補正が行えます。</p>
-            <p>写真を探す：左サイドバーの「Binder（条件セット保存）」「Folder（フォルダ・メディア）」「Tag（タグ・カラー）」「Place（撮影地・マップ）」「Historia（撮影年月・カレンダー）」「Gear（カメラ・レンズ）」「Lab（分析・発掘）」、および一番下の「Search（ファイル名検索）」で絞り込めます。フィルタ適用中は写真グリッドを一切上下にずらさず、画面下部にフローティングのフィルタフッターバーが現れ、条件が自然な日本語文（「または」「かつ」「除く」）として表示されます。フッター内の条件ピルを左クリックするとその場で条件の変更・追加ポップオーバーが開き、右クリックで含む[+]⇔除外[-]を反転、タグ条件の接続詞（「または」「かつ」）をクリックでAND⇔OR切替、×で個別解除、「すべて解除」で全解除できます。</p>
+            <p>写真を探す：左サイドバーの「Folder（フォルダ・メディア）」「Binder（条件セット保存）」「Tag（タグ・カラー）」「Historia（撮影年月・カレンダー）」「Place（撮影地・マップ）」「Gear（カメラ・レンズ）」、および下部の「Lab（分析・発掘）」「Search（ファイル名検索）」で絞り込めます。フィルタ適用中は写真グリッドを一切上下にずらさず、画面下部にフローティングのフィルタフッターバーが現れ、条件が自然な日本語文（「または」「かつ」「除く」）として表示されます。フッター内の条件ピルを左クリックするとその場で条件の変更・追加ポップオーバーが開き、右クリックで含む[+]⇔除外[-]を反転、タグ条件の接続詞（「または」「かつ」）をクリックでAND⇔OR切替、×で個別解除、「すべて解除」で全解除できます。</p>
             <p>メインツールバー（フッター／ヘッダー切替対応）：既定で画面下部に配置されるメインツールバー（設定モーダルから「下部（フッター）」と「上部（ヘッダー）」を切り替え可能）の中央には、3つの基本フィルタ（表示対象プルダウン・形式/状態プルダウン・優良可棄トグル）と合算枚数バッジ、並び順、表示レイアウト、スタック/情報切替、サムネイルサイズスライダーが集約されています。</p>
           </div>
         </div>
@@ -3185,23 +3168,28 @@
     </div>
   </div>
 
-  <script src="/js/common.js?v=1.7.1"></script>
-  <script src="/js/selection.js?v=1.7.1"></script>
-  <script src="/js/inspector.js?v=1.7.1"></script>
-  <script src="/js/lightbox.js?v=1.7.1"></script>
-  <script src="/js/adjust.js?v=1.7.1"></script>
-  <script src="/js/histogram.js?v=1.7.1"></script>
-  <script src="/js/compare.js?v=1.7.1"></script>
-  <script src="/js/takeout.js?v=1.7.1"></script>
-  <script src="/js/presets.js?v=1.7.1"></script>
-  <script src="/js/slideshow.js?v=1.7.1"></script>
-  <script src="/js/location_tree.js?v=1.7.1"></script>
-  <script src="/js/folder_tree.js?v=1.7.1"></script>
-  <script src="/js/location_map.js?v=1.7.1"></script>
-  <script src="/js/lab.js?v=1.7.1"></script>
-  <script src="/js/sidebar_filters.js?v=1.7.1"></script>
-  <script src="/js/storage.js?v=1.7.1"></script>
-  <script src="/js/app.js?v=1.7.1"></script>
-  <script src="/js/i18n.js?v=1.7.1"></script>
+  <script src="/js/common.js?v=1.8.1"></script>
+  <script src="/js/selection.js?v=1.8.1"></script>
+  <script src="/js/inspector.js?v=1.8.1"></script>
+  <script src="/js/lightbox.js?v=1.8.1"></script>
+  <script src="/js/adjust.js?v=1.8.1"></script>
+  <script src="/js/histogram.js?v=1.8.1"></script>
+  <script src="/js/compare.js?v=1.8.1"></script>
+  <script src="/js/takeout.js?v=1.8.1"></script>
+  <script src="/js/presets.js?v=1.8.1"></script>
+  <script src="/js/slideshow.js?v=1.8.1"></script>
+  <script src="/js/location_tree.js?v=1.8.1"></script>
+  <script src="/js/folder_tree.js?v=1.8.1"></script>
+  <script src="/js/location_map.js?v=1.8.1"></script>
+  <script src="/js/lab.js?v=1.8.1"></script>
+  <script src="/js/sidebar_filters.js?v=1.8.1"></script>
+  <script src="/js/storage.js?v=1.8.1"></script>
+  <script src="/js/maintenance_reminders.js?v=1.8.1"></script>
+  <script src="/js/filter_chips.js?v=1.8.1"></script>
+  <script src="/js/media_volumes.js?v=1.8.1"></script>
+  <script src="/js/security_ui.js?v=1.8.1"></script>
+  <script src="/js/app.js?v=1.8.1"></script>
+  <script src="/js/i18n_dict.js?v=1.8.1"></script>
+  <script src="/js/i18n.js?v=1.8.1"></script>
 </body>
 </html>

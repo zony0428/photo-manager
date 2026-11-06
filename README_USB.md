@@ -9,8 +9,10 @@
 
 1. 配布パッケージ（ZIP を解凍した中身）を USB メモリや外付け SSD の任意のフォルダ（またはルート階層）にコピーします。
 2. フォルダ内の `Tetheract.exe` をダブルクリックすると、コマンドプロンプト画面を出さずに専用ウィンドウで起動します。
-   - 初回起動時に Windows の保護画面（SmartScreen）やセキュリティソフトのブロックが出た場合は、同フォルダの `Build.bat` をダブルクリックしてください。Windows 標準搭載の C# コンパイラを使って、その場で平文のソースコード（`launcher/Launcher.cs`）から `Tetheract.exe` を生成して起動します（USB ドライブ直下で実行した際は、ドライブアイコン・ボリューム名 `TETHERACT pm` 設定用の `autorun.inf` も選択作成できます。旧バージョンからアップデートした際は、既存の `autorun.inf` を一度削除してから `Build.bat` を実行し直すことをおすすめします）。
-3. 終了して USB ドライブを取り外すときは、画面右上の「終了」ボタンから「サーバーを停止して終了」を選び、プロセスを完全に停止させてから取り外してください。
+   - 初回起動時およびアップデート完了時に、ドライブアイコン・ボリューム名（`TETHERACT pm`）表示用の `autorun.inf` を設置するか確認ダイアログが表示されます。
+   - 初回起動時に Windows の保護画面（SmartScreen）やセキュリティソフトのブロックが出た場合は、`tools/Build.bat` をダブルクリックしてください。Windows 標準搭載の C# コンパイラを使って、その場で平文のソースコード（`tools/Launcher.cs`）から `Tetheract.exe` を生成して起動します。
+3. アップデートする際は、軽量差分版 `Tetheract_vX.X.Xdiff.zip` を解凍せずにそのまま `Tetheract.exe` と同じフォルダへ置いて `Tetheract.exe` を起動するだけで、古い不要プログラムを一掃してクリーン更新されます。
+4. 終了して USB ドライブを取り外すときは、画面右上の「終了」ボタンから「サーバーを停止して終了」を選び、プロセスを完全に停止させてから取り外してください。
 
 ---
 
@@ -36,20 +38,19 @@
 ## フォルダ構成
 
 ```text
-PhotoManager/
-├── Tetheract.exe           起動用ランチャー本体（ダブルクリックで起動）
-├── Build.bat                  ランチャー再生成＆USBアイコン(autorun.inf)設定バッチ
+Tetheract/
+├── Tetheract.exe           起動用ランチャー本体（ダブルクリックで起動＆クリーンアップデーター）
 ├── Tetheract_Mobile.html   スマートフォン用オフライン選別アプリ（単一HTML）
-├── start.bat                  予備起動用バッチ
-├── MANUAL.md                  操作マニュアル
-├── RELEASE_NOTES.md           リリースノート・更新履歴
-├── LICENSE / LICENSES/        ライセンス表記一式
-├── python/                    同梱のポータブル Python 3.11 環境（PCへのインストール不要）
-├── models/                    ローカル AI 自動タグ付け用モデル
-├── cache/                     SQLite データベース（library.db）とサムネイルデータ
-├── frontend/                  UI 画面（HTML / CSS / JS）
-├── server/                    バックエンド処理（FastAPI / RAW・画像解析）
-└── storage/ (Loome/)          専用保管庫 Loome（コピーして持ち歩く写真・サブフォルダ）
+├── Loome/                  専用保管庫 Loome（コピーして持ち歩く写真・サブフォルダ）
+├── take_out/               スマート・テイクアウト＆ベタ焼きHTMLの標準出力先
+├── cache/                  SQLite データベース（library.db）とサムネイルデータ
+├── frontend/               UI 画面（HTML / CSS / JS）
+├── server/                 バックエンド処理（FastAPI / RAW・画像解析 / run.py）
+├── python/                 同梱のポータブル Python 3.11 環境（PCへのインストール不要）
+├── models/                 ローカル AI 自動タグ付け用モデル
+├── tools/                  自前再コンパイル・予備起動ツール（Build.bat / start.bat / Launcher.cs）
+├── LICENSES/               OSSライセンス表記一式（NOTICE.txt 含む）
+└── MANUAL.md / README*.md  操作マニュアル・リリースノート・ライセンス文書
 ```
 
 ---
@@ -57,8 +58,8 @@ PhotoManager/
 ## トラブルシューティング
 
 - 初回起動時に「Windows によって PC が保護されました（SmartScreen）」と出た場合：  
-  個人開発ソフトであり商用のコード署名証明書を付与していないため表示される確認画面です。「詳細情報」から「実行」をクリックするか、フォルダ内の `Build.bat` をダブルクリックするとお使いの PC 上で `Tetheract.exe` が生成され、スムーズに起動します。
-- 「実行可能な Python が見つかりませんでした」と出る場合：  
+  個人開発ソフトであり商用のコード署名証明書を付与していないため表示される確認画面です。「詳細情報」から「実行」をクリックするか、`tools/Build.bat` をダブルクリックするとお使いの PC 上で `Tetheract.exe` が生成され、スムーズに起動します。
+- 「ポータブルPythonが見つかりませんでした」と出る場合：  
   GitHub のソースコードから直接取得した場合など、`python/` フォルダが空のときは、インターネットに接続された PC で `setup_portable_python.bat` を1回実行してください。公式の Embeddable Python と必要ライブラリが `python/` に自動構築されます。
 - ポートが使用中で起動できない場合：  
-  `run.py` 内の `PORT = 8088` を `8089` などに変更してください。
+  `server/run.py` 内の `PORT = 8088` を `8089` などに変更してください。

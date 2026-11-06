@@ -882,18 +882,6 @@ async function applyRatingToSelection(rating) {
   }
 }
 
-/* ==========================================================================
-   右ペイン (インスペクタ / 詳細・一括編集) ロジック
-   ========================================================================== */
-/**
- * 右ペインの開閉トグル
-
-
-function closeAllFloatingPopovers() {
-  // 廃止済み下部フローティングバー用関数の互換スタブ
-}
-window.closeAllFloatingPopovers = closeAllFloatingPopovers;
-
 /**
  * 複数選択 & コンテキストメニュー関連イベントリスナーの登録
  */
@@ -911,7 +899,6 @@ function initSelectionEvents() {
   // Escキーで日時シフトモーダルを閉じる
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
-      closeAllFloatingPopovers();
       const shiftModal = elements.dateShiftModal || document.getElementById('dateShiftModal');
       if (shiftModal && shiftModal.style.display !== 'none') {
         closeDateShiftModal();
@@ -1143,73 +1130,6 @@ function initSelectionEvents() {
 
   // 撮影日時一括シフト補正モーダルのイベント登録
   initDateShiftModalEvents();
-}
-
-/**
- * 選択中の写真をライブラリ（DB）から削除する（実ファイルは削除しない）。
- * スタック表示中は、選択カードが代表するスタックメンバー（RAWペア・ブラケット）もまとめて削除する。
- */
-async function deleteSelectedPhotos() {
-  closeContextMenu();
-  if (state.selectedPhotoIds.size === 0) return;
-
-  const targetIds = new Set(state.selectedPhotoIds);
-  if (state.isStacked) {
-    for (const id of state.selectedPhotoIds) {
-      const photo = state.photos.find(p => p.id === id);
-      if (photo && Array.isArray(photo.stack_photos)) {
-        photo.stack_photos.forEach(m => targetIds.add(m.id));
-      }
-    }
-  }
-
-  const selectedCount = state.selectedPhotoIds.size;
-  const extraCount = targetIds.size - selectedCount;
-  const confirmed = typeof showConfirmModal === 'function'
-    ? await showConfirmModal({
-        title: '写真をライブラリから削除',
-        subtitle: '選択した写真のDB登録を解除',
-        icon: 'trash',
-        headingText: `選択中の ${selectedCount.toLocaleString()} 枚をライブラリから削除しますか？` +
-          (extraCount > 0 ? `（スタック内の写真 ${extraCount.toLocaleString()} 枚も含みます）` : ''),
-        descriptionLines: [
-          '※ 写真ファイル自体は削除されません。',
-          '※ タグ・評価・サムネイルの情報は失われます。',
-          '※ 同じフォルダを再スキャンすると再登録されます。',
-        ],
-        confirmText: 'ライブラリから削除',
-        confirmVariant: 'danger',
-      })
-    : confirm(
-        `選択中の ${selectedCount} 枚をライブラリから削除しますか？\n` +
-        (extraCount > 0 ? `（スタック内の写真 ${extraCount} 枚も含みます）\n` : '') +
-        `\n※ 写真ファイル自体は削除されません。\n` +
-        `※ タグ・評価・サムネイルの情報は失われます。\n` +
-        `※ 同じフォルダを再スキャンすると再登録されます。`
-      );
-  if (!confirmed) return;
-
-  try {
-    const res = await fetch('/api/photos/batch-delete', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ photo_ids: Array.from(targetIds) }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || 'ライブラリからの削除に失敗しました');
-
-    if (typeof showToast === 'function') {
-      showToast(`${data.deleted || targetIds.size}枚の写真をライブラリから削除しました`, 'info', 3000);
-    }
-    clearSelection();
-    await refreshAll();
-  } catch (err) {
-    if (typeof showToast === 'function') {
-      showToast(`エラー: ${err.message}`, 'error');
-    } else {
-      alert('エラー: ' + err.message);
-    }
-  }
 }
 
 /**

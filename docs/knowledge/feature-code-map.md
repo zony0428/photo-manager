@@ -44,9 +44,26 @@
 | `frontend/js/presets.js` | フィルタプリセットの保存・適用・チップ描画・削除 |
 | `frontend/js/slideshow.js` | フルスクリーンスライドショービューア（ダブルバッファ切替、自動再生、シャッフル） |
 | `frontend/js/sidebar_filters.js` | 左ペインのタイムライン（年月ツリー）、カメラ＆レンズ2階層ツリー（`[+]`/`[-]`排他検索）、フォルダ階層データ構築、階層タグツリー（`📊 枚数順` トグル＆名前順4ルール）・12色カラーパレット管理 |
-| `frontend/js/i18n.js` | マルチランゲージ（日本語 `🇯🇵 JP` ⇄ 英語 `🇺🇸 EN`）リアルタイム双方向切替モジュール（MutationObserver 連動） |
-| `frontend/js/app.js` | コアオーケストレータ: 初期化、データ取得、写真グリッド段階チャンク描画、適用中フィルタチップ描画、評価・タグ更新、キーボードショートカット |
+| `frontend/js/maintenance_reminders.js` | 起動時の週次DBバックアップリマインダー、リンク消失（`unlinked`）写真の完全消去アクション、重複写真件数の取得 |
+| `frontend/js/filter_chips.js` | 適用中フィルタ・フローティングバー描画（`renderActiveFilterChips`）＆ 自然言語風条件変更ポップオーバー（`openNlFilterPopover`） |
+| `frontend/js/media_volumes.js` | 登録メディア（SDカード・ドライブ VSN）一覧・管理モーダル、物理ボリュームラベル変更（PIN承認UI）、フォルダ選択時の差分検知（`checkAndPromptFolderRefresh`） |
+| `frontend/js/security_ui.js` | 3段階セキュリティ＆エシカル保護（Lv.0/1/2）のロック画面・設定UI・別環境外付けLoome解錠モーダル制御 |
+| `frontend/js/i18n_dict.js` | マルチランゲージ（日本語 ⇄ 英語）翻訳辞書データ（`EXACT_MAP`, `PREF_ROMAJI_MAP`, `PATTERN_RULES`） |
+| `frontend/js/i18n.js` | マルチランゲージ（日本語 `🇯🇵 JP` ⇄ 英語 `🇺🇸 EN`）リアルタイム双方向切替エンジン（MutationObserver 連動） |
+| `frontend/js/app.js` | コアオーケストレータ: 初期化、データ取得、写真グリッド段階チャンク描画、フィルタ状態制御、評価・タグ更新、キーボードショートカット |
 | `frontend/js/mobile.js` | スマホ専用画面（`mobile.html` / `/m`）のコントローラ: PC直結モード・WebAssembly (`sql.js`) ローカルDB直接読込モード、片手4段階選別、差分JSON出力/同期 |
+
+### バックエンド API ルーター構成 (`server/app.py` ＆ `server/routers/`)
+| モジュール | 役割・担当エンドポイント |
+|---|---|
+| `server/app.py` | FastAPI本体、セキュリティミドルウェア（Host/Origin/LAN検証・423ロック遮断）、写真一覧・詳細・サムネイル・ビュー配信、タグ操作、画像調整、フォルダ・タイムライン・DB保守API |
+| `server/routers/common.py` | ルーター間共有ユーティリティ（`_fast_json`, `_require_localhost`, `_API_PHOTOS_RESPONSE_CACHE`, `clear_api_photos_cache`, `_mobile_sync_event`） |
+| `server/routers/ai_router.py` | CLIP AI自動タグ付け・カラータグ再判定・候補昇格API (`/api/ai/*`) |
+| `server/routers/gps_lab_router.py` | GPSジオタグ候補・一括推定・ロケーションツリー・ヒートマップ・ラボカルテAPI (`/api/photo/*/gps*`, `/api/locations/*`, `/api/lab/*`) |
+| `server/routers/storage_volumes_router.py` | 登録メディア・ボリュームVSN管理・PIN発行検証 (`/api/volumes*`)、専用保管庫 `Loome` (`storage`) フォルダ・写真操作 (`/api/storage/*`)、重複解決 (`/api/duplicates*`) |
+| `server/routers/export_import_router.py` | ピックアップ (`take_out` / `/api/import/*`)、スマート・テイクアウト＆コンタクトシート出力 (`/api/export/*`) |
+| `server/routers/mobile_router.py` | スマホ専用ビューア (`/m`)、単体HTML配信、QR生成、オフライン差分同期 (`/api/mobile/*`) |
+| `server/routers/security_router.py` | 3段階セキュリティ状態取得・ロック/解錠・Lv切替・メディア救済・外部Loome承認 (`/api/security/*`) |
 
 ### CSS モジュール (`frontend/css/` — カスケード順序通りに `<link>` 読込)
 | スタイルシート | 役割・担当コンポーネント |
@@ -55,7 +72,8 @@
 | `frontend/css/grid-lightbox.css` | メインコンテンツエリア、写真グリッド（標準・びっしり・マウント・クリーン表示）、スキャンモーダル、ライトボックス全画面ビュー |
 | `frontend/css/selection-menu.css` | マルチ選択チェックボックス、右クリックコンテキストメニュー（#contextMenu）、フォルダ右クリックメニュー（#folderContextMenu） |
 | `frontend/css/inspector.css` | 右インスペクタ・ペイン、露出ブラケット・連写スタックバー、RAWバッジ、GPSミニマップ、評価フィルタトグル |
-| `frontend/css/modals-features.css` | 保存済みプリセット、フルスクリーンスライドショー、AI自動タグ、ヘルプモーダル (`#helpModal`)、終了確認、グローバルスキャン進捗フッター、重複ドッグイヤー、場所ツリー、非破壊画像調整モーダル、スマート・テイクアウトモーダル、`storage` リネームモーダル、XMPプレビューバー、2ペイン `⚙️ 設定 ＆ 🌳 タグツリーエディタ` モーダル |
+| `frontend/css/modals-features.css` | 保存済みプリセット、フルスクリーンスライドショー、AI自動タグ、ヘルプモーダル (`#helpModal`)、終了確認、グローバルスキャン進捗フッター、重複写真解決・ドッグイヤー、場所ツリー |
+| `frontend/css/modals-tools.css` | 非破壊画像調整モーダル、スマート・テイクアウトモーダル、`Loome` D&D・リネームモーダル、XMPプレビューバー、2ペイン `⚙️ 設定 ＆ 🌳 タグツリーエディタ` モーダル、撮影日時シフト、起動スプラッシュ、統合アクティビティドック |
 | `frontend/css/lab-map.css` | カメラ・レンズ2階層ツリー、ラボセクション、勝ちレンズカルテ (`#labKarteModal`)、47都道府県制覇マップ・ヒートマップ・さんぽ軌跡 (`#locationMapModal`)、ベタ焼きトリガー |
 | `frontend/css/histogram.css` | オンデマンドRGB・輝度ヒストグラムウィジェット |
 | `frontend/css/compare.css` | 2枚並列比較ビュー (`#compareModal`) |
