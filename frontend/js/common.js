@@ -189,6 +189,7 @@ const elements = {
   uploadFilesBtn: document.getElementById('uploadFilesBtn'),
   fileUploadInput: document.getElementById('fileUploadInput'),
   dragDropOverlay: document.getElementById('dragDropOverlay'),
+  viewModeSelect: document.getElementById('viewModeSelect'),
   modeButtons: document.querySelectorAll('.mode-btn'),
   // コンテキストメニュー & 下部選択バー
   contextMenu: document.getElementById('contextMenu'),

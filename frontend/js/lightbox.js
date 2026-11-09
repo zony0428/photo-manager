@@ -1048,19 +1048,33 @@ let isFilmstripDragging = false;
 let filmstripHasDragged = false;
 let filmstripStartX = 0;
 let filmstripScrollStart = 0;
+let _filmstripInteractionsInitialized = false;
+
+/**
+ * マウスホイールイベントからピクセル相当のスクロール量を正規化して取得する
+ */
+function _getNormalizedWheelDelta(e) {
+  let rawDelta = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+  if (e.deltaMode === 1) rawDelta *= 40;
+  else if (e.deltaMode === 2) rawDelta *= 120;
+  return rawDelta;
+}
 
 /**
  * フィルムストリップのインタラクション初期化（マウスホイール横スクロール & ドラッグスクロール）
  */
 function initFilmstripInteractions() {
+  if (_filmstripInteractionsInitialized) return;
   if (!elements.filmstrip) return;
+  _filmstripInteractionsInitialized = true;
 
-  // マウスホイールによる写真切替（ミニミニサムネイルと同様に1ノッチ1コマで前後の写真・スタックへ移動）
+  // マウスホイールによる写真切替（1ノッチ1コマで前後の写真・スタックへ移動、逆方向切り返し時は即時応答）
   let _filmstripWheelDelta = 0;
   let _lastFilmstripStepTime = 0;
+  let _lastFilmstripStepDir = 0;
   let _filmstripResetTimer = null;
   const FILMSTRIP_WHEEL_THRESHOLD = 80;   // 1写真進めるために必要なスクロール量
-  const FILMSTRIP_STEP_INTERVAL = 110;    // コマ送りの最小間隔 (ms) : 暴走を防ぎ目視できるパラパラ送りに
+  const FILMSTRIP_STEP_INTERVAL = 95;     // 同方向コマ送りの最小間隔 (ms)
 
   elements.filmstrip.addEventListener('wheel', (e) => {
     if (state.currentPhotoIndex < 0) return;
@@ -1069,25 +1083,39 @@ function initFilmstripInteractions() {
     e.preventDefault();
     e.stopPropagation();
 
-    const now = performance.now();
-    const delta = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
-    _filmstripWheelDelta += delta;
+    const delta = _getNormalizedWheelDelta(e);
+    if (delta === 0) return;
 
-    // 閾値到達 ＆ 前回のコマ送りから適切なインターバルが経過している場合に移動
-    if (Math.abs(_filmstripWheelDelta) >= FILMSTRIP_WHEEL_THRESHOLD) {
-      if (now - _lastFilmstripStepTime >= FILMSTRIP_STEP_INTERVAL) {
-        const direction = _filmstripWheelDelta > 0 ? 1 : -1;
-        navigatePhoto(direction);
-        _lastFilmstripStepTime = now;
-        _filmstripWheelDelta = 0;
-      }
+    const now = performance.now();
+    const candidateDir = delta > 0 ? 1 : -1;
+
+    // 逆方向へ切り返した瞬間は古い蓄積を即破棄し、インターバル待ちなしで即応答させる
+    if ((delta > 0 && _filmstripWheelDelta < 0) || (delta < 0 && _filmstripWheelDelta > 0)) {
+      _filmstripWheelDelta = 0;
+    }
+    const isDirectionReversed = (_lastFilmstripStepDir !== 0 && candidateDir !== _lastFilmstripStepDir);
+
+    // 同一方向のクールダウン中は余剰deltaを蓄積しない（オーバーランおよび逆転時の相殺遅延を防止）
+    if (!isDirectionReversed && (now - _lastFilmstripStepTime < FILMSTRIP_STEP_INTERVAL)) {
+      return;
     }
 
-    // スクロール停止から200ms経過で半端な蓄積をクリア
+    _filmstripWheelDelta += delta;
+
+    if (Math.abs(_filmstripWheelDelta) >= FILMSTRIP_WHEEL_THRESHOLD) {
+      const direction = _filmstripWheelDelta > 0 ? 1 : -1;
+      navigatePhoto(direction);
+      _lastFilmstripStepTime = now;
+      _lastFilmstripStepDir = direction;
+      _filmstripWheelDelta = 0;
+    }
+
+    // スクロール停止から180ms経過で半端な蓄積と方向履歴をクリア
     clearTimeout(_filmstripResetTimer);
     _filmstripResetTimer = setTimeout(() => {
       _filmstripWheelDelta = 0;
-    }, 200);
+      _lastFilmstripStepDir = 0;
+    }, 180);
   }, { passive: false });
 
   // マウスドラッグによる横スクロール
@@ -1164,6 +1192,7 @@ let filmstripCurrentScroll = 0;
 let filmstripTargetScroll = 0;
 let lastWaveStartIdx = -1;
 let lastWaveEndIdx = -1;
+let lastActiveFilmstripIdx = -1;
 const DOCK_WAVE_RADIUS_PX = 290;  // 画面中央から左右290pxの範囲で滑らかに拡大・縮小
 const DOCK_WAVE_INDEX_SPAN = 9;   // 中央インデックスから前後9枚のみ計算（O(1)負荷）
 const FILMSTRIP_BASE_HEIGHT = 82; // サムネイルの基本高さ(px)
@@ -1298,6 +1327,7 @@ function renderFilmstrip(instant = false) {
   filmstripRenderedPhotosKey = currentKey;
   lastWaveStartIdx = -1;
   lastWaveEndIdx = -1;
+  lastActiveFilmstripIdx = -1;
 
   // 既存のObserverとアニメーションをクリア
   if (filmstripObserver) {
@@ -1379,8 +1409,24 @@ function stepFilmstripScroll() {
 function scrollToActiveFilmstrip(instant = false) {
   const strip = elements.filmstrip;
   if (!strip) return;
-  const activeEl = strip.children[state.currentPhotoIndex];
+  const curIdx = state.currentPhotoIndex;
+  const activeEl = strip.children[curIdx];
   if (!activeEl) return;
+
+  // スクロールアニメーション完了を待たず、選択枠(.active)とサムネイル画像を0msで即時反映
+  if (lastActiveFilmstripIdx >= 0 && lastActiveFilmstripIdx !== curIdx) {
+    const prevEl = strip.children[lastActiveFilmstripIdx];
+    if (prevEl) prevEl.classList.remove('active');
+  }
+  activeEl.classList.add('active');
+  lastActiveFilmstripIdx = curIdx;
+  if (!activeEl.firstChild && state.photos && state.photos[curIdx]) {
+    const p = state.photos[curIdx];
+    const img = document.createElement('img');
+    img.src = getThumbnailUrl(p);
+    img.alt = p.file_name || '';
+    activeEl.appendChild(img);
+  }
 
   const targetScroll = Math.max(
     0,
@@ -1567,9 +1613,10 @@ function initLightboxZoomInteractions() {
   if (elements.lightboxBracketBar) {
     let _bracketWheelDelta = 0;
     let _lastBracketStepTime = 0;
+    let _lastBracketStepDir = 0;
     let _bracketResetTimer = null;
     const WHEEL_THRESHOLD = 80;    // 1コマ送りに必要なスクロール量 (標準マウス1ノッチ≒100〜120)
-    const MIN_STEP_INTERVAL = 110;  // コマ送りの最小間隔 (ms) : 暴走を防ぎ目視できるパラパラ送りに
+    const MIN_STEP_INTERVAL = 95;  // 同方向コマ送りの最小間隔 (ms)
 
     elements.lightboxBracketBar.addEventListener('wheel', (e) => {
       if (state.currentPhotoIndex < 0) return;
@@ -1578,25 +1625,36 @@ function initLightboxZoomInteractions() {
       e.preventDefault();
       e.stopPropagation();
 
-      const now = performance.now();
-      const delta = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
-      _bracketWheelDelta += delta;
+      const delta = _getNormalizedWheelDelta(e);
+      if (delta === 0) return;
 
-      // 閾値到達 ＆ 前回のコマ送りから適切なインターバルが経過している場合に移動
-      if (Math.abs(_bracketWheelDelta) >= WHEEL_THRESHOLD) {
-        if (now - _lastBracketStepTime >= MIN_STEP_INTERVAL) {
-          const direction = _bracketWheelDelta > 0 ? 1 : -1;
-          navigateStackMember(direction);
-          _lastBracketStepTime = now;
-          _bracketWheelDelta = 0;
-        }
+      const now = performance.now();
+      const candidateDir = delta > 0 ? 1 : -1;
+
+      if ((delta > 0 && _bracketWheelDelta < 0) || (delta < 0 && _bracketWheelDelta > 0)) {
+        _bracketWheelDelta = 0;
+      }
+      const isDirectionReversed = (_lastBracketStepDir !== 0 && candidateDir !== _lastBracketStepDir);
+
+      if (!isDirectionReversed && (now - _lastBracketStepTime < MIN_STEP_INTERVAL)) {
+        return;
       }
 
-      // スクロール停止から200ms経過で半端な蓄積をクリア
+      _bracketWheelDelta += delta;
+
+      if (Math.abs(_bracketWheelDelta) >= WHEEL_THRESHOLD) {
+        const direction = _bracketWheelDelta > 0 ? 1 : -1;
+        navigateStackMember(direction);
+        _lastBracketStepTime = now;
+        _lastBracketStepDir = direction;
+        _bracketWheelDelta = 0;
+      }
+
       clearTimeout(_bracketResetTimer);
       _bracketResetTimer = setTimeout(() => {
         _bracketWheelDelta = 0;
-      }, 200);
+        _lastBracketStepDir = 0;
+      }, 180);
     }, { passive: false });
   }
 

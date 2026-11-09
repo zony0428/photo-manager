@@ -1018,6 +1018,7 @@ function syncAttrFilterButtons() {
   if (headerAttrSel) {
     headerAttrSel.value = ['all', 'raw', 'raw_pair', 'jpeg', 'adjusted', 'xmp'].includes(cur) ? cur : 'all';
     headerAttrSel.classList.toggle('is-filtered', cur !== 'all');
+    updateHeaderSelectTooltip(headerAttrSel);
   }
   const subSelect = elements.attrSubFilterSelect || document.getElementById('attrSubFilterSelect');
   if (subSelect) {
@@ -1158,6 +1159,42 @@ function updateConnectionFilterUI() {
 }
 
 /**
+ * フッター/ヘッダーの4つのドロップダウンのツールチップ（title属性）に現在の選択項目名を反映する
+ */
+function updateHeaderSelectTooltip(sel) {
+  if (!sel || !sel.options || sel.selectedIndex < 0) return;
+  const opt = sel.options[sel.selectedIndex];
+  const optText = opt ? (opt.textContent || '').trim() : '';
+  if (!optText) return;
+  const isEn = Boolean(window.pmI18n && typeof window.pmI18n.getLang === 'function' && window.pmI18n.getLang() === 'en');
+  const prefixMapJa = {
+    headerScopeSelect: '表示対象',
+    headerAttrSelect: '形式・状態',
+    sortBySelect: '並び替え',
+    viewModeSelect: 'レイアウト',
+  };
+  const prefixMapEn = {
+    headerScopeSelect: 'Scope',
+    headerAttrSelect: 'Format / State',
+    sortBySelect: 'Sort By',
+    viewModeSelect: 'Layout',
+  };
+  const prefix = (isEn ? prefixMapEn[sel.id] : prefixMapJa[sel.id]) || '';
+  const nextTitle = prefix ? `${prefix}: ${optText}` : optText;
+  if (sel.__pmAttrOrig) delete sel.__pmAttrOrig.title;
+  if (sel.__pmAttrEn) delete sel.__pmAttrEn.title;
+  sel.setAttribute('title', nextTitle);
+}
+
+function syncHeaderSelectTooltips() {
+  ['headerScopeSelect', 'headerAttrSelect', 'sortBySelect', 'viewModeSelect'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) updateHeaderSelectTooltip(el);
+  });
+}
+window.syncHeaderSelectTooltips = syncHeaderSelectTooltips;
+
+/**
  * ヘッダーの表示対象（スコープ）ドロップダウン（#headerScopeSelect）を現在の state と同期する
  */
 function syncHeaderScopeSelect() {
@@ -1178,6 +1215,7 @@ function syncHeaderScopeSelect() {
   if (sel.value !== targetVal) {
     sel.value = targetVal;
   }
+  updateHeaderSelectTooltip(sel);
 }
 window.syncHeaderScopeSelect = syncHeaderScopeSelect;
 
@@ -2110,6 +2148,12 @@ function setupEventListeners() {
   }
 
   // 表示レイアウト切替（グリッド / びっしり / マウント）
+  const viewModeSel = elements.viewModeSelect || document.getElementById('viewModeSelect');
+  if (viewModeSel) {
+    viewModeSel.addEventListener('change', (e) => {
+      setLayoutMode(e.target.value);
+    });
+  }
   elements.modeButtons.forEach(btn => {
     btn.addEventListener('click', () => {
       const mode = btn.dataset.mode;
@@ -2382,10 +2426,21 @@ function setupEventListeners() {
   // ソート順変更
   elements.sortBySelect.addEventListener('change', (e) => {
     state.sortBy = e.target.value;
+    updateHeaderSelectTooltip(e.target);
     if (typeof e.target.blur === 'function') e.target.blur();
     localStorage.setItem('pm_sort_by', state.sortBy);
     fetchPhotos();
   });
+
+  // フッター/ヘッダーの4つのドロップダウンにホバー/フォーカス/変更時の動的ツールチップを設定
+  ['headerScopeSelect', 'headerAttrSelect', 'sortBySelect', 'viewModeSelect'].forEach(id => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    sel.addEventListener('mouseenter', () => updateHeaderSelectTooltip(sel));
+    sel.addEventListener('focus', () => updateHeaderSelectTooltip(sel));
+    sel.addEventListener('change', () => updateHeaderSelectTooltip(sel));
+  });
+  syncHeaderSelectTooltips();
 
   // 評価フィルタトグルボタン（ヘッダー ＆ クイックタブ両方を一括監視・双方向同期）
   document.querySelectorAll('.rating-filter-toggles .rating-toggle').forEach(btn => {
@@ -3339,12 +3394,6 @@ function setupEventListeners() {
 
   // 写真グリッドへのイベント委譲を一括初期化（個別リスナー生成を排除）
   setupPhotoGridDelegation();
-
-  // フィルムストリップのインタラクション初期化（ホイール横スクロール & ドラッグスクロール）
-  initFilmstripInteractions();
-
-  // ライトボックスのズーム＆パン操作（ホイール・ドラッグ・ダブルクリック）初期化
-  initLightboxZoomInteractions();
 }
 
 let _zoomBadgeTimer = null;
@@ -3702,7 +3751,12 @@ function setLayoutMode(mode) {
     document.body.classList.add('layout-mount');
   }
 
-  // ボタンのアクティブ更新
+  // セレクト・ボタンのアクティブ更新
+  const viewModeSel = elements.viewModeSelect || document.getElementById('viewModeSelect');
+  if (viewModeSel) {
+    if (viewModeSel.value !== mode) viewModeSel.value = mode;
+    updateHeaderSelectTooltip(viewModeSel);
+  }
   elements.modeButtons.forEach(btn => {
     btn.classList.toggle('active', btn.dataset.mode === mode);
   });

@@ -424,22 +424,43 @@
       }
     });
 
-    // 下部フィルムストリップ上でのホイール回転で右(B)の候補を次々送り
+    // 下部フィルムストリップ上でのホイール回転で右(B)の候補を次々送り（逆方向切り返し時は即時応答）
     const stripEl = document.getElementById('compareStrip');
     if (stripEl) {
       let wheelAcc = 0;
       let lastStep = 0;
+      let lastDir = 0;
+      let resetTimer = null;
       stripEl.addEventListener('wheel', (e) => {
         if (!cmpState.isOpen) return;
         e.preventDefault();
-        const delta = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
-        wheelAcc += delta;
+        let delta = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+        if (e.deltaMode === 1) delta *= 40;
+        else if (e.deltaMode === 2) delta *= 120;
+        if (delta === 0) return;
+
         const now = performance.now();
-        if (Math.abs(wheelAcc) >= 70 && now - lastStep >= 100) {
-          stepCandidateB(wheelAcc > 0 ? 1 : -1);
+        const candidateDir = delta > 0 ? 1 : -1;
+        if ((delta > 0 && wheelAcc < 0) || (delta < 0 && wheelAcc > 0)) {
+          wheelAcc = 0;
+        }
+        const isReversed = (lastDir !== 0 && candidateDir !== lastDir);
+        if (!isReversed && (now - lastStep < 95)) {
+          return;
+        }
+        wheelAcc += delta;
+        if (Math.abs(wheelAcc) >= 70) {
+          const dir = wheelAcc > 0 ? 1 : -1;
+          stepCandidateB(dir);
           wheelAcc = 0;
           lastStep = now;
+          lastDir = dir;
         }
+        clearTimeout(resetTimer);
+        resetTimer = setTimeout(() => {
+          wheelAcc = 0;
+          lastDir = 0;
+        }, 180);
       }, { passive: false });
     }
   }

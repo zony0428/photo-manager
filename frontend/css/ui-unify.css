@@ -1170,24 +1170,56 @@ body.resizing .sidebar-rail-resizer::before {
   width: 68px;
 }
 
-.unified-single-header #headerScopeSelect, .unified-single-header #headerAttrSelect,
-.unified-single-header #sortBySelect {
+.unified-single-header #headerScopeSelect,
+.unified-single-header #headerAttrSelect,
+.unified-single-header #sortBySelect,
+.unified-single-header #viewModeSelect {
   height: 28px !important;
   min-height: 28px !important;
-  padding: 0 24px 0 9px !important;
+  padding: 0 21px 0 8px !important;
   font-size: 0.78rem !important;
   line-height: 1 !important;
-  max-width: 155px;
+  max-width: 128px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   box-sizing: border-box !important;
 }
 
 .unified-single-header #headerScopeSelect {
   font-weight: 600;
-  max-width: 142px;
+  max-width: 120px;
 }
 
 .unified-single-header #headerAttrSelect {
-  max-width: 122px;
+  max-width: 120px;
+}
+
+.unified-single-header #sortBySelect {
+  max-width: 148px;
+}
+
+.unified-single-header #viewModeSelect {
+  max-width: 92px;
+}
+
+/* 右側ユーティリティ（設定・ヘルプ・終了）は常時アイコンボタン（28x28px）に統一 */
+.unified-single-header #folderDbMaintenanceBtn,
+.unified-single-header #openHelpModalBtn,
+.unified-single-header #openShutdownModalBtn {
+  width: 28px !important;
+  min-width: 28px !important;
+  height: 28px !important;
+  min-height: 28px !important;
+  padding: 0 !important;
+  gap: 0 !important;
+  justify-content: center !important;
+}
+
+.unified-single-header #folderDbMaintenanceBtn .btn-label,
+.unified-single-header #openHelpModalBtn .btn-label,
+.unified-single-header #openShutdownModalBtn .btn-label {
+  display: none !important;
 }
 
 .unified-single-header #headerAttrSelect.is-filtered {

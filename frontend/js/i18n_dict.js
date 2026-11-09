@@ -25,6 +25,8 @@
     '写真の詳細情報パネル（インスペクタ）を開閉 (Dキー)': 'Toggle Photo Inspector Panel (D key)',
     'セパレータ': 'Separator',
     'レイアウト切り替え': 'Switch Layout Mode',
+    '表示レイアウト（グリッド / びっしり / マウント）を切り替え': 'Switch Layout Mode (Grid / Tight / Mount)',
+    '並び替え順を切り替え': 'Switch Sort Order',
     'グリッド': 'Grid',
     '均等グリッド (標準)': 'Uniform Grid (Standard)',
     'びっしり': 'Tight',
