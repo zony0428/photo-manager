@@ -321,11 +321,10 @@ def main() -> None:
 
     # 1. サーバー立ち上がり待機後にブラウザ/アプリウィンドウを起動するスレッド
     def _delayed_launch():
-        # サーバーがHTTP応答可能になるまでポーリング待機（最大180秒、0.2秒刻み）
-        for _ in range(900):
-            time.sleep(0.2)
+        # サーバーがHTTP応答可能になるまでポーリング待機（最大180秒、0.05秒刻みで即応起動）
+        for _ in range(3600):
+            time.sleep(0.05)
             if is_port_in_use(PORT, HOST) and is_server_http_ready(APP_URL):
-                time.sleep(0.2)
                 launch_app_window()
                 return
 

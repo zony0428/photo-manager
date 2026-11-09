@@ -164,9 +164,44 @@ def _create_photos_indexes(cursor) -> None:
             )
 
 
-def initialize_database() -> None:
+_FAST_BOOT_REQUIRED_MIGRATIONS = frozenset({
+    "ancestor_tags",
+    "fix_mismatched_thumbnails_v1",
+    "sanitize_camera_models_v1",
+    "rating_to_4tier_v1",
+    "tag_keys_v1",
+    "ideal_photo_links_v1",
+    "restore_cascaded_tags_and_thumbs_v1",
+    "exifless_content_hash_v1",
+    "schema_fast_init_v183",
+})
+
+
+def initialize_database(fast_boot: bool = False) -> None:
     """データベースの初期テーブル構造を作成する"""
     set_startup_status(is_ready=False, phase="schema", message="データベース構造を確認しています...", detail="", percent=10)
+    if fast_boot:
+        try:
+            with get_connection() as conn:
+                conn.execute("PRAGMA journal_mode = WAL")
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('photos', 'photo_links', 'photo_tags', 'thumbnails', 'migrations', 'app_meta')"
+                )
+                if len(cursor.fetchall()) == 6:
+                    cursor.execute("SELECT name FROM migrations")
+                    applied = {r["name"] for r in cursor.fetchall()}
+                    if _FAST_BOOT_REQUIRED_MIGRATIONS.issubset(applied):
+                        try:
+                            from ..security import initialize_security_state
+                            initialize_security_state(force_reload=True)
+                        except Exception as sec_err:
+                            logger.warning(f"セキュリティ状態の初期化で警告: {sec_err}")
+                        set_startup_status(is_ready=True, phase="ready", message="準備完了", detail="", percent=100)
+                        return
+        except Exception as fb_err:
+            logger.debug(f"高速DB起動チェックをスキップし通常初期化へフォールバック: {fb_err}")
+
     with get_connection() as conn:
         conn.execute("PRAGMA journal_mode = WAL")
         cursor = conn.cursor()
@@ -571,10 +606,34 @@ def initialize_database() -> None:
                     conn.commit()
 
             # クエリオプティマイザのインデックス統計を最新化
+            cursor.execute("INSERT OR IGNORE INTO migrations (name) VALUES ('schema_fast_init_v183')")
             cursor.execute("PRAGMA optimize")
             conn.commit()
 
     set_startup_status(is_ready=True, phase="ready", message="準備完了", detail="", percent=100)
+
+
+def run_background_schema_maintenance() -> None:
+    """起動後のアイドル時にバックグラウンドで軽量な整合性チェックと PRAGMA optimize を実行する"""
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            changed = False
+            if _ensure_photo_links_synced(cursor):
+                changed = True
+            if repair_missing_ancestor_tags(cursor) > 0:
+                changed = True
+            cursor.execute("DELETE FROM thumbnails WHERE photo_id NOT IN (SELECT id FROM photos)")
+            if cursor.rowcount and cursor.rowcount > 0:
+                changed = True
+            cursor.execute("UPDATE photos SET volume_serial = NULL WHERE is_unlinked = 1 AND volume_serial IS NOT NULL")
+            if cursor.rowcount and cursor.rowcount > 0:
+                changed = True
+            cursor.execute("PRAGMA optimize")
+            if changed:
+                conn.commit()
+    except Exception as e:
+        logger.debug(f"バックグラウンドスキーマ保守スキップ: {e}")
 
 
 def _upgrade_legacy_schema_ddl(cursor, conn) -> bool:

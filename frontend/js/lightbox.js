@@ -25,6 +25,12 @@ function openLightbox(index) {
   elements.lightboxModal.style.display = 'flex';
   document.body.style.overflow = 'hidden';
 
+  try {
+    if (!(window.history.state && window.history.state.pmLightbox === true)) {
+      window.history.pushState({ pmLightbox: true }, '');
+    }
+  } catch (e) {}
+
   // 1. メイン画像・EXIF・スタックバーを最優先で即時反映（0msでモーダル描画開始）
   loadLightboxPhoto(true, true);
 
@@ -81,6 +87,55 @@ function loadLightboxPhoto(instantFilmstrip = false, skipFilmstrip = false) {
 }
 
 /**
+ * ライトボックス表示サイズとサムネイル専用時の最大200%拡大を適用する
+ */
+function _applyLightboxBaseSize(photo, naturalW, naturalH) {
+  const imgEl = elements.lightboxImage;
+  if (!imgEl || !photo) return;
+  let nw = Number(naturalW) || Number(imgEl.naturalWidth) || Number(photo.thumb_width) || 0;
+  let nh = Number(naturalH) || Number(imgEl.naturalHeight) || Number(photo.thumb_height) || 0;
+  const origMaxDim = Math.max(Number(photo.width) || 0, Number(photo.height) || 0);
+  const loadedMaxDim = Math.max(nw, nh);
+  const isThumbOnly = Boolean(
+    photo.is_offline ||
+    photo.is_unlinked ||
+    photo.is_missing ||
+    (origMaxDim > 640 && loadedMaxDim > 0 && loadedMaxDim <= 640)
+  );
+  if (isThumbOnly) {
+    if (nw <= 0 || nh <= 0) {
+      const ow = Number(photo.width) || 480;
+      const oh = Number(photo.height) || 320;
+      const ratio = 480 / Math.max(1, Math.max(ow, oh));
+      nw = Math.max(1, Math.round(ow * ratio));
+      nh = Math.max(1, Math.round(oh * ratio));
+    }
+    const bodyEl = elements.lightboxModal ? elements.lightboxModal.querySelector('.lightbox-body') : null;
+    const bodyRect = bodyEl ? bodyEl.getBoundingClientRect() : null;
+    const maxW = (bodyRect && bodyRect.width > 100) ? (bodyRect.width * 0.9) : (window.innerWidth * 0.9);
+    const maxH = (bodyRect && bodyRect.height > 100) ? Math.min(bodyRect.height * 0.9, window.innerHeight * 0.8) : (window.innerHeight * 0.8);
+    const scale = Math.max(1.0, Math.min(2.0, maxW / nw, maxH / nh));
+    imgEl.style.width = `${Math.round(nw * scale)}px`;
+    imgEl.style.height = `${Math.round(nh * scale)}px`;
+  } else {
+    imgEl.style.width = '';
+    imgEl.style.height = '';
+  }
+}
+
+/**
+ * ライトボックス画像のソフトフェードインを発火する
+ */
+function _triggerLightboxImageFadeIn() {
+  const imgEl = elements.lightboxImage;
+  if (!imgEl) return;
+  imgEl.classList.remove('lightbox-image-loading');
+  imgEl.classList.remove('lightbox-image-fadein');
+  void imgEl.offsetWidth;
+  imgEl.classList.add('lightbox-image-fadein');
+}
+
+/**
  * ライトボックス内の写真コンテンツ（画像、EXIF、評価、タグ等）を更新
  */
 function updateLightboxContent(photo) {
@@ -95,20 +150,32 @@ function updateLightboxContent(photo) {
   }
 
   // 実画像読み込み:
-  // 1) グリッドで既にキャッシュ済みのサムネイルを即時表示して前回の残像や空白待ち時間をゼロにする
-  // 2) フル解像度画像 (/view) をバックグラウンドでロードし、完了次第シームレスに差し替える
+  // - 本体ファイルがある（オンライン）ときは先に小さいサムネイルを表示せず、フル解像度画像をロードしてふわっとフェードインする
+  // - サムネイルしかない（オフライン / リンク消失）ときはサムネイルを200%上限で拡大し、ふわっとフェードインする
   const viewSrc = getPhotoViewUrl(photo);
   const thumbSrc = getThumbnailUrl(photo);
   const currentSrc = elements.lightboxImage.getAttribute('src') || '';
-  if (currentSrc !== viewSrc) {
-    if (_lightboxViewPreloadImg) {
-      _lightboxViewPreloadImg.onload = null;
-      _lightboxViewPreloadImg.onerror = null;
-      _lightboxViewPreloadImg = null;
+  const isOfflineOrUnlinked = Boolean(photo.is_offline || photo.is_unlinked || photo.is_missing);
+
+  if (_lightboxViewPreloadImg) {
+    _lightboxViewPreloadImg.onload = null;
+    _lightboxViewPreloadImg.onerror = null;
+    _lightboxViewPreloadImg = null;
+  }
+
+  if (isOfflineOrUnlinked) {
+    const targetSrc = thumbSrc || viewSrc;
+    if (currentSrc !== targetSrc) {
+      elements.lightboxImage.src = targetSrc;
     }
-    if (thumbSrc && currentSrc !== thumbSrc) {
-      elements.lightboxImage.src = thumbSrc;
-    }
+    _applyLightboxBaseSize(photo, elements.lightboxImage.naturalWidth, elements.lightboxImage.naturalHeight);
+    _triggerLightboxImageFadeIn();
+  } else if (currentSrc === viewSrc && elements.lightboxImage.complete && elements.lightboxImage.naturalWidth > 0) {
+    _applyLightboxBaseSize(photo, elements.lightboxImage.naturalWidth, elements.lightboxImage.naturalHeight);
+    _triggerLightboxImageFadeIn();
+  } else {
+    elements.lightboxImage.classList.remove('lightbox-image-fadein');
+    elements.lightboxImage.classList.add('lightbox-image-loading');
     const targetPhotoId = photo.id;
     const preloader = new Image();
     _lightboxViewPreloadImg = preloader;
@@ -118,6 +185,8 @@ function updateLightboxContent(photo) {
       const activePhoto = getCurrentLightboxPhoto();
       if (activePhoto && activePhoto.id === targetPhotoId && elements.lightboxImage) {
         elements.lightboxImage.src = viewSrc;
+        _applyLightboxBaseSize(activePhoto, preloader.naturalWidth, preloader.naturalHeight);
+        _triggerLightboxImageFadeIn();
       }
     };
     preloader.onerror = () => {
@@ -125,14 +194,18 @@ function updateLightboxContent(photo) {
       _lightboxViewPreloadImg = null;
       const activePhoto = getCurrentLightboxPhoto();
       if (activePhoto && activePhoto.id === targetPhotoId && elements.lightboxImage) {
-        elements.lightboxImage.src = viewSrc;
+        elements.lightboxImage.src = thumbSrc || viewSrc;
+        _applyLightboxBaseSize(activePhoto, 0, 0);
+        _triggerLightboxImageFadeIn();
       }
     };
     preloader.src = viewSrc;
-    // ブラウザキャッシュに既にフル解像度画像がある場合は同期で即時反映
+    // ブラウザキャッシュに既にフル解像度画像がある場合は同期で即時反映＆フェードイン
     if (preloader.complete && preloader.naturalWidth > 0) {
       _lightboxViewPreloadImg = null;
       elements.lightboxImage.src = viewSrc;
+      _applyLightboxBaseSize(photo, preloader.naturalWidth, preloader.naturalHeight);
+      _triggerLightboxImageFadeIn();
     }
   }
   if (elements.lightboxImage.complete && typeof window.refreshLightboxHistogram === 'function') {
@@ -1337,8 +1410,11 @@ function updateFilmstripActive(instant = false) {
 
 /**
  * ライトボックスを閉じる
+ * @param {object} [opts]
+ * @param {boolean} [opts.fromPopState=false] popstate（ブラウザ戻る）経由で呼ばれた場合はtrue
  */
-function closeLightbox() {
+function closeLightbox(opts) {
+  const fromPopState = Boolean(opts && opts.fromPopState === true);
   if (_lightboxOpenRafId) {
     cancelAnimationFrame(_lightboxOpenRafId);
     _lightboxOpenRafId = null;
@@ -1360,6 +1436,14 @@ function closeLightbox() {
   state.currentLightboxStackType = null;
   resetLightboxZoom();
   document.body.style.overflow = '';
+
+  if (!fromPopState) {
+    try {
+      if (window.history.state && window.history.state.pmLightbox === true) {
+        window.history.back();
+      }
+    } catch (e) {}
+  }
 }
 
 /**
@@ -1656,6 +1740,67 @@ function initLightboxEvents() {
       });
     });
   }
+
+  if (elements.lightboxImage) {
+    elements.lightboxImage.addEventListener('load', () => {
+      const current = getCurrentLightboxPhoto();
+      if (current) {
+        _applyLightboxBaseSize(current, elements.lightboxImage.naturalWidth, elements.lightboxImage.naturalHeight);
+      }
+    });
+  }
+
+  window.addEventListener('resize', () => {
+    if (elements.lightboxModal && elements.lightboxModal.style.display === 'flex') {
+      const current = getCurrentLightboxPhoto();
+      if (current && elements.lightboxImage) {
+        _applyLightboxBaseSize(current, elements.lightboxImage.naturalWidth, elements.lightboxImage.naturalHeight);
+      }
+    }
+  });
+
+  // マウスの「戻る」ボタン（第4ボタン: button === 3）およびブラウザ戻る（popstate）でライトボックスを閉じる
+  const isLightboxVisible = () => Boolean(
+    state.currentPhotoIndex !== -1 &&
+    elements.lightboxModal &&
+    elements.lightboxModal.style.display !== 'none'
+  );
+  window.addEventListener('mousedown', (e) => {
+    if (e.button === 3 && isLightboxVisible()) {
+      e.preventDefault();
+    }
+  }, true);
+  window.addEventListener('mouseup', (e) => {
+    if (e.button === 3 && isLightboxVisible()) {
+      e.preventDefault();
+      e.stopPropagation();
+      const adjustModal = document.getElementById('imageAdjustModal');
+      if (adjustModal && adjustModal.style.display !== 'none' && typeof window.closeImageAdjustModal === 'function') {
+        window.closeImageAdjustModal();
+        return;
+      }
+      closeLightbox();
+    }
+  }, true);
+  window.addEventListener('auxclick', (e) => {
+    if (e.button === 3 && isLightboxVisible()) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }, true);
+  window.addEventListener('popstate', () => {
+    if (isLightboxVisible()) {
+      const adjustModal = document.getElementById('imageAdjustModal');
+      if (adjustModal && adjustModal.style.display !== 'none' && typeof window.closeImageAdjustModal === 'function') {
+        window.closeImageAdjustModal();
+        try {
+          window.history.pushState({ pmLightbox: true }, '');
+        } catch (err) {}
+        return;
+      }
+      closeLightbox({ fromPopState: true });
+    }
+  });
 
   initFilmstripInteractions();
   initLightboxZoomInteractions();

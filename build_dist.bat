@@ -25,8 +25,17 @@ title Tetheract Photo Manager - Build Distribution (Full ^& Lightweight Update)
 :: ================================================================
 
 set "SRC=%~dp0"
-set "DIST=%~dp0dist"
-set "DIST_UPD=%~dp0dist_update"
+set "VER_STR=1.8.4"
+if exist "%SRC%VERSION" (
+    set /p VER_STR=<"%SRC%VERSION"
+)
+if "%VER_STR:~0,2%"=="2." (
+    set "DIST=%~dp0dist_v2"
+    set "DIST_UPD=%~dp0dist_v2_update"
+) else (
+    set "DIST=%~dp0dist"
+    set "DIST_UPD=%~dp0dist_update"
+)
 
 echo.
 echo ============================================================

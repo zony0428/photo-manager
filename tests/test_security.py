@@ -84,6 +84,13 @@ def test_lan_requires_token():
     assert LAN_TOKEN_COOKIE in r.headers.get("set-cookie", "")
     assert _lan_client(with_cookie=True).get("/api/version").status_code == 200
     assert _lan_client().get("/api/version?t=wrong-token").status_code == 401
+    # LAN TCP中継スレッド経由（127.0.0.1 + X-Tetheract-Lan-Client）でもLANクライアントとして厳格に検証される
+    assert LOCAL.get("/api/version", headers={"X-Tetheract-Lan-Client": LAN_IP}).status_code == 401
+    assert LOCAL.post("/api/shutdown", headers={"X-Tetheract-Lan-Client": LAN_IP}, cookies={LAN_TOKEN_COOKIE: LAN_TOKEN}).status_code == 403
+    from server.lan_access import _rewrite_http_request_header
+    rewritten = _rewrite_http_request_header(b"GET /api/version HTTP/1.1\r\nHost: 192.168.1.10:8088\r\nX-Tetheract-Lan-Client: 127.0.0.1", LAN_IP)
+    assert b"X-Tetheract-Lan-Client: 192.168.1.50" in rewritten
+    assert b"X-Tetheract-Lan-Client: 127.0.0.1" not in rewritten
 
 
 def test_lan_whitelist_blocks_admin_apis():
@@ -569,6 +576,12 @@ def test_red_blue_team_failsafe_and_salvage(tmp_path: Path):
             assert downgrade_boot_blocked is True
         finally:
             legacy_conn.close()
+
+        # [検証7] モバイル用 sql-wasm.js / Tetheract_Mobile.html の create_function が SQLITE_DETERMINISTIC (2049) を備えていること
+        sql_wasm_js = (ROOT / "frontend" / "vendor" / "sqljs" / "sql-wasm.js").read_text(encoding="utf-8")
+        assert "tb(this.db,g,l.length,2049,0,n,0,0,0)" in sql_wasm_js
+        standalone_html = (ROOT / "Tetheract_Mobile.html").read_text(encoding="utf-8")
+        assert "tb(this.db,g,l.length,2049,0,n,0,0,0)" in standalone_html
 
     finally:
         close_thread_connection()

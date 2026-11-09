@@ -1446,7 +1446,12 @@ def get_photos(
                     else:
                         uncached_xmp_dirs.append(cache_key)
 
-                if uncached_xmp_dirs:
+                defer_large_xmp_scan = (
+                    not folder
+                    and (attr_filter or "").strip().lower() != "xmp"
+                    and len(uncached_xmp_dirs) > 20
+                )
+                if uncached_xmp_dirs and not defer_large_xmp_scan:
                     from ..storage_manager import is_path_in_storage
 
                     def _scan_dir_for_xmp(ck: Tuple[str, Optional[str]]):
@@ -3221,8 +3226,29 @@ def get_unlinked_photos_count() -> int:
         return row["cnt"] if row else 0
 
 
+_conn_counts_cache: Optional[Tuple[Any, float, Dict[str, int]]] = None
+
+
 def get_connection_counts() -> Dict[str, int]:
     """全写真（ペア済みRAW従属コマを除く）の「接続中」「未接続」「リンク消失」「合計」の件数を高速集計して返す"""
+    global _conn_counts_cache
+    import time as _time
+    from .connection import get_db_commit_seq
+    from ..scanner import _get_connected_drive_serial_map, resolve_drive_online_path
+    from ..storage_manager import STORAGE_DIR
+
+    now_ts = _time.monotonic()
+    try:
+        serial_to_drive, _ = _get_connected_drive_serial_map()
+        drives_sig = tuple(sorted(serial_to_drive.items()))
+    except Exception:
+        drives_sig = ()
+    cache_key = (get_db_commit_seq(), str(STORAGE_DIR), drives_sig)
+    if _conn_counts_cache is not None:
+        c_key, c_exp, c_val = _conn_counts_cache
+        if c_key == cache_key and now_ts < c_exp:
+            return dict(c_val)
+
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -3238,8 +3264,6 @@ def get_connection_counts() -> Dict[str, int]:
         )
         rows = cursor.fetchall()
 
-    from ..storage_manager import STORAGE_DIR
-    from ..scanner import resolve_drive_online_path
     storage_norm = str(STORAGE_DIR).replace("/", "\\").lower()
 
     online_count = 0
@@ -3304,12 +3328,14 @@ def get_connection_counts() -> Dict[str, int]:
                 online_count += shift_cnt
 
     total_count = online_count + offline_count + unlinked_count
-    return {
+    res_dict = {
         "total_count": total_count,
         "online_count": online_count,
         "offline_count": offline_count,
         "unlinked_count": unlinked_count,
     }
+    _conn_counts_cache = (cache_key, now_ts + 15.0, dict(res_dict))
+    return res_dict
 
 
 def purge_unlinked_photos(photo_ids: Optional[List[int]] = None) -> int:
@@ -3369,9 +3395,10 @@ def migrate_and_merge_exifless_photos(
         where_clauses = [
             "(p.content_key IS NULL OR p.content_key NOT LIKE 'hash:%')",
             "COALESCE(p.is_unlinked, 0) = 0",
+            "p.shutter_speed IS NULL AND p.f_number IS NULL AND p.iso IS NULL AND p.focal_length IS NULL",
+            "(p.subsec_time IS NULL OR p.subsec_time = '')",
             """(
-                (COALESCE(p.camera_model, '不明') IN ('不明', '', 'RAW写真')
-                 AND p.shutter_speed IS NULL AND p.f_number IS NULL AND p.iso IS NULL AND p.focal_length IS NULL)
+                COALESCE(p.camera_model, '不明') IN ('不明', '', 'RAW写真')
                 OR (p.file_mtime IS NOT NULL AND p.date_taken = strftime('%Y-%m-%d %H:%M:%S', CAST(p.file_mtime AS INTEGER), 'unixepoch', 'localtime'))
             )""",
         ]

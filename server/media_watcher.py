@@ -125,17 +125,21 @@ def _enrich_media_item(serial: str, drive_info: Optional[Dict[str, Any]], is_onl
         with get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT volume_label, custom_name, drive_letter, loome_enabled FROM volumes WHERE UPPER(volume_serial) = ? LIMIT 1",
+                "SELECT volume_label, custom_name, drive_letter, loome_enabled FROM volumes WHERE volume_serial = ? COLLATE NOCASE LIMIT 1",
                 (s_upper,),
             )
             v_row = cursor.fetchone()
+            db_vol_label = ""
+            db_drive_letter = ""
             if v_row:
                 is_in_volumes_table = True
-                if not os_label and v_row["volume_label"]:
-                    os_label = str(v_row["volume_label"])
+                db_vol_label = str(v_row["volume_label"] or "")
+                db_drive_letter = str(v_row["drive_letter"] or "")
+                if not os_label and db_vol_label:
+                    os_label = db_vol_label
                 custom_name = str(v_row["custom_name"] or "")
-                if not drive_letter and v_row["drive_letter"]:
-                    drive_letter = str(v_row["drive_letter"])
+                if not drive_letter and db_drive_letter:
+                    drive_letter = db_drive_letter
                 loome_enabled = bool(v_row["loome_enabled"])
 
             cursor.execute(
@@ -143,7 +147,7 @@ def _enrich_media_item(serial: str, drive_info: Optional[Dict[str, Any]], is_onl
                 SELECT COUNT(DISTINCT pl.photo_id) AS cnt
                 FROM photo_links pl
                 INNER JOIN photos p ON pl.photo_id = p.id
-                WHERE UPPER(pl.volume_serial) = ?
+                WHERE pl.volume_serial = ? COLLATE NOCASE
                   AND COALESCE(p.is_unlinked, 0) = 0
                 """,
                 (s_upper,),
@@ -154,12 +158,18 @@ def _enrich_media_item(serial: str, drive_info: Optional[Dict[str, Any]], is_onl
     except Exception as e:
         logger.debug(f"メディアDB情報照会スキップ ({s_upper}): {e}")
 
-    # 接続されたメディアが既にDB管理下（volumes登録済み または 写真リンクあり）なら最新ドライブ文字・ラベルをDBへ同期
+    # 接続されたメディアが既にDB管理下（volumes登録済み または 写真リンクあり）で、未登録またはラベル・ドライブ文字が変化した場合のみDBへ同期
     if is_online and drive_info and (is_in_volumes_table or photo_count > 0):
-        try:
-            upsert_volume(s_upper, os_label, drive_letter)
-        except Exception as e:
-            logger.debug(f"ボリューム接続情報のDB自動更新スキップ ({s_upper}): {e}")
+        need_vol_sync = (
+            not is_in_volumes_table
+            or (os_label and os_label != db_vol_label)
+            or (drive_letter and drive_letter.upper() != db_drive_letter.upper())
+        )
+        if need_vol_sync:
+            try:
+                upsert_volume(s_upper, os_label, drive_letter)
+            except Exception as e:
+                logger.debug(f"ボリューム接続情報のDB自動更新スキップ ({s_upper}): {e}")
 
     primary_name = custom_name or os_label or f"メディア [ID:{short_s}]"
     if custom_name and os_label and custom_name != os_label:

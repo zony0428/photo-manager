@@ -903,9 +903,16 @@ def initialize_security_state(force_reload: bool = False) -> Dict[str, Any]:
                             owner_secret = bytes.fromhex(bundle["owner_secret"])
                             recovery_code = str(bundle.get("recovery_code", ""))
 
-                            # 既知VSNが増えている場合は救済バンドルを最新化
-                            new_vsn_bundles = _build_vsn_rescue_bundles(conn, owner_id, bundle_bytes)
-                            if new_vsn_bundles != meta.get("vsn_rescue_bundles", ""):
+                            # 既知VSNが増減している場合のみ救済バンドルを最新化（毎回乱数nonceでDBを更新しない）
+                            try:
+                                existing_vsn_map = json.loads(meta.get("vsn_rescue_bundles", "{}") or "{}")
+                                if not isinstance(existing_vsn_map, dict):
+                                    existing_vsn_map = {}
+                            except Exception:
+                                existing_vsn_map = {}
+                            known_vsns = _collect_known_db_vsns(conn)
+                            if set(known_vsns) != set(existing_vsn_map.keys()):
+                                new_vsn_bundles = _build_vsn_rescue_bundles(conn, owner_id, bundle_bytes)
                                 _set_meta_values(conn, {"vsn_rescue_bundles": new_vsn_bundles})
                                 conn.commit()
 
@@ -1344,6 +1351,18 @@ def write_loome_seal(loome_dir: Path, volume_serial: Optional[str] = None, passw
                         or (old_pw_wrap and old_pw_wrap != seal_data.get("wrapped_owner_bundle"))
                     ):
                         previous_seals.insert(0, old_seal)
+                    elif (
+                        not password
+                        and old_owner == owner_id
+                        and str(old_seal.get("vsn") or "") == vsn
+                        and str(old_seal.get("seal_mac") or "") == seal_mac
+                        and int(old_seal.get("security_level", -1)) == sec_level
+                        and str(old_seal.get("bound_instances") or "") == str(seal_data.get("bound_instances") or "")
+                        and old_rec_wrap == str(seal_data.get("dek_wrapped_recovery") or "")
+                        and old_pw_wrap == str(seal_data.get("wrapped_owner_bundle") or "")
+                        and (sec_level != 0 or bool(old_seal.get("lv0_cohesion_bundle")))
+                    ):
+                        return True
             except Exception:
                 pass
         if previous_seals:

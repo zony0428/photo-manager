@@ -423,9 +423,10 @@ function _createLoomeCascadeChildPanel(node, actionMode) {
 
       // マウスオーバーで右側に次階層パネルをカスケード展開
       row.addEventListener('mouseenter', () => {
+        if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
         if (activeRowEl === row && activeChildPanel) return;
-        closeActiveSubPanel();
         hoverTimer = setTimeout(() => {
+          closeActiveSubPanel();
           activeRowEl = row;
           row.classList.add('is-active-cascade');
           const subPanel = _createLoomeCascadeChildPanel(child, actionMode);
@@ -449,12 +450,13 @@ function _createLoomeCascadeChildPanel(node, actionMode) {
               subPanel.style.top = `${Math.max(0, topOffset - shiftUp)}px`;
             }
           });
-        }, 65);
+        }, 300);
       });
 
       // クリックで即座にその子フォルダへコピー/移動
       row.addEventListener('click', (e) => {
         e.stopPropagation();
+        if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
         const targetDest = child.cleanPath || child.path || child.rel_path || '';
         if (actionMode === 'move') {
           executeStorageMoveFromSelection(targetDest, child.displayName);
@@ -644,17 +646,18 @@ async function renderStorageFolderListInContainers(containers, actionMode) {
         <span class="ns-item-arrow">▸</span>
       `;
 
-      // マウスオーバーで右側にドライブ内フォルダ階層パネルをカスケード展開
+      // マウスオーバーで右側にドライブ内フォルダ階層パネルをカスケード展開 (300ms)
       row.addEventListener('mouseenter', () => {
         if (hoverTimer) clearTimeout(hoverTimer);
         hoverTimer = setTimeout(() => {
           openDriveSubPanel(driveNode, row);
-        }, 50);
+        }, 300);
       });
 
       // ドライブ行自体のクリックで、そのドライブ直下へ即コピー/移動
       row.addEventListener('click', (e) => {
         e.stopPropagation();
+        if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
         const targetDest = driveNode.cleanPath || driveNode.path || '';
         const dispLabel = `${driveNode.displayName} (直下)`;
         if (actionMode === 'move') {

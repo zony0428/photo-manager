@@ -1472,7 +1472,7 @@ function(){return null!==this.ib?this.ib:ra(this.eb)};"function"===typeof Symbol
 z,-1,h,N));var L=m(h,"i32");z=m(N,"i32");if(0!==L){var K=null;w=new c(L,this);for(null!=l&&w.bind(l);w.step();)null===K&&(K={columns:w.getColumnNames(),values:[]},g.push(K)),K.values.push(w.get(null,n));w.free()}}return g}catch(O){throw w&&w.free(),O;}finally{sa(t)}};e.prototype.each=function(g,l,n,t,w){"function"===typeof l&&(t=n,n=l,l=void 0);g=this.prepare(g,l);try{for(;g.step();)n(g.getAsObject(null,w))}finally{g.free()}if("function"===typeof t)return t()};e.prototype.prepare=function(g,l){qa(h);
 this.handleError(H(this.db,g,-1,h,0));g=m(h,"i32");if(0===g)throw"Nothing to prepare";var n=new c(g,this);null!=l&&n.bind(l);return this.Za[g]=n};e.prototype.iterateStatements=function(g){return new d(g,this)};e.prototype["export"]=function(){Object.values(this.Za).forEach(function(l){l.free()});Object.values(this.Na).forEach(ua);this.Na={};this.handleError(y(this.db));var g=va(this.filename);this.handleError(r(this.filename,h));this.db=m(h,"i32");ob(this.db);return g};e.prototype.close=function(){null!==
 this.db&&(Object.values(this.Za).forEach(function(g){g.free()}),Object.values(this.Na).forEach(ua),this.Na={},this.handleError(y(this.db)),wa("/"+this.filename),this.db=null)};e.prototype.handleError=function(g){if(0===g)return null;g=Bc(this.db);throw Error(g);};e.prototype.getRowsModified=function(){return F(this.db)};e.prototype.create_function=function(g,l){Object.prototype.hasOwnProperty.call(this.Na,g)&&(ua(this.Na[g]),delete this.Na[g]);var n=xa(function(t,w,z){w=b(w,z);try{var N=l.apply(null,
-w)}catch(L){Aa(t,L,-1);return}a(t,N)},"viii");this.Na[g]=n;this.handleError(tb(this.db,g,l.length,1,0,n,0,0,0));return this};e.prototype.create_aggregate=function(g,l){var n=l.init||function(){return null},t=l.finalize||function(K){return K},w=l.step;if(!w)throw"An aggregate function must have a step function in "+g;var z={};Object.hasOwnProperty.call(this.Na,g)&&(ua(this.Na[g]),delete this.Na[g]);l=g+"__finalize";Object.hasOwnProperty.call(this.Na,l)&&(ua(this.Na[l]),delete this.Na[l]);var N=xa(function(K,
+w)}catch(L){Aa(t,L,-1);return}a(t,N)},"viii");this.Na[g]=n;this.handleError(tb(this.db,g,l.length,2049,0,n,0,0,0));return this};e.prototype.create_aggregate=function(g,l){var n=l.init||function(){return null},t=l.finalize||function(K){return K},w=l.step;if(!w)throw"An aggregate function must have a step function in "+g;var z={};Object.hasOwnProperty.call(this.Na,g)&&(ua(this.Na[g]),delete this.Na[g]);l=g+"__finalize";Object.hasOwnProperty.call(this.Na,l)&&(ua(this.Na[l]),delete this.Na[l]);var N=xa(function(K,
 O,Ua){var X=ub(K,1);Object.hasOwnProperty.call(z,X)||(z[X]=n());O=b(O,Ua);O=[z[X]].concat(O);try{z[X]=w.apply(null,O)}catch(Nc){delete z[X],Aa(K,Nc,-1)}},"viii"),L=xa(function(K){var O=ub(K,1);try{var Ua=t(z[O])}catch(X){delete z[O];Aa(K,X,-1);return}a(K,Ua);delete z[O]},"vi");this.Na[g]=N;this.Na[l]=L;this.handleError(tb(this.db,g,w.length-1,1,0,0,N,L,0));return this};f.Database=e};
 var ya=Object.assign({},f),za="./this.program",Ba="object"==typeof window,Ca="function"==typeof importScripts,Da="object"==typeof process&&"object"==typeof process.versions&&"string"==typeof process.versions.node,A="",Ea,Fa,Ga;
 if(Da){var fs=require("fs"),Ha=require("path");A=Ca?Ha.dirname(A)+"/":__dirname+"/";Ea=(a,b)=>{a=Ia(a)?new URL(a):Ha.normalize(a);return fs.readFileSync(a,b?void 0:"utf8")};Ga=a=>{a=Ea(a,!0);a.buffer||(a=new Uint8Array(a));return a};Fa=(a,b,c,d=!0)=>{a=Ia(a)?new URL(a):Ha.normalize(a);fs.readFile(a,d?void 0:"utf8",(e,h)=>{e?c(e):b(d?h.buffer:h)})};!f.thisProgram&&1<process.argv.length&&(za=process.argv[1].replace(/\\/g,"/"));process.argv.slice(2);"undefined"!=typeof module&&(module.exports=f);f.inspect=
@@ -2173,7 +2173,7 @@ else if (typeof exports === 'object'){
     const port = window.location.port;
     const isAndroidLocalFileServer =
       (h === '127.0.0.1' || h === 'localhost') &&
-      (port !== '8088' || /Android/i.test(navigator.userAgent || ''));
+      port !== '8088';
     return Boolean(
       window.__PM_STANDALONE_HTML__ ||
         (p !== 'http:' && p !== 'https:') ||
@@ -2710,8 +2710,14 @@ else if (typeof exports === 'object'){
     if (!mState.localDb) return;
 
     let sql = `
-      SELECT p.*
+      SELECT p.*, COALESCE(sc.cnt, 1) AS stack_count
       FROM photos p
+      LEFT JOIN (
+        SELECT stack_id, COUNT(*) AS cnt
+        FROM photos
+        WHERE stack_id IS NOT NULL AND IFNULL(is_unlinked, 0) = 0
+        GROUP BY stack_id
+      ) sc ON sc.stack_id = p.stack_id
       WHERE IFNULL(p.is_unlinked, 0) = 0
     `;
     const params = [];
@@ -2812,63 +2818,55 @@ else if (typeof exports === 'object'){
 
     const rows = queryLocalDbObjects(sql, params);
 
-    // タグ一覧とスタック情報を一括付与
-    if (rows.length > 0) {
-      const photoIds = rows.map((r) => r.id);
-      const tagsMap = new Map();
-
-      // 900件ずつチャンク化して photo_tags を取得
-      for (let i = 0; i < photoIds.length; i += 900) {
-        const chunk = photoIds.slice(i, i + 900);
-        const ph = chunk.map(() => '?').join(',');
-        const tagRows = queryLocalDbObjects(
-          `SELECT photo_id, tag FROM photo_tags WHERE photo_id IN (${ph}) ORDER BY tag`,
-          chunk
-        );
-        for (const tr of tagRows) {
-          if (!tagsMap.has(tr.photo_id)) tagsMap.set(tr.photo_id, []);
-          tagsMap.get(tr.photo_id).push(tr.tag);
-        }
-      }
-
-      // スタックメンバー情報の取得
-      const stackIds = [
-        ...new Set(rows.filter((r) => r.stack_id != null).map((r) => r.stack_id)),
-      ];
-      const stackMembersMap = new Map();
-      if (mState.stacked && stackIds.length > 0) {
-        for (let i = 0; i < stackIds.length; i += 900) {
-          const chunk = stackIds.slice(i, i + 900);
-          const ph = chunk.map(() => '?').join(',');
-          const memberRows = queryLocalDbObjects(
-            `SELECT * FROM photos WHERE stack_id IN (${ph}) AND IFNULL(is_unlinked, 0) = 0 ORDER BY date_taken ASC, subsec_time ASC, id ASC`,
-            chunk
-          );
-          for (const mr of memberRows) {
-            mr.tags = tagsMap.get(mr.id) || [];
-            if (!stackMembersMap.has(mr.stack_id)) stackMembersMap.set(mr.stack_id, []);
-            stackMembersMap.get(mr.stack_id).push(mr);
-          }
-        }
-      }
-
-      for (const r of rows) {
-        r.tags = tagsMap.get(r.id) || [];
-        if (mState.stacked && r.stack_id && stackMembersMap.has(r.stack_id)) {
-          const members = stackMembersMap.get(r.stack_id);
-          r.stack_count = members.length;
-          r.stack_photos = members;
-        } else {
-          r.stack_count = 1;
-          r.stack_photos = [];
-        }
-      }
+    // 一覧グリッド描画を高速化するため、初期状態では stack_count のみ保持し、tags / stack_photos は選択・閲覧時にオンデマンド取得する
+    for (const r of rows) {
+      r.tags = [];
+      r.stack_count = mState.stacked ? Number(r.stack_count || 1) : 1;
+      r.stack_photos = [];
+      r._detailsLoaded = false;
     }
 
     mState.photos = rows;
     renderPhotoGrid();
     updateHeaderCounters();
     renderActiveFilterChips();
+  }
+
+  /**
+   * 単一写真（およびスタック内メンバー）のタグ一覧・スタック内訳をオンデマンドでロードする
+   */
+  function ensureLocalPhotoDetails(photo) {
+    if (!photo || mState.mode !== 'localdb' || !mState.localDb || photo._detailsLoaded) {
+      return photo;
+    }
+    photo._detailsLoaded = true;
+    const tagRows = queryLocalDbObjects(
+      'SELECT tag FROM photo_tags WHERE photo_id = ? ORDER BY tag',
+      [photo.id]
+    );
+    photo.tags = tagRows.map((r) => r.tag);
+
+    if (photo.stack_id != null && Number(photo.stack_count || 1) > 1) {
+      const memberRows = queryLocalDbObjects(
+        'SELECT * FROM photos WHERE stack_id = ? AND IFNULL(is_unlinked, 0) = 0 ORDER BY date_taken ASC, subsec_time ASC, id ASC',
+        [photo.stack_id]
+      );
+      for (const mr of memberRows) {
+        if (mr.id === photo.id) {
+          mr.tags = photo.tags;
+        } else {
+          const mTags = queryLocalDbObjects(
+            'SELECT tag FROM photo_tags WHERE photo_id = ? ORDER BY tag',
+            [mr.id]
+          );
+          mr.tags = mTags.map((r) => r.tag);
+        }
+        mr._detailsLoaded = true;
+      }
+      photo.stack_photos = memberRows;
+      photo.stack_count = memberRows.length;
+    }
+    return photo;
   }
 
   /**
@@ -3533,9 +3531,9 @@ else if (typeof exports === 'object'){
   // ==================== フルスクリーン選別ビューア ====================
 
   function getActiveViewerPhoto() {
-    if (mState.viewerStackMember) return mState.viewerStackMember;
+    if (mState.viewerStackMember) return ensureLocalPhotoDetails(mState.viewerStackMember);
     if (mState.viewerIndex >= 0 && mState.viewerIndex < mState.photos.length) {
-      return mState.photos[mState.viewerIndex];
+      return ensureLocalPhotoDetails(mState.photos[mState.viewerIndex]);
     }
     return null;
   }
@@ -3577,7 +3575,7 @@ else if (typeof exports === 'object'){
   }
 
   function renderViewerCurrentPhoto() {
-    const primaryPhoto = mState.photos[mState.viewerIndex];
+    const primaryPhoto = ensureLocalPhotoDetails(mState.photos[mState.viewerIndex]);
     const activePhoto = getActiveViewerPhoto();
     if (!activePhoto || !primaryPhoto) return;
 
@@ -4499,6 +4497,7 @@ else if (typeof exports === 'object'){
     }
     try {
       const binaryArray = mState.localDb.export();
+      if (typeof mState.localDb.create_function === 'function') mState.localDb.create_function('tetheract_v170_guard', () => 1);
       const blob = new Blob([binaryArray], { type: 'application/octet-stream' });
       const url = _createPersistentBlobUrl(blob);
       const a = document.createElement('a');

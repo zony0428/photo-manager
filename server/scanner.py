@@ -467,18 +467,21 @@ def resolve_portable_path(
     norm_stored = str(orig_path).replace("/", "\\").rstrip("\\")
     lower_stored = norm_stored.lower()
     for folder_label, marker_name in (("Loome", "loome"), ("storage", "storage")):
+        marker = f"\\{marker_name}\\"
+        idx_st = lower_stored.rfind(marker)
+        ends_st = lower_stored.endswith(f"\\{marker_name}")
+        if idx_st == -1 and not ends_st:
+            continue
         app_loome_dir = base_dir / folder_label
         if not app_loome_dir.exists():
             continue
-        marker = f"\\{marker_name}\\"
-        idx_st = lower_stored.rfind(marker)
         if idx_st != -1:
             rel_in_storage = norm_stored[idx_st + len(marker):].lstrip("\\")
             if rel_in_storage:
                 candidate_storage = app_loome_dir / rel_in_storage
                 if candidate_storage.exists():
                     return candidate_storage, True
-        elif lower_stored.endswith(f"\\{marker_name}"):
+        elif ends_st:
             return app_loome_dir, True
 
     # 2. VSN（ボリュームシリアル番号）が指定されている場合の厳密メディア照合
@@ -577,10 +580,6 @@ def resolve_drive_online_path(
        本関数は「メディアは接続されているがフォルダやファイルがOS上で削除された（消失）」ケースで
        True を返し、「メディア自体が未接続（オフライン）」のケースと厳密に区別するために使用する。
     """
-    resolved_p, is_exists = resolve_portable_path(stored_path, base_dir=base_dir, expected_serial=expected_serial)
-    if is_exists:
-        return resolved_p, True
-
     prefix_serial, clean_path = _extract_vsn_prefix(stored_path)
     effective_serial = (expected_serial or prefix_serial or "").strip().upper() or None
 
@@ -592,18 +591,21 @@ def resolve_drive_online_path(
     norm_stored = str(orig_path).replace("/", "\\").rstrip("\\")
     lower_stored = norm_stored.lower()
     for folder_label, marker_name in (("Loome", "loome"), ("storage", "storage")):
+        marker = f"\\{marker_name}\\"
+        idx_st = lower_stored.rfind(marker)
+        ends_st = lower_stored.endswith(f"\\{marker_name}")
+        if idx_st == -1 and not ends_st:
+            continue
         app_loome_dir = base_dir / folder_label
         if not app_loome_dir.exists():
             continue
-        marker = f"\\{marker_name}\\"
-        idx_st = lower_stored.rfind(marker)
         if idx_st != -1:
             rel_in_storage = norm_stored[idx_st + len(marker):].lstrip("\\")
             return (app_loome_dir / rel_in_storage if rel_in_storage else app_loome_dir), True
-        elif lower_stored.endswith(f"\\{marker_name}"):
+        elif ends_st:
             return app_loome_dir, True
 
-    # 2. VSN（ボリュームシリアル番号）が指定されている場合: 該当VSNのドライブがマウント中か確認
+    # 2. VSN（ボリュームシリアル番号）が指定されている場合: メモリ上のドライブVSN対応表で即座に接続判定（ディスクI/Oゼロ）
     if effective_serial and not _is_network_path(clean_path):
         serial_to_drive, _ = _get_connected_drive_serial_map()
         mounted_drive = serial_to_drive.get(effective_serial)
@@ -617,9 +619,17 @@ def resolve_drive_online_path(
             else:
                 target_candidate = orig_path
             return target_candidate, True
+        # 該当VSNが未接続でもクラウドドライブ移動の可能性がある場合のみフォールバック解決
+        cloud_cand = _resolve_cloud_drive_path(clean_path)
+        if cloud_cand is not None:
+            return cloud_cand, True
         return orig_path, False
 
-    # 3. VSN未指定（レガシーレコード等）の場合: ドライブのルートが存在するかで接続判定
+    # 3. VSN未指定（レガシーレコード・ネットワークドライブ等）の場合
+    resolved_p, is_exists = resolve_portable_path(stored_path, base_dir=base_dir, expected_serial=expected_serial)
+    if is_exists:
+        return resolved_p, True
+
     if orig_path.drive and not _is_network_path(clean_path):
         drive_root = Path(f"{orig_path.drive}\\")
         if drive_root.exists():

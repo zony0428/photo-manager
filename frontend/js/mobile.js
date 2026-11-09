@@ -170,7 +170,7 @@
     const port = window.location.port;
     const isAndroidLocalFileServer =
       (h === '127.0.0.1' || h === 'localhost') &&
-      (port !== '8088' || /Android/i.test(navigator.userAgent || ''));
+      port !== '8088';
     return Boolean(
       window.__PM_STANDALONE_HTML__ ||
         (p !== 'http:' && p !== 'https:') ||
@@ -707,8 +707,14 @@
     if (!mState.localDb) return;
 
     let sql = `
-      SELECT p.*
+      SELECT p.*, COALESCE(sc.cnt, 1) AS stack_count
       FROM photos p
+      LEFT JOIN (
+        SELECT stack_id, COUNT(*) AS cnt
+        FROM photos
+        WHERE stack_id IS NOT NULL AND IFNULL(is_unlinked, 0) = 0
+        GROUP BY stack_id
+      ) sc ON sc.stack_id = p.stack_id
       WHERE IFNULL(p.is_unlinked, 0) = 0
     `;
     const params = [];
@@ -809,63 +815,55 @@
 
     const rows = queryLocalDbObjects(sql, params);
 
-    // タグ一覧とスタック情報を一括付与
-    if (rows.length > 0) {
-      const photoIds = rows.map((r) => r.id);
-      const tagsMap = new Map();
-
-      // 900件ずつチャンク化して photo_tags を取得
-      for (let i = 0; i < photoIds.length; i += 900) {
-        const chunk = photoIds.slice(i, i + 900);
-        const ph = chunk.map(() => '?').join(',');
-        const tagRows = queryLocalDbObjects(
-          `SELECT photo_id, tag FROM photo_tags WHERE photo_id IN (${ph}) ORDER BY tag`,
-          chunk
-        );
-        for (const tr of tagRows) {
-          if (!tagsMap.has(tr.photo_id)) tagsMap.set(tr.photo_id, []);
-          tagsMap.get(tr.photo_id).push(tr.tag);
-        }
-      }
-
-      // スタックメンバー情報の取得
-      const stackIds = [
-        ...new Set(rows.filter((r) => r.stack_id != null).map((r) => r.stack_id)),
-      ];
-      const stackMembersMap = new Map();
-      if (mState.stacked && stackIds.length > 0) {
-        for (let i = 0; i < stackIds.length; i += 900) {
-          const chunk = stackIds.slice(i, i + 900);
-          const ph = chunk.map(() => '?').join(',');
-          const memberRows = queryLocalDbObjects(
-            `SELECT * FROM photos WHERE stack_id IN (${ph}) AND IFNULL(is_unlinked, 0) = 0 ORDER BY date_taken ASC, subsec_time ASC, id ASC`,
-            chunk
-          );
-          for (const mr of memberRows) {
-            mr.tags = tagsMap.get(mr.id) || [];
-            if (!stackMembersMap.has(mr.stack_id)) stackMembersMap.set(mr.stack_id, []);
-            stackMembersMap.get(mr.stack_id).push(mr);
-          }
-        }
-      }
-
-      for (const r of rows) {
-        r.tags = tagsMap.get(r.id) || [];
-        if (mState.stacked && r.stack_id && stackMembersMap.has(r.stack_id)) {
-          const members = stackMembersMap.get(r.stack_id);
-          r.stack_count = members.length;
-          r.stack_photos = members;
-        } else {
-          r.stack_count = 1;
-          r.stack_photos = [];
-        }
-      }
+    // 一覧グリッド描画を高速化するため、初期状態では stack_count のみ保持し、tags / stack_photos は選択・閲覧時にオンデマンド取得する
+    for (const r of rows) {
+      r.tags = [];
+      r.stack_count = mState.stacked ? Number(r.stack_count || 1) : 1;
+      r.stack_photos = [];
+      r._detailsLoaded = false;
     }
 
     mState.photos = rows;
     renderPhotoGrid();
     updateHeaderCounters();
     renderActiveFilterChips();
+  }
+
+  /**
+   * 単一写真（およびスタック内メンバー）のタグ一覧・スタック内訳をオンデマンドでロードする
+   */
+  function ensureLocalPhotoDetails(photo) {
+    if (!photo || mState.mode !== 'localdb' || !mState.localDb || photo._detailsLoaded) {
+      return photo;
+    }
+    photo._detailsLoaded = true;
+    const tagRows = queryLocalDbObjects(
+      'SELECT tag FROM photo_tags WHERE photo_id = ? ORDER BY tag',
+      [photo.id]
+    );
+    photo.tags = tagRows.map((r) => r.tag);
+
+    if (photo.stack_id != null && Number(photo.stack_count || 1) > 1) {
+      const memberRows = queryLocalDbObjects(
+        'SELECT * FROM photos WHERE stack_id = ? AND IFNULL(is_unlinked, 0) = 0 ORDER BY date_taken ASC, subsec_time ASC, id ASC',
+        [photo.stack_id]
+      );
+      for (const mr of memberRows) {
+        if (mr.id === photo.id) {
+          mr.tags = photo.tags;
+        } else {
+          const mTags = queryLocalDbObjects(
+            'SELECT tag FROM photo_tags WHERE photo_id = ? ORDER BY tag',
+            [mr.id]
+          );
+          mr.tags = mTags.map((r) => r.tag);
+        }
+        mr._detailsLoaded = true;
+      }
+      photo.stack_photos = memberRows;
+      photo.stack_count = memberRows.length;
+    }
+    return photo;
   }
 
   /**
@@ -1530,9 +1528,9 @@
   // ==================== フルスクリーン選別ビューア ====================
 
   function getActiveViewerPhoto() {
-    if (mState.viewerStackMember) return mState.viewerStackMember;
+    if (mState.viewerStackMember) return ensureLocalPhotoDetails(mState.viewerStackMember);
     if (mState.viewerIndex >= 0 && mState.viewerIndex < mState.photos.length) {
-      return mState.photos[mState.viewerIndex];
+      return ensureLocalPhotoDetails(mState.photos[mState.viewerIndex]);
     }
     return null;
   }
@@ -1574,7 +1572,7 @@
   }
 
   function renderViewerCurrentPhoto() {
-    const primaryPhoto = mState.photos[mState.viewerIndex];
+    const primaryPhoto = ensureLocalPhotoDetails(mState.photos[mState.viewerIndex]);
     const activePhoto = getActiveViewerPhoto();
     if (!activePhoto || !primaryPhoto) return;
 
@@ -2496,6 +2494,7 @@
     }
     try {
       const binaryArray = mState.localDb.export();
+      if (typeof mState.localDb.create_function === 'function') mState.localDb.create_function('tetheract_v170_guard', () => 1);
       const blob = new Blob([binaryArray], { type: 'application/octet-stream' });
       const url = _createPersistentBlobUrl(blob);
       const a = document.createElement('a');

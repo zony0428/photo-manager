@@ -16,7 +16,7 @@ import secrets
 import socket
 import threading
 import time
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("photo_manager.lan_access")
 
@@ -24,6 +24,7 @@ logger = logging.getLogger("photo_manager.lan_access")
 LAN_TOKEN: str = secrets.token_urlsafe(18)
 LAN_TOKEN_COOKIE = "pm_lan_token"
 LAN_TOKEN_QUERY = "t"
+LAN_CLIENT_HEADER = "x-tetheract-lan-client"
 
 # 最後のLAN通信からこの秒数が経過したらLAN待受を自動停止する
 LAN_IDLE_TIMEOUT_SEC = 30 * 60
@@ -88,6 +89,22 @@ def is_loopback_client(client_host: Optional[str]) -> bool:
         return ipaddress.ip_address(client_host).is_loopback
     except ValueError:
         return False
+
+
+def resolve_request_client_host(request: Any) -> str:
+    """
+    リクエスト元の実質クライアントIPを返す。
+    同一プロセス内のLAN TCP中継スレッド経由で 127.0.0.1 のメインUvicornへ渡された接続では、
+    付与された X-Tetheract-Lan-Client ヘッダを優先してLANクライアントIPとして扱う。
+    """
+    raw_host = request.client.host if getattr(request, "client", None) else "127.0.0.1"
+    if is_loopback_client(raw_host):
+        headers = getattr(request, "headers", None)
+        if headers is not None:
+            forwarded = (headers.get(LAN_CLIENT_HEADER) or "").strip()
+            if forwarded and not is_loopback_client(forwarded):
+                return forwarded
+    return raw_host
 
 
 def is_host_header_allowed(host_header: Optional[str]) -> bool:
@@ -172,8 +189,89 @@ def detect_local_ip_addresses() -> List[str]:
     return ips
 
 
+def _rewrite_http_request_header(raw_header: bytes, remote_ip: str) -> bytes:
+    """
+    HTTPリクエストヘッダ先頭に X-Tetheract-Lan-Client と Connection: close を注入し、
+    クライアント側からの偽装ヘッダを除去する。
+    """
+    lines = raw_header.split(b"\r\n")
+    if not lines:
+        return raw_header
+    out_lines = [lines[0]]
+    out_lines.append(f"X-Tetheract-Lan-Client: {remote_ip}".encode("ascii", errors="ignore"))
+    out_lines.append(b"Connection: close")
+    for line in lines[1:]:
+        low = line.lower()
+        if low.startswith((b"x-tetheract-lan-client:", b"connection:")):
+            continue
+        out_lines.append(line)
+    return b"\r\n".join(out_lines)
+
+
+def _handle_tcp_client(client_sock: socket.socket, remote_ip: str, target_port: int) -> None:
+    """1つのLAN TCP接続を 127.0.0.1:target_port へ双方向中継する"""
+    upstream_sock = None
+    try:
+        client_sock.settimeout(30.0)
+        try:
+            client_sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        except Exception:
+            pass
+
+        buf = b""
+        while b"\r\n\r\n" not in buf and len(buf) < 32768:
+            chunk = client_sock.recv(8192)
+            if not chunk:
+                break
+            buf += chunk
+
+        if not buf:
+            return
+
+        upstream_sock = socket.create_connection(("127.0.0.1", target_port), timeout=5.0)
+        upstream_sock.settimeout(60.0)
+        try:
+            upstream_sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        except Exception:
+            pass
+
+        if b"\r\n\r\n" in buf:
+            hdr_part, body_part = buf.split(b"\r\n\r\n", 1)
+            rewritten = _rewrite_http_request_header(hdr_part, remote_ip) + b"\r\n\r\n" + body_part
+            upstream_sock.sendall(rewritten)
+        else:
+            upstream_sock.sendall(buf)
+
+        def _forward_client_body():
+            try:
+                while True:
+                    data = client_sock.recv(65536)
+                    if not data:
+                        break
+                    upstream_sock.sendall(data)
+            except Exception:
+                pass
+
+        threading.Thread(target=_forward_client_body, daemon=True).start()
+
+        while True:
+            resp_chunk = upstream_sock.recv(65536)
+            if not resp_chunk:
+                break
+            client_sock.sendall(resp_chunk)
+    except Exception:
+        pass
+    finally:
+        for s in (upstream_sock, client_sock):
+            if s is not None:
+                try:
+                    s.close()
+                except Exception:
+                    pass
+
+
 def _stop_idle_lan_servers_loop() -> None:
-    """一定時間LAN通信が無い場合にLAN待受サーバーを停止する監視ループ"""
+    """一定時間LAN通信が無い場合にLAN待受ソケットを停止する監視ループ"""
     while True:
         time.sleep(60)
         with _lan_lock:
@@ -181,9 +279,10 @@ def _stop_idle_lan_servers_loop() -> None:
                 continue
             if time.time() - _last_lan_activity < LAN_IDLE_TIMEOUT_SEC:
                 continue
-            for key, srv in list(_lan_servers.items()):
+            for key, srv_sock in list(_lan_servers.items()):
                 try:
-                    srv.should_exit = True
+                    if hasattr(srv_sock, "close"):
+                        srv_sock.close()
                     logger.info(f"[Mobile LAN] 無通信のためLAN待受を停止しました: {key}")
                 except Exception as e:
                     logger.warning(f"[Mobile LAN] LAN待受の停止に失敗 ({key}): {e}")
@@ -193,12 +292,12 @@ def _stop_idle_lan_servers_loop() -> None:
 def ensure_lan_listeners(app, port: int = 8088) -> List[str]:
     """
     スマホ連携モーダルを開いた際、オンデマンドでPCのLAN IPアドレス (192.168.x.x等) に
-    セカンダリUvicornリスナーを起動する。
-    普段は 127.0.0.1 のみで動作するため、ファイアウォール警告やパブリックWi-Fiでのポート露出を回避する。
-    無通信が LAN_IDLE_TIMEOUT_SEC 続くと自動停止し、次回モーダル表示時に再起動する。
+    軽量TCPソケット中継リスナーを起動し、メインUvicorn (127.0.0.1:port) へ転送する。
+    （※2つ目のUvicornインスタンスを別スレッドで起動するとasyncio ProactorEventLoopが競合して
+      スマホブラウザの通信がハングアップする問題を根本回避する）
+    普段は 127.0.0.1 のみで動作し、無通信が LAN_IDLE_TIMEOUT_SEC 続くと自動停止する。
     """
     global _watchdog_started
-    import uvicorn
 
     ips = detect_local_ip_addresses()
     with _lan_lock:
@@ -216,24 +315,43 @@ def ensure_lan_listeners(app, port: int = 8088) -> List[str]:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.settimeout(0.2)
                 if s.connect_ex((ip, port)) == 0:
-                    # 既に別サーバーが待受中（停止処理中など）の場合は今回は起動しない
                     continue
 
-            cfg = uvicorn.Config(app, host=ip, port=port, log_level="warning")
-            srv = uvicorn.Server(cfg)
+            try:
+                srv_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                srv_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                srv_sock.bind((ip, port))
+                srv_sock.listen(128)
+            except Exception as e:
+                logger.warning(f"[Mobile LAN] LAN待受の起動をスキップ ({key}): {e}")
+                continue
 
-            def _run(server=srv, bind_key=key):
+            def _run(listener_sock=srv_sock, bind_key=key, target_port=port):
+                logger.info(f"[Mobile LAN] スマホ連携用オンデマンドLAN待受を開始しました: http://{bind_key}/m")
                 try:
-                    logger.info(f"[Mobile LAN] スマホ連携用オンデマンドLAN待受を開始しました: http://{bind_key}/m")
-                    server.run()
-                except Exception as e:
-                    logger.warning(f"[Mobile LAN] LAN待受の起動をスキップ ({bind_key}): {e}")
+                    while True:
+                        try:
+                            client_sock, client_addr = listener_sock.accept()
+                            remote_ip = client_addr[0]
+                            threading.Thread(
+                                target=_handle_tcp_client,
+                                args=(client_sock, remote_ip, target_port),
+                                daemon=True,
+                            ).start()
+                        except OSError:
+                            break
+                        except Exception:
+                            time.sleep(0.05)
                 finally:
+                    try:
+                        listener_sock.close()
+                    except Exception:
+                        pass
                     with _lan_lock:
-                        if _lan_servers.get(bind_key) is server:
+                        if _lan_servers.get(bind_key) is listener_sock:
                             _lan_servers.pop(bind_key, None)
 
             threading.Thread(target=_run, daemon=True, name=f"MobileLanListener-{ip}").start()
-            _lan_servers[key] = srv
+            _lan_servers[key] = srv_sock
 
     return ips

@@ -82,11 +82,6 @@ async function loadLocationTree() {
       return;
     }
 
-    // 初回ロード時: 最も写真枚数が多い国（通常は日本）をデフォルト展開
-    if (locationExpandedPaths.size === 0 && tree.length > 0) {
-      locationExpandedPaths.add(tree[0].country);
-    }
-
     renderLocationTree(tree);
   } catch (err) {
     console.error('ジオタグツリー取得エラー:', err);

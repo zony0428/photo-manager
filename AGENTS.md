@@ -231,3 +231,5 @@ photo-manager/
 - **機能別コードマップ（機能と該当コードの完全対応表）**: `docs/knowledge/feature-code-map.md`
 - **大規模化・高速化の相互影響検証 & 安全設計計画**: `docs/knowledge/architecture-scalability-and-side-effects.md`
 - **技術ノウハウ・知見集**: `docs/knowledge/`
+
+- **v1.8系（`main`）と v2.0系（`v2`・Android連携）のブランチ・配布フォルダ（`dist` / `dist_v2`）分離規約**: `.agents/rules/branch-and-dist-separation.md` および `docs/knowledge/v1-v2-branch-and-dist-workflow.md`

@@ -1202,6 +1202,24 @@
 /* ==========================================================================
    ライトボックス (全画面プレビューモーダル)
    ========================================================================== */
+@keyframes lightboxModalFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes lightboxImgFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 .lightbox-modal {
   position: fixed;
   inset: 0;
@@ -1209,8 +1227,8 @@
   backdrop-filter: blur(16px);
   z-index: 5000;
   display: flex;
-
   flex-direction: column;
+  animation: lightboxModalFadeIn 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .lightbox-header {
@@ -1374,6 +1392,15 @@
   user-select: none;
   -webkit-user-drag: none;
   cursor: default;
+}
+
+#lightboxImage.lightbox-image-loading {
+  opacity: 0 !important;
+  animation: none !important;
+}
+
+#lightboxImage.lightbox-image-fadein {
+  animation: lightboxImgFadeIn 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .lightbox-zoom-badge {

@@ -286,6 +286,40 @@ function openContextMenu(x, y) {
       : '先に写真のトーン調整をコピーしてください (Ctrl+Shift+C)';
   }
 
+  // コンテキストメニュー内の全サブメニュー（評価・タグ・調整・テイクアウト・Loome）に300msホバー展開＆クリック即時展開を適用
+  elements.contextMenu.querySelectorAll('.context-submenu.is-submenu-open').forEach(sub => sub.classList.remove('is-submenu-open'));
+  elements.contextMenu.querySelectorAll('.context-menu-item.has-submenu').forEach(itemEl => {
+    if (itemEl.dataset.submenuDelayBound === '1') return;
+    itemEl.dataset.submenuDelayBound = '1';
+    let subTimer = null;
+    const getSub = () => itemEl.querySelector(':scope > .context-submenu');
+    itemEl.addEventListener('mouseenter', () => {
+      if (subTimer) clearTimeout(subTimer);
+      subTimer = setTimeout(() => {
+        elements.contextMenu.querySelectorAll('.context-submenu.is-submenu-open').forEach(other => {
+          if (other !== getSub()) other.classList.remove('is-submenu-open');
+        });
+        const sub = getSub();
+        if (sub) sub.classList.add('is-submenu-open');
+      }, 300);
+    });
+    itemEl.addEventListener('mouseleave', () => {
+      if (subTimer) { clearTimeout(subTimer); subTimer = null; }
+      const sub = getSub();
+      if (sub) sub.classList.remove('is-submenu-open');
+    });
+    itemEl.addEventListener('click', (e) => {
+      if (e.target && e.target.closest('.context-submenu')) return;
+      e.stopPropagation();
+      if (subTimer) { clearTimeout(subTimer); subTimer = null; }
+      elements.contextMenu.querySelectorAll('.context-submenu.is-submenu-open').forEach(other => {
+        if (other !== getSub()) other.classList.remove('is-submenu-open');
+      });
+      const sub = getSub();
+      if (sub) sub.classList.add('is-submenu-open');
+    });
+  });
+
   elements.contextMenu.style.display = 'block';
 
   // 画面端からはみ出さないように位置調整
@@ -312,7 +346,10 @@ function openContextMenu(x, y) {
 }
 
 function closeContextMenu() {
-  elements.contextMenu.style.display = 'none';
+  if (elements.contextMenu) {
+    elements.contextMenu.querySelectorAll('.context-submenu.is-submenu-open').forEach(sub => sub.classList.remove('is-submenu-open'));
+    elements.contextMenu.style.display = 'none';
+  }
 }
 
 // フォルダ用コンテキストメニューの対象ノード

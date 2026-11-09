@@ -9,7 +9,7 @@ from typing import Any, Dict, Tuple
 from fastapi import HTTPException, Request
 from fastapi.responses import Response
 
-from ..lan_access import is_loopback_client
+from ..lan_access import is_loopback_client, resolve_request_client_host
 from ..storage_manager import STORAGE_DIR
 
 # プロジェクトルートディレクトリ
@@ -42,6 +42,6 @@ def _fast_json(obj: Any, status_code: int = 200) -> Response:
 
 def _require_localhost(request: Request) -> None:
     """ローカルホストからのアクセスのみ許可する（二重ガード）"""
-    client_host = request.client.host if request.client else ""
+    client_host = resolve_request_client_host(request)
     if not is_loopback_client(client_host):
         raise HTTPException(status_code=403, detail="この操作はPC本体（localhost）からのみ実行できます。")

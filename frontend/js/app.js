@@ -164,7 +164,6 @@ async function refreshAll() {
     fetchCameras(),
     fetchUnlinkedCount(),
     fetchDuplicatesCount(),
-    (typeof fetchManagedVolumes === 'function' ? fetchManagedVolumes() : Promise.resolve()),
     (typeof fetchStorageFolders === 'function' ? fetchStorageFolders() : Promise.resolve()),
     (window.fetchFilterPresets ? window.fetchFilterPresets() : Promise.resolve()),
     (window.loadLocationTree ? window.loadLocationTree() : Promise.resolve()),
@@ -516,7 +515,7 @@ function syncCurrentFilterOfflineState() {
 async function fetchFolders() {
   const loadFolderSummary = async () => {
     try {
-      const response = await fetch('/api/folders');
+      const response = await fetch('/api/folders?fast=1');
       if (!response.ok) throw new Error('フォルダ一覧取得失敗');
       const data = await response.json();
       state.rawFoldersData = data.folders || [];
@@ -868,7 +867,8 @@ function renderPhotoGrid() {
       if (state.currentFilter.type === 'folder' && state.currentFilter.value) {
         const curNorm = state.currentFilter.value.replace(/\\/g, '/').toLowerCase();
         const matched = (state.rawFoldersData || []).find(f => (f.directory_path || '').replace(/\\/g, '/').toLowerCase() === curNorm);
-        const folderStatus = matched ? matched.status : 'managed';
+        const isLoomeDir = (typeof window.isStoragePath === 'function' && window.isStoragePath(state.currentFilter.value));
+        const folderStatus = matched ? matched.status : (isLoomeDir ? 'managed' : 'unmanaged');
         const isFolderMissing = matched ? !!matched.is_missing : false;
 
         if (isFolderMissing) {

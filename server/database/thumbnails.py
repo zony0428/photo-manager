@@ -68,6 +68,10 @@ def save_thumbnail(
             """,
             (photo_id, file_hash, stored_blob, width, height),
         )
+        cursor.execute(
+            "UPDATE photos SET updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (photo_id,),
+        )
         conn.commit()
 
 

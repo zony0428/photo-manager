@@ -67,13 +67,14 @@ def main() -> None:
     """軽量差分ZIPとフルパッケージZIPを順番に生成する"""
     ver = _read_version()
 
-    dist_update_dir = ROOT_DIR / "dist_update"
+    is_v2 = str(ver).strip().startswith("2.")
+    dist_update_dir = ROOT_DIR / ("dist_v2_update" if is_v2 else "dist_update")
     if dist_update_dir.exists():
         diff_zip = ROOT_DIR / f"Tetheract_v{ver}diff.zip"
         size_mb = _create_zip_from_dir(dist_update_dir, diff_zip, include_empty_work_dirs=False)
         print(f"       [OK] {diff_zip.name} ({size_mb:.2f} MB)")
 
-    dist_full_dir = ROOT_DIR / "dist"
+    dist_full_dir = ROOT_DIR / ("dist_v2" if is_v2 else "dist")
     if dist_full_dir.exists():
         full_zip = ROOT_DIR / f"Tetheract_v{ver}.zip"
         print(f"       Creating {full_zip.name} (compressing python/ & models/, please wait)...")

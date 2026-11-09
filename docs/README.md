@@ -52,6 +52,7 @@ Photo Manager の設計判断、パフォーマンス最適化パターン、セ
 | [ui-design-system-and-tiat-guidelines.md](knowledge/ui-design-system-and-tiat-guidelines.md) | **【UI/UXデザインシステム】** 2段階左サイドバー、1段ヘッダー、4:3インスペクタ、脱絵文字、4カラーテーマ、カスタム確認モーダル（`#commonConfirmModal`）統一等の規約 |
 | [security-architecture.md](knowledge/security-architecture.md) | **【セキュリティ ＆ 3段階エシカル保護設計】** 4層ネットワーク防御、3段階エシカル保護（Lv.0 他人のLoome完全拒否＆DB単体引き抜き検知・3大救済手段／Lv.1 起動ロック＆サムネイル暗号化／Lv.2 Loome先頭64KBカプセル化 `TETHVLT1`）、鍵自動サルベージ＆セルフブリック防止設計 |
 | [storage-and-xmp-sidecar-architecture.md](knowledge/storage-and-xmp-sidecar-architecture.md) | **【storage・XMP連携】** アプリ内ストレージ管理、XMPサイドカー追従・プレビュー・隔離取込 |
+| [v1-v2-branch-and-dist-workflow.md](knowledge/v1-v2-branch-and-dist-workflow.md) | **【v1.8系 / v2.0系 ブランチ・dist分離規約】** `main`（v1.8系 PC単体安定版 → `dist/`）と `v2`（v2.0系 Android連携版 → `dist_v2/`）のソース・配布物の完全分離と並行開発手順 |
 | [mobile-hybrid-architecture.md](knowledge/mobile-hybrid-architecture.md) | **【モバイル連携】** Wi-Fi直結モード（`/m`）および WebAssembly SQLite (`sql.js`) 直接読込 |
 | [performance-optimization-patterns.md](knowledge/performance-optimization-patterns.md) | **【最適化パターン】** 範囲比較フォルダ絞込、差分スキャン、高速JSON、BLOBサムネイル |
 | [portable-storage-patterns.md](knowledge/portable-storage-patterns.md) | **【ポータブル運用・所在リンク】** 相対パス原則、ドライブレター変動追跡、VSN照合、ユニーク画像 (`photos`) と複数メディア所在リンク (`photo_links`) の分離 |
@@ -67,6 +68,9 @@ GitHub Releases 投稿用に作成されたバージョン別リリースノー�
 
 | バージョン | 主な更新内容 | ファイル |
 | :--- | :--- | :--- |
+| **v1.8.4** | ライトボックスのちらつき解消・サムネイル最大2倍拡大・マウス「戻る」ボタン対応、右クリック＆Loomeサブメニューの0.3秒ホバー遅延、スマホ連携インプロセスTCPリレー化＆`sql.js`大規模DB読込高速化、1GB超DBの2回目以降起動高速化（v1.8.2〜v1.8.3含む） | [RELEASE_NOTES_v1.8.4.md](release_notes/RELEASE_NOTES_v1.8.4.md) |
+| **v1.8.1** | 左端アクティビティレールの並び順再編＆アイコン刷新、Binder「保存済みセット」カードの1行スリム化＆ホバー条件表示、右インスペクタ上部ヘッダー廃止＆クイックアクションバー統合 | [RELEASE_NOTES_v1.8.1.md](release_notes/RELEASE_NOTES_v1.8.1.md) |
+| **v1.8.0** | ローカル完結クリーン・アップデーター（`diff.zip`自動適用）、配布フォルダのルート階層整理（`tools/`集約＆`Loome/`標準化）、`autorun.inf`設置確認ダイアログ | [RELEASE_NOTES_v1.8.0.md](release_notes/RELEASE_NOTES_v1.8.0.md) |
 | **v1.7.2** | フロントエンドJS・バックエンドAPI・CSSのモジュール分割（モノリス解消）、双方向監査によるデッドコード＆未使用CSS（2,562行）の撤去、2階建てテーマ属性（`paper`/`sumi`）修正、423ロック中の不要通信抑止＆エラーハンドリング整備 | [RELEASE_NOTES_v1.7.2.md](release_notes/RELEASE_NOTES_v1.7.2.md) |
 | **v1.7.1** | Lv.0 エシカルモードの誤ロック修正・DB非破壊オンメモリロック・自己修復、大容量DB起動高速化 ＆ Win32 `CopyFileExW` DBバックアップ高速化、1週間バックアップ未実施リマインドモーダル | [RELEASE_NOTES_v1.7.1.md](release_notes/RELEASE_NOTES_v1.7.1.md) |
 | **v1.7.0** | 3段階セキュリティ＆エシカル保護（Lv.0 他人のLoome完全拒否＆DB単体引き抜き検知・3大救済手段、Lv.1 起動パスワードロック＆DBサムネイルAEAD暗号化、Lv.2 Loome先頭64KBカプセル化保護 `TETHVLT1` ＆1ビット完全復元）、`Loome/.loome_seal` からの鍵自動サルベージ・セルフブリック防止 | [RELEASE_NOTES_v1.7.0.md](release_notes/RELEASE_NOTES_v1.7.0.md) |

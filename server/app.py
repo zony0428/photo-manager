@@ -150,6 +150,7 @@ from .lan_access import (
     is_lan_path_allowed,
     is_lan_token_valid,
     is_loopback_client,
+    resolve_request_client_host,
     touch_lan_activity,
 )
 from .security import (
@@ -178,38 +179,35 @@ logger = logging.getLogger("photo_manager.app")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """起動時にDBを初期化し、旧carryからstorage/Loomeへの移行・リンク切れ写真整理・無効な(0,0)GPSエラー整理を行い、単体モバイルHTMLを最新化する"""
+    """起動時にDBを最速初期化して即座にHTTP待受を開始し、ストレージ整合性確認・モバイルHTML生成はバックグラウンドで実行する"""
     set_startup_status(is_ready=False, phase="init", message="データベースを初期化中...", detail="キャッシュとスキーマを確認しています", percent=10)
-    initialize_database()
-    locked_at_boot = is_app_locked()
-    if not locked_at_boot:
-        set_startup_status(is_ready=False, phase="storage", message="Loomeを確認中...", detail="Loome フォルダの整合性を確認しています", percent=88)
-        migrate_carry_to_storage()
-        active_loome_dir = ensure_storage_dir()
-        cleanup_missing_upload_photos(active_loome_dir)
-        cleanup_invalid_zero_gps()
-    set_startup_status(is_ready=False, phase="mobile", message="モバイル同期バンドルを準備中...", detail="Tetheract_Mobile.html を確認しています", percent=95)
-    ensure_standalone_mobile_html()
+    initialize_database(fast_boot=True)
     start_media_watcher()
     set_startup_status(is_ready=True, phase="ready", message="準備完了", detail="", percent=100)
 
-    # ロック解除後の遅延クリーンアップ・大規模Exifなし画像マイグレーション・レンズ機種名バックフィル
+    # ウィンドウ表示・初期描画完了後のバックグラウンド保守（Loome整合性・モバイルHTML・スキーマ保守・レンズ補完）
     def _bg_post_unlock_maintenance():
         import time as _t
         from .database import get_connection, migrate_and_merge_exifless_photos
-        _t.sleep(2.0)
+        from .database.schema import run_background_schema_maintenance
+        _t.sleep(3.5)
         try:
+            try:
+                ensure_standalone_mobile_html()
+            except Exception as mob_err:
+                logger.debug(f"[PostUnlock] モバイルHTML生成スキップ: {mob_err}")
+
             while is_app_locked():
                 _t.sleep(2.0)
 
-            if locked_at_boot:
-                try:
-                    migrate_carry_to_storage()
-                    active_loome = ensure_storage_dir()
-                    cleanup_missing_upload_photos(active_loome)
-                    cleanup_invalid_zero_gps()
-                except Exception as clean_err:
-                    logger.warning(f"[PostUnlock] 起動時クリーンアップスキップ: {clean_err}")
+            try:
+                migrate_carry_to_storage()
+                active_loome = ensure_storage_dir()
+                cleanup_missing_upload_photos(active_loome)
+                cleanup_invalid_zero_gps()
+                run_background_schema_maintenance()
+            except Exception as clean_err:
+                logger.warning(f"[PostUnlock] 起動時クリーンアップスキップ: {clean_err}")
 
             # 保留されていた大規模DB向けの exifless_content_hash_v1 マイグレーションがあればバックグラウンドで実行
             try:
@@ -312,7 +310,7 @@ async def add_no_cache_header(request: Request, call_next):
     """
     path = request.url.path
     origin = request.headers.get("origin")
-    client_host = request.client.host if request.client else "127.0.0.1"
+    client_host = resolve_request_client_host(request)
 
     if not is_host_header_allowed(request.headers.get("host")):
         return _json_error(400, "Invalid Host header")
@@ -854,6 +852,13 @@ def api_get_photos(
         if dk not in _PHOTO_DIR_SCAN_CACHE or (now_ts - _PHOTO_DIR_SCAN_CACHE[dk][0]) > _PHOTO_DIR_SCAN_TTL
     ]
 
+    deferred_dir_scan = (
+        not folder
+        and (attr_filter or "").strip().lower() != "xmp"
+        and len(uncached_dir_keys) > 20
+    )
+    fast_dir_meta: Dict[Tuple[str, Optional[str]], Tuple[bool, bool]] = {}
+
     if uncached_dir_keys:
         def _scan_one_dir(dk: Tuple[str, Optional[str]]):
             d_path, v_ser = dk
@@ -869,9 +874,29 @@ def api_get_photos(
                         logger.warning(f"ディレクトリスキャンキャッシュ取得失敗 ({resolved_dir}): {e}")
                 else:
                     f_set = set()
-            return dk, (now_ts, resolved_dir, is_dir_online, is_dir_storage, f_set)
+            return dk, (time.monotonic(), resolved_dir, is_dir_online, is_dir_storage, f_set)
 
-        if len(uncached_dir_keys) > 4:
+        if deferred_dir_scan:
+            # 起動時の「すべての写真」表示（20フォルダ超）では Google Drive 等の 200+ フォルダ os.scandir で
+            # 初期描画をブロックしないよう、メモリ上のドライブ接続判定で即応答し、実ファイル一覧は非同期で温める
+            for dk in uncached_dir_keys:
+                d_path, v_ser = dk
+                _, is_dir_online = resolve_drive_online_path(d_path, expected_serial=v_ser)
+                is_dir_storage = is_path_in_storage(d_path, volume_serial=v_ser)
+                fast_dir_meta[dk] = (bool(is_dir_online), bool(is_dir_storage))
+
+            def _bg_warm_dir_scan(keys_to_warm: List[Tuple[str, Optional[str]]]):
+                try:
+                    from concurrent.futures import ThreadPoolExecutor
+                    with ThreadPoolExecutor(max_workers=6) as pool:
+                        for dk_item, entry_val in pool.map(_scan_one_dir, keys_to_warm):
+                            _PHOTO_DIR_SCAN_CACHE[dk_item] = entry_val
+                    _API_PHOTOS_RESPONSE_CACHE.clear()
+                except Exception as w_err:
+                    logger.debug(f"バックグラウンドディレクトリスキャンキャッシュ準備スキップ: {w_err}")
+
+            threading.Thread(target=_bg_warm_dir_scan, args=(list(uncached_dir_keys),), daemon=True).start()
+        elif len(uncached_dir_keys) > 4:
             from concurrent.futures import ThreadPoolExecutor
             with ThreadPoolExecutor(max_workers=8) as pool:
                 for dk, entry_val in pool.map(_scan_one_dir, uncached_dir_keys):
@@ -892,6 +917,9 @@ def api_get_photos(
         cached = _PHOTO_DIR_SCAN_CACHE.get(dir_key) if dir_key else None
         if cached:
             _, _, is_dir_online, is_dir_storage, file_set = cached
+        elif dir_key and dir_key in fast_dir_meta:
+            is_dir_online, is_dir_storage = fast_dir_meta[dir_key]
+            file_set = None
         else:
             is_dir_online = False
             is_dir_storage = is_photo_in_storage(p)
@@ -904,7 +932,7 @@ def api_get_photos(
             fname = p.get("file_name") or os.path.basename(p.get("file_path", ""))
             if file_set is not None:
                 p["is_missing"] = not (bool(fname) and fname.lower() in file_set)
-            elif fname and False:
+            elif deferred_dir_scan:
                 p["is_missing"] = False
             else:
                 f_path, is_f_online = resolve_portable_path(
@@ -1967,9 +1995,12 @@ def api_get_calendar_summary():
 
 
 @app.get("/api/folders")
-def api_get_folders():
-    """フォルダごとの写真枚数集計を取得する（フラット一覧とスキャンルート階層ツリーの両方を提供）"""
-    folders = get_folders_summary()
+def api_get_folders(fast: int = Query(0)):
+    """フォルダごとの写真枚数集計を取得する（fast=1 の場合は未管理サブフォルダの os.scandir 走査を省略して高速返却）"""
+    if fast:
+        folders = get_folders_summary(include_unmanaged=False)
+        return _fast_json({"folders": folders, "roots": []})
+    folders = get_folders_summary(include_unmanaged=True)
     roots = get_scan_roots_summary()
     return _fast_json({"folders": folders, "roots": roots})
 

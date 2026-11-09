@@ -478,7 +478,7 @@ def get_scan_roots_summary() -> List[Dict[str, Any]]:
                    COUNT(DISTINCT t.photo_id) as cached_count
             FROM photo_links pl
             INNER JOIN photos p ON pl.photo_id = p.id
-            LEFT JOIN thumbnails t ON p.id = t.photo_id
+            LEFT JOIN thumbnails t INDEXED BY idx_thumbnails_dims ON p.id = t.photo_id
             WHERE COALESCE(p.is_unlinked, 0) = 0
             GROUP BY pl.directory_path
             ORDER BY pl.directory_path ASC
@@ -683,23 +683,26 @@ def normalize_folder_path(path_str: str) -> str:
     return norm
 
 
-# get_folders_summary の FS確認 (isdir / scandir) 用 TTLキャッシュ (5秒TTL)
+# get_folders_summary の FS確認 (isdir / scandir) 用 TTLキャッシュ (60秒TTL)
 _fs_cache_lock = threading.Lock()
 _isdir_cache: Dict[str, Tuple[bool, float]] = {}
 _scandir_cache: Dict[str, Tuple[List[Tuple[str, str]], float]] = {}
+_folders_summary_cache: Optional[Tuple[int, float, List[Dict[str, Any]]]] = None
 
 
-# /api/photos のディレクトリ別ファイル一覧キャッシュ (45秒TTL)
+# /api/photos のディレクトリ別ファイル一覧キャッシュ (60秒TTL)
 _PHOTO_DIR_SCAN_CACHE: Dict[Any, Any] = {}
-_PHOTO_DIR_SCAN_TTL: float = 45.0
+_PHOTO_DIR_SCAN_TTL: float = 60.0
 
 
 def clear_folders_fs_cache() -> None:
     """フォルダ集計および写真一覧用FS確認キャッシュをクリアする"""
+    global _folders_summary_cache
     with _fs_cache_lock:
         _isdir_cache.clear()
         _scandir_cache.clear()
         _PHOTO_DIR_SCAN_CACHE.clear()
+        _folders_summary_cache = None
     from .connection import bump_db_commit_seq
     bump_db_commit_seq()
 
@@ -717,7 +720,7 @@ def _cached_isdir(path: str) -> bool:
 
     is_dir = os.path.isdir(path)
     with _fs_cache_lock:
-        _isdir_cache[norm_key] = (is_dir, now + 5.0)
+        _isdir_cache[norm_key] = (is_dir, now + 60.0)
     return is_dir
 
 
@@ -750,15 +753,26 @@ def _cached_scandir_subdirs(p_dir: str, system_ignore_names: set) -> List[Tuple[
         print(f"[WARN] フォルダ一覧の取得に失敗しました ({p_dir}): {e}")
 
     with _fs_cache_lock:
-        _scandir_cache[norm_key] = (subdirs, now + 5.0)
+        _scandir_cache[norm_key] = (subdirs, now + 60.0)
     return subdirs
 
 
-def get_folders_summary() -> List[Dict[str, Any]]:
+def get_folders_summary(include_unmanaged: bool = True) -> List[Dict[str, Any]]:
     """
     ディレクトリごとの写真枚数および管理ステータス（managed / unmanaged / ignored）を取得する。
     登録ルートフォルダ配下の実ディレクトリも走査し、未管理フォルダや除外フォルダもツリーに含めて返却する。
     """
+    global _folders_summary_cache
+    from .connection import get_db_commit_seq
+    cur_seq = get_db_commit_seq()
+    now_ts = time.time()
+    cache_mode_key = (cur_seq, bool(include_unmanaged))
+    with _fs_cache_lock:
+        if _folders_summary_cache is not None:
+            c_key, c_exp, c_res = _folders_summary_cache
+            if c_key == cache_mode_key and now_ts < c_exp:
+                return [dict(item) for item in c_res]
+
     with get_connection() as conn:
         cursor = conn.cursor()
 
@@ -771,7 +785,7 @@ def get_folders_summary() -> List[Dict[str, Any]]:
                    COUNT(DISTINCT t.photo_id) as cached_count
             FROM photo_links pl
             INNER JOIN photos p ON pl.photo_id = p.id
-            LEFT JOIN thumbnails t ON p.id = t.photo_id
+            LEFT JOIN thumbnails t INDEXED BY idx_thumbnails_dims ON p.id = t.photo_id
             WHERE COALESCE(p.is_unlinked, 0) = 0
             GROUP BY pl.directory_path, pl.volume_serial
             ORDER BY pl.directory_path ASC
@@ -781,23 +795,49 @@ def get_folders_summary() -> List[Dict[str, Any]]:
         result: List[Dict[str, Any]] = []
         managed_map: Dict[str, Dict[str, Any]] = {}
 
-        for r in rows:
-            d = dict(r)
+        from ..scanner import resolve_drive_online_path
+        row_dicts = [dict(r) for r in rows]
+        online_check_targets: List[str] = []
+        resolved_row_paths: List[Tuple[Optional[str], bool]] = []
+        for d in row_dicts:
             norm = normalize_folder_path(d["directory_path"])
             vol_serial = d.get("volume_serial")
             d["directory_path"] = norm
             d["has_all_thumbnails"] = (d["cached_count"] >= d["count"]) if d["count"] > 0 else True
             d["status"] = "managed"
-
-            # 実フォルダの存在確認（VSN対応のオフライン/消失検出）
-            is_present = False
             try:
-                from ..scanner import resolve_portable_path
-                _, is_online = resolve_portable_path(norm, expected_serial=vol_serial)
-                is_present = is_online
-            except Exception as e:
-                logger.debug(f"フォルダ存在確認でのポータブルパス解決スキップ ({norm}): {e}")
-                is_present = _cached_isdir(norm)
+                res_p, is_drv_online = resolve_drive_online_path(norm, expected_serial=vol_serial)
+                res_str = str(res_p) if res_p else norm
+                resolved_row_paths.append((res_str, bool(is_drv_online)))
+                if is_drv_online:
+                    online_check_targets.append(res_str)
+            except Exception:
+                resolved_row_paths.append((norm, True))
+                online_check_targets.append(norm)
+
+        defer_isdir_check = (not include_unmanaged and len(online_check_targets) > 20)
+        if defer_isdir_check:
+            def _bg_warm_isdir(targets: List[str]):
+                try:
+                    from concurrent.futures import ThreadPoolExecutor
+                    with ThreadPoolExecutor(max_workers=6) as pool:
+                        list(pool.map(_cached_isdir, targets))
+                except Exception:
+                    pass
+            threading.Thread(target=_bg_warm_isdir, args=(list(online_check_targets),), daemon=True).start()
+        elif len(online_check_targets) > 4:
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=8) as pool:
+                list(pool.map(_cached_isdir, online_check_targets))
+
+        for d, (res_str, is_drv_online) in zip(row_dicts, resolved_row_paths):
+            norm = d["directory_path"]
+            if defer_isdir_check:
+                norm_k = normalize_folder_path(res_str).lower() if res_str else ""
+                cached_d = _isdir_cache.get(norm_k)
+                is_present = bool(is_drv_online and (cached_d[0] if cached_d is not None else True))
+            else:
+                is_present = bool(is_drv_online and res_str and _cached_isdir(res_str))
             d["is_missing"] = not is_present
 
             result.append(d)
@@ -850,12 +890,21 @@ def get_folders_summary() -> List[Dict[str, Any]]:
             if r_key not in candidate_parents_dict:
                 candidate_parents_dict[r_key] = r_path
 
+        parent_dirs_list = list(candidate_parents_dict.values())
+        if include_unmanaged and len(parent_dirs_list) > 4:
+            from concurrent.futures import ThreadPoolExecutor
+            def _warm_parent_dir(pd: str) -> None:
+                if _cached_isdir(pd):
+                    _cached_scandir_subdirs(pd, SYSTEM_IGNORE_NAMES)
+            with ThreadPoolExecutor(max_workers=8) as pool:
+                list(pool.map(_warm_parent_dir, parent_dirs_list))
+
         for p_key, p_dir in candidate_parents_dict.items():
             # 配下に管理写真が存在する親ディレクトリまたは登録ルート自身が未登録なら managed（除外対象なら ignored）として追加
             is_drive_root = (os.path.dirname(p_dir) == p_dir)
             if p_key not in seen_paths and (not is_drive_root or any(p_key == r.lower() for r in roots)):
                 is_ig = any(p_key == ig or p_key.startswith(ig + os.sep) for ig in ignored_set)
-                is_dir_present = _cached_isdir(p_dir)
+                is_dir_present = True if defer_isdir_check else _cached_isdir(p_dir)
                 result.append({
                     "directory_path": p_dir,
                     "count": 0,
@@ -866,7 +915,7 @@ def get_folders_summary() -> List[Dict[str, Any]]:
                 })
                 seen_paths.add(p_key)
 
-            if not _cached_isdir(p_dir):
+            if not include_unmanaged or not _cached_isdir(p_dir):
                 continue
 
             subdirs = _cached_scandir_subdirs(p_dir, SYSTEM_IGNORE_NAMES)
@@ -885,6 +934,8 @@ def get_folders_summary() -> List[Dict[str, Any]]:
                     seen_paths.add(sub_key)
 
         result.sort(key=lambda x: _natural_sort_key(x["directory_path"]))
+        with _fs_cache_lock:
+            _folders_summary_cache = (cache_mode_key, time.time() + 30.0, [dict(item) for item in result])
         return result
 
 
