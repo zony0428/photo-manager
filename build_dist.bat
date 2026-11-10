@@ -1,5 +1,6 @@
 @echo off
 setlocal
+if /i "%~1"=="--nopause" set "NO_PAUSE=1"
 chcp 65001 >nul 2>&1
 
 title Tetheract Photo Manager - Build Distribution (Full ^& Lightweight Update)

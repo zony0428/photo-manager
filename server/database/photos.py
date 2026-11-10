@@ -1553,14 +1553,19 @@ def get_photos(
                 stack_cols = [
                     "id", "file_name", "file_path", "directory_path", "file_size", "width", "height",
                     "date_taken", "subsec_time", "exposure_bias", "shutter_speed", "f_number", "camera_model",
-                    "is_stack_primary", "stack_id", "rating", "is_raw", "raw_format"
+                    "is_stack_primary", "stack_id", "rating", "is_raw", "raw_format",
+                    "rotation", "fine_angle", "brightness", "contrast", "saturation",
+                    "crop_x", "crop_y", "crop_w", "crop_h", "content_key", "iso", "focal_length"
                 ]
                 if len(active_stack_ids) > 800:
                     cursor.execute(
                         """
                         SELECT id, file_name, file_path, directory_path, file_size, width, height,
                                date_taken, subsec_time, exposure_bias, shutter_speed, f_number, camera_model,
-                               is_stack_primary, stack_id, rating, is_raw, raw_format
+                               is_stack_primary, stack_id, rating, is_raw, raw_format,
+                               COALESCE(rotation, 0), COALESCE(fine_angle, 0.0),
+                               COALESCE(brightness, 0), COALESCE(contrast, 0), COALESCE(saturation, 0),
+                               crop_x, crop_y, crop_w, crop_h, content_key, iso, focal_length
                         FROM photos
                         WHERE stack_id IS NOT NULL AND IFNULL(is_unlinked, 0) = 0
                         ORDER BY date_taken ASC, subsec_time ASC, id ASC
@@ -1579,7 +1584,10 @@ def get_photos(
                             f"""
                             SELECT id, file_name, file_path, directory_path, file_size, width, height,
                                    date_taken, subsec_time, exposure_bias, shutter_speed, f_number, camera_model,
-                                   is_stack_primary, stack_id, rating, is_raw, raw_format
+                                   is_stack_primary, stack_id, rating, is_raw, raw_format,
+                                   COALESCE(rotation, 0), COALESCE(fine_angle, 0.0),
+                                   COALESCE(brightness, 0), COALESCE(contrast, 0), COALESCE(saturation, 0),
+                                   crop_x, crop_y, crop_w, crop_h, content_key, iso, focal_length
                             FROM photos
                             WHERE stack_id IN ({','.join(['?']*len(sid_chunk))}) AND IFNULL(is_unlinked, 0) = 0
                             ORDER BY date_taken ASC, subsec_time ASC, id ASC
@@ -1796,8 +1804,12 @@ def get_photo_by_id(photo_id: int) -> Optional[Dict[str, Any]]:
         if photo.get("stack_id"):
             cursor.execute(
                 """
-                SELECT id, file_name, file_path, date_taken, subsec_time, exposure_bias, shutter_speed, f_number,
-                       is_stack_primary, stack_id, stack_type, rating, is_raw, raw_format, paired_raw_path
+                SELECT id, file_name, file_path, directory_path, file_size, width, height,
+                       date_taken, subsec_time, exposure_bias, shutter_speed, f_number, camera_model,
+                       is_stack_primary, stack_id, stack_type, rating, is_raw, raw_format, paired_raw_path,
+                       COALESCE(rotation, 0) AS rotation, COALESCE(fine_angle, 0.0) AS fine_angle,
+                       COALESCE(brightness, 0) AS brightness, COALESCE(contrast, 0) AS contrast, COALESCE(saturation, 0) AS saturation,
+                       crop_x, crop_y, crop_w, crop_h, content_key, iso, focal_length
                 FROM photos
                 WHERE stack_id = ?
                 ORDER BY date_taken ASC, subsec_time ASC, id ASC
@@ -2086,7 +2098,10 @@ def update_photo_adjustments(
             ),
         )
         conn.commit()
-        return cursor.rowcount > 0
+        ok = cursor.rowcount > 0
+    if ok:
+        invalidate_fast_cache()
+    return ok
 
 
 def batch_update_photo_tone(
@@ -2119,7 +2134,9 @@ def batch_update_photo_tone(
             cursor.execute(sql, [clamped_b, clamped_c, clamped_s] + chunk)
             updated += cursor.rowcount
         conn.commit()
-        return updated
+    if updated > 0:
+        invalidate_fast_cache()
+    return updated
 
 
 def rotate_photo(photo_id: int, delta_degrees: int = 90) -> Dict[str, Any]:
@@ -2137,7 +2154,8 @@ def rotate_photo(photo_id: int, delta_degrees: int = 90) -> Dict[str, Any]:
             (new_rotation, photo_id),
         )
         conn.commit()
-        return {"success": True, "photo_id": photo_id, "rotation": new_rotation}
+    invalidate_fast_cache()
+    return {"success": True, "photo_id": photo_id, "rotation": new_rotation}
 
 
 def reset_photo_adjustments(photo_id: int) -> bool:
@@ -2163,7 +2181,10 @@ def reset_photo_adjustments(photo_id: int) -> bool:
             (photo_id,),
         )
         conn.commit()
-        return cursor.rowcount > 0
+        ok = cursor.rowcount > 0
+    if ok:
+        invalidate_fast_cache()
+    return ok
 
 
 def batch_reset_photo_adjustments(photo_ids: List[int]) -> int:

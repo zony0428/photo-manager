@@ -498,8 +498,16 @@
     const imgEl = document.getElementById(`compareImg${side}`);
     const photo = cmpState.pool[side === 'A' ? cmpState.idxA : cmpState.idxB];
     const rect = vp ? vp.getBoundingClientRect() : null;
-    const vw = Math.max(120, (rect && rect.width) || (window.innerWidth * 0.48) || 600);
-    const vh = Math.max(120, (rect && rect.height) || (window.innerHeight * 0.75) || 500);
+    let vw = Math.max(120, (rect && rect.width) || (window.innerWidth * 0.48) || 600);
+    let vh = Math.max(120, (rect && rect.height) || (window.innerHeight * 0.75) || 500);
+    const isBaked = typeof hasBakedViewAdjustments === 'function' && hasBakedViewAdjustments(photo);
+    const rotNorm = ((Number(photo?.rotation) || 0) % 360 + 360) % 360;
+    const unbakedRot = isBaked ? 0 : rotNorm;
+    if (unbakedRot === 90 || unbakedRot === 270) {
+      const tmp = vw;
+      vw = vh;
+      vh = tmp;
+    }
     let nw = Number(imgEl?.naturalWidth) || 0;
     let nh = Number(imgEl?.naturalHeight) || 0;
     let metaW = Number(photo?.width) || 0;
@@ -508,6 +516,11 @@
     if (metaW > 0 && metaH > 0) {
       metaW = Math.max(1, Math.round(metaW * (cw > 0 && cw < 1 ? cw : 1)));
       metaH = Math.max(1, Math.round(metaH * (ch > 0 && ch < 1 ? ch : 1)));
+    }
+    if (isBaked && (rotNorm === 90 || rotNorm === 270) && metaW > 0 && metaH > 0) {
+      const tmpM = metaW;
+      metaW = metaH;
+      metaH = tmpM;
     }
     const origW = (nw > 640 || nh > 640) ? nw : (metaW || nw || 1600);
     const origH = (nw > 640 || nh > 640) ? nh : (metaH || nh || 1200);

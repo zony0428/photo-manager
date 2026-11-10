@@ -104,6 +104,13 @@ function _getLightboxPhotoMetrics(photo, naturalW, naturalH) {
     metaW = Math.max(1, Math.round(metaW * (cw > 0 && cw < 1 ? cw : 1)));
     metaH = Math.max(1, Math.round(metaH * (ch > 0 && ch < 1 ? ch : 1)));
   }
+  const isBaked = typeof hasBakedViewAdjustments === 'function' && hasBakedViewAdjustments(photo);
+  const rotNorm = ((Number(photo?.rotation) || 0) % 360 + 360) % 360;
+  if (isBaked && (rotNorm === 90 || rotNorm === 270) && metaW > 0 && metaH > 0) {
+    const tmpM = metaW;
+    metaW = metaH;
+    metaH = tmpM;
+  }
   const origMaxDim = Math.max(metaW, metaH);
   const loadedMaxDim = Math.max(nw, nh);
   const isThumbOnly = Boolean(
@@ -114,8 +121,14 @@ function _getLightboxPhotoMetrics(photo, naturalW, naturalH) {
   );
   const bodyEl = elements.lightboxModal ? elements.lightboxModal.querySelector('.lightbox-body') : null;
   const bodyRect = bodyEl ? bodyEl.getBoundingClientRect() : null;
-  const maxW = (bodyRect && bodyRect.width > 100) ? (bodyRect.width * 0.9) : (window.innerWidth * 0.9);
-  const maxH = (bodyRect && bodyRect.height > 100) ? Math.min(bodyRect.height * 0.9, window.innerHeight * 0.8) : (window.innerHeight * 0.8);
+  let maxW = (bodyRect && bodyRect.width > 100) ? (bodyRect.width * 0.9) : (window.innerWidth * 0.9);
+  let maxH = (bodyRect && bodyRect.height > 100) ? Math.min(bodyRect.height * 0.9, window.innerHeight * 0.8) : (window.innerHeight * 0.8);
+  const unbakedRot = isBaked ? 0 : rotNorm;
+  if (unbakedRot === 90 || unbakedRot === 270) {
+    const tmp = maxW;
+    maxW = maxH;
+    maxH = tmp;
+  }
 
   const origW = (nw > 640 || nh > 640) ? nw : (metaW || nw || 1600);
   const origH = (nw > 640 || nh > 640) ? nh : (metaH || nh || 1200);

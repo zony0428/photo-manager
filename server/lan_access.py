@@ -54,6 +54,8 @@ _LAN_API_EXACT: Dict[str, set] = {
         "/api/tags",
         "/api/timeline",
         "/api/cameras",
+        "/api/folders",
+        "/api/filter-presets",
         "/api/locations/tree",
         "/api/mobile/standalone",
     },
@@ -68,6 +70,7 @@ _LAN_API_PATTERNS: Dict[str, List[re.Pattern]] = {
     "POST": [
         re.compile(r"^/api/photo/\d+/rate$"),
         re.compile(r"^/api/photo/\d+/tags$"),
+        re.compile(r"^/api/photo/\d+/adjustments$"),
     ],
     "DELETE": [re.compile(r"^/api/photo/\d+/tags/.+$")],
 }

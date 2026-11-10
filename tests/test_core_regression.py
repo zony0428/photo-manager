@@ -2884,6 +2884,50 @@ class TestCoreRegression(unittest.TestCase):
             self.assertIsNotNone(get_photo_by_id(pid_a))
             self.assertEqual(get_unlinked_photos_count(), 1)
 
+    def test_27_mobile_adjustments_endpoint_preserves_rotation_and_crop(self):
+        """モバイル用 /api/photo/{id}/adjustments が既存の rotation / crop を維持したままトーンと傾きを更新すること"""
+        from fastapi.testclient import TestClient
+        from server.app import app
+        from server.database import get_photo_by_id, update_photo_adjustments
+
+        tc = TestClient(app, base_url="http://127.0.0.1:8088")
+        pid = upsert_photo({
+            "file_path": r"C:\Photos\Adj\IMG_ADJ_01.JPG",
+            "directory_path": r"C:\Photos\Adj",
+            "file_name": "IMG_ADJ_01.JPG",
+            "file_size": 123456,
+            "date_taken": "2026:07:01 12:00:00",
+            "width": 4000,
+            "height": 3000,
+        })
+        update_photo_adjustments(
+            photo_id=pid,
+            rotation=90,
+            fine_angle=1.5,
+            crop_x=0.1,
+            crop_y=0.2,
+            crop_w=0.8,
+            crop_h=0.7,
+            crop_aspect="4:3",
+            brightness=10,
+            contrast=5,
+            saturation=-5,
+        )
+        res = tc.post(
+            f"/api/photo/{pid}/adjustments",
+            json={"brightness": 25, "contrast": -15, "saturation": 30, "fine_angle": -2.5},
+        )
+        self.assertEqual(res.status_code, 200)
+        after = get_photo_by_id(pid)
+        self.assertEqual(after["rotation"], 90)
+        self.assertAlmostEqual(after["crop_x"], 0.1)
+        self.assertAlmostEqual(after["crop_w"], 0.8)
+        self.assertEqual(after["crop_aspect"], "4:3")
+        self.assertEqual(after["brightness"], 25)
+        self.assertEqual(after["contrast"], -15)
+        self.assertEqual(after["saturation"], 30)
+        self.assertAlmostEqual(after["fine_angle"], -2.5)
+
 
 if __name__ == "__main__":
     unittest.main()

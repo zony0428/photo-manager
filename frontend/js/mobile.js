@@ -1501,7 +1501,10 @@
         for (const pid of ids) {
           mState.localDb.run('UPDATE photos SET rating = ? WHERE id = ?', [r, pid]);
           const pObj = mState.photos.find((p) => p.id === pid);
-          if (pObj) recordPendingChange(pObj, 'rating', r);
+          if (pObj) {
+            ensureLocalPhotoDetails(pObj);
+            recordPendingChange(pObj, 'rating', r);
+          }
         }
         mState.localDb.run('COMMIT');
       } catch (e) {
@@ -1732,6 +1735,15 @@
     if (origW <= 0 || origH <= 0) {
       origW = Number(photo?.width) || (imgEl && imgEl.naturalWidth) || 1600;
       origH = Number(photo?.height) || (imgEl && imgEl.naturalHeight) || 1200;
+      const cw = Number(photo?.crop_w ?? 1), ch = Number(photo?.crop_h ?? 1);
+      if (cw > 0 && cw < 1) origW = Math.max(1, Math.round(origW * cw));
+      if (ch > 0 && ch < 1) origH = Math.max(1, Math.round(origH * ch));
+      const rot = ((Number(photo?.rotation) || 0) % 360 + 360) % 360;
+      if (rot === 90 || rot === 270) {
+        const tmp = origW;
+        origW = origH;
+        origH = tmp;
+      }
     }
     const fitScale = Math.min(sw / origW, sh / origH);
     const fitW = Math.max(1, origW * fitScale);
@@ -2292,7 +2304,10 @@
             );
           }
           const pObj = mState.photos.find((p) => p.id === pid);
-          if (pObj) recordPendingChange(pObj, 'add_tag', tag);
+          if (pObj) {
+            ensureLocalPhotoDetails(pObj);
+            recordPendingChange(pObj, 'add_tag', tag);
+          }
         }
         mState.localDb.run('COMMIT');
       } catch (e) {

@@ -436,6 +436,13 @@ class AdjustRequest(BaseModel):
     saturation: int = 0
 
 
+class MobileAdjustmentsRequest(BaseModel):
+    brightness: int = 0
+    contrast: int = 0
+    saturation: int = 0
+    fine_angle: float = 0.0
+
+
 class RateRequest(BaseModel):
     rating: int
 
@@ -1397,11 +1404,48 @@ def api_adjust_photo(photo_id: int, req: AdjustRequest):
     )
     if not success:
         raise HTTPException(status_code=404, detail="写真の更新に失敗しました")
+    clear_api_photos_cache()
     try:
         refresh_photo_thumbnail_transform(photo_id)
     except Exception as e:
         logger.warning(f"調整後のサムネイル更新に失敗 ({photo_id}): {e}")
     return {"status": "ok", "photo_id": photo_id}
+
+
+@app.post("/api/photo/{photo_id}/adjustments")
+def api_adjust_photo_tone_angle(photo_id: int, req: MobileAdjustmentsRequest):
+    """モバイル・タッチUIからトーン微調整・水平傾き補正を非破壊更新する（既存の90度回転・トリミング範囲は保持する）"""
+    brief = get_photo_brief(photo_id)
+    if not brief:
+        raise HTTPException(status_code=404, detail="写真が見つかりません")
+    success = update_photo_adjustments(
+        photo_id=photo_id,
+        rotation=int(brief.get("rotation") or 0),
+        fine_angle=req.fine_angle,
+        crop_x=brief.get("crop_x"),
+        crop_y=brief.get("crop_y"),
+        crop_w=brief.get("crop_w"),
+        crop_h=brief.get("crop_h"),
+        crop_aspect=brief.get("crop_aspect"),
+        brightness=req.brightness,
+        contrast=req.contrast,
+        saturation=req.saturation,
+    )
+    if not success:
+        raise HTTPException(status_code=404, detail="写真の更新に失敗しました")
+    clear_api_photos_cache()
+    try:
+        refresh_photo_thumbnail_transform(photo_id)
+    except Exception as e:
+        logger.warning(f"モバイル調整後のサムネイル更新に失敗 ({photo_id}): {e}")
+    return {
+        "status": "ok",
+        "photo_id": photo_id,
+        "brightness": req.brightness,
+        "contrast": req.contrast,
+        "saturation": req.saturation,
+        "fine_angle": req.fine_angle,
+    }
 
 
 @app.post("/api/photo/{photo_id}/adjust/reset")

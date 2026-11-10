@@ -38,6 +38,8 @@ dist/
 dist_update/
 dist_v2/
 dist_v2_update/
+.android_toolchain/
+android/
 zip/
 *.zip
 PhotoManager.exe
