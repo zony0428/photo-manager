@@ -16,8 +16,8 @@ using System.Windows.Forms;
 [assembly: AssemblyProduct("Tetheract Photo Manager")]
 [assembly: AssemblyCopyright("Copyright (c) 2026 Tetheract Project (MIT License)")]
 [assembly: ComVisible(false)]
-[assembly: AssemblyVersion("1.8.5.0")]
-[assembly: AssemblyFileVersion("1.8.5.0")]
+[assembly: AssemblyVersion("1.8.6.0")]
+[assembly: AssemblyFileVersion("1.8.6.0")]
 
 namespace PhotoManager
 {
@@ -217,8 +217,93 @@ namespace PhotoManager
         /// <summary>
         /// ルートフォルダに Tetheract_*diff.zip が置かれている場合、確認の上で古いプログラムフォルダを一掃してクリーン展開する
         /// </summary>
+        private static Version ParseSemVer(string raw)
+        {
+            if (string.IsNullOrEmpty(raw))
+            {
+                return null;
+            }
+            string s = raw.Trim();
+            if (s.StartsWith("v", StringComparison.OrdinalIgnoreCase))
+            {
+                s = s.Substring(1).Trim();
+            }
+            int cut = s.IndexOfAny(new char[] { ' ', '-', '+', '\r', '\n', '\t' });
+            if (cut > 0)
+            {
+                s = s.Substring(0, cut);
+            }
+            Version v;
+            return Version.TryParse(s, out v) ? v : null;
+        }
+
+        private static Version ReadInstalledVersion(string baseDir)
+        {
+            try
+            {
+                string verFile = Path.Combine(baseDir, "VERSION");
+                if (!File.Exists(verFile))
+                {
+                    return null;
+                }
+                string[] lines = File.ReadAllLines(verFile, Encoding.UTF8);
+                return (lines != null && lines.Length > 0) ? ParseSemVer(lines[0]) : null;
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        private static Version ExtractZipVersion(string zipPath)
+        {
+            try
+            {
+                using (ZipArchive archive = ZipFile.OpenRead(zipPath))
+                {
+                    foreach (ZipArchiveEntry entry in archive.Entries)
+                    {
+                        string norm = entry.FullName.Replace('\\', '/').TrimStart('/');
+                        if (string.Equals(norm, "VERSION", StringComparison.OrdinalIgnoreCase))
+                        {
+                            using (StreamReader sr = new StreamReader(entry.Open(), Encoding.UTF8))
+                            {
+                                string firstLine = sr.ReadLine();
+                                Version parsed = ParseSemVer(firstLine);
+                                if (parsed != null)
+                                {
+                                    return parsed;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception)
+            {
+            }
+
+            string fileName = Path.GetFileNameWithoutExtension(zipPath) ?? "";
+            if (fileName.StartsWith("Tetheract_", StringComparison.OrdinalIgnoreCase))
+            {
+                fileName = fileName.Substring("Tetheract_".Length);
+            }
+            if (fileName.EndsWith("diff", StringComparison.OrdinalIgnoreCase))
+            {
+                fileName = fileName.Substring(0, fileName.Length - 4);
+            }
+            return ParseSemVer(fileName);
+        }
+
         private static bool CheckAndApplyUpdateZip(string baseDir)
         {
+            // 開発リポジトリ（.git または build_dist.bat が存在する環境）では配布ビルド成果物の diff.zip を適用しない
+            if (Directory.Exists(Path.Combine(baseDir, ".git")) ||
+                File.Exists(Path.Combine(baseDir, "build_dist.bat")))
+            {
+                return false;
+            }
+
             string[] zipFiles;
             try
             {
@@ -234,14 +319,40 @@ namespace PhotoManager
                 return false;
             }
 
-            // 複数ある場合は最終更新日時が最も新しいZIPを選択
+            Version currentVer = ReadInstalledVersion(baseDir);
+            string targetZip = null;
+            Version bestVer = null;
+
+            // 現在のバージョンより新しい diff.zip のみ対象とし、最高バージョンを選択する（ダウングレード・同版再適用を防止）
             Array.Sort(zipFiles, (a, b) => File.GetLastWriteTimeUtc(b).CompareTo(File.GetLastWriteTimeUtc(a)));
-            string targetZip = zipFiles[0];
+            foreach (string candidate in zipFiles)
+            {
+                Version candVer = ExtractZipVersion(candidate);
+                if (currentVer != null && candVer != null && candVer <= currentVer)
+                {
+                    continue;
+                }
+                if (targetZip == null || (candVer != null && (bestVer == null || candVer > bestVer)))
+                {
+                    targetZip = candidate;
+                    bestVer = candVer;
+                }
+            }
+
+            if (targetZip == null)
+            {
+                return false;
+            }
+
             string zipName = Path.GetFileName(targetZip);
+            string verDetail = (currentVer != null && bestVer != null)
+                ? ("（v" + currentVer + " → v" + bestVer + "）\n")
+                : "";
 
             DialogResult confirm = MessageBox.Show(
-                "アップデート用パッケージが見つかりました:\n" +
-                "📦 " + zipName + "\n\n" +
+                "新しいアップデート用パッケージが見つかりました:\n" +
+                "📦 " + zipName + "\n" +
+                verDetail + "\n" +
                 "古い不要ファイルを一掃して、クリーンアップデートを適用しますか？\n" +
                 "（※ 登録済みの写真データ・Loome保管庫・データベースは一切消えません）",
                 "Tetheract Photo Manager - クリーンアップデート",
@@ -303,10 +414,7 @@ namespace PhotoManager
                 ExtractUpdateZip(targetZip, baseDir);
 
                 // 5. 適用済みの差分ZIPファイルを削除
-                foreach (string zf in zipFiles)
-                {
-                    try { File.Delete(zf); } catch (Exception) { }
-                }
+                try { File.Delete(targetZip); } catch (Exception) { }
 
                 MessageBox.Show(
                     "クリーンアップデートが完了しました！ (" + zipName + ")\n" +

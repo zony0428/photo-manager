@@ -234,6 +234,7 @@
 
       if (imgEl) {
         imgEl.addEventListener('load', () => {
+          if (cmpState.isOpen) applyCompareTransforms(true);
           if (cmpState.histOpen) {
             refreshCompareHistograms();
           }
@@ -277,8 +278,9 @@
         const cursorY = e.clientY - (rect.top + rect.height / 2);
 
         const zoomSingleSide = (targetSide, useCursorOrigin) => {
+          const m = _getCompareSideMetrics(targetSide);
           const oldZ = targetSide === 'A' ? cmpState.zoomA : cmpState.zoomB;
-          let newZ = Math.max(1.0, Math.min(4.0, oldZ * zoomFactor));
+          let newZ = Math.max(1.0, Math.min(m.maxZoom, oldZ * zoomFactor));
           if (clampedDelta > 0 && newZ <= 1.03) {
             newZ = 1.0;
           }
@@ -350,20 +352,22 @@
         const rect = vp.getBoundingClientRect();
         const cursorX = e.clientX - (rect.left + rect.width / 2);
         const cursorY = e.clientY - (rect.top + rect.height / 2);
+        const mA = _getCompareSideMetrics('A');
+        const mB = _getCompareSideMetrics('B');
 
         if (syncZ) {
           if (cmpState.zoomA > 1.05 || cmpState.zoomB > 1.05) {
             resetCompareZoom();
           } else {
-            cmpState.zoomA = 2.0;
-            cmpState.zoomB = 2.0;
-            cmpState.panAX = -cursorX;
-            cmpState.panAY = -cursorY;
+            cmpState.zoomA = mA.oneToOneScale;
+            cmpState.zoomB = mB.oneToOneScale;
+            cmpState.panAX = -cursorX * (cmpState.zoomA - 1.0);
+            cmpState.panAY = -cursorY * (cmpState.zoomA - 1.0);
             if (syncV) {
-              cmpState.panBX = -cursorX;
-              cmpState.panBY = -cursorY;
+              cmpState.panBX = -cursorX * (cmpState.zoomB - 1.0);
+              cmpState.panBY = -cursorY * (cmpState.zoomB - 1.0);
             }
-            applyCompareTransforms(false);
+            applyCompareTransforms(true);
           }
         } else {
           const curZ = side === 'A' ? cmpState.zoomA : cmpState.zoomB;
@@ -379,16 +383,16 @@
             }
           } else {
             if (side === 'A') {
-              cmpState.zoomA = 2.0;
-              cmpState.panAX = -cursorX;
-              cmpState.panAY = -cursorY;
+              cmpState.zoomA = mA.oneToOneScale;
+              cmpState.panAX = -cursorX * (cmpState.zoomA - 1.0);
+              cmpState.panAY = -cursorY * (cmpState.zoomA - 1.0);
             } else {
-              cmpState.zoomB = 2.0;
-              cmpState.panBX = -cursorX;
-              cmpState.panBY = -cursorY;
+              cmpState.zoomB = mB.oneToOneScale;
+              cmpState.panBX = -cursorX * (cmpState.zoomB - 1.0);
+              cmpState.panBY = -cursorY * (cmpState.zoomB - 1.0);
             }
           }
-          applyCompareTransforms(false);
+          applyCompareTransforms(true);
         }
       });
     });
@@ -489,17 +493,48 @@
     applyCompareTransforms(false);
   }
 
+  function _getCompareSideMetrics(side) {
+    const vp = document.getElementById(`compareViewport${side}`);
+    const imgEl = document.getElementById(`compareImg${side}`);
+    const photo = cmpState.pool[side === 'A' ? cmpState.idxA : cmpState.idxB];
+    const rect = vp ? vp.getBoundingClientRect() : null;
+    const vw = Math.max(120, (rect && rect.width) || (window.innerWidth * 0.48) || 600);
+    const vh = Math.max(120, (rect && rect.height) || (window.innerHeight * 0.75) || 500);
+    let nw = Number(imgEl?.naturalWidth) || 0;
+    let nh = Number(imgEl?.naturalHeight) || 0;
+    let metaW = Number(photo?.width) || 0;
+    let metaH = Number(photo?.height) || 0;
+    const cw = Number(photo?.crop_w ?? 1), ch = Number(photo?.crop_h ?? 1);
+    if (metaW > 0 && metaH > 0) {
+      metaW = Math.max(1, Math.round(metaW * (cw > 0 && cw < 1 ? cw : 1)));
+      metaH = Math.max(1, Math.round(metaH * (ch > 0 && ch < 1 ? ch : 1)));
+    }
+    const origW = (nw > 640 || nh > 640) ? nw : (metaW || nw || 1600);
+    const origH = (nw > 640 || nh > 640) ? nh : (metaH || nh || 1200);
+    const fitScale = Math.min(1.0, vw / Math.max(1, origW), vh / Math.max(1, origH));
+    const baseFitW = Math.max(1, origW * fitScale);
+    const baseFitH = Math.max(1, origH * fitScale);
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    const oneToOneW = Math.max(1, origW / dpr);
+    const fitRatio = Math.max(0.02, baseFitW / oneToOneW);
+    const oneToOneScale = fitRatio < 0.92 ? (1.0 / fitRatio) : (2.0 / fitRatio);
+    const maxZoom = Math.max(4.0, 3.0 / fitRatio);
+    return { baseFitW, baseFitH, fitRatio, oneToOneScale, maxZoom };
+  }
+
   /**
-   * 左右の画像要素へズーム・パン・回転の CSS transform を適用
+   * 左右の画像要素へ実ピクセルサイズ・パン・回転を適用（scale拡大によるモザイクを排除）
    */
   function applyCompareTransforms(immediate = false) {
     const imgA = document.getElementById('compareImgA');
     const imgB = document.getElementById('compareImgB');
     const zoomReadout = document.getElementById('compareZoomResetBtn');
+    const mA = _getCompareSideMetrics('A');
+    const mB = _getCompareSideMetrics('B');
 
     if (zoomReadout) {
-      const zA = Math.round(cmpState.zoomA * 100);
-      const zB = Math.round(cmpState.zoomB * 100);
+      const zA = Math.max(1, Math.round(cmpState.zoomA * mA.fitRatio * 100));
+      const zB = Math.max(1, Math.round(cmpState.zoomB * mB.fitRatio * 100));
       zoomReadout.textContent = (zA === zB) ? `${zA}%` : `${zA}% | ${zB}%`;
     }
 
@@ -509,13 +544,17 @@
     if (imgA && photoA) {
       imgA.style.transition = immediate ? 'none' : 'transform 0.12s ease-out';
       const rotA = (typeof hasBakedViewAdjustments === 'function' && hasBakedViewAdjustments(photoA)) ? 0 : (photoA.rotation || 0);
-      imgA.style.transform = `translate(${cmpState.panAX}px, ${cmpState.panAY}px) rotate(${rotA}deg) scale(${cmpState.zoomA})`;
+      imgA.style.width = `${Math.round(mA.baseFitW * cmpState.zoomA)}px`;
+      imgA.style.height = `${Math.round(mA.baseFitH * cmpState.zoomA)}px`;
+      imgA.style.transform = `translate(${Math.round(cmpState.panAX)}px, ${Math.round(cmpState.panAY)}px) rotate(${rotA}deg)`;
     }
 
     if (imgB && photoB) {
       imgB.style.transition = immediate ? 'none' : 'transform 0.12s ease-out';
       const rotB = (typeof hasBakedViewAdjustments === 'function' && hasBakedViewAdjustments(photoB)) ? 0 : (photoB.rotation || 0);
-      imgB.style.transform = `translate(${cmpState.panBX}px, ${cmpState.panBY}px) rotate(${rotB}deg) scale(${cmpState.zoomB})`;
+      imgB.style.width = `${Math.round(mB.baseFitW * cmpState.zoomB)}px`;
+      imgB.style.height = `${Math.round(mB.baseFitH * cmpState.zoomB)}px`;
+      imgB.style.transform = `translate(${Math.round(cmpState.panBX)}px, ${Math.round(cmpState.panBY)}px) rotate(${rotB}deg)`;
     }
   }
 

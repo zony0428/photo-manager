@@ -1695,6 +1695,56 @@ def get_total_photos_count() -> int:
         return row["count"] if row else 0
 
 
+def _supplement_online_link_for_single_photo(cursor, d: Dict[str, Any]) -> None:
+    """代表パスがオフラインの場合に photo_links からオンラインの実在リンクを検索して補完する"""
+    if not d or d.get("is_unlinked"):
+        return
+    from ..scanner import resolve_portable_path
+    fp = d.get("file_path")
+    vsn = (d.get("volume_serial") or "").strip() or None
+    if fp:
+        _, primary_exists = resolve_portable_path(fp, expected_serial=vsn)
+        if primary_exists:
+            return
+    pid = d.get("id")
+    if not pid:
+        return
+    cursor.execute(
+        """
+        SELECT pl.file_path, pl.directory_path, pl.file_name,
+               pl.volume_serial, pl.file_mtime, pl.paired_raw_path,
+               v.volume_label, COALESCE(v.custom_name, '') AS volume_custom_name,
+               v.drive_letter AS volume_drive
+        FROM photo_links pl
+        LEFT JOIN volumes v ON pl.volume_serial = v.volume_serial
+        WHERE pl.photo_id = ?
+        ORDER BY pl.is_primary DESC, pl.id ASC
+        """,
+        (pid,),
+    )
+    for lk in cursor.fetchall():
+        lk_fp = _strip_vsn_prefix_raw(lk[0])
+        lk_vsn = (lk[3] or "").strip() or None
+        if not lk_fp:
+            continue
+        _, lk_exists = resolve_portable_path(lk_fp, expected_serial=lk_vsn)
+        if lk_exists:
+            d["file_path"] = lk_fp
+            if "directory_path" in d and lk[1]:
+                d["directory_path"] = _strip_vsn_prefix_raw(lk[1])
+            if lk[2]:
+                d["file_name"] = lk[2]
+            d["volume_serial"] = lk_vsn
+            if lk[4] is not None:
+                d["file_mtime"] = lk[4]
+            d["paired_raw_path"] = _strip_vsn_prefix_raw(lk[5]) if lk[5] else None
+            if "volume_label" in d:
+                d["volume_label"] = lk[6]
+                d["volume_custom_name"] = lk[7]
+                d["volume_drive"] = lk[8]
+            return
+
+
 def get_photo_by_id(photo_id: int) -> Optional[Dict[str, Any]]:
     """IDで単一の写真情報を取得する（タグ一覧＋スタックメンバー＋ボリューム情報付き）"""
     with get_connection() as conn:
@@ -1724,6 +1774,7 @@ def get_photo_by_id(photo_id: int) -> Optional[Dict[str, Any]]:
             photo["volume_drive"] = None
             photo["has_xmp"] = False
         else:
+            _supplement_online_link_for_single_photo(cursor, photo)
             photo["has_xmp"] = _has_xmp_sidecar_fast(
                 photo.get("file_path"),
                 photo.get("paired_raw_path"),
@@ -2977,7 +3028,7 @@ def get_photo_brief(photo_id: int) -> Optional[Dict[str, Any]]:
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT id, file_name, file_path, volume_serial, file_size, file_mtime, date_taken, is_raw, paired_raw_path, rotation, fine_angle, crop_x, crop_y, crop_w, crop_h, crop_aspect, brightness, contrast, saturation, link_count FROM photos WHERE id = ?",
+            "SELECT id, file_name, file_path, volume_serial, file_size, file_mtime, date_taken, is_raw, paired_raw_path, rotation, fine_angle, crop_x, crop_y, crop_w, crop_h, crop_aspect, brightness, contrast, saturation, link_count, is_unlinked FROM photos WHERE id = ?",
             (photo_id,),
         )
         row = cursor.fetchone()
@@ -2985,6 +3036,7 @@ def get_photo_brief(photo_id: int) -> Optional[Dict[str, Any]]:
             return None
         d = dict(row)
         d["file_path"] = _strip_vsn_prefix_raw(d.get("file_path"))
+        _supplement_online_link_for_single_photo(cursor, d)
         return d
 
 

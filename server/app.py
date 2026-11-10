@@ -1677,6 +1677,7 @@ def api_get_photo_view(photo_id: int, request: Request, raw: int = Query(default
                     headers={
                         "Cache-Control": "no-cache, must-revalidate",
                         "ETag": etag_val,
+                        "X-Photo-Offline": "true",
                     },
                 )
             except Exception as e:

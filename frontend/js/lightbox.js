@@ -87,40 +87,72 @@ function loadLightboxPhoto(instantFilmstrip = false, skipFilmstrip = false) {
 }
 
 /**
+ * ライトボックスの基準フィット寸法と原本1:1基準の拡大率メトリクスを算出する
+ */
+function _getLightboxPhotoMetrics(photo, naturalW, naturalH) {
+  const imgEl = elements.lightboxImage;
+  if (photo && naturalW > 0 && naturalH > 0) {
+    photo._lightboxNaturalW = Number(naturalW);
+    photo._lightboxNaturalH = Number(naturalH);
+  }
+  let nw = Number(naturalW) || Number(photo?._lightboxNaturalW) || Number(imgEl?.naturalWidth) || Number(photo?.thumb_width) || 0;
+  let nh = Number(naturalH) || Number(photo?._lightboxNaturalH) || Number(imgEl?.naturalHeight) || Number(photo?.thumb_height) || 0;
+  let metaW = Number(photo?.width) || 0;
+  let metaH = Number(photo?.height) || 0;
+  const cw = Number(photo?.crop_w ?? 1), ch = Number(photo?.crop_h ?? 1);
+  if (metaW > 0 && metaH > 0) {
+    metaW = Math.max(1, Math.round(metaW * (cw > 0 && cw < 1 ? cw : 1)));
+    metaH = Math.max(1, Math.round(metaH * (ch > 0 && ch < 1 ? ch : 1)));
+  }
+  const origMaxDim = Math.max(metaW, metaH);
+  const loadedMaxDim = Math.max(nw, nh);
+  const isThumbOnly = Boolean(
+    photo?.is_offline ||
+    photo?.is_unlinked ||
+    photo?.is_missing ||
+    (origMaxDim > 640 && loadedMaxDim > 0 && loadedMaxDim <= 640)
+  );
+  const bodyEl = elements.lightboxModal ? elements.lightboxModal.querySelector('.lightbox-body') : null;
+  const bodyRect = bodyEl ? bodyEl.getBoundingClientRect() : null;
+  const maxW = (bodyRect && bodyRect.width > 100) ? (bodyRect.width * 0.9) : (window.innerWidth * 0.9);
+  const maxH = (bodyRect && bodyRect.height > 100) ? Math.min(bodyRect.height * 0.9, window.innerHeight * 0.8) : (window.innerHeight * 0.8);
+
+  const origW = (nw > 640 || nh > 640) ? nw : (metaW || nw || 1600);
+  const origH = (nw > 640 || nh > 640) ? nh : (metaH || nh || 1200);
+  let baseFitW = origW;
+  let baseFitH = origH;
+  if (isThumbOnly) {
+    if (nw <= 0 || nh <= 0) {
+      const ow = metaW || 480;
+      const oh = metaH || 320;
+      const ratio = 480 / Math.max(1, Math.max(ow, oh));
+      nw = Math.max(1, Math.round(ow * ratio));
+      nh = Math.max(1, Math.round(oh * ratio));
+    }
+    const scale = Math.max(1.0, Math.min(2.0, maxW / nw, maxH / nh));
+    baseFitW = Math.max(1, nw * scale);
+    baseFitH = Math.max(1, nh * scale);
+  } else {
+    const fitScale = Math.min(1.0, maxW / Math.max(1, origW), maxH / Math.max(1, origH));
+    baseFitW = Math.max(1, origW * fitScale);
+    baseFitH = Math.max(1, origH * fitScale);
+  }
+  const dpr = Math.max(1, window.devicePixelRatio || 1);
+  const oneToOneW = Math.max(1, origW / dpr);
+  const fitRatio = Math.max(0.02, baseFitW / oneToOneW);
+  const oneToOneScale = fitRatio < 0.92 ? (1.0 / fitRatio) : (2.0 / fitRatio);
+  const maxZoom = Math.max(4.0, 3.0 / fitRatio);
+  return { baseFitW, baseFitH, origW, origH, fitRatio, oneToOneScale, maxZoom };
+}
+
+/**
  * ライトボックス表示サイズとサムネイル専用時の最大200%拡大を適用する
  */
 function _applyLightboxBaseSize(photo, naturalW, naturalH) {
   const imgEl = elements.lightboxImage;
   if (!imgEl || !photo) return;
-  let nw = Number(naturalW) || Number(imgEl.naturalWidth) || Number(photo.thumb_width) || 0;
-  let nh = Number(naturalH) || Number(imgEl.naturalHeight) || Number(photo.thumb_height) || 0;
-  const origMaxDim = Math.max(Number(photo.width) || 0, Number(photo.height) || 0);
-  const loadedMaxDim = Math.max(nw, nh);
-  const isThumbOnly = Boolean(
-    photo.is_offline ||
-    photo.is_unlinked ||
-    photo.is_missing ||
-    (origMaxDim > 640 && loadedMaxDim > 0 && loadedMaxDim <= 640)
-  );
-  if (isThumbOnly) {
-    if (nw <= 0 || nh <= 0) {
-      const ow = Number(photo.width) || 480;
-      const oh = Number(photo.height) || 320;
-      const ratio = 480 / Math.max(1, Math.max(ow, oh));
-      nw = Math.max(1, Math.round(ow * ratio));
-      nh = Math.max(1, Math.round(oh * ratio));
-    }
-    const bodyEl = elements.lightboxModal ? elements.lightboxModal.querySelector('.lightbox-body') : null;
-    const bodyRect = bodyEl ? bodyEl.getBoundingClientRect() : null;
-    const maxW = (bodyRect && bodyRect.width > 100) ? (bodyRect.width * 0.9) : (window.innerWidth * 0.9);
-    const maxH = (bodyRect && bodyRect.height > 100) ? Math.min(bodyRect.height * 0.9, window.innerHeight * 0.8) : (window.innerHeight * 0.8);
-    const scale = Math.max(1.0, Math.min(2.0, maxW / nw, maxH / nh));
-    imgEl.style.width = `${Math.round(nw * scale)}px`;
-    imgEl.style.height = `${Math.round(nh * scale)}px`;
-  } else {
-    imgEl.style.width = '';
-    imgEl.style.height = '';
-  }
+  _getLightboxPhotoMetrics(photo, naturalW, naturalH);
+  applyLightboxTransform(true);
 }
 
 /**
@@ -1510,9 +1542,9 @@ function navigatePhoto(direction) {
  * フィルタードロワー（手帳風インデックスタブ ＆ オーバーラップ開閉 ＆ ピン留め固定）制御
 
  */
-function showZoomBadge(percent) {
+function showZoomBadge(labelOrPercent) {
   if (!elements.lightboxZoomBadge) return;
-  elements.lightboxZoomBadge.textContent = `${percent}%`;
+  elements.lightboxZoomBadge.textContent = typeof labelOrPercent === 'number' ? `${labelOrPercent}%` : String(labelOrPercent);
   elements.lightboxZoomBadge.style.display = 'block';
   clearTimeout(_zoomBadgeTimer);
   _zoomBadgeTimer = setTimeout(() => {
@@ -1522,8 +1554,17 @@ function showZoomBadge(percent) {
   }, 900);
 }
 
+function _formatLightboxOriginalZoomLabel(zoomVal) {
+  const m = _getLightboxPhotoMetrics(getCurrentLightboxPhoto());
+  const z = Number(zoomVal) || state.lightboxZoom || 1.0;
+  const pct = Math.max(1, Math.round(z * m.fitRatio * 100));
+  if (z <= 1.03) return `${pct}% (FIT)`;
+  if (Math.abs(pct - 100) <= 2) return `${pct}% (等倍)`;
+  return `${pct}%`;
+}
+
 /**
- * ライトボックス画像の変形（パン・回転・ズーム）を一括適用
+ * ライトボックス画像の変形（実ピクセルサイズ・パン・回転）を一括適用（scale拡大によるモザイクを排除）
  */
 function applyLightboxTransform(isImmediate = false) {
   if (!elements.lightboxImage) return;
@@ -1531,8 +1572,12 @@ function applyLightboxTransform(isImmediate = false) {
     elements.lightboxImage.style.transition = 'none';
   }
   const { lightboxPanX, lightboxPanY, currentRotation, lightboxZoom } = state;
-  elements.lightboxImage.style.transform = `translate(${lightboxPanX}px, ${lightboxPanY}px) rotate(${currentRotation}deg) scale(${lightboxZoom})`;
-  elements.lightboxImage.style.cursor = lightboxZoom > 1.02 ? (state.isLightboxPanning ? 'grabbing' : 'grab') : 'default';
+  const z = Math.max(1.0, Number(lightboxZoom) || 1.0);
+  const m = _getLightboxPhotoMetrics(getCurrentLightboxPhoto());
+  elements.lightboxImage.style.width = `${Math.round(m.baseFitW * z)}px`;
+  elements.lightboxImage.style.height = `${Math.round(m.baseFitH * z)}px`;
+  elements.lightboxImage.style.transform = `translate(${Math.round(lightboxPanX)}px, ${Math.round(lightboxPanY)}px) rotate(${currentRotation}deg)`;
+  elements.lightboxImage.style.cursor = z > 1.02 ? (state.isLightboxPanning ? 'grabbing' : 'grab') : 'default';
 }
 
 /**
@@ -1577,18 +1622,18 @@ function initLightboxZoomInteractions() {
     e.preventDefault();
 
     const oldZoom = (typeof state.lightboxZoom === 'number' && !isNaN(state.lightboxZoom)) ? state.lightboxZoom : 1.0;
+    const m = _getLightboxPhotoMetrics(getCurrentLightboxPhoto());
 
     // 連続発火や高解像度ホイールでの暴走を防ぐため、1回のdeltaYを穏やかに正規化
     const clampedDelta = Math.max(-80, Math.min(80, e.deltaY));
     // 1ノッチ(約80)あたり約8%の穏やかな変化率
     const zoomRatio = Math.exp(-clampedDelta * 0.001);
-    let newZoom = Math.max(1.0, Math.min(4.0, oldZoom * zoomRatio));
+    let newZoom = Math.max(1.0, Math.min(m.maxZoom, oldZoom * zoomRatio));
 
-    // 縮小操作（clampedDelta > 0）時のみ、100%付近（1.03以下）で等倍フィットへ自然に吸着
-    // ※拡大開始時に 1.03 以下でリセットされて拡大がブロックされるデグレを防止
+    // 縮小操作（clampedDelta > 0）時のみ、フィット付近（1.03以下）で全体フィットへ自然に吸着
     if (clampedDelta > 0 && newZoom <= 1.03) {
       resetLightboxZoom();
-      showZoomBadge(100);
+      showZoomBadge(_formatLightboxOriginalZoomLabel(1.0));
       return;
     }
 
@@ -1602,11 +1647,8 @@ function initLightboxZoomInteractions() {
     state.lightboxPanY = cursorY - (cursorY - state.lightboxPanY) * ratio;
     state.lightboxZoom = newZoom;
 
-    if (elements.lightboxImage) {
-      elements.lightboxImage.style.transition = 'transform 0.06s ease-out';
-    }
-    applyLightboxTransform();
-    showZoomBadge(Math.round(newZoom * 100));
+    applyLightboxTransform(true);
+    showZoomBadge(_formatLightboxOriginalZoomLabel(newZoom));
   }, { passive: false });
 
   // 3. 露出ブラケット / 連写バーストのミニサムネイルバー上でのホイール操作 (コマ送り)
@@ -1687,24 +1729,23 @@ function initLightboxZoomInteractions() {
     }
   });
 
-  // 5. ダブルクリックで 1.0倍 ⇔ 2.0倍 のトグル
+  // 5. ダブルクリックで 全体フィット ⇔ 原本100%等倍 のトグル
   zoomContainer.addEventListener('dblclick', (e) => {
     if (e.target.closest('#lightboxBracketBar, #exifDrawer, .nav-arrow, .lightbox-tags-section, button, input')) return;
+    const m = _getLightboxPhotoMetrics(getCurrentLightboxPhoto());
     if (state.lightboxZoom > 1.05) {
       resetLightboxZoom();
-      showZoomBadge(100);
+      showZoomBadge(_formatLightboxOriginalZoomLabel(1.0));
     } else {
       const rect = elements.imageStage.getBoundingClientRect();
       const cursorX = e.clientX - (rect.left + rect.width / 2);
       const cursorY = e.clientY - (rect.top + rect.height / 2);
-      state.lightboxZoom = 2.0;
-      state.lightboxPanX = -cursorX * 1.0;
-      state.lightboxPanY = -cursorY * 1.0;
-      if (elements.lightboxImage) {
-        elements.lightboxImage.style.transition = 'transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1)';
-      }
-      applyLightboxTransform();
-      showZoomBadge(200);
+      const targetZoom = m.oneToOneScale;
+      state.lightboxZoom = targetZoom;
+      state.lightboxPanX = -cursorX * (targetZoom - 1.0);
+      state.lightboxPanY = -cursorY * (targetZoom - 1.0);
+      applyLightboxTransform(true);
+      showZoomBadge(_formatLightboxOriginalZoomLabel(targetZoom));
     }
   });
 }

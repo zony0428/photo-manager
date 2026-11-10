@@ -1580,9 +1580,29 @@
     document.getElementById('mViewerCounter').textContent = `${mState.viewerIndex + 1} / ${mState.photos.length}`;
 
     const imgEl = document.getElementById('mViewerImg');
+    activePhoto._loadedNaturalW = 0;
+    activePhoto._loadedNaturalH = 0;
     if (imgEl) {
+      const targetId = String(activePhoto.id);
+      imgEl.dataset.photoId = targetId;
+      imgEl.onload = () => { if (mState.viewerOpen) applyViewerTransform(); };
       imgEl.src = getMobileThumbnailUrl(activePhoto);
+      if (mState.mode === 'server') {
+        const hdUrl = `/api/photo/${activePhoto.id}/view`;
+        const preloadImg = new Image();
+        preloadImg.onload = () => {
+          if (!mState.viewerOpen || imgEl.dataset.photoId !== targetId) return;
+          if (preloadImg.naturalWidth > 420 || preloadImg.naturalHeight > 420) {
+            activePhoto._loadedNaturalW = preloadImg.naturalWidth;
+            activePhoto._loadedNaturalH = preloadImg.naturalHeight;
+            imgEl.src = hdUrl;
+            applyViewerTransform();
+          }
+        };
+        preloadImg.src = hdUrl;
+      }
     }
+    applyViewerTransform();
 
     // 評価ボタンのアクティブ状態更新
     const currentRate = Number(activePhoto.rating || 0);
@@ -1701,6 +1721,27 @@
 
   // ==================== ビューアのタッチスワイプ & ダブルタップズーム ====================
 
+  function _getViewerPhotoMetrics(stageEl) {
+    const stage = stageEl || document.getElementById('mViewerStage');
+    const imgEl = document.getElementById('mViewerImg');
+    const photo = getActiveViewerPhoto();
+    const sw = Math.max(120, (stage && stage.clientWidth) || window.innerWidth || 360);
+    const sh = Math.max(120, (stage && stage.clientHeight) || (window.innerHeight - 160) || 480);
+    let origW = Number(photo?._loadedNaturalW) || (imgEl && imgEl.naturalWidth > 420 ? imgEl.naturalWidth : 0);
+    let origH = Number(photo?._loadedNaturalH) || (imgEl && imgEl.naturalHeight > 420 ? imgEl.naturalHeight : 0);
+    if (origW <= 0 || origH <= 0) {
+      origW = Number(photo?.width) || (imgEl && imgEl.naturalWidth) || 1600;
+      origH = Number(photo?.height) || (imgEl && imgEl.naturalHeight) || 1200;
+    }
+    const fitScale = Math.min(sw / origW, sh / origH);
+    const fitW = Math.max(1, origW * fitScale);
+    const fitH = Math.max(1, origH * fitScale);
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    const fitRatio = Math.max(0.02, fitScale * dpr);
+    const oneToOneScale = fitRatio < 0.92 ? (1.0 / fitRatio) : (2.0 / fitRatio);
+    return { sw, sh, fitW, fitH, fitRatio, oneToOneScale };
+  }
+
   function resetViewerZoom() {
     mState.zoomScale = 1;
     mState.panX = 0;
@@ -1710,8 +1751,15 @@
 
   function applyViewerTransform() {
     const wrap = document.getElementById('mViewerImgWrapper');
+    const imgEl = document.getElementById('mViewerImg');
     if (!wrap) return;
-    wrap.style.transform = `translate3d(${mState.panX}px, ${mState.panY}px, 0) scale(${mState.zoomScale})`;
+    const m = _getViewerPhotoMetrics();
+    const z = Math.max(1, mState.zoomScale || 1);
+    if (imgEl) {
+      imgEl.style.width = `${Math.round(m.fitW * z)}px`;
+      imgEl.style.height = `${Math.round(m.fitH * z)}px`;
+    }
+    wrap.style.transform = `translate3d(${Math.round(mState.panX)}px, ${Math.round(mState.panY)}px, 0)`;
   }
 
   function setupViewerTouchGestures() {
@@ -1761,13 +1809,14 @@
       const dx = endTouch ? endTouch.clientX - startX : 0;
       const dy = endTouch ? endTouch.clientY - startY : 0;
 
-      // ダブルタップ判定（移動量が小さい場合）
+      // ダブルタップ判定（移動量が小さい場合: 全体フィット ⇄ 原本100%等倍）
       if (Math.abs(dx) < 15 && Math.abs(dy) < 15) {
         if (now - lastTapTime < 280) {
-          if (mState.zoomScale > 1) {
+          if (mState.zoomScale > 1.05) {
             resetViewerZoom();
           } else {
-            mState.zoomScale = 2.5;
+            const m = _getViewerPhotoMetrics(stage);
+            mState.zoomScale = m.oneToOneScale;
             mState.panX = 0;
             mState.panY = 0;
             applyViewerTransform();
