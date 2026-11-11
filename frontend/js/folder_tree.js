@@ -972,7 +972,9 @@ function startAiProgressPolling() {
           typeof fetchPhotos === 'function' ? fetchPhotos() : Promise.resolve(),
           typeof fetchTags === 'function' ? fetchTags() : Promise.resolve(),
         ]);
-        if (state.activeInspectorPhotoId && typeof showSingleInspector === 'function') {
+        if (state.selectedPhotoIds && state.selectedPhotoIds.size > 1 && typeof updateInspectorView === 'function') {
+          updateInspectorView();
+        } else if (state.activeInspectorPhotoId && typeof showSingleInspector === 'function') {
           const activePhoto = state.photos.find(p => p.id === state.activeInspectorPhotoId);
           if (activePhoto) showSingleInspector(activePhoto);
         } else if (typeof updateInspectorView === 'function') {

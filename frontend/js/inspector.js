@@ -377,6 +377,12 @@ function renderExposureTags(container, photo) {
 let _inspectorDetailFetchTimer = null;
 
 function showSingleInspector(photo) {
+  // 複数枚選択中に遅延詳細取得コールバック等が走っても、一括編集ビューを上書きしないよう保護
+  if (state.selectedPhotoIds && state.selectedPhotoIds.size > 1) {
+    showBatchInspector();
+    return;
+  }
+
   // 一覧APIで既に重複なし(duplicate_count <= 1)・XMPなし(has_xmp === false)と判明している場合は
   // 空オブジェクトを即座にセットし、不要な /api/photo/{id} 通信とインスペクタ二重再描画を防止する
   if (photo.duplicates === undefined && photo.duplicate_count !== undefined && Number(photo.duplicate_count) <= 1) {
@@ -394,12 +400,12 @@ function showSingleInspector(photo) {
     }
     _inspectorDetailFetchTimer = setTimeout(() => {
       _inspectorDetailFetchTimer = null;
-      if (state.activeInspectorPhotoId !== currentId) return;
+      if (state.activeInspectorPhotoId !== currentId || (state.selectedPhotoIds && state.selectedPhotoIds.size > 1)) return;
       photo._xmpDetailFetched = true;
       fetch(`/api/photo/${currentId}`)
         .then(res => res.ok ? res.json() : null)
         .then(detail => {
-          if (detail && state.activeInspectorPhotoId === currentId) {
+          if (detail && state.activeInspectorPhotoId === currentId && (!state.selectedPhotoIds || state.selectedPhotoIds.size <= 1)) {
             Object.assign(photo, detail);
             showSingleInspector(photo);
           }
@@ -1543,6 +1549,10 @@ async function showGpsCandidateModal(photo) {
  * 複数写真の一括編集モード表示 (マルチ選択時)
  */
 function showBatchInspector() {
+  if (_inspectorDetailFetchTimer) {
+    clearTimeout(_inspectorDetailFetchTimer);
+    _inspectorDetailFetchTimer = null;
+  }
   elements.inspectorSingleView.style.display = 'none';
   elements.inspectorBatchView.style.display = 'block';
   if (elements.inspectorFixedPreview) elements.inspectorFixedPreview.style.display = 'none';
@@ -1556,8 +1566,10 @@ function showBatchInspector() {
   const count = state.selectedPhotoIds.size;
   elements.batchCountBadge.textContent = count;
 
-  // 選択された写真オブジェクト一覧を取得
-  const selectedPhotos = state.photos.filter(p => state.selectedPhotoIds.has(p.id));
+  // 選択された写真オブジェクト一覧を取得（スタック展開メンバー等も含めて解決）
+  const selectedPhotos = Array.from(state.selectedPhotoIds)
+    .map(id => (typeof findPhotoByIdAnywhere === 'function' ? findPhotoByIdAnywhere(id) : null) || state.photos.find(p => p.id === id))
+    .filter(Boolean);
 
   // ミニサムネイルのフィルムストリップ
   elements.batchThumbnailsStrip.innerHTML = '';
@@ -1614,46 +1626,84 @@ function showBatchInspector() {
     });
   }
 
-  // 選択中の全写真に付いているタグの集計（通常タグ・AIタグに加え、色タグも視認性向上のため色ドット付きで集計表示）
+  // 選択中の全写真に付いているタグの集計（全選択写真に共通のタグのみ × で一括削除可能）
   const commonTagsListEl = elements.batchCommonTagsList || document.getElementById('batchCommonTagsList');
   if (commonTagsListEl) {
     commonTagsListEl.innerHTML = '';
-    const tagCounts = new Map();
+    const totalSelCount = selectedPhotos.length || count;
+    const fullTagCounts = new Map();
+    const leafUnion = new Set();
+
     selectedPhotos.forEach(p => {
-      getLeafTags(p.tags).forEach(t => {
-        tagCounts.set(t, (tagCounts.get(t) || 0) + 1);
+      const fullSet = new Set(p.tags || []);
+      fullSet.forEach(t => {
+        fullTagCounts.set(t, (fullTagCounts.get(t) || 0) + 1);
       });
+      getLeafTags(p.tags || []).forEach(t => leafUnion.add(t));
     });
 
-    if (tagCounts.size === 0) {
+    // 全写真に共通する階層タグのうち、より深い共通子孫が存在しないものを共通バッジ候補に追加
+    const allFullTags = Array.from(fullTagCounts.keys());
+    const displayTags = new Set(leafUnion);
+    allFullTags.forEach(t => {
+      if (fullTagCounts.get(t) === totalSelCount) {
+        const hasCommonDescendant = allFullTags.some(
+          d => d !== t && d.startsWith(t + '/') && fullTagCounts.get(d) === totalSelCount
+        );
+        if (!hasCommonDescendant) {
+          displayTags.add(t);
+        } else {
+          displayTags.delete(t);
+        }
+      }
+    });
+
+    const sortedEntries = Array.from(displayTags)
+      .map(tag => ({ tag, cnt: fullTagCounts.get(tag) || 0 }))
+      .filter(entry => entry.cnt > 0)
+      .sort((a, b) => {
+        const aCommon = a.cnt === totalSelCount ? 1 : 0;
+        const bCommon = b.cnt === totalSelCount ? 1 : 0;
+        if (aCommon !== bCommon) return bCommon - aCommon;
+        if (b.cnt !== a.cnt) return b.cnt - a.cnt;
+        return String(a.tag).localeCompare(String(b.tag), 'ja', { numeric: true });
+      });
+
+    if (sortedEntries.length === 0) {
       commonTagsListEl.innerHTML = '<span class="empty-hint" style="font-size:0.75rem;">タグ付きの写真はありません</span>';
     } else {
-      tagCounts.forEach((cnt, tag) => {
+      sortedEntries.forEach(({ tag, cnt }) => {
+        const isCommon = (totalSelCount > 0 && cnt === totalSelCount);
         const chip = document.createElement('div');
-        chip.className = 'inspector-tag-chip batch-tag-chip';
-        const isAll = (cnt === count);
-        chip.style.opacity = isAll ? '1' : '0.8';
-        chip.title = isAll 
-          ? `全写真(${cnt}枚)に付与されています。クリックで一括解除` 
-          : `一部の写真(${cnt}/${count}枚)に付与されています。クリックで一括解除`;
+        chip.className = `inspector-tag-chip batch-tag-chip ${isCommon ? 'is-common' : 'is-partial'}`;
+        chip.title = isCommon
+          ? `選択中の全写真(${totalSelCount}枚)に共通のタグです。× をクリックで一括削除`
+          : `一部の写真(${cnt}/${totalSelCount}枚)のみに付与されているタグです（共通タグのみ一括削除できます）`;
 
         const colorConf = COLOR_TAG_MAP[tag];
-        const iconOrDot = colorConf 
-          ? `<span class="tag-color-dot" style="background:${colorConf.color}; margin-right:4px;"></span>` 
+        const iconOrDot = colorConf
+          ? `<span class="tag-color-dot" style="background:${colorConf.color}; margin-right:4px;"></span>`
+          : '';
+        const delBtnHtml = isCommon
+          ? `<span class="inspector-tag-del" title="選択した全写真から一括削除">&times;</span>`
           : '';
 
         chip.innerHTML = `
-          <span style="display:inline-flex; align-items:center;">${iconOrDot}${escapeHtml(tag)} <small style="opacity:0.7; margin-left:4px;">(${cnt}/${count})</small></span>
-          <span class="inspector-tag-del" title="一括解除">&times;</span>
+          <span style="display:inline-flex; align-items:center;">${iconOrDot}${escapeHtml(tag)} <small style="opacity:0.72; margin-left:4px;">(${cnt}/${totalSelCount})</small></span>
+          ${delBtnHtml}
         `;
 
-        // チップをクリックで一括解除
-        chip.addEventListener('click', async (e) => {
-          e.stopPropagation();
-          chip.style.opacity = '0.3';
-          chip.style.pointerEvents = 'none';
-          await batchToggleTag(tag, false);
-        });
+        if (isCommon) {
+          const delEl = chip.querySelector('.inspector-tag-del');
+          if (delEl) {
+            delEl.addEventListener('click', async (e) => {
+              e.stopPropagation();
+              chip.style.opacity = '0.35';
+              chip.style.pointerEvents = 'none';
+              await batchToggleTag(tag, false, { keepSelection: true });
+            });
+          }
+        }
 
         commonTagsListEl.appendChild(chip);
       });
@@ -2242,8 +2292,9 @@ async function addTagToPhoto(photoId, tag, photoObj = null) {
  * 選択中写真に一括でタグを追加または削除する (カラーパレット一括操作・クイックツリー・新規タグ用)
  * 設定完了後に選択を解除し、現在のフィルタを再適用する (v2.02)
  */
-async function batchToggleTag(tagName, shouldAdd) {
+async function batchToggleTag(tagName, shouldAdd, options = {}) {
   if (state.selectedPhotoIds.size === 0 || !tagName) return;
+  const keepSelection = Boolean(options && options.keepSelection);
   const cleanTagName = tagName.trim();
   if (!cleanTagName) return;
   const parts = cleanTagName.split('/').map(p => p.trim()).filter(Boolean);
@@ -2253,7 +2304,7 @@ async function batchToggleTag(tagName, shouldAdd) {
 
   // Optimistic UI: キャッシュのタグを即時更新（階層タグ時は祖先展開・削除時は子孫も除去）
   photoIds.forEach(id => {
-    const photo = state.photos.find(p => p.id === id);
+    const photo = (typeof findPhotoByIdAnywhere === 'function' ? findPhotoByIdAnywhere(id) : null) || state.photos.find(p => p.id === id);
     if (photo) {
       if (shouldAdd) {
         if (!photo.tags) photo.tags = [];
@@ -2300,9 +2351,34 @@ async function batchToggleTag(tagName, shouldAdd) {
     });
     if (!res.ok) throw new Error('一括タグ処理に失敗しました');
 
-    // 設定完了後、選択を解除し、現在のフィルタ条件を再適用してグリッドとタグツリーを最新化
-    clearSelection();
-    await Promise.all([fetchPhotos(), fetchTags()]);
+    if (keepSelection) {
+      await Promise.all([fetchPhotos(), fetchTags()]);
+      const visibleIds = new Set((state.photos || []).map(p => p.id));
+      Array.from(state.selectedPhotoIds).forEach(id => {
+        if (!visibleIds.has(id) && !(typeof findPhotoByIdAnywhere === 'function' && findPhotoByIdAnywhere(id))) {
+          state.selectedPhotoIds.delete(id);
+        }
+      });
+      if (state.selectedPhotoIds.size === 0) {
+        clearSelection();
+      } else {
+        if (typeof updateCardSelectionClasses === 'function') updateCardSelectionClasses();
+        if (typeof updateSelectionUI === 'function') updateSelectionUI();
+      }
+      if (typeof showToast === 'function') {
+        showToast(
+          shouldAdd
+            ? `${photoIds.length}枚の写真にタグ「${normalizedTag}」を追加しました`
+            : `${photoIds.length}枚の写真からタグ「${normalizedTag}」を一括削除しました`,
+          'info',
+          2400
+        );
+      }
+    } else {
+      // 設定完了後、選択を解除し、現在のフィルタ条件を再適用してグリッドとタグツリーを最新化
+      clearSelection();
+      await Promise.all([fetchPhotos(), fetchTags()]);
+    }
   } catch (err) {
     console.error('一括タグ更新エラー:', err);
     if (typeof showToast === 'function') showToast('エラー: ' + err.message, 'error');

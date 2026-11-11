@@ -999,7 +999,7 @@ def get_photos(
             query += " AND p.volume_serial IS NULL"
 
         # 全体表示時は代表レコードの paired_raw_path でペア済みRAWを除外
-        query += " AND NOT (p.is_raw = 1 AND p.paired_raw_path IS NOT NULL)"
+        query += " AND NOT (COALESCE(p.is_raw, 0) = 1 AND p.paired_raw_path IS NOT NULL AND p.paired_raw_path != '')"
 
     # フォルダ除外絞り込み（指定フォルダおよび配下を除外）
     if exclude_folder:
@@ -1553,7 +1553,7 @@ def get_photos(
                 stack_cols = [
                     "id", "file_name", "file_path", "directory_path", "file_size", "width", "height",
                     "date_taken", "subsec_time", "exposure_bias", "shutter_speed", "f_number", "camera_model",
-                    "is_stack_primary", "stack_id", "rating", "is_raw", "raw_format",
+                    "is_stack_primary", "stack_id", "rating", "is_raw", "raw_format", "paired_raw_path",
                     "rotation", "fine_angle", "brightness", "contrast", "saturation",
                     "crop_x", "crop_y", "crop_w", "crop_h", "content_key", "iso", "focal_length"
                 ]
@@ -1562,12 +1562,13 @@ def get_photos(
                         """
                         SELECT id, file_name, file_path, directory_path, file_size, width, height,
                                date_taken, subsec_time, exposure_bias, shutter_speed, f_number, camera_model,
-                               is_stack_primary, stack_id, rating, is_raw, raw_format,
+                               is_stack_primary, stack_id, rating, is_raw, raw_format, paired_raw_path,
                                COALESCE(rotation, 0), COALESCE(fine_angle, 0.0),
                                COALESCE(brightness, 0), COALESCE(contrast, 0), COALESCE(saturation, 0),
                                crop_x, crop_y, crop_w, crop_h, content_key, iso, focal_length
                         FROM photos
                         WHERE stack_id IS NOT NULL AND IFNULL(is_unlinked, 0) = 0
+                          AND NOT (COALESCE(is_raw, 0) = 1 AND paired_raw_path IS NOT NULL AND paired_raw_path != '')
                         ORDER BY date_taken ASC, subsec_time ASC, id ASC
                         """
                     )
@@ -1584,12 +1585,13 @@ def get_photos(
                             f"""
                             SELECT id, file_name, file_path, directory_path, file_size, width, height,
                                    date_taken, subsec_time, exposure_bias, shutter_speed, f_number, camera_model,
-                                   is_stack_primary, stack_id, rating, is_raw, raw_format,
+                                   is_stack_primary, stack_id, rating, is_raw, raw_format, paired_raw_path,
                                    COALESCE(rotation, 0), COALESCE(fine_angle, 0.0),
                                    COALESCE(brightness, 0), COALESCE(contrast, 0), COALESCE(saturation, 0),
                                    crop_x, crop_y, crop_w, crop_h, content_key, iso, focal_length
                             FROM photos
                             WHERE stack_id IN ({','.join(['?']*len(sid_chunk))}) AND IFNULL(is_unlinked, 0) = 0
+                              AND NOT (COALESCE(is_raw, 0) = 1 AND paired_raw_path IS NOT NULL AND paired_raw_path != '')
                             ORDER BY date_taken ASC, subsec_time ASC, id ASC
                             """,
                             sid_chunk
@@ -1811,7 +1813,8 @@ def get_photo_by_id(photo_id: int) -> Optional[Dict[str, Any]]:
                        COALESCE(brightness, 0) AS brightness, COALESCE(contrast, 0) AS contrast, COALESCE(saturation, 0) AS saturation,
                        crop_x, crop_y, crop_w, crop_h, content_key, iso, focal_length
                 FROM photos
-                WHERE stack_id = ?
+                WHERE stack_id = ? AND IFNULL(is_unlinked, 0) = 0
+                  AND NOT (COALESCE(is_raw, 0) = 1 AND paired_raw_path IS NOT NULL AND paired_raw_path != '')
                 ORDER BY date_taken ASC, subsec_time ASC, id ASC
                 """,
                 (photo["stack_id"],)

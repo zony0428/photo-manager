@@ -3072,6 +3072,156 @@ class TestCoreRegression(unittest.TestCase):
 
 
 
+
+    def test_raw_jpeg_pair_and_burst_stack_exclusion_and_batch_tag_cache(self) -> None:
+        """RAW+JPEGペア・連写スタックでの従属RAW除外および一括タグ削除時の/api/photosキャッシュ即時更新を検証"""
+        from fastapi.testclient import TestClient
+        from server.app import app
+        from server.database import (
+            get_photo_by_id,
+            get_photos,
+            get_total_photos_count,
+            recalculate_stacks,
+            upsert_photo,
+        )
+        from server.mobile_bundle import build_standalone_mobile_html
+
+        pair_dir = Path(self._temp_dir.name) / "raw_pair_stack_test"
+        pair_dir.mkdir(parents=True, exist_ok=True)
+        for fname, content in [
+            ("DSC00630.JPG", b"jpg0_bytes"),
+            ("DSC00630.ARW", b"arw0_raw_payload_bytes"),
+            ("DSC00631.JPG", b"jpg1_bytes_diff"),
+            ("DSC00631.ARW", b"arw1_raw_payload_bytes_diff"),
+            ("DSC00633.JPG", b"jpg3_bytes_single"),
+            ("DSC00633.ARW", b"arw3_raw_payload_single"),
+            ("DSC00699.ARW", b"arw_standalone_only_bytes"),
+        ]:
+            (pair_dir / fname).write_bytes(content)
+
+        j0 = upsert_photo({
+            "file_path": str(pair_dir / "DSC00630.JPG"),
+            "file_name": "DSC00630.JPG",
+            "directory_path": str(pair_dir),
+            "file_size": 1000,
+            "date_taken": "2026-11-11 10:00:00",
+            "subsec_time": "10",
+            "year_month": "2026-11",
+            "camera_model": "ILCE-7M4",
+            "is_raw": 0,
+        })
+        upsert_photo({
+            "file_path": str(pair_dir / "DSC00630.ARW"),
+            "file_name": "DSC00630.ARW",
+            "directory_path": str(pair_dir),
+            "file_size": 20000,
+            "date_taken": "2026-11-11 10:00:00",
+            "subsec_time": "10",
+            "year_month": "2026-11",
+            "camera_model": "ILCE-7M4",
+            "is_raw": 1,
+            "raw_format": "ARW",
+        })
+        j1 = upsert_photo({
+            "file_path": str(pair_dir / "DSC00631.JPG"),
+            "file_name": "DSC00631.JPG",
+            "directory_path": str(pair_dir),
+            "file_size": 1100,
+            "date_taken": "2026-11-11 10:00:00",
+            "subsec_time": "35",
+            "year_month": "2026-11",
+            "camera_model": "ILCE-7M4",
+            "is_raw": 0,
+        })
+        upsert_photo({
+            "file_path": str(pair_dir / "DSC00631.ARW"),
+            "file_name": "DSC00631.ARW",
+            "directory_path": str(pair_dir),
+            "file_size": 21000,
+            "date_taken": "2026-11-11 10:00:00",
+            "subsec_time": "35",
+            "year_month": "2026-11",
+            "camera_model": "ILCE-7M4",
+            "is_raw": 1,
+            "raw_format": "ARW",
+        })
+        j3 = upsert_photo({
+            "file_path": str(pair_dir / "DSC00633.JPG"),
+            "file_name": "DSC00633.JPG",
+            "directory_path": str(pair_dir),
+            "file_size": 1200,
+            "date_taken": "2026-11-11 10:05:00",
+            "year_month": "2026-11",
+            "camera_model": "ILCE-7M4",
+            "is_raw": 0,
+        })
+        upsert_photo({
+            "file_path": str(pair_dir / "DSC00633.ARW"),
+            "file_name": "DSC00633.ARW",
+            "directory_path": str(pair_dir),
+            "file_size": 22000,
+            "date_taken": "2026-11-11 10:05:00",
+            "year_month": "2026-11",
+            "camera_model": "ILCE-7M4",
+            "is_raw": 1,
+            "raw_format": "ARW",
+        })
+        r_only = upsert_photo({
+            "file_path": str(pair_dir / "DSC00699.ARW"),
+            "file_name": "DSC00699.ARW",
+            "directory_path": str(pair_dir),
+            "file_size": 25000,
+            "date_taken": "2026-11-11 10:10:00",
+            "year_month": "2026-11",
+            "camera_model": "ILCE-7M4",
+            "is_raw": 1,
+            "raw_format": "ARW",
+        })
+
+        recalculate_stacks(str(pair_dir), recursive=False)
+
+        unstacked = get_photos(folder=str(pair_dir), stacked=False)
+        self.assertEqual(
+            sorted(p["file_name"] for p in unstacked),
+            ["DSC00630.JPG", "DSC00631.JPG", "DSC00633.JPG", "DSC00699.ARW"],
+        )
+
+        stacked_rows = get_photos(folder=str(pair_dir), stacked=True)
+        self.assertEqual(len(stacked_rows), 3)
+        burst_rep = next(p for p in stacked_rows if p["file_name"] in ("DSC00630.JPG", "DSC00631.JPG"))
+        self.assertEqual(burst_rep["stack_count"], 2)
+        self.assertEqual(
+            sorted(sp["file_name"] for sp in burst_rep["stack_photos"]),
+            ["DSC00630.JPG", "DSC00631.JPG"],
+        )
+
+        detail = get_photo_by_id(burst_rep["id"])
+        self.assertEqual(detail["stack_count"], 2)
+        self.assertEqual(
+            sorted(sp["file_name"] for sp in detail["stack_photos"]),
+            ["DSC00630.JPG", "DSC00631.JPG"],
+        )
+
+        mobile_html = build_standalone_mobile_html()
+        self.assertIn("SQL_NOT_PAIRED_RAW", mobile_html)
+
+        # 一括タグ付与・削除時の /api/photos キャッシュ即時無効化を検証
+        client = TestClient(app, base_url="http://127.0.0.1:8088")
+        sel_ids = [j0, j3, r_only]
+        client.post("/api/photos/batch-tags", json={"photo_ids": sel_ids, "tag": "共通タグ", "action": "add"})
+        client.post(f"/api/photo/{j0}/tags", json={"tag": "個別タグ"})
+        warm = client.get("/api/photos", params={"folder": str(pair_dir), "stacked": "false"})
+        self.assertEqual(warm.status_code, 200)
+
+        rm_res = client.post("/api/photos/batch-tags", json={"photo_ids": sel_ids, "tag": "共通タグ", "action": "remove"})
+        self.assertEqual(rm_res.status_code, 200)
+        after_photos = client.get("/api/photos", params={"folder": str(pair_dir), "stacked": "false"}).json()["photos"]
+        tags_by_id = {p["id"]: p["tags"] for p in after_photos}
+        for pid in sel_ids:
+            self.assertNotIn("共通タグ", tags_by_id[pid])
+        self.assertIn("個別タグ", tags_by_id[j0])
+
+
 if __name__ == "__main__":
     unittest.main()
 

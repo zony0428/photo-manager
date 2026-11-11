@@ -13,8 +13,18 @@
 > **アップデート・旧バージョンからの移行案内**
 >
 > すでにフルパッケージ版が稼働している環境では、python/ や models/ の再ダウンロードは不要です。  
-> - **v1.7.2 以前から v1.8.7 への更新時**: 軽量差分版（`Tetheract_v1.8.7diff.zip`）を解凍して既存フォルダへ上書きコピーし、**`Tetheract.exe`** を起動してください（起動時にルート階層の旧 `Build.bat`・`start.bat`・`run.py`・`launcher/` が自動整理されます）。
-> - **v1.8.0 以降の環境からの更新時（自動クリーン・アップデート）**: ダウンロードした `Tetheract_v1.8.7diff.zip` を**解凍せずにそのまま**アプリフォルダへ置いて **`Tetheract.exe`** を起動するだけで、古い不要プログラムファイルを自動消去してクリーン更新できます（データベース `cache/` や `Loome/`・`storage/` およびセキュリティ鍵はすべて維持されます）。初回導入時のみフルパッケージ版（`Tetheract_v1.8.7.zip`）をご利用ください。
+> - **v1.7.2 以前から v1.8.9 への更新時**: 軽量差分版（`Tetheract_v1.8.9diff.zip`）を解凍して既存フォルダへ上書きコピーし、**`Tetheract.exe`** を起動してください（起動時にルート階層の旧 `Build.bat`・`start.bat`・`run.py`・`launcher/` が自動整理されます）。
+> - **v1.8.0 以降の環境からの更新時（自動クリーン・アップデート）**: ダウンロードした `Tetheract_v1.8.9diff.zip` を**解凍せずにそのまま**アプリフォルダへ置いて **`Tetheract.exe`** を起動するだけで、古い不要プログラムファイルを自動消去してクリーン更新できます（データベース `cache/` や `Loome/`・`storage/` およびセキュリティ鍵はすべて維持されます）。初回導入時のみフルパッケージ版（`Tetheract_v1.8.9.zip`）をご利用ください。
+
+---
+
+## v1.8.9 (2026-11-12)
+
+### RAW+JPEG ペア・連写スタックの従属RAW除外修正 ＆ 複数選択時の共通タグ一括削除対応 (RAW+JPEG Stack Exclusion Fix & Multi-Select Common Tag Batch Removal)
+- **RAW+JPEG 連写・ブラケットスタックおよび単体モバイルHTMLでの従属RAW除外を完全修正（`photos.py` / `preload_thumbnails.py` / `app.js` / `mobile.js`）**:
+  - RAW+JPEG ペアの連写・ブラケット時に従属RAWレコードが `stack_photos`・枚数集計・サムネイル一括生成・単体モバイルHTML（`Tetheract_Mobile.html`）のオフラインDB検索へ混入して黒枠や重複カードになっていた不具合を解消。
+- **複数選択時の右ペイン「付与されているタグ」バッジの一括削除修正（`inspector.js` / `selection.js` / `folder_tree.js` / `mobile.js` / `server/app.py`）**:
+  - 複数画像選択時に単一写真インスペクタが遅延上書きされて先頭1枚からしかタグが消えなかった不具合を修正。選択した全画像に共通のタグのみ `×` ボタンを表示して選択維持のまま一括削除可能とし、タグ更新時の `/api/photos` キャッシュ即時クリアに対応。
 
 ---
 

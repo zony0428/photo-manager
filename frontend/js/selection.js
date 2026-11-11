@@ -776,7 +776,9 @@ async function batchRetagAiColorSelection() {
     if (state.currentPhotoIndex >= 0 && state.photos[state.currentPhotoIndex] && typeof renderLightboxTags === 'function') {
       renderLightboxTags(state.photos[state.currentPhotoIndex]);
     }
-    if (state.activeInspectorPhotoId && resultsMap[String(state.activeInspectorPhotoId)]) {
+    if (state.selectedPhotoIds && state.selectedPhotoIds.size > 1 && typeof updateInspectorView === 'function') {
+      updateInspectorView();
+    } else if (state.activeInspectorPhotoId && resultsMap[String(state.activeInspectorPhotoId)]) {
       const activePhoto = state.photos.find(p => p.id === state.activeInspectorPhotoId);
       if (activePhoto && typeof showSingleInspector === 'function') {
         showSingleInspector(activePhoto);

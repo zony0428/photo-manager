@@ -1362,3 +1362,8 @@ body.m-select-mode .m-card-check {
   z-index: 200;
   white-space: nowrap;
 }
+
+.m-tag-chip.is-partial {
+  opacity: 0.62;
+  border-style: dashed;
+}

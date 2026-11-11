@@ -96,6 +96,8 @@ def preload_all_thumbnails(batch_size: int = 50):
                 FROM photos p
                 LEFT JOIN thumbnails t ON p.id = t.photo_id
                 WHERE t.photo_id IS NULL
+                  AND IFNULL(p.is_unlinked, 0) = 0
+                  AND NOT (COALESCE(p.is_raw, 0) = 1 AND p.paired_raw_path IS NOT NULL AND p.paired_raw_path != '')
                 ORDER BY p.id ASC
             """)
             pending = [dict(r) for r in cursor.fetchall()]

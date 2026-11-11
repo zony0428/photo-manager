@@ -653,7 +653,7 @@ function createPhotoCard(photo, index) {
 
   // フォーマットバッジHTML (RAW / RAW+JPG)
   let formatBadgeHtml = '';
-  const hasRawPair = Boolean(photo.paired_raw_path || (photo.stack_photos && photo.stack_photos.some(sp => sp.is_raw)));
+  const hasRawPair = Boolean(photo.paired_raw_path || (photo.stack_photos && photo.stack_photos.some(sp => sp.is_raw || sp.paired_raw_path)));
   if (hasRawPair) {
     formatBadgeHtml = `<span class="format-badge raw-jpg-badge" title="RAW+JPEGペア写真">RAW+JPG</span>`;
   } else if (photo.is_raw) {

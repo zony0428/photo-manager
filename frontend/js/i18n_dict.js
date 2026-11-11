@@ -2098,6 +2098,8 @@
     [/^(\d+)枚の回転・調整をリセットしました$/, 'Reset rotation & adjustments for $1 photos'],
     [/^(?:📤\s*)?(\d+)枚のJPGを「(.+)」にテイクアウトしました(.*)$/, 'Exported $1 JPGs to "$2"$3'],
     [/^(?:🏷️\s*)?(\d+)枚の写真にタグ「(.+)」を付与しました$/, 'Added tag "$2" to $1 photos'],
+    [/^(\d+)枚の写真にタグ「(.+)」を追加しました$/, 'Added tag "$2" to $1 photos'],
+    [/^(\d+)枚の写真からタグ「(.+)」を一括削除しました$/, 'Removed tag "$2" from $1 selected photos'],
     [/^(\d+)枚の評価を「(.+)」に設定しました$/, 'Set rating for $1 photos to "$2"'],
     [/^(?:🗑️\s*)?(\d+)枚の写真をライブラリから削除しました$/, 'Removed $1 photos from library'],
     [/^(?:📍\s*)?(\d+)\s*枚の写真にジオタグを準用しました$/, 'Inferred GPS for $1 photos'],

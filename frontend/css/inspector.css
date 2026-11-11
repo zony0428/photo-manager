@@ -469,17 +469,26 @@
 }
 
 .batch-tag-chip {
-  cursor: pointer;
+  cursor: default;
   transition: background var(--transition-fast), border-color var(--transition-fast), opacity var(--transition-fast);
 }
 
-.batch-tag-chip:hover {
-  border-color: #ef4444;
-  background: rgba(239, 68, 68, 0.12);
+.batch-tag-chip.is-common .inspector-tag-del {
+  padding: 0 2px;
+  margin-left: 2px;
 }
 
-.batch-tag-chip:hover .inspector-tag-del {
+.batch-tag-chip.is-common:hover {
+  border-color: var(--accent-primary);
+}
+
+.batch-tag-chip.is-common .inspector-tag-del:hover {
   color: #ef4444;
+}
+
+.batch-tag-chip.is-partial {
+  opacity: 0.62;
+  border-style: dashed;
 }
 
 /* タグ追加ボックス */

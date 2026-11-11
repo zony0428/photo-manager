@@ -18,6 +18,10 @@
     '銀・シルバー', '金・ゴールド', '茶色', '紫', 'オレンジ', 'ピンク',
   ];
   const MOBILE_COLOR_TAG_SET = new Set(MOBILE_COLOR_TAGS);
+  const SQL_NOT_PAIRED_RAW =
+    "NOT (COALESCE(is_raw, 0) = 1 AND paired_raw_path IS NOT NULL AND paired_raw_path != '')";
+  const SQL_NOT_PAIRED_RAW_P =
+    "NOT (COALESCE(p.is_raw, 0) = 1 AND p.paired_raw_path IS NOT NULL AND p.paired_raw_path != '')";
 
   const mState = {
     mode: 'checking', // 'checking' | 'server' | 'localdb' | 'offline'
@@ -712,10 +716,10 @@
       LEFT JOIN (
         SELECT stack_id, COUNT(*) AS cnt
         FROM photos
-        WHERE stack_id IS NOT NULL AND IFNULL(is_unlinked, 0) = 0
+        WHERE stack_id IS NOT NULL AND IFNULL(is_unlinked, 0) = 0 AND ${SQL_NOT_PAIRED_RAW}
         GROUP BY stack_id
       ) sc ON sc.stack_id = p.stack_id
-      WHERE IFNULL(p.is_unlinked, 0) = 0
+      WHERE IFNULL(p.is_unlinked, 0) = 0 AND ${SQL_NOT_PAIRED_RAW_P}
     `;
     const params = [];
 
@@ -845,7 +849,7 @@
 
     if (photo.stack_id != null && Number(photo.stack_count || 1) > 1) {
       const memberRows = queryLocalDbObjects(
-        'SELECT * FROM photos WHERE stack_id = ? AND IFNULL(is_unlinked, 0) = 0 ORDER BY date_taken ASC, subsec_time ASC, id ASC',
+        `SELECT * FROM photos WHERE stack_id = ? AND IFNULL(is_unlinked, 0) = 0 AND ${SQL_NOT_PAIRED_RAW} ORDER BY date_taken ASC, subsec_time ASC, id ASC`,
         [photo.stack_id]
       );
       for (const mr of memberRows) {
@@ -906,7 +910,7 @@
         FROM photo_tags pt
         INNER JOIN photos p ON p.id = pt.photo_id
         WHERE IFNULL(p.is_unlinked, 0) = 0
-          AND NOT (p.is_raw = 1 AND p.paired_raw_path IS NOT NULL)
+          AND ${SQL_NOT_PAIRED_RAW_P}
         GROUP BY pt.tag
         ORDER BY pt.tag ASC
       `);
@@ -965,7 +969,7 @@
       const untaggedRow = queryLocalDbObjects(
         `SELECT COUNT(*) AS cnt FROM photos p
          WHERE IFNULL(p.is_unlinked, 0) = 0
-           AND NOT (p.is_raw = 1 AND p.paired_raw_path IS NOT NULL)
+           AND ${SQL_NOT_PAIRED_RAW_P}
            AND NOT EXISTS (SELECT 1 FROM photo_tags pt WHERE pt.photo_id = p.id AND IFNULL(pt.source, 'manual') != 'ai' AND pt.tag NOT IN (${cPh}))`,
         MOBILE_COLOR_TAGS
       );
@@ -975,7 +979,7 @@
       mState.timelineList = queryLocalDbObjects(`
         SELECT year_month, COUNT(*) AS count
         FROM photos
-        WHERE IFNULL(is_unlinked, 0) = 0 AND year_month IS NOT NULL AND year_month != ''
+        WHERE IFNULL(is_unlinked, 0) = 0 AND ${SQL_NOT_PAIRED_RAW} AND year_month IS NOT NULL AND year_month != ''
         GROUP BY year_month
         ORDER BY year_month DESC
       `);
@@ -984,7 +988,7 @@
       mState.cameraList = queryLocalDbObjects(`
         SELECT camera_model, COUNT(*) AS count
         FROM photos
-        WHERE IFNULL(is_unlinked, 0) = 0 AND camera_model IS NOT NULL AND camera_model != ''
+        WHERE IFNULL(is_unlinked, 0) = 0 AND ${SQL_NOT_PAIRED_RAW} AND camera_model IS NOT NULL AND camera_model != ''
         GROUP BY camera_model
         ORDER BY count DESC
       `);
@@ -993,7 +997,7 @@
       const locRows = queryLocalDbObjects(`
         SELECT country, state, city, COUNT(*) AS count
         FROM photos
-        WHERE IFNULL(is_unlinked, 0) = 0 AND country IS NOT NULL AND country != ''
+        WHERE IFNULL(is_unlinked, 0) = 0 AND ${SQL_NOT_PAIRED_RAW} AND country IS NOT NULL AND country != ''
         GROUP BY country, state, city
         ORDER BY country ASC, state ASC, city ASC
       `);
@@ -1022,7 +1026,7 @@
 
       const noLocRow = queryLocalDbObjects(`
         SELECT COUNT(*) AS cnt FROM photos
-        WHERE IFNULL(is_unlinked, 0) = 0
+        WHERE IFNULL(is_unlinked, 0) = 0 AND ${SQL_NOT_PAIRED_RAW}
           AND (latitude IS NULL OR country IS NULL OR country = '' OR (ABS(latitude) < 0.0001 AND ABS(longitude) < 0.0001))
       `);
       mState.noLocationCount = noLocRow[0] ? noLocRow[0].cnt : 0;
@@ -2186,12 +2190,73 @@
     }
   }
 
+  function _computeSelectedBatchTagSummary() {
+    const selPhotos = Array.from(mState.selectedIds)
+      .map((pid) => mState.photos.find((p) => p.id === pid))
+      .filter(Boolean);
+    const total = selPhotos.length;
+    if (total === 0) return { count: 0, commonTags: [], partialTags: [] };
+
+    const fullCounts = new Map();
+    const leafUnion = new Set();
+    selPhotos.forEach((p) => {
+      ensureLocalPhotoDetails(p);
+      const tags = Array.isArray(p.tags) ? p.tags : [];
+      const uniq = new Set(tags);
+      uniq.forEach((t) => fullCounts.set(t, (fullCounts.get(t) || 0) + 1));
+      const leaves = tags.filter((t) => !tags.some((o) => o !== t && o.startsWith(`${t}/`)));
+      leaves.forEach((t) => leafUnion.add(t));
+    });
+
+    const allTags = Array.from(fullCounts.keys());
+    const displaySet = new Set(leafUnion);
+    allTags.forEach((t) => {
+      if (fullCounts.get(t) === total) {
+        const hasCommonDesc = allTags.some((d) => d !== t && d.startsWith(`${t}/`) && fullCounts.get(d) === total);
+        if (!hasCommonDesc) displaySet.add(t);
+        else displaySet.delete(t);
+      }
+    });
+
+    const commonTags = [];
+    const partialTags = [];
+    Array.from(displaySet)
+      .sort((a, b) => String(a).localeCompare(String(b), 'ja', { numeric: true }))
+      .forEach((t) => {
+        const cnt = fullCounts.get(t) || 0;
+        if (cnt === total) commonTags.push(t);
+        else if (cnt > 0) partialTags.push({ tag: t, cnt });
+      });
+    partialTags.sort((a, b) => b.cnt - a.cnt || String(a.tag).localeCompare(String(b.tag), 'ja', { numeric: true }));
+    return { count: total, commonTags, partialTags };
+  }
+
   function renderBatchTagSheet() {
     const currentTagsEl = document.getElementById('mCurrentPhotoTags');
     const quickTagsEl = document.getElementById('mQuickTagSelector');
     if (currentTagsEl) {
-      currentTagsEl.innerHTML =
-        '<span style="font-size:12px; color:var(--text-muted, #9ca6b5);">下のタグツリーをタップまたは子タグ入力すると選択中の全写真に一括追加されます</span>';
+      const summary = _computeSelectedBatchTagSummary();
+      if (summary.commonTags.length === 0 && summary.partialTags.length === 0) {
+        currentTagsEl.innerHTML =
+          '<span style="font-size:12px; color:var(--text-muted, #9ca6b5);">選択写真に付与されているタグはありません（下のツリーから一括追加できます）</span>';
+      } else {
+        const cHtml = summary.commonTags
+          .map(
+            (t) => `<span class="m-tag-chip">#${_escHtml(t)} <small style="opacity:0.72;">(${summary.count}/${summary.count})</small><button data-remove-batch-tag="${_escAttr(t)}" title="一括削除">✕</button></span>`
+          )
+          .join('');
+        const pHtml = summary.partialTags
+          .map(
+            (it) => `<span class="m-tag-chip is-partial" title="一部の写真のみに付与">#${_escHtml(it.tag)} <small style="opacity:0.72;">(${it.cnt}/${summary.count})</small></span>`
+          )
+          .join('');
+        currentTagsEl.innerHTML = cHtml + pHtml;
+        currentTagsEl.querySelectorAll('[data-remove-batch-tag]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            removeTagBatchAction(btn.dataset.removeBatchTag);
+          });
+        });
+      }
     }
     if (quickTagsEl) {
       renderMobileQuickTagTree(quickTagsEl, [], true, (tagName) => {
@@ -2329,6 +2394,59 @@
     await fetchFilterSummaries();
     renderBatchTagSheet();
     showToast(`${ids.length}枚に #${tag} を追加しました`);
+  }
+
+  async function removeTagBatchAction(rawTag) {
+    const tag = String(rawTag || '').trim();
+    const ids = Array.from(mState.selectedIds);
+    if (!tag || ids.length === 0) return;
+
+    if (mState.mode === 'server') {
+      try {
+        const res = await fetch('/api/photos/batch-tags', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ photo_ids: ids, tag, action: 'remove' }),
+        });
+        if (!res.ok) throw new Error('一括タグ削除失敗');
+      } catch (e) {
+        showToast('! 一括タグ削除エラー');
+        return;
+      }
+    } else if (mState.mode === 'localdb' && mState.localDb) {
+      mState.localDb.run('BEGIN TRANSACTION');
+      try {
+        for (const pid of ids) {
+          mState.localDb.run(
+            'DELETE FROM photo_tags WHERE photo_id = ? AND (tag = ? OR tag LIKE ?)',
+            [pid, tag, `${tag}/%`]
+          );
+          const pObj = mState.photos.find((p) => p.id === pid);
+          if (pObj) {
+            ensureLocalPhotoDetails(pObj);
+            recordPendingChange(pObj, 'remove_tag', tag);
+          }
+        }
+        mState.localDb.run('COMMIT');
+      } catch (e) {
+        console.error('[MobileDB] 一括タグ削除エラー:', e);
+        try {
+          mState.localDb.run('ROLLBACK');
+        } catch (re) {}
+        showToast('! ローカルDBのタグ削除に失敗しました');
+        return;
+      }
+    }
+
+    for (const pid of ids) {
+      const pObj = mState.photos.find((p) => p.id === pid);
+      if (pObj && Array.isArray(pObj.tags)) {
+        pObj.tags = pObj.tags.filter((t) => t !== tag && !t.startsWith(`${tag}/`));
+      }
+    }
+    await fetchFilterSummaries();
+    renderBatchTagSheet();
+    showToast(`${ids.length}枚から #${tag} を一括解除しました`);
   }
 
   // ==================== 差分JSON出力 / DB丸ごと出力（完全クローズ＆検証保証） ====================

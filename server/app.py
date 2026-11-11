@@ -1291,6 +1291,7 @@ def api_add_tag(photo_id: int, req: TagRequest):
             if resolved:
                 target_tag = resolved
     success = add_tag_to_photo(photo_id, target_tag)
+    clear_api_photos_cache()
     return {"status": "ok", "photo_id": photo_id, "tag": target_tag, "success": success}
 
 
@@ -1298,6 +1299,7 @@ def api_add_tag(photo_id: int, req: TagRequest):
 def api_remove_tag(photo_id: int, tag: str):
     """写真からタグを削除する"""
     success = remove_tag_from_photo(photo_id, tag)
+    clear_api_photos_cache()
     return {"status": "ok", "photo_id": photo_id, "tag": tag, "success": success}
 
 
@@ -1327,6 +1329,7 @@ def api_batch_tags(req: BatchTagRequest):
         affected = batch_remove_tag(req.photo_ids, target_tag)
     else:
         affected = batch_add_tag(req.photo_ids, target_tag)
+    clear_api_photos_cache()
     return {"status": "ok", "affected": affected, "tag": target_tag, "action": req.action}
 
 
