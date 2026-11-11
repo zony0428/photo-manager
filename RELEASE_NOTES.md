@@ -18,6 +18,18 @@
 
 ---
 
+## v1.8.8 (2026-11-11)
+
+### SONY α RAW (`.ARW`) のプレビューJPEG・サムネイル・EXIF抽出不具合の完全修正 ＆ リフレッシュ自動再取得対応 (Sony ARW Preview/Thumbnail/EXIF Extraction Fix & Automatic Re-Extraction on Refresh)
+- **TIFF IFD 直接解析による `.ARW` プレビューJPEG・EXIF・回転方向の確実な抽出（`server/raw_loader.py`）**:
+  - SONY α のロスレス圧縮RAW（M / S）や最新機種で `rawpy` が非対応エラーとなる場合でも、TIFF IFD からカメラ現像済みプレビューJPEG・EXIF/GPS・センサー解像度・Orientation を高速かつ正確に抽出。`APP1` 内蔵サムネイルやセンサーノイズへの誤一致によるJPEG抽出・サムネイル生成失敗を完全解消。
+- **OneDrive 配下ローカルファイルの誤スキップ解消（`server/shell_thumbnail.py`）＆ ランタイムDLL同梱（`msvcp140.dll` / `vcomp140.dll`）**:
+  - OneDrive 管理下のローカル保存済みフォルダで Windows RAW 拡張機能がない環境でも確実に RAW プレビュー抽出が動作するよう修正。
+- **フォルダ「リフレッシュ」時の既存失敗RAWレコード自動再取得（`server/database/photos.py` / `server/scanner.py`）**:
+  - 過去にメタデータやサムネイルの抽出に失敗した既存 `.ARW` レコードを、評価・タグ・調整値を保持したまま「リフレッシュ（再スキャン）」で自動再取得・復元に対応。
+
+---
+
 ## v1.8.7 (2026-11-10)
 
 ### 90° / 270° 回転写真のフィット・拡大率計算の精緻化、スタック内サブ写真の調整値・Exif完全取得 ＆ モバイル一括操作・調整API強化 (90°/270° Rotated Zoom Metrics, Full Stack Sub-Photo Metadata & Mobile Adjustments API)

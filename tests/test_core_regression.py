@@ -2929,6 +2929,149 @@ class TestCoreRegression(unittest.TestCase):
         self.assertAlmostEqual(after["fine_angle"], -2.5)
 
 
+    def test_sony_arw_preview_thumbnail_and_metadata_extraction(self) -> None:
+        """
+        Sony αの .ARW ファイル（LibRaw未対応のロスレス圧縮RAW M/S タイル構造、APP1内サムネイル混在、
+        センサーデータ内のランダムなFFD8..FFD9、縦位置 Orientation=6 を含む）から、
+        プレビューJPEG抽出・WebPサムネイル生成・EXIFメタデータ抽出がすべて正常に完了することを検証する。
+        """
+        import io
+        import struct
+        from PIL import Image
+        from server.raw_loader import (
+            extract_raw_full_preview,
+            extract_raw_metadata,
+            extract_raw_thumbnail_image,
+        )
+        from server.scanner import render_thumbnail_webp
+
+        tbuf = io.BytesIO()
+        Image.new("RGB", (160, 120), (80, 80, 80)).save(tbuf, format="JPEG", quality=75)
+        exif_thumb = tbuf.getvalue()
+
+        mbuf = io.BytesIO()
+        Image.new("RGB", (1616, 1080), (120, 80, 200)).save(mbuf, format="JPEG", quality=85)
+        base_jpeg = mbuf.getvalue()
+        app1_payload = b"Exif\x00\x00II*\x00\x08\x00\x00\x00\x00\x00\x00\x00\x00\x00" + exif_thumb
+        app1_seg = b"\xff\xe1" + struct.pack(">H", len(app1_payload) + 2) + app1_payload
+        sony_preview_jpeg = base_jpeg[:2] + app1_seg + base_jpeg[2:]
+
+        make_b = b"SONY\x00\x00"
+        model_str = b"ILCE-7M4\x00\x00"
+        dt_str = b"2026:11:11 18:45:12\x00"
+        lens_str = b"FE 24-70mm F2.8 GM II\x00"
+        bps_arr = struct.pack("<HHH", 14, 14, 14)
+        tile_offsets = struct.pack("<" + "I" * 140, *([40000] * 140))
+        tile_counts = struct.pack("<" + "I" * 140, *([1000] * 140))
+
+        sub_entries = [
+            (0x00FE, 4, 1, 0),
+            (0x0100, 4, 1, 4608),
+            (0x0101, 4, 1, 3072),
+            (0x0102, 3, 3, 250),
+            (0x0103, 3, 1, 7),
+            (0x0106, 3, 1, 34892),
+            (0x0115, 3, 1, 3),
+            (0x0142, 4, 1, 512),
+            (0x0143, 4, 1, 512),
+            (0x0144, 4, 140, 500),
+            (0x0145, 4, 140, 1100),
+        ]
+        sub_ifd = struct.pack("<H", len(sub_entries)) + b"".join(struct.pack("<HHII", *e) for e in sub_entries) + struct.pack("<I", 0)
+
+        exif_entries = [
+            (0x8827, 3, 1, 800),
+            (0x9003, 2, len(dt_str), 1700),
+            (0xA434, 2, len(lens_str), 1730),
+        ]
+        exif_ifd = struct.pack("<H", len(exif_entries)) + b"".join(struct.pack("<HHII", *e) for e in exif_entries) + struct.pack("<I", 0)
+
+        ifd0_entries = [
+            (0x00FE, 4, 1, 1),
+            (0x0103, 3, 1, 6),
+            (0x010F, 2, 5, 200),
+            (0x0110, 2, len(model_str), 210),
+            (0x0112, 3, 1, 6),
+            (0x014A, 4, 1, 300),
+            (0x0201, 4, 1, 2000),
+            (0x0202, 4, 1, len(sony_preview_jpeg)),
+            (0x8769, 4, 1, 1800),
+        ]
+        ifd0 = struct.pack("<H", len(ifd0_entries)) + b"".join(struct.pack("<HHII", *e) for e in ifd0_entries) + struct.pack("<I", 0)
+
+        sensor_noise = b"\x00" * 5000 + b"\xff\xd8" + (b"\x55" * 120000) + b"\xff\xd9"
+        data = bytearray(2000 + len(sony_preview_jpeg) + len(sensor_noise))
+        data[0:8] = b"II*\x00\x08\x00\x00\x00"
+        data[8:8 + len(ifd0)] = ifd0
+        data[200:200 + len(make_b)] = make_b
+        data[210:210 + len(model_str)] = model_str
+        data[250:250 + len(bps_arr)] = bps_arr
+        data[300:300 + len(sub_ifd)] = sub_ifd
+        data[500:500 + len(tile_offsets)] = tile_offsets
+        data[1100:1100 + len(tile_counts)] = tile_counts
+        data[1700:1700 + len(dt_str)] = dt_str
+        data[1730:1730 + len(lens_str)] = lens_str
+        data[1800:1800 + len(exif_ifd)] = exif_ifd
+        data[2000:2000 + len(sony_preview_jpeg)] = sony_preview_jpeg
+        data[2000 + len(sony_preview_jpeg):] = sensor_noise
+
+        arw_path = Path(self._temp_dir.name) / "DSC00001.ARW"
+        arw_path.write_bytes(bytes(data))
+
+        thumb_img = extract_raw_thumbnail_image(arw_path)
+        self.assertIsNotNone(thumb_img)
+        self.assertEqual(thumb_img.size, (1080, 1616))
+
+        preview_res = extract_raw_full_preview(arw_path)
+        self.assertIsNotNone(preview_res)
+        self.assertEqual(preview_res[1], "image/jpeg")
+        self.assertEqual((preview_res[2], preview_res[3]), (1080, 1616))
+
+        webp_res = render_thumbnail_webp(arw_path)
+        self.assertIsNotNone(webp_res)
+        self.assertEqual(webp_res[2], 360)
+
+        meta = extract_raw_metadata(arw_path)
+        self.assertEqual(meta["camera_model"], "ILCE-7M4")
+        self.assertEqual(meta["lens_model"], "FE 24-70mm F2.8 GM II")
+        self.assertEqual(meta["date_taken"], "2026-11-11 18:45:12")
+        self.assertEqual(meta["iso"], 800)
+        self.assertEqual((meta["width"], meta["height"]), (3072, 4608))
+
+        from server.database import get_photo_by_id, save_thumbnail, upsert_photo
+        from server.scanner import scan_directory
+        arw_dir = Path(self._temp_dir.name) / "arw_refresh_test"
+        arw_dir.mkdir(parents=True, exist_ok=True)
+        arw_file2 = arw_dir / "DSC00002.ARW"
+        arw_file2.write_bytes(bytes(data))
+        st2 = arw_file2.stat()
+        broken_id = upsert_photo({
+            "file_path": str(arw_file2),
+            "file_name": arw_file2.name,
+            "directory_path": str(arw_dir),
+            "file_size": st2.st_size,
+            "file_mtime": st2.st_mtime,
+            "width": 0,
+            "height": 0,
+            "date_taken": "2026-01-01 00:00:00",
+            "year_month": "2026-01",
+            "camera_model": "RAW写真",
+            "is_raw": 1,
+            "raw_format": "ARW",
+        })
+        save_thumbnail(broken_id, b"tiny", 160, 120, "dummy_hash")
+        res_scan = scan_directory(str(arw_dir))
+        self.assertEqual(res_scan["updated"], 1)
+        self.assertEqual(res_scan["unchanged"], 0)
+        refreshed = get_photo_by_id(broken_id)
+        self.assertIsNotNone(refreshed)
+        self.assertEqual(refreshed["camera_model"], "ILCE-7M4")
+        self.assertEqual((refreshed["width"], refreshed["height"]), (3072, 4608))
+        self.assertEqual(refreshed["lens_model"], "FE 24-70mm F2.8 GM II")
+        self.assertEqual(refreshed["iso"], 800)
+
+
+
 if __name__ == "__main__":
     unittest.main()
 

@@ -1725,8 +1725,8 @@ def scan_directory(
                         scan_tracker.update_progress(idx, file, "unchanged")
                         continue
 
-                    # size または mtime が変わったファイルは更新時にサムネイルを削除（P2-3）
-                    is_modified = (ex_size != st_size) or (ex_mtime is not None and abs(ex_mtime - st_mtime) >= 1e-4)
+                    # size または mtime が変わったファイル（またはRAWメタデータ/サムネイル未取得で ex_mtime が NULL 化されたファイル）は更新時にサムネイルを削除（P2-3）
+                    is_modified = (ex_size != st_size) or (ex_mtime is None) or (abs(ex_mtime - st_mtime) >= 1e-4)
                     if is_modified:
                         delete_thumbnail(ex_id)
 

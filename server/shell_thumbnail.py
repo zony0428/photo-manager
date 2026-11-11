@@ -158,8 +158,10 @@ def get_shell_thumbnail(file_path: Union[str, Path], size: int = 360) -> Optiona
 
 def is_cloud_or_ondemand_path(file_path: Union[str, Path]) -> bool:
     """
-    対象ファイルまたはフォルダが、Google Drive や OneDrive などの
-    クラウド同期・オンデマンドストレージ配下に存在するか判定する。
+    対象ファイルがクラウド同期の「未ダウンロード（オンライン専用プレースホルダー）」状態か判定する。
+    Windows 10/11 の OneDrive 等ではローカル実体化済みファイルにも FILE_ATTRIBUTE_REPARSE_POINT (0x0400) が
+    付与されるため、実際にアクセス時にクラウドダウンロードが発生する属性
+    (OFFLINE / RECALL_ON_OPEN / RECALL_ON_DATA_ACCESS) または Google Drive 仮想FSのみを対象とする。
     """
     try:
         path = Path(file_path).resolve()
@@ -175,26 +177,14 @@ def is_cloud_or_ondemand_path(file_path: Union[str, Path]) -> bool:
             if vol and "GOOGLE DRIVE" in (vol.get("label") or "").upper():
                 return True
 
-        # 2. OneDrive フォルダ配下
-        onedrive_env = os.environ.get("OneDrive")
-        if onedrive_env and str(Path(onedrive_env).resolve()).upper() in path_str_upper:
-            return True
-
-        onedrive_comm = os.environ.get("OneDriveCommercial")
-        if onedrive_comm and str(Path(onedrive_comm).resolve()).upper() in path_str_upper:
-            return True
-
-        # 3. iCloud / Dropbox などの代表的クラウドフォルダ名
-        if "\\ICLOUDDRIVE\\" in path_str_upper or "\\DROPBOX\\" in path_str_upper:
-            return True
-
-        # 4. Windows ファイル属性の判定 (リパースポイントまたはオフライン属性)
+        # 2. Windows クラウド未実体化属性の判定
+        # FILE_ATTRIBUTE_OFFLINE (0x1000) / RECALL_ON_OPEN (0x40000) / RECALL_ON_DATA_ACCESS (0x400000)
+        # ※ ローカルにダウンロード済みの OneDrive / iCloud / Dropbox ファイルはこれらが 0 になるため、
+        #    RAWプレビュー抽出や通常デコードを遮断しない。
         if path.exists():
             stat_info = path.stat()
             file_attrs = getattr(stat_info, "st_file_attributes", 0)
-            # FILE_ATTRIBUTE_REPARSE_POINT (0x0400) / OFFLINE (0x1000) /
-            # RECALL_ON_OPEN (0x40000) / RECALL_ON_DATA_ACCESS (0x400000: クラウドのプレースホルダー)
-            if file_attrs & (0x0400 | 0x1000 | 0x40000 | 0x400000):
+            if file_attrs & (0x1000 | 0x40000 | 0x400000):
                 return True
 
         return False

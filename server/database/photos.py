@@ -495,11 +495,11 @@ def _upsert_single_photo_in_tx(cursor: Any, clean_data: Dict[str, Any]) -> int:
                     UPDATE photos
                     SET file_size = :file_size,
                         file_mtime = COALESCE(:file_mtime, photos.file_mtime),
-                        width = COALESCE(:width, photos.width),
-                        height = COALESCE(:height, photos.height),
+                        width = CASE WHEN COALESCE(:width, 0) > 0 THEN :width ELSE photos.width END,
+                        height = CASE WHEN COALESCE(:height, 0) > 0 THEN :height ELSE photos.height END,
                         date_taken = CASE WHEN photos.original_date_taken IS NOT NULL AND photos.original_date_taken != '' THEN photos.date_taken ELSE COALESCE(:date_taken, photos.date_taken) END,
                         year_month = CASE WHEN photos.original_date_taken IS NOT NULL AND photos.original_date_taken != '' THEN photos.year_month ELSE COALESCE(:year_month, photos.year_month) END,
-                        camera_model = CASE WHEN :camera_model != '不明' THEN :camera_model ELSE COALESCE(photos.camera_model, '不明') END,
+                        camera_model = CASE WHEN :camera_model NOT IN ('', '不明', 'RAW写真') THEN :camera_model ELSE COALESCE(photos.camera_model, '不明') END,
                         exposure_bias = COALESCE(:exposure_bias, photos.exposure_bias),
                         shutter_speed = COALESCE(:shutter_speed, photos.shutter_speed),
                         f_number = COALESCE(:f_number, photos.f_number),
@@ -2819,9 +2819,20 @@ def get_existing_photos_map(
         cursor = conn.cursor()
         cursor.execute(
             f"""
-            SELECT p.id, pl.file_path, p.file_size, COALESCE(pl.file_mtime, p.file_mtime) AS file_mtime
+            SELECT p.id, pl.file_path, p.file_size,
+                   CASE
+                       WHEN COALESCE(p.is_raw, 0) = 1 AND (
+                           COALESCE(p.width, 0) <= 0
+                           OR COALESCE(p.height, 0) <= 0
+                           OR COALESCE(p.camera_model, '') IN ('', '不明', 'RAW写真')
+                           OR t.photo_id IS NULL
+                           OR (COALESCE(t.width, 0) <= 200 AND COALESCE(t.height, 0) <= 200)
+                       ) THEN NULL
+                       ELSE COALESCE(pl.file_mtime, p.file_mtime)
+                   END AS file_mtime
             FROM photo_links pl
             INNER JOIN photos p ON pl.photo_id = p.id
+            LEFT JOIN thumbnails t ON p.id = t.photo_id
             WHERE {sql_frag}
             """,
             params,
