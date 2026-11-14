@@ -68,6 +68,7 @@ GitHub Releases 投稿用に作成されたバージョン別リリースノー�
 
 | バージョン | 主な更新内容 | ファイル |
 | :--- | :--- | :--- |
+| **v1.8.10** | バースト・ブラケット・重複スタックおよびRAW+JPEGペア編成時の既存タグ自動同期（外部レタッチ画像のタグ引き継ぎ）、スタック再計算時の一覧キャッシュ即時無効化、日英README最新化（v1.8.5〜v1.8.9の改善含む） | [RELEASE_NOTES_v1.8.10.md](release_notes/RELEASE_NOTES_v1.8.10.md) |
 | **v1.8.4** | ライトボックスのちらつき解消・サムネイル最大2倍拡大・マウス「戻る」ボタン対応、右クリック＆Loomeサブメニューの0.3秒ホバー遅延、スマホ連携インプロセスTCPリレー化＆`sql.js`大規模DB読込高速化、1GB超DBの2回目以降起動高速化（v1.8.2〜v1.8.3含む） | [RELEASE_NOTES_v1.8.4.md](release_notes/RELEASE_NOTES_v1.8.4.md) |
 | **v1.8.1** | 左端アクティビティレールの並び順再編＆アイコン刷新、Binder「保存済みセット」カードの1行スリム化＆ホバー条件表示、右インスペクタ上部ヘッダー廃止＆クイックアクションバー統合 | [RELEASE_NOTES_v1.8.1.md](release_notes/RELEASE_NOTES_v1.8.1.md) |
 | **v1.8.0** | ローカル完結クリーン・アップデーター（`diff.zip`自動適用）、配布フォルダのルート階層整理（`tools/`集約＆`Loome/`標準化）、`autorun.inf`設置確認ダイアログ | [RELEASE_NOTES_v1.8.0.md](release_notes/RELEASE_NOTES_v1.8.0.md) |

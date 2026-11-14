@@ -3221,6 +3221,70 @@ class TestCoreRegression(unittest.TestCase):
             self.assertNotIn("共通タグ", tags_by_id[pid])
         self.assertIn("個別タグ", tags_by_id[j0])
 
+    def test_retouched_photo_burst_stack_tag_inheritance(self) -> None:
+        """
+        テイクアウト後に外部アプリでレタッチされた画像（同一撮影日時・別ファイルサイズ）が
+        管理下フォルダに追加されてバースト（burst）編成された際、元画像のタグが自動同期されることを検証
+        """
+        from server.database import add_tag_to_photo, get_photo_by_id, get_photos, recalculate_stacks, set_stack_primary, upsert_photo
+
+        folder_dir = Path(self._temp_dir.name) / "RetouchBurstTest"
+        folder_dir.mkdir(parents=True, exist_ok=True)
+        orig_file = folder_dir / "DSC05001.JPG"
+        retouch_file = folder_dir / "00_DSC05001_retouch.JPG"
+        orig_file.write_bytes(b"ORIG_JPEG_DATA_" + b"X" * 2000)
+        retouch_file.write_bytes(b"RETOUCHED_JPEG_DATA_" + b"Y" * 3500)
+
+        # 1. 元画像を登録して階層タグを付与
+        orig_id = upsert_photo({
+            "file_path": str(orig_file),
+            "file_name": orig_file.name,
+            "directory_path": str(folder_dir),
+            "file_size": orig_file.stat().st_size,
+            "date_taken": "2026-11-14 10:15:30",
+            "subsec_time": "120",
+            "year_month": "2026-11",
+            "camera_model": "ILCE-7M4",
+            "shutter_speed": "1/500",
+            "f_number": 2.8,
+            "exposure_bias": 0.0,
+            "rating": 0,
+        })
+        add_tag_to_photo(orig_id, "野鳥/カワセミ")
+
+        # 2. 後からレタッチ済み画像（同一撮影日時・別ファイルサイズ・辞書順で先頭になるファイル名）を追加しスタック再計算
+        retouch_id = upsert_photo({
+            "file_path": str(retouch_file),
+            "file_name": retouch_file.name,
+            "directory_path": str(folder_dir),
+            "file_size": retouch_file.stat().st_size,
+            "date_taken": "2026-11-14 10:15:30",
+            "subsec_time": "120",
+            "year_month": "2026-11",
+            "camera_model": "ILCE-7M4",
+            "shutter_speed": "1/500",
+            "f_number": 2.8,
+            "exposure_bias": 0.0,
+            "rating": 0,
+        })
+        self.assertNotEqual(orig_id, retouch_id)
+
+        recalculate_stacks(str(folder_dir), recursive=False)
+
+        # 3. レタッチ画像がバースト編成され、元画像のタグ（親タグ含む）が引き継がれていること
+        retouch_detail = get_photo_by_id(retouch_id)
+        self.assertIsNotNone(retouch_detail)
+        self.assertEqual(retouch_detail["stack_type"], "burst")
+        self.assertIn("野鳥", retouch_detail["tags"])
+        self.assertIn("野鳥/カワセミ", retouch_detail["tags"])
+
+        # 4. スタック代表がどちらであっても、スタックON状態でタグ検索にヒットすること
+        tagged_stacked = get_photos(folder=str(folder_dir), included_tags=["野鳥/カワセミ"], stacked=True)
+        self.assertEqual(len(tagged_stacked), 1)
+        set_stack_primary(orig_id)
+        tagged_stacked_after = get_photos(folder=str(folder_dir), included_tags=["野鳥/カワセミ"], stacked=True)
+        self.assertEqual(len(tagged_stacked_after), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

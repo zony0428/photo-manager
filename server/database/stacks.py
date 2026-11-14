@@ -9,7 +9,88 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .connection import get_connection
-from .photos import _build_folder_missing_filter, _directory_filter_sql, _strip_vsn_prefix_raw
+from .photos import _build_folder_missing_filter, _directory_filter_sql, _strip_vsn_prefix_raw, invalidate_fast_cache
+
+
+def _sync_tags_across_groups(cursor: Any, member_groups: List[List[int]]) -> int:
+    """
+    同一スタック（連写・ブラケット・重複）または同一フォルダRAW+JPEGペアとして編成された
+    写真グループ内で、既存メンバーが保持しているタグ（photo_tags）をグループ全員へ同期する。
+    """
+    if not member_groups:
+        return 0
+
+    normalized_groups: List[List[int]] = []
+    all_photo_ids_set: set = set()
+    for grp in member_groups:
+        uniq = list(dict.fromkeys(int(pid) for pid in grp if pid))
+        if len(uniq) >= 2:
+            normalized_groups.append(uniq)
+            all_photo_ids_set.update(uniq)
+
+    if not normalized_groups or not all_photo_ids_set:
+        return 0
+
+    all_ids = sorted(all_photo_ids_set)
+    existing_tags_by_photo: Dict[int, Dict[str, tuple]] = {}
+    chunk_sz = 450
+    for idx in range(0, len(all_ids), chunk_sz):
+        chunk = all_ids[idx : idx + chunk_sz]
+        ph = ",".join(["?"] * len(chunk))
+        cursor.execute(
+            f"SELECT photo_id, tag, source, confidence FROM photo_tags WHERE photo_id IN ({ph})",
+            chunk,
+        )
+        for row in cursor.fetchall():
+            pid = int(row["photo_id"])
+            tag_name = row["tag"]
+            src = row["source"] or "manual"
+            conf = float(row["confidence"]) if row["confidence"] is not None else 1.0
+            existing_tags_by_photo.setdefault(pid, {})[tag_name] = (src, conf)
+
+    if not existing_tags_by_photo:
+        return 0
+
+    upsert_params = []
+    for grp in normalized_groups:
+        merged_tags: Dict[str, tuple] = {}
+        for pid in grp:
+            p_tags = existing_tags_by_photo.get(pid)
+            if not p_tags:
+                continue
+            for tag_name, (src, conf) in p_tags.items():
+                if tag_name not in merged_tags:
+                    merged_tags[tag_name] = (src, conf)
+                else:
+                    prev_src, prev_conf = merged_tags[tag_name]
+                    best_src = "manual" if (src == "manual" or prev_src == "manual") else prev_src
+                    best_conf = 1.0 if best_src == "manual" else max(prev_conf, conf)
+                    merged_tags[tag_name] = (best_src, best_conf)
+
+        if not merged_tags:
+            continue
+
+        for pid in grp:
+            p_tags = existing_tags_by_photo.get(pid, {})
+            for tag_name, (best_src, best_conf) in merged_tags.items():
+                cur = p_tags.get(tag_name)
+                if cur is None or (best_src == "manual" and cur[0] != "manual") or (best_conf > cur[1] + 1e-6):
+                    upsert_params.append((pid, tag_name, best_src, best_conf))
+                    existing_tags_by_photo.setdefault(pid, {})[tag_name] = (best_src, best_conf)
+
+    if upsert_params:
+        cursor.executemany(
+            """
+            INSERT INTO photo_tags (photo_id, tag, source, confidence)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(photo_id, tag) DO UPDATE SET
+                source = CASE WHEN excluded.source = 'manual' THEN 'manual' ELSE photo_tags.source END,
+                confidence = CASE WHEN excluded.source = 'manual' THEN 1.0 ELSE MAX(COALESCE(photo_tags.confidence, 0.0), COALESCE(excluded.confidence, 0.0)) END
+            """,
+            upsert_params,
+        )
+
+    return len(upsert_params)
 
 
 def recalculate_stacks(directory_path: Optional[str] = None, recursive: bool = True, existing_paths: Optional[set] = None) -> int:
@@ -47,6 +128,7 @@ def recalculate_stacks(directory_path: Optional[str] = None, recursive: bool = T
             norm_existing_paths = {os.path.normcase(os.path.abspath(p)) for p in existing_paths}
 
         total_stacks_created = 0
+        tag_sync_groups: List[List[int]] = []
 
         for d in dirs:
             cursor.execute(
@@ -321,11 +403,15 @@ def recalculate_stacks(directory_path: Optional[str] = None, recursive: bool = T
                             stack_id = primary_id
 
                             # グループ内の代表写真およびその全付随RAWをスタック化
+                            grp_member_ids = []
                             for rep in group:
                                 is_pri = 1 if rep["id"] == primary_id else 0
                                 queue_update(rep["id"], stack_id, is_pri, stack_type, rep.get("paired_raw_path"))
+                                grp_member_ids.append(rep["id"])
                                 for raw_it in rep.get("attached_raws", []):
                                     queue_update(raw_it["id"], stack_id, 0, stack_type, raw_it.get("paired_raw_path"))
+                                    grp_member_ids.append(raw_it["id"])
+                            tag_sync_groups.append(grp_member_ids)
 
                             total_stacks_created += 1
 
@@ -334,9 +420,13 @@ def recalculate_stacks(directory_path: Optional[str] = None, recursive: bool = T
                             # 物理削除により連写/ブラケットが解消されたため、スタックを解除して単独写真（代表）として表示
                             survivor = online_reps[0]
                             queue_update(survivor["id"], None, 1, None, survivor.get("paired_raw_path"))
+                            survivor_pair_ids = [survivor["id"]]
                             # survivorに付随する実在RAWがあれば、正規のペアとして紐付け
                             for raw_it in survivor.get("attached_raws", []):
                                 queue_update(raw_it["id"], None, 1, None, survivor["_clean_file_path"])
+                                survivor_pair_ids.append(raw_it["id"])
+                            if len(survivor_pair_ids) >= 2:
+                                tag_sync_groups.append(survivor_pair_ids)
 
                             # 実在しない他メンバー（およびその付随RAW）は代表にせず非表示化（paired_raw_path は変更しない）
                             for rep in group:
@@ -363,11 +453,15 @@ def recalculate_stacks(directory_path: Optional[str] = None, recursive: bool = T
                                 primary_id = best_rep["id"]
 
                             stack_id = primary_id
+                            grp_member_ids = []
                             for rep in group:
                                 is_pri = 1 if rep["id"] == primary_id else 0
                                 queue_update(rep["id"], stack_id, is_pri, stack_type, rep.get("paired_raw_path"))
+                                grp_member_ids.append(rep["id"])
                                 for raw_it in rep.get("attached_raws", []):
                                     queue_update(raw_it["id"], stack_id, 0, stack_type, raw_it.get("paired_raw_path"))
+                                    grp_member_ids.append(raw_it["id"])
+                            tag_sync_groups.append(grp_member_ids)
 
                         i = j
 
@@ -377,8 +471,12 @@ def recalculate_stacks(directory_path: Optional[str] = None, recursive: bool = T
                     elif group[0].get("has_pair") or group[0].get("attached_raws"):
                         rep = group[0]
                         queue_update(rep["id"], None, 1, None, rep.get("paired_raw_path"))
+                        pair_member_ids = [rep["id"]]
                         for raw_it in rep.get("attached_raws", []):
                             queue_update(raw_it["id"], None, 1, None, rep["_clean_file_path"])
+                            pair_member_ids.append(raw_it["id"])
+                        if len(pair_member_ids) >= 2:
+                            tag_sync_groups.append(pair_member_ids)
                         i += 1
 
                     # 完全な単独写真（ペアなし、ブラケットなし）
@@ -479,6 +577,7 @@ def recalculate_stacks(directory_path: Optional[str] = None, recursive: bool = T
                     cross_pair_updates.append((raw_clean_fp, matched["id"]))
                     # RAW側: paired_raw_path にJPEGのパスを設定
                     cross_pair_updates.append((jpeg_clean_fp, raw_photo["id"]))
+                    tag_sync_groups.append([matched["id"], raw_photo["id"]])
                     # マッチ済みJPEGを候補から除外（1対1マッチング）
                     all_candidates.remove(matched)
                     cross_pairs_found += 1
@@ -493,6 +592,9 @@ def recalculate_stacks(directory_path: Optional[str] = None, recursive: bool = T
                     cross_pair_updates,
                 )
 
+        if tag_sync_groups:
+            _sync_tags_across_groups(cursor, tag_sync_groups)
+
         conn.commit()
 
         # ============================================================
@@ -503,6 +605,7 @@ def recalculate_stacks(directory_path: Optional[str] = None, recursive: bool = T
         dup_count = recalculate_duplicate_stacks()
         total_stacks_created += dup_count
 
+        invalidate_fast_cache()
         return total_stacks_created
 
 
@@ -538,6 +641,7 @@ def recalculate_duplicate_stacks() -> int:
 
         active_dup_photo_ids = set()
         pending_updates = []
+        dup_tag_sync_groups: List[List[int]] = []
         dup_stacks_created = 0
 
         for g in dup_groups:
@@ -574,6 +678,7 @@ def recalculate_duplicate_stacks() -> int:
             # 評価（優=2 > 良=1 > 可=0 > 棄=-1）最優先、同評価なら品質スコア降順（同点ならID昇順）で代表を選出
             eligible_members.sort(key=lambda x: (int(x.get("rating") or 0), x["_score"], -x["id"]), reverse=True)
             primary_id = eligible_members[0]["id"]
+            dup_tag_sync_groups.append([int(m["id"]) for m in eligible_members])
 
             for m in eligible_members:
                 m_id = m["id"]
@@ -603,7 +708,11 @@ def recalculate_duplicate_stacks() -> int:
                 pending_updates,
             )
 
+        if dup_tag_sync_groups:
+            _sync_tags_across_groups(cursor, dup_tag_sync_groups)
+
         conn.commit()
+        invalidate_fast_cache()
         return dup_stacks_created
 
 
@@ -628,4 +737,5 @@ def set_stack_primary(photo_id: int) -> bool:
             (new_primary_id, new_primary_id, old_stack_id),
         )
         conn.commit()
+        invalidate_fast_cache()
         return True
