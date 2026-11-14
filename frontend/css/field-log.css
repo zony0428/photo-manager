@@ -1,0 +1,623 @@
+/* ==========================================================================
+   フィールドログ（GPSログ管理・撮影時刻照合・位置付与・Undo）モーダル (field-log.css)
+   形状ルール準拠: 構造枠=2px / クリッカブル操作=5px / 表示専用バッジ=999px
+   ========================================================================== */
+
+/* 左サイドバー Place ツールバーの折り返し保護 */
+#locationToolbar {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+
+#openFieldLogModalBtn {
+  font-weight: 600;
+}
+
+/* モーダル背景 (commonConfirmModal の z-index:10600 より下に配置して確認ダイアログを前面に出す) */
+.field-log-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(6px);
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+.field-log-modal-backdrop.is-open {
+  display: flex;
+}
+
+.field-log-modal-card {
+  width: 95vw;
+  max-width: 980px;
+  height: 86vh;
+  max-height: 800px;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-modal, var(--bg-secondary));
+  color: var(--text-main);
+  border: 1px solid var(--border-color);
+  border-radius: var(--ui-radius-frame, 2px);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+
+/* ヘッダー */
+.fl-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 18px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.fl-modal-title-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.fl-modal-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-main);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fl-modal-subtitle {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+
+.fl-modal-close-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--ui-radius-click, 5px);
+  color: var(--text-muted);
+  font-size: 1.4rem;
+  line-height: 1;
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.fl-modal-close-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-main);
+}
+
+/* 3タブ切り替えバー（択一セレクト枠: 外枠2px / 内部ボタン4px） */
+.fl-tabs-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 18px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-soft);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.fl-tabs-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--ui-radius-frame, 2px);
+}
+
+.fl-tab-btn {
+  border: 1px solid transparent;
+  border-radius: var(--ui-radius-click-inner, 4px);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 6px 13px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.fl-tab-btn:hover:not(.active) {
+  background: var(--bg-hover);
+  color: var(--text-main);
+}
+
+.fl-tab-btn.active {
+  background: var(--accent-primary);
+  color: #ffffff;
+}
+
+/* モーダル本文・タブパネル */
+.fl-modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.fl-tab-pane {
+  display: none;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+
+.fl-tab-pane.active {
+  display: flex;
+}
+
+/* フッター */
+.fl-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 18px;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.fl-footer-hint {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+
+/* 注意書き・案内ボックス */
+.fl-notice-box {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-left: 3px solid var(--accent-primary);
+  border-radius: var(--ui-radius-frame, 2px);
+  padding: 8px 12px;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--text-main);
+}
+
+.fl-notice-box .fl-notice-sub {
+  color: var(--text-muted);
+}
+
+.fl-inline-link-btn {
+  background: none;
+  border: none;
+  padding: 0 2px;
+  color: var(--accent-primary);
+  font-size: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.fl-empty-box {
+  background: var(--bg-secondary);
+  border: 1px dashed var(--border-color);
+  border-radius: var(--ui-radius-frame, 2px);
+  padding: 28px 16px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+
+/* 表示専用カプセルバッジ (999px) */
+.fl-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  font-size: 0.71rem;
+  font-weight: 600;
+  border-radius: var(--ui-radius-pill, 999px);
+  border: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  cursor: default;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.fl-tab-btn.active .fl-pill {
+  background: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.35);
+  color: #ffffff;
+}
+
+.fl-pill-interp {
+  background: var(--tag-include-bg);
+  border-color: var(--tag-include-border);
+  color: var(--tag-include-text);
+}
+
+.fl-pill-nearest {
+  background: var(--accent-subtle);
+  border-color: rgba(var(--accent-rgb, 225, 77, 42), 0.45);
+  color: var(--accent-primary);
+}
+
+.fl-pill-unmatched,
+.fl-pill-undone {
+  background: var(--bg-tertiary);
+  border-color: var(--border-color);
+  color: var(--text-dim);
+}
+
+.fl-pill-skipped {
+  background: var(--tag-exclude-bg);
+  border-color: var(--tag-exclude-border);
+  color: var(--tag-exclude-text);
+}
+
+/* ツールバー行 */
+.fl-toolbar-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.fl-toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* 端末別カード・テーブル */
+.fl-device-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--ui-radius-frame, 2px);
+  overflow: hidden;
+}
+
+.fl-device-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-soft);
+  flex-wrap: wrap;
+}
+
+.fl-device-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.fl-device-id {
+  font-family: monospace;
+  font-size: 0.72rem;
+  font-weight: 400;
+  color: var(--text-dim);
+}
+
+.fl-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.fl-preview-table-wrap {
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid var(--border-color);
+  border-radius: var(--ui-radius-frame, 2px);
+  background: var(--bg-secondary);
+}
+
+.fl-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.79rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.fl-table th,
+.fl-table td {
+  padding: 7px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-soft);
+  vertical-align: middle;
+}
+
+.fl-table th {
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  font-size: 0.73rem;
+  font-weight: 700;
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.fl-table tbody tr:hover {
+  background: var(--bg-hover);
+}
+
+.fl-table .col-num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.fl-table .col-actions {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.fl-mono {
+  font-family: monospace;
+  font-size: 0.76rem;
+}
+
+.fl-gpx-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-main);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--ui-radius-click, 5px);
+  text-decoration: none;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.fl-gpx-link:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
+/* タブ② 照合設定パネル */
+.fl-config-grid {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: 12px;
+}
+
+@media (max-width: 820px) {
+  .fl-config-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.fl-section-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--ui-radius-frame, 2px);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fl-section-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-main);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fl-scope-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fl-scope-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 9px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--ui-radius-click, 5px);
+  cursor: pointer;
+  font-size: 0.79rem;
+}
+
+.fl-scope-option.is-active {
+  border-color: var(--accent-primary);
+  background: var(--accent-subtle);
+}
+
+.fl-scope-option input[type="radio"] {
+  margin-top: 2px;
+  accent-color: var(--accent-primary);
+}
+
+.fl-scope-detail {
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fl-date-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  max-height: 92px;
+  overflow-y: auto;
+}
+
+.fl-date-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  border-radius: var(--ui-radius-click, 5px);
+  border: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.fl-date-chip.active {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: #ffffff;
+}
+
+.fl-field-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 0.78rem;
+}
+
+.fl-field-label {
+  color: var(--text-muted);
+  font-weight: 600;
+  min-width: 110px;
+}
+
+.fl-input,
+.fl-select {
+  background: var(--bg-primary);
+  color: var(--text-main);
+  border: 1px solid var(--border-color);
+  border-radius: var(--ui-radius-frame, 2px);
+  padding: 5px 8px;
+  font-size: 0.79rem;
+  outline: none;
+}
+
+.fl-input:focus,
+.fl-select:focus {
+  border-color: var(--accent-primary);
+}
+
+.fl-input-num {
+  width: 78px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* カメラ機種ごとの時計補正 */
+.fl-cam-offset-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.fl-cam-offset-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--ui-radius-frame, 2px);
+  font-size: 0.78rem;
+}
+
+.fl-cam-name {
+  font-weight: 600;
+  color: var(--text-main);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* プレビュー操作・サマリバー */
+.fl-match-action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--ui-radius-frame, 2px);
+  flex-wrap: wrap;
+}
+
+/* タブ③ 適用履歴リスト */
+.fl-batch-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fl-batch-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--ui-radius-frame, 2px);
+  flex-wrap: wrap;
+}
+
+.fl-batch-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.fl-batch-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: var(--text-main);
+  flex-wrap: wrap;
+}
+
+.fl-batch-desc {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}

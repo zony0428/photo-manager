@@ -1,26 +1,27 @@
 <!DOCTYPE html>
-<html lang="ja" data-toolbar-pos="bottom">
+<html lang="ja" data-toolbar-pos="bottom" data-tree-style="boxed">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Tetheract Photo Manager</title>
-  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=1.8.10">
-  <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32.png?v=1.8.10">
-  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png?v=1.8.10">
-  <link rel="apple-touch-icon" href="/icons/icon-192.png?v=1.8.10">
-  <link rel="manifest" href="/manifest.json?v=1.8.10">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=2.2.1">
+  <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32.png?v=2.2.1">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png?v=2.2.1">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png?v=2.2.1">
+  <link rel="manifest" href="/manifest.json?v=2.2.1">
   <meta name="theme-color" content="#191816">
   <link rel="stylesheet" href="/vendor/fonts/fonts.css">
-  <link rel="stylesheet" href="/css/style.css?v=1.8.10">
-  <link rel="stylesheet" href="/css/grid-lightbox.css?v=1.8.10">
-  <link rel="stylesheet" href="/css/selection-menu.css?v=1.8.10">
-  <link rel="stylesheet" href="/css/inspector.css?v=1.8.10">
-  <link rel="stylesheet" href="/css/modals-features.css?v=1.8.10">
-  <link rel="stylesheet" href="/css/modals-tools.css?v=1.8.10">
-  <link rel="stylesheet" href="/css/lab-map.css?v=1.8.10">
-  <link rel="stylesheet" href="/css/histogram.css?v=1.8.10">
-  <link rel="stylesheet" href="/css/compare.css?v=1.8.10">
-  <link rel="stylesheet" href="/css/ui-unify.css?v=1.8.10">
+  <link rel="stylesheet" href="/css/style.css?v=2.2.1">
+  <link rel="stylesheet" href="/css/grid-lightbox.css?v=2.2.1">
+  <link rel="stylesheet" href="/css/selection-menu.css?v=2.2.1">
+  <link rel="stylesheet" href="/css/inspector.css?v=2.2.1">
+  <link rel="stylesheet" href="/css/modals-features.css?v=2.2.1">
+  <link rel="stylesheet" href="/css/modals-tools.css?v=2.2.1">
+  <link rel="stylesheet" href="/css/lab-map.css?v=2.2.1">
+  <link rel="stylesheet" href="/css/histogram.css?v=2.2.1">
+  <link rel="stylesheet" href="/css/compare.css?v=2.2.1">
+  <link rel="stylesheet" href="/css/ui-unify.css?v=2.2.1">
+  <link rel="stylesheet" href="/css/field-log.css?v=2.2.1">
   <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
   <script src="/vendor/leaflet/leaflet.js"></script>
   <script>
@@ -29,6 +30,21 @@
       try {
         const tbPos = localStorage.getItem('pm_toolbar_position') || 'bottom';
         document.documentElement.setAttribute('data-toolbar-pos', tbPos === 'top' ? 'top' : 'bottom');
+        const treeStyle = localStorage.getItem('pm_sidebar_tree_style') || 'boxed';
+        document.documentElement.setAttribute('data-tree-style', treeStyle === 'flat' ? 'flat' : 'boxed');
+        const rawSweep = localStorage.getItem('pm_motion_sweep');
+        const parsedSweep = rawSweep !== null ? parseInt(rawSweep, 10) : 60;
+        const deg = Number.isFinite(parsedSweep) ? Math.max(0, Math.min(100, parsedSweep)) : 60;
+        const r = deg / 100;
+        const root = document.documentElement;
+        root.setAttribute('data-motion-mode', deg === 0 ? 'slap' : 'sweep');
+        root.style.setProperty('--motion-sweep-ratio', String(r));
+        root.style.setProperty('--transition-fast', deg === 0 ? '0s' : `${Math.round(60 + 140 * r)}ms cubic-bezier(0.22, 1, 0.36, 1)`);
+        root.style.setProperty('--transition-normal', deg === 0 ? '0s' : `${Math.round(120 + 260 * r)}ms cubic-bezier(0.16, 1, 0.3, 1)`);
+        root.style.setProperty('--motion-grid-fade', deg === 0 ? '0s' : `${Math.round(110 + 270 * r)}ms`);
+        root.style.setProperty('--motion-lightbox-fade', deg === 0 ? '0s' : `${Math.round(120 + 300 * r)}ms`);
+        root.style.setProperty('--motion-modal-fade', deg === 0 ? '0s' : `${Math.round(90 + 230 * r)}ms`);
+        root.style.setProperty('--motion-cascade-fade', deg === 0 ? '0s' : `${Math.round(45 + 115 * r)}ms`);
       } catch (e) {}
       try {
         if (!sessionStorage.getItem('pm_window_maximized')) {
@@ -164,9 +180,9 @@
           <div class="startup-splash-icon-box">
             <canvas id="splashTetheractCanvas" class="splash-tetheract-canvas" width="220" height="220" aria-hidden="true"></canvas>
           </div>
-          <div class="startup-splash-brand" aria-label="TETHERACT pm">
+          <div class="startup-splash-brand" aria-label="TETHERACT Ed">
             <span class="startup-splash-brand-main">TETHERACT</span>
-            <span class="startup-splash-brand-pm">pm</span>
+            <span class="startup-splash-brand-pm">Ed</span>
           </div>
         </div>
 
@@ -206,23 +222,20 @@
 
         <div class="toolbar-divider" title="セパレータ"></div>
 
-        <div class="logo" id="headerAppLogo" title="Tetheract Photo Manager">
+        <div class="logo logo-settings-btn" id="headerAppLogo" role="button" tabindex="0" title="クリックして設定・フォルダ＆メディア管理・タグツリー編集を開く">
           <span class="logo-icon-wrap">
-            <img class="logo-app-icon" id="headerLogoStaticImg" src="/icons/icon-192.png?v=1.8.10" width="24" height="24" alt="" aria-hidden="true">
+            <img class="logo-app-icon" id="headerLogoStaticImg" src="/icons/icon-192.png?v=2.2.1" width="24" height="24" alt="" aria-hidden="true">
             <canvas class="logo-app-icon-canvas" id="headerTetheractCanvas" width="72" height="72" aria-hidden="true"></canvas>
           </span>
-          <svg class="logo-lockup-svg" viewBox="64 8 248 48" width="134" height="26" fill="none" role="img" aria-label="TETHERACT pm">
+          <svg class="logo-lockup-svg" viewBox="64 8 248 48" width="134" height="26" fill="none" role="img" aria-label="TETHERACT Ed">
             <text x="0" y="45.41" fill="var(--logo-text)" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif" font-size="44.38" font-weight="700" letter-spacing="2.8" textLength="269.4" lengthAdjust="spacingAndGlyphs" transform="translate(66, 0) scale(0.7071, 1)">TETHERACT</text>
-            <text x="0" y="45.41" fill="var(--logo-pm)" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif" font-size="35.60" font-weight="600" letter-spacing="1.0" transform="translate(265, 0) scale(0.75, 1)">pm</text>
+            <text x="0" y="45.41" fill="var(--logo-pm)" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif" font-size="35.60" font-weight="600" letter-spacing="1.0" transform="translate(265, 0) scale(0.75, 1)">Ed</text>
           </svg>
-          <span class="app-version" id="appVersion" title="v1.8.10 (最終更新: 2026-11-14 23:08)">v1.8.10 (2026-11-14 23:08)</span>
+          <span class="app-version" id="appVersion" title="v2.2.1 (最終更新: 2026-11-13 14:40)">v2.2.1 (2026-11-13 14:40)</span>
+          <span class="logo-settings-badge" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          </span>
         </div>
-
-        <!-- UI言語切替（日本語 JP ⇄ English EN） -->
-        <button id="langToggleBtn" class="btn btn-lang-toggle" title="UI言語切り替え (日本語 ⇄ English)">
-          <span class="lang-icon" id="langToggleIcon" style="display: none;"></span>
-          <span id="langToggleLabel">JP</span>
-        </button>
 
         <!-- 後方互換用の非表示タイトル要素 -->
         <h1 class="view-title" id="viewTitle" style="display: none;">すべての写真</h1>
@@ -241,11 +254,12 @@
               <option value="untagged">未分類の写真</option>
               <option value="duplicates">重複のある写真</option>
             </select>
-            <select id="headerAttrSelect" class="styled-select header-attr-select" aria-label="形式・状態フィルタ" title="ファイル形式・状態（RAW / RAW+JPEG / JPEG / 調整済 / XMPあり）を切り替え">
+            <select id="headerAttrSelect" class="styled-select header-attr-select" aria-label="形式・状態フィルタ" title="ファイル形式・状態（RAW単体 / RAW+JPEG / RAWを含むすべて / JPEG単体 / 調整済 / XMPあり）を切り替え">
               <option value="all">すべての形式</option>
-              <option value="raw">RAW</option>
+              <option value="raw">RAW単体</option>
               <option value="raw_pair">RAW+JPEG</option>
-              <option value="jpeg">JPEG</option>
+              <option value="raw_any">RAWを含むすべて</option>
+              <option value="jpeg">JPEG単体</option>
               <option value="adjusted">調整済</option>
               <option value="xmp">XMPあり</option>
             </select>
@@ -319,7 +333,7 @@
           <span class="btn-label">スマホ連携</span>
         </button>
 
-        <button id="folderDbMaintenanceBtn" class="btn btn-secondary header-compact-btn" title="設定・データベース管理（タグ並び順・DBバックアップ・最適化）">
+        <button id="folderDbMaintenanceBtn" class="btn btn-secondary header-compact-btn" style="display: none;" title="設定・データベース管理（タグ並び順・DBバックアップ・最適化）">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
           <span class="btn-label">設定</span>
         </button>
@@ -354,16 +368,15 @@
       <aside class="sidebar accordion-sidebar sidebar-two-stage" id="sidebar">
         <!-- 第1段階: 左端 垂直タブレール (Activity Bar) -->
         <nav class="sidebar-rail" id="sidebarRail" aria-label="サイドバー切替タブ">
-          <button type="button" class="rail-tab-btn" data-section="folder" title="Folder — フォルダツリー・メディア管理">
-            <span class="rail-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>
-            <span class="rail-tab-label">Folder</span>
-          </button>
-          <div class="rail-divider" aria-hidden="true"></div>
           <button type="button" class="rail-tab-btn active" data-section="quick" title="Binder — 絞り込み条件セットの保存・呼び出し">
             <span class="rail-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="10" y="10" width="7.5" height="7.5"/><line x1="3.6" y1="3.6" x2="10" y2="10"/><line x1="20.4" y1="3.6" x2="17.5" y2="10"/><line x1="20.4" y1="20.4" x2="17.5" y2="17.5"/><line x1="3.6" y1="20.4" x2="10" y2="17.5"/></svg></span>
             <span class="rail-tab-label">Binder</span>
           </button>
-          <div class="rail-gap" aria-hidden="true"></div>
+          <div class="rail-divider" aria-hidden="true"></div>
+          <button type="button" class="rail-tab-btn" data-section="folder" title="Folder — フォルダ・メディアフィルタ">
+            <span class="rail-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>
+            <span class="rail-tab-label">Folder</span>
+          </button>
           <button type="button" class="rail-tab-btn" data-section="tags" title="Tag — タグ・カラーフィルタ">
             <span class="rail-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg></span>
             <span class="rail-tab-label">Tag</span>
@@ -394,11 +407,15 @@
 
         <!-- 第2段階: 右側 メニュー・ツリー表示エリア -->
         <div class="sidebar-stage" id="sidebarStage">
-        <!-- 上部コントロールバー（全フィルタ解除） -->
+        <!-- 上部コントロールバー（全フィルタ解除 ＆ ツリー表示スタイル一括切替） -->
         <div class="sidebar-top-bar">
           <button class="btn btn-secondary btn-sm sidebar-reset-btn" id="sidebarResetFilterBtn" title="すべてのフィルタを解除して全写真を表示">
             <span class="btn-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg></span>
             <span class="btn-label">フィルタ全解除</span>
+          </button>
+          <button type="button" class="btn btn-secondary btn-sm sidebar-tree-style-btn" id="sidebarTreeStyleToggleBtn" title="左ペインの全フィルタ表示スタイルを一括切替（ボックス枠 ⇄ フラット）">
+            <span class="btn-icon" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/></svg></span>
+            <span id="sidebarTreeStyleToggleLabel">枠表示</span>
           </button>
         </div>
 
@@ -407,12 +424,13 @@
           <div class="attr-filter" id="attrFilterGroup">
             <div class="attr-filter-toggles" id="attrFilterToggles">
               <button type="button" class="attr-toggle active" data-attr="all" title="すべての形式・状態の写真を表示">すべて</button>
-              <button type="button" class="attr-toggle" data-attr="raw" title="RAWデータ（またはRAW＋JPEGペア）の写真のみ表示">RAW</button>
+              <button type="button" class="attr-toggle" data-attr="raw" title="RAW単体（ペアJPEGなし）の写真のみ表示">RAW単体</button>
               <button type="button" class="attr-toggle" data-attr="adjusted" title="回転・傾き・クロップ・明るさ等の非破壊調整を行った写真のみ表示">調整済</button>
-              <select id="attrSubFilterSelect" class="attr-sub-select" title="さらに詳細なファイル属性（JPEGのみ / RAW+JPGペア / XMPサイドカーあり）で絞り込み">
+              <select id="attrSubFilterSelect" class="attr-sub-select" title="さらに詳細なファイル属性（RAW+JPEG / RAWを含むすべて / JPEG単体 / XMPあり）で絞り込み">
                 <option value="">詳細...</option>
-                <option value="jpeg">JPEG / 一般のみ</option>
-                <option value="raw_pair">RAW+JPG ペア</option>
+                <option value="raw_pair">RAW+JPEG</option>
+                <option value="raw_any">RAWを含むすべて</option>
+                <option value="jpeg">JPEG単体</option>
                 <option value="xmp">XMP あり</option>
               </select>
             </div>
@@ -513,13 +531,10 @@
               <span class="badge-sub">フォルダ・メディア</span>
             </div>
             <div class="accordion-body">
-              <!-- フォルダツリー操作ツールバー -->
+              <!-- フォルダフィルタ操作ツールバー（純粋な表示・展開制御のみ） -->
               <div class="folder-toolbar" id="folderToolbar">
                 <div class="folder-toolbar-group">
-                  <button class="btn-mini-text" id="uploadFilesBtn" title="PCの写真ファイルを選んで Loome へコピー＆取り込みます">取り込み</button>
-                  <input type="file" id="fileUploadInput" multiple accept="image/*,.rw2,.arw,.cr2,.cr3,.nef,.nrw,.dng,.raf,.orf,.pef,.srw,.x3f,.heic,.heif,.avif,.xmp,.pp3,.arp,.dop,.on1,.cos,.nksc,.spd" style="display:none;">
-                  <button class="btn-mini-text" id="openManagedMediaModalBtn" title="管理対象として登録されているSDカード・外部メディアの一覧・収録枚数・識別名を管理します">メディア一覧</button>
-                  <button class="btn-mini-text" id="folderAutoAiToggleBtn" title="スキャン完了後にAIタグを自動付与するかどうかを切り替えます">AI: OFF</button>
+                  <button class="btn-mini-text active" id="toggleOfflineVolumesBtn" title="未接続メディア（キャッシュのみ）の表示・非表示を切り替えます">未接続</button>
                   <button class="btn-mini-text" id="reloadFolderTreeBtn" title="ドライブ一覧とフォルダツリーを再読み込み"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
                 </div>
                 <div class="folder-toolbar-group">
@@ -550,12 +565,15 @@
 
               <!-- リンク情報なし（リンク消失写真）へのフォルダツリー連携ナビ項目 -->
               <div class="folder-tree-unlinked-section" id="folderTreeUnlinkedSection" style="display: none; margin-top: 10px; padding: 6px 4px 2px; border-top: 1px dashed var(--border-soft);">
-                <div class="nav-item" id="folderTreeUnlinkedItem" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; padding: 6px 8px; border-radius: 4px;" title="実体ファイルとの紐付けが外れた（リンク消失）写真を表示">
-                  <div style="display: flex; align-items: center; gap: 6px;">
+                <div class="nav-item" id="folderTreeUnlinkedItem" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; padding: 6px 8px; border-radius: 4px;" title="実体ファイルとの紐付けが外れた（リンク消失）写真を表示（右クリックまたは右の✕で一括消去）">
+                  <div style="display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1;">
                     <span class="nav-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span>
                     <span class="nav-text" style="font-size: 13px; font-weight: 500;">リンク情報なし</span>
                   </div>
-                  <span class="nav-count badge-warning" id="folderTreeUnlinkedCount">0</span>
+                  <div style="display: flex; align-items: center; gap: 4px; flex-shrink: 0;">
+                    <span class="nav-count badge-warning" id="folderTreeUnlinkedCount">0</span>
+                    <button type="button" id="folderTreePurgeUnlinkedInlineBtn" class="folder-inline-unmanage-btn" title="リンク情報なしの写真をすべてDBから完全消去" style="background: transparent; border: none; color: var(--text-muted); cursor: pointer; font-size: 11px; padding: 1px 4px; border-radius: 3px; line-height: 1; opacity: 0.8; transition: color 0.15s, background 0.15s, opacity 0.15s;">✕</button>
+                  </div>
                 </div>
               </div>
 
@@ -569,12 +587,6 @@
                   <div class="folder-scan-progress-fill" id="folderScanProgressFill" style="width: 0%;"></div>
                 </div>
                 <div class="folder-scan-progress-current" id="folderScanProgressCurrent"></div>
-              </div>
-
-              <!-- パス直接入力バー（最下部） -->
-              <div class="folder-path-input-bar" id="folderPathInputBar">
-                <input type="text" id="folderPathInput" class="folder-path-input" placeholder="パスを直接入力してスキャン..." title="フォルダパスを入力して Enter または右のボタンでスキャンを開始します">
-                <button id="folderPathScanBtn" class="folder-path-scan-btn" title="入力したフォルダをスキャンして管理に追加">▶</button>
               </div>
             </div>
           </div>
@@ -623,7 +635,6 @@
               </div>
 
               <div class="tag-filter-hint">
-                <span>クリックで <strong>[+]含む</strong> → <strong>[-]除外</strong> → <strong>解除</strong></span>
                 <div class="tag-filter-hint-actions">
                   <button class="clear-tags-btn" id="clearTagFiltersBtn" style="display: none;">クリア</button>
                   <button type="button" class="tag-sort-count-toggle-btn" id="tagSortByCountToggleBtn" title="クリックで「名前順（自然順）」と「枚数順」を切り替え（左ペインのみ独立）">名前順</button>
@@ -648,6 +659,7 @@
                 <div class="location-toolbar-group">
                   <button class="btn-mini-text" id="reloadLocationTreeBtn" title="ジオタグツリーを再読み込み"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
                   <button type="button" class="btn-mini-text" id="locationOpenMapBtn" title="47都道府県 撮影制覇白地図・撮影密度ヒートマップ・撮影さんぽ軌跡を開く">制覇マップ</button>
+                  <button type="button" class="btn-mini-text" id="openFieldLogModalBtn" title="スマホで記録したGPSフィールドログの管理・撮影時刻照合・位置付与を開く">GPSログ</button>
                 </div>
                 <div class="location-toolbar-group">
                   <button class="btn-mini-text" id="expandAllLocationsBtn" title="すべての地域を展開">展開</button>
@@ -859,6 +871,9 @@
             </div>
           </div>
           <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+            <button type="button" class="warning-banner-btn" id="warningBannerUnmanageVolumeBtn" style="display: none; background: rgba(239, 68, 68, 0.14); color: var(--danger, #ef4444); border-color: rgba(239, 68, 68, 0.45);" title="この未接続メディアの登録情報・キャッシュ済みサムネイルをTetheractのDBから削除します（実ファイルは削除されません）">
+              このメディアを管理から外す（登録削除）
+            </button>
             <button type="button" class="warning-banner-btn" id="warningBannerUnlinkBtn" style="display: none;" title="この消失フォルダ内の写真リンクを削除します（他メディアにリンクが無い写真は『リンク消失の写真』へ移行、サムネイル・タグは保持）">
               リンク削除
             </button>
@@ -913,6 +928,9 @@
             </button>
             <button type="button" class="inspector-quick-action-btn is-icon-only" id="inspectorOpenFileBtn" title="写真を関連付けられた規定のアプリで開く" style="display: none;">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            </button>
+            <button type="button" class="inspector-quick-action-btn is-icon-only" id="inspectorTakeoutBtn" title="スマート・テイクアウト（調整・リサイズ・Exif選択消去して書き出し）" style="display: none;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             </button>
           </div>
           <!-- XMPサイドカー検出・プレビュー・取込バー -->
@@ -1212,6 +1230,19 @@
               </div>
             </div>
 
+            <!-- 一括書き出し・Loome保管操作 -->
+            <div class="inspector-section" id="batchExportStorageSection">
+              <div class="inspector-label">書き出し・保管</div>
+              <div style="display: flex; gap: 8px;">
+                <button type="button" class="btn btn-secondary btn-sm" id="batchTakeoutBtn" style="flex: 1;" title="選択した写真を調整・リサイズ・Exif整理して外部フォルダへ書き出し">
+                  書き出し...
+                </button>
+                <button type="button" class="btn btn-secondary btn-sm" id="batchCopyToLoomeBtn" style="flex: 1;" title="選択した写真を専用保管庫 Loome へ複製して取り込み">
+                  Loomeへ複製
+                </button>
+              </div>
+            </div>
+
             <!-- 選択解除ボタン -->
             <button class="btn btn-secondary btn-block" id="batchClearSelectionBtn" style="margin-top: 18px; width: 100%;">
               選択をすべて解除
@@ -1323,7 +1354,7 @@
               <div class="help-feature-header">
                 <h4 class="help-feature-title">用途に合わせて選べる3つの表示レイアウト</h4>
               </div>
-              <p class="help-feature-text">メインツールバー（画面下部フッター／上部ヘッダー）から、3つの表示モードや「JP / EN」言語表示を切り替えられます。カラーテーマ（Tetheract D / Tetheract L / 夜墨 / 和紙）は「設定」モーダルから切り替えられます。</p>
+              <p class="help-feature-text">メインツールバー（画面下部フッター／上部ヘッダー）から、3つの表示モードや「JP / EN」言語表示を切り替えられます。左下のロゴから開く設定モーダルでは、カラーテーマ（Tetheract D / Tetheract L / 夜墨 / 和紙）や画面切り替えの余韻を調整する「モーションアジャスタ（Slap &amp; Sweep）」を設定できます。</p>
               <div class="help-mode-grid">
                 <div class="help-mode-card">
                   <div class="help-mode-card-header">グリッド (標準)</div>
@@ -1406,7 +1437,7 @@
               <li>連写・ブラケット・重複の切替と代表設定：上下の矢印キー（↑ / ↓）で束内のコマを切り替えます（露出ブラケット時は ↑ で明るいEV+ / ↓ で暗いEV-、連写時は前後のコマへ移動）。上部ツールバーの評価ボタン左隣にある「代表」ボタンをクリックすると、今見ているコマをスタックの代表写真（表紙）に設定できます。</li>
               <li>ピント拡大チェック：確認したい場所にカーソルを合わせてマウスホイールを回すと、その位置を中心に 100%〜400% まで拡大します（ドラッグで移動、ダブルクリックで 100% ⇔ 200% 切替）。</li>
               <li>90度回転：Rキー（時計回り）/ Lキー（反時計回り）で写真の向きを回転できます。</li>
-              <li>閉じる：もう一度 Space キー、Esc キー、またはマウスの「戻る」ボタン（サイドボタン）を押します。</li>
+              <li>閉じる：もう一度 Space キーまたは Esc キーを押します。</li>
             </ul>
           </div>
 
@@ -1453,9 +1484,10 @@
           </div>
 
           <div class="help-card" style="margin-top: 14px;">
-            <h4>4. ジオタグ・47都道府県マップ・スマホGPS準用・撮影日時シフト補正</h4>
+            <h4>4. ジオタグ・47都道府県マップ・GPSフィールドログ照合・撮影日時シフト補正</h4>
             <p>場所ツリー：GPS情報付き写真は、左サイドバー「Place」から「国 ＞ 都道府県 ＞ 市区町村」の階層で絞り込めます。</p>
             <p>47都道府県 撮影制覇白地図・ヒートマップ・さんぽ軌跡：左サイドバー「Place」上部の「制覇マップ」ボタンから、都道府県ごとの撮影枚数塗り分け白地図、よく訪れる場所の撮影密度ヒートマップ、日付ごとの移動ルートを結ぶ「撮影さんぽ軌跡」を表示できます。</p>
+            <p>GPSフィールドログ（採取・時刻照合・位置付与）：Androidアプリのクイック設定タイル「GPSログ」等で記録し、Wi-Fi同期またはUSB書き出しでPCへ送られた日付別ログは、左サイドバー「Place」上部の「GPSログ」ボタンから開けます。カメラ機種ごとの時計ズレ補正（±秒）を指定して撮影時刻で線形補間・最寄り点照合をプレビューし、GPSのないカメラ写真へ非破壊で位置情報と市区町村名を付与できます（GPX 1.1 出力にも対応）。なお、フィールドログのファイル自体を削除しても写真へ適用済みの位置情報は消えません。付与した位置を元に戻したい場合は「適用履歴・取り消し」タブからバッチ単位で取り消してください。</p>
             <p>スマホから位置情報を引き継ぐ（スマホGPS準用）：GPSのないカメラで撮った写真でも、前後1時間以内に撮影したスマホ写真がライブラリにあれば、右インスペクタまたは右クリックメニューの「スマホGPS準用」から位置情報を引き継げます。</p>
             <p>撮影日時の一括シフト補正：カメラの内蔵時計ズレや海外旅行の時差がある場合は、右クリックメニュー（または右インスペクタ）の「撮影日時を一括補正...」から、元ファイルを書き換えずに日・時間・分・秒のオフセット補正（および元のEXIF日時への復元）が行えます。</p>
           </div>
@@ -1464,7 +1496,7 @@
             <h4>5. スマート・テイクアウトとベタ焼き（コンタクトシート）HTML出力</h4>
             <p>右クリックメニュー（または右インスペクタ）の「テイクアウト」から、2種類の出力機能を利用できます（元ファイルは変更されません）。</p>
             <ul>
-              <li>スマート・テイクアウト：非破壊で行った回転・傾き・切り抜き・トーン調整の反映、GPS・向きのEXIF同期、XMPサイドカー（.xmp）の同時出力、長辺リサイズ（4K / フルHD / 軽量等）、撮影秒数順の連番リネーム、SNS公開用のEXIF消去を一括適用して別フォルダへ書き出します。</li>
+              <li>スマート・テイクアウト：非破壊で行った回転・傾き・切り抜き・トーン調整の反映、GPS・向きのEXIF同期、XMPサイドカー（.xmp）の同時出力、RAW原本ファイルの無加工抱き合わせコピー（.ARW / .CR3 / .NEF 等）、長辺リサイズ（4K / フルHD / 軽量等）、撮影秒数順の連番リネーム、SNS公開用のEXIF消去を一括適用して別フォルダへ書き出します（RAW+JPEGペアはJPEG原本から、RAW単体は内蔵プレビューから画像を書き出します）。</li>
               <li>ベタ焼きHTML出力：選んだ写真を暗室コンタクトシート風（または和紙台紙風）の単一HTMLファイルとして出力します。ブラウザで開いて写真をクリックすると赤鉛筆の丸印を付けられ、A4サイズ等での一覧印刷にも対応しています。</li>
             </ul>
           </div>
@@ -1484,7 +1516,7 @@
             <p>Binder（条件セット保存）：よく使う絞り込み条件は、左サイドバー「Binder」の保存フォームで名前を付けて保存し、ワンクリックでの呼び出しやスライドショー再生が行えます。</p>
             <p>外部ソフト連携と自動更新検知：右インスペクタ上部のアイコンからエクスプローラーで保存先を開いたり、既定のソフトでファイルを開けます。外部ソフトで編集・保存したり .xmp サイドカーを出力して Tetheract の画面へ戻ると自動で変更を検知してサムネイルや XMP バッジを最新化します（右クリックメニューの「サムネイルを更新」から手動更新も可能です）。</p>
             <p>設定とDBメンテナンス：画面右上の「設定」ボタンから、起動時のウィンドウサイズやタグの名前順ルールの変更、3段階セキュリティ（Lv.0: エシカルモード［他人のLoomeドライブ完全拒否＆DB単体引き抜き防止］／ Lv.1: 起動ロック＆DBサムネイル暗号化 ／ Lv.2: フルロック＋Loome実ファイルカプセル化保護）、および世代バックアップ付きデータベース最適化（VACUUM）が行えます。また、1週間（7日）以上バックアップを作成していない場合は起動時にリマインドモーダルが表示され、ワンクリックで最新バックアップを作成して保存先フォルダ（<code>cache/backups/</code>）を開き、別ドライブ等へ安全に退避できます。</p>
-            <p>Loome 管理：左サイドバー「Folder」先頭の「Loome」には、外部フォルダの写真を右クリックの「Loomeへコピー ▶」（マウスオーバーでドライブからサブフォルダ階層へと右展開するカスケードメニュー）またはドラッグ＆ドロップで高速に並列コピー取り込みできます。また、接続中のドライブを右クリックして「このドライブに Loome を作成...」（または「登録メディア管理」の「Loome を作成」）を実行すると、外付けSSD・USBメモリ直下にも専用 Loome を追加できます。Loome内ではサブフォルダ作成・移動（右クリック「Loome内で移動 ▶」）・ファイル名変更（F2キーで単一または一括連番リネーム）・外部エクスポートが行え、同名のサイドカーファイル（.xmp等）やペアRAWも自動で追従します。</p>
+            <p>Loome 管理：左サイドバー「Folder」先頭の「Loome」には、外部の写真やフォルダを丸ごと（サブフォルダ階層・RAW+JPEGペア・サイドカー維持）コピー取り込みできます。写真を右クリックして「Loomeへコピー...」（または「Loome内で移動...」）を選ぶと保存先選択の小窓が開き、Loomeドライブの切り替え、ダブルクリックでの子フォルダ展開、その場での「＋新規フォルダ」作成で目的の階層を快適に選べます。設定画面の「フォルダごと取り込み...」、外部フォルダ右クリックの「このフォルダごと Loome へコピー...」、エクスプローラーからのファイル／フォルダのドラッグ＆ドロップにも対応しています。外付けSSD・USBメモリ直下への専用 Loome 追加や、F2キーでの単一・一括連番リネームも行えます。</p>
           </div>
         </div>
 
@@ -1502,11 +1534,12 @@
           <div class="help-card" style="margin-top: 14px;">
             <h4>2. スマートフォンで写真を選別する（2つの方法）</h4>
             <p>スマートフォンの画面と親指のタップ操作で、写真の4段階評価（優・良・可・棄）とタグ付けが行えます。</p>
-            <p>方法A：自宅のWi-Fiでつなぐ（QRコードでリアルタイム連動）</p>
+            <p>方法A：自宅のWi-Fiでつなぐ（初回QRペアリング ＆ ワンタップ高速ロッカー同期）</p>
             <ol>
-              <li>PC画面右上の「スマホ連携」ボタンをクリックします。</li>
-              <li>表示されたQRコードをスマートフォンのカメラで読み取ってブラウザで開きます（同じWi-Fiに接続）。QRコードには専用のアクセストークンが含まれており、閲覧・選別以外の操作は遮断されます。</li>
-              <li>スマートフォンで付けた評価やタグが、そのままPC側の画面へリアルタイムに反映されます（30分間通信がない場合は、安全のためスマホ向けの待受が自動で停止します）。</li>
+              <li><strong>初回のみ</strong>、PC画面右上の「スマホ連携」ボタンをクリックし、表示されたQRコードをスマートフォンのカメラで読み取って開きます（認証Cookie・ペアリング鍵が365日間保存されます）。</li>
+              <li>ブラウザ上でそのままリアルタイムに評価・タグ付けができるほか、画面上部の「[アプリでWi-Fi同期]」をタップすると Android 専用アプリ（<code>Tetheract_Android.apk</code>）の端末内ロッカーへ高速同期できます。</li>
+              <li><strong>2回目以降はPC側でQR画面を開かなくても</strong>、スマートフォンアプリ上部の「[Wi-Fi同期]」ボタン1つ（約1〜2秒）で「選別データのPC送信」と「PCで追加・変更・削除した写真の差分取得（<code>mobile_delta.db</code>）」が同時完了します（PCのIPアドレス変化にも自動追従します）。</li>
+              <li>Android専用アプリの「手許（PhoneCase）」モードでは、端末内の撮影写真を選別してWi-Fi経由でPCの <code>Loome/case</code> へ一括転送（重複写真は自動スキップ）できます。QRコードを使わずWi-Fi探索から初回接続する場合は、PC画面の確認ダイアログで要求元端末IPのみがワンタイム承認されます。</li>
             </ol>
             <p class="help-tip" style="margin-top: 6px;">※QRコードを読み取ってもスマホから繋がらない場合は、(1) Windowsの「設定 ＞ ネットワークとインターネット ＞ Wi-Fi（またはイーサネット）」でネットワークプロファイルを「パブリック」から「プライベート」に変更する、(2)「Windows Defender ファイアウォール」で <code>python\python.exe</code>（または TCP ポート <code>8088</code>）のプライベート通信を許可する、(3) ゲスト用SSIDやプライバシーセパレーター（端末間分離）でない同じWi-Fiルーターに接続しているかを確認してください（スマホ連携画面内にも詳しい手順と許可コマンドがあります）。</p>
             <p style="margin-top: 8px;">方法B：外出先・ネット圏外でUSBメモリを直接スマートフォンに挿す（完全オフライン）</p>
@@ -1677,9 +1710,10 @@
         <!-- ① 自宅Wi-Fiでスマホから直接スマホ版 (/m) に入る QRコード -->
         <div style="background: var(--bg-secondary, rgba(255,255,255,0.04)); border: 1px solid var(--border-soft, rgba(255,255,255,0.1)); border-radius: 6px; padding: 14px;">
           <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; flex-wrap: wrap;">
-            <div style="font-weight: 700; font-size: 0.92rem; color: var(--text-main, #eceae4);">① 自宅Wi-Fi: QRコードでスマホ版 (<code>/m</code>) に入る</div>
-            <div style="display: flex; gap: 6px;">
+            <div style="font-weight: 700; font-size: 0.92rem; color: var(--text-main, #eceae4);">① 自宅Wi-Fi: QRコードでスマホ選別 &amp; Android専用ロッカー同期</div>
+            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
               <button class="btn btn-secondary btn-xs" id="openMobilePreviewWindowBtn" title="PC上でスマホ画面 (/m) を別ウィンドウで開いて試す">PCでスマホ画面を試す</button>
+              <button class="btn btn-secondary btn-xs" id="resetMobilePairingBtn" title="スマホの永続ペアリング鍵（Cookie/トークン）を再発行して既存端末の接続を解除します">ペアリング鍵を再発行</button>
               <a href="/api/mobile/standalone" download="Tetheract_Mobile.html" class="btn btn-secondary btn-xs" style="text-decoration: none;" title="単体HTMLを別フォルダやスマホ転送用に保存">単体HTMLを保存</a>
             </div>
           </div>
@@ -1689,7 +1723,8 @@
             </div>
             <div style="flex: 1; min-width: 210px;">
               <p style="margin: 0 0 8px 0; color: var(--text-muted, #94a3b8); font-size: 0.8rem; line-height: 1.5;">
-                同じWi-Fi（LAN）内のスマホカメラで左のQRコードを読み取ると、スマホ専用画面が開きリアルタイムに選別・タグ付けできます。
+                <strong>初回のみ</strong>このQRコードを読み取ってペアリングすれば、スマホ側に認証Cookie・ペアリング鍵が保存されます。<br>
+                <strong>2回目からはPCでこのQR画面を開かなくても</strong>、スマホの「Wi-Fi同期」ボタン1つでいつでも双方向同期できます。
               </p>
               <div id="mobileUrlList" style="display: flex; flex-direction: column; gap: 6px;">
                 <div style="color: var(--text-muted, #94a3b8);">接続URLを取得中...</div>
@@ -1989,200 +2024,354 @@
     </div>
   </div>
 
-  <!-- 管理対象メディア一覧モーダル (managedMediaModal) -->
+  <!-- 後方互換用の非表示メディアモーダル枠（実体は設定モーダル内の「フォルダ・メディア」タブへ統合） -->
   <div class="modal-backdrop" id="managedMediaModal" style="display: none;">
-    <div class="modal-card" style="max-width: 780px; width: 94vw;">
-      <div class="modal-header">
-        <div class="modal-header-title">
-          <h2>管理対象メディア一覧（SDカード・ドライブ）</h2>
-          <span class="modal-subtitle">登録済みのSDカードや外部ドライブごとの収録写真枚数・撮影期間・カメラ機種・識別名を一覧管理します</span>
-        </div>
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <button type="button" class="btn btn-secondary btn-xs" id="refreshManagedMediaModalBtn" title="メディアの接続状態と集計を再読み込み">再読込</button>
-          <button class="modal-close-btn" id="closeManagedMediaModalBtn">&times;</button>
-        </div>
-      </div>
-
-      <div class="modal-body" style="padding: 16px 20px; max-height: 70vh; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;" id="managedMediaListContainer">
-        <!-- JSで動的生成 -->
-      </div>
-
-      <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 20px;">
-        <span style="font-size: 0.78rem; color: var(--text-dim, #64748b);">※SDカードを差し替えても同じドライブ文字のまま別メディアとして識別・絞り込みできます</span>
-        <button type="button" class="btn btn-secondary" id="closeManagedMediaModalFooterBtn">閉じる (Esc)</button>
-      </div>
-    </div>
+    <button type="button" id="openManagedMediaModalBtn" style="display: none;"></button>
+    <button type="button" id="closeManagedMediaModalBtn" style="display: none;"></button>
+    <button type="button" id="closeManagedMediaModalFooterBtn" style="display: none;"></button>
   </div>
 
-  <!-- 設定 ＆ タグツリーエディタ モーダル (2ペイン構成) -->
+  <!-- 統合設定モーダル（Windows設定画面風・縦タブ切替構成） -->
   <div class="modal-backdrop" id="dbMaintenanceModal" style="display: none;">
-    <div class="modal-card settings-two-pane-card" style="max-width: 960px; width: 94vw;">
+    <div class="modal-card settings-vtab-card" style="max-width: 960px; width: 94vw;">
       <div class="modal-header">
         <div class="modal-header-title">
-          <h2>設定 ＆ タグツリーエディタ</h2>
-          <span class="modal-subtitle">左: 表示設定・データベース管理 ／ 右: タグツリー構造エディタ（ドラッグ＆ドロップ階層移動・リネーム）</span>
+          <h2>Tetheract 設定 ＆ 管理コンソール</h2>
+          <span class="modal-subtitle">左のメニューから「外観・表示」「フォルダ・メディア」「タグツリー編集」「データベース・保守」「セキュリティ」を切り替えます</span>
         </div>
         <button class="modal-close-btn" id="closeDbMaintenanceModalBtn">&times;</button>
       </div>
 
-      <div class="modal-body settings-two-pane-body" style="padding: 16px; font-size: 0.88rem;">
-        <!-- 左ペイン: 設定 ＆ データベース管理 -->
-        <div class="settings-left-pane">
-          <!-- カラーテーマ（外観）設定 -->
-          <div style="background: var(--bg-secondary, rgba(255,255,255,0.04)); border: 1px solid var(--border-soft, rgba(255,255,255,0.1)); border-radius: var(--radius-sm, 4px); padding: 12px; display: flex; flex-direction: column; gap: 8px;">
-            <div class="settings-hover-caption">
-              <span style="font-weight: 600; color: var(--text-main, #eceae4);">カラーテーマ（外観）</span>
-              <div class="settings-caption-tooltip">画面全体の配色テーマを切り替えます（選択すると即座に反映されます）</div>
-            </div>
-            <select id="settingThemeSelect" class="styled-select" style="width: 100%;">
-              <option value="tetheract-d">Tetheract D（ダーク：シャンパン＆モノトーン）</option>
-              <option value="tetheract-l">Tetheract L（ライト：アンバー＆ソフトモノトーン）</option>
-              <option value="sumi">夜墨 / Sumi（ダーク：銀墨 × 朱色）</option>
-              <option value="paper">和紙 / Paper（ライト：生成り和紙 × 朱色）</option>
-            </select>
-          </div>
+      <div class="modal-body settings-vtab-layout">
+        <!-- 左ペイン: 縦タブナビゲーションレール (Windows設定画面スタイル) -->
+        <nav class="settings-vtab-nav" id="settingsVtabNav" aria-label="設定カテゴリ">
+          <button type="button" class="settings-vtab-btn active" data-settings-tab="appearance">
+            <span class="settings-vtab-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
+            </span>
+            <span class="settings-vtab-label">外観・表示</span>
+          </button>
+          <button type="button" class="settings-vtab-btn" data-settings-tab="folders">
+            <span class="settings-vtab-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            </span>
+            <span class="settings-vtab-label">フォルダ・メディア</span>
+          </button>
+          <button type="button" class="settings-vtab-btn" data-settings-tab="tags">
+            <span class="settings-vtab-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+            </span>
+            <span class="settings-vtab-label">タグツリー編集</span>
+          </button>
+          <button type="button" class="settings-vtab-btn" data-settings-tab="database">
+            <span class="settings-vtab-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+            </span>
+            <span class="settings-vtab-label">データベース・保守</span>
+          </button>
+          <button type="button" class="settings-vtab-btn" data-settings-tab="security">
+            <span class="settings-vtab-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            </span>
+            <span class="settings-vtab-label">セキュリティ</span>
+          </button>
+        </nav>
 
-          <!-- ツールバーの配置（フッター / ヘッダー）設定 -->
-          <div style="background: var(--bg-secondary, rgba(255,255,255,0.04)); border: 1px solid var(--border-soft, rgba(255,255,255,0.1)); border-radius: var(--radius-sm, 4px); padding: 12px; display: flex; flex-direction: column; gap: 8px;">
-            <div class="settings-hover-caption">
-              <span style="font-weight: 600; color: var(--text-main, #eceae4);">ツールバーの配置</span>
-              <div class="settings-caption-tooltip">メインツールバーを画面下部（フッター）または上部（ヘッダー）に配置します</div>
+        <!-- 右ペイン: 選択されたカテゴリのコンテンツ領域 -->
+        <div class="settings-vtab-content">
+          <!-- ==================== タブ1: 外観・表示 (appearance) ==================== -->
+          <section class="settings-vtab-pane active" data-settings-pane="appearance" id="settingsPaneAppearance">
+            <div class="settings-pane-header">
+              <h3>外観・表示設定</h3>
+              <p>カラーテーマ、モーションアジャスタ（Slap &amp; Sweep）、ツールバー位置、左サイドバーのツリー表示スタイル、起動時のウィンドウサイズ、表示言語を設定します。</p>
             </div>
-            <select id="settingToolbarPositionSelect" class="styled-select" style="width: 100%;">
-              <option value="bottom">下部（フッター表示・上部ヘッダーなし）</option>
-              <option value="top">上部（ヘッダー表示）</option>
-            </select>
-          </div>
 
-          <!-- 起動時のウィンドウサイズ設定 -->
-          <div style="background: var(--bg-secondary, rgba(255,255,255,0.04)); border: 1px solid var(--border-soft, rgba(255,255,255,0.1)); border-radius: var(--radius-sm, 4px); padding: 12px; display: flex; flex-direction: column; gap: 8px;">
-            <div class="settings-hover-caption">
-              <span style="font-weight: 600; color: var(--text-main, #eceae4);">起動時のウィンドウサイズ</span>
-              <div class="settings-caption-tooltip">アプリ起動時のウィンドウ状態を設定します（選択すると即座に現在の画面にも反映されます）</div>
-            </div>
-            <select id="settingStartupWindowModeSelect" class="styled-select" style="width: 100%;">
-              <option value="maximized">最大化（標準・タスクバーあり）</option>
-              <option value="remember">前回のサイズ・位置を記憶（システム標準）</option>
-              <option value="center">画面中央（約80%サイズ）</option>
-              <option value="left_half">◧ 画面の左半分にスナップ（50%）</option>
-              <option value="right_half">◨ 画面の右半分にスナップ（50%）</option>
-              <option value="fullscreen">フルスクリーン（枠なし全画面 / F11）</option>
-            </select>
-          </div>
-
-          <!-- タグツリーの並び順設定（左ペイン＆右インスペクタ共通） -->
-          <div style="background: var(--bg-secondary, rgba(255,255,255,0.04)); border: 1px solid var(--border-soft, rgba(255,255,255,0.1)); border-radius: var(--radius-sm, 4px); padding: 12px; display: flex; flex-direction: column; gap: 8px;">
-            <div class="settings-hover-caption">
-              <span style="font-weight: 600; color: var(--text-main, #eceae4);">タグの名前順ルール</span>
-              <div class="settings-caption-tooltip">左ペインの「枚数順」がオフのときに使われる名前ソート順を保存します</div>
-            </div>
-            <select id="settingTagSortModeSelect" class="styled-select" style="width: 100%;">
-              <option value="natural">数値の自然順・昇順（標準 / 例: 1 → 2 → 10 / 24 → 25 → 2410）</option>
-              <option value="natural_desc">数値の自然順・降順（例: 2410 → 25 → 24 / 10 → 2 → 1）</option>
-              <option value="lexical">文字順・昇順（例: 24-イベント → 2410-旅行 → 25-正月）</option>
-              <option value="lexical_desc">文字順・降順（例: 25-正月 → 2410-旅行 → 24-イベント）</option>
-            </select>
-          </div>
-
-          <!-- DB状態サマリー -->
-          <div style="background: var(--bg-secondary, rgba(255,255,255,0.04)); border: 1px solid var(--border-soft, rgba(255,255,255,0.1)); border-radius: var(--radius-sm, 4px); padding: 12px;">
-            <div style="font-weight: 600; margin-bottom: 6px; color: var(--text-main, #eceae4);">データベースの状態</div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 0.82rem; color: var(--text-muted, #94a3b8);">
-              <div>登録写真数: <strong id="dbMaintPhotoCount" style="color: var(--text-main, #eceae4);">-</strong></div>
-              <div>DBサイズ: <strong id="dbMaintDbSize" style="color: var(--text-main, #eceae4);">-</strong></div>
-              <div>サムネイル数: <strong id="dbMaintThumbCount" style="color: var(--text-main, #eceae4);">-</strong></div>
-              <div>解放可能領域: <strong id="dbMaintWalSize" style="color: var(--text-main, #eceae4);">-</strong></div>
-            </div>
-          </div>
-
-          <!-- 最適化 (VACUUM) -->
-          <div style="background: var(--bg-secondary, rgba(255,255,255,0.04)); border: 1px solid var(--border-soft, rgba(255,255,255,0.1)); border-radius: var(--radius-sm, 4px); padding: 12px; display: flex; justify-content: space-between; align-items: center; gap: 12px;">
-            <div class="settings-hover-caption">
-              <span style="font-weight: 600; color: var(--text-main, #eceae4);">データベース最適化 (VACUUM)</span>
-              <div class="settings-caption-tooltip">不要領域を解放してファイルサイズを縮小し、読み書きを高速化します</div>
-            </div>
-            <button class="btn btn-secondary btn-sm" id="dbMaintVacuumBtn" style="white-space: nowrap;">最適化を実行</button>
-          </div>
-
-          <!-- セキュリティ設定 -->
-          <div style="background: var(--bg-secondary, rgba(255,255,255,0.04)); border: 1px solid rgba(200, 157, 102, 0.28); border-radius: var(--radius-sm, 4px); padding: 12px; display: flex; flex-direction: column; gap: 8px;">
-            <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
-              <div style="min-width: 0; flex: 1;">
-                <div style="font-weight: 700; color: var(--text-main, #eceae4); display: flex; align-items: center; gap: 6px;">
-                  <span>セキュリティ設定</span>
-                  <span id="secSettingsCurrentBadge" style="font-size: 0.72rem; padding: 1px 6px; border-radius: 4px; background: rgba(200,157,102,0.18); color: var(--accent-primary, #c89d66);">Lv.0</span>
+            <div class="settings-card-stack">
+              <!-- カラーテーマ（外観）設定 -->
+              <div class="settings-item-card">
+                <div class="settings-item-info">
+                  <div class="settings-item-title">カラーテーマ（外観）</div>
+                  <div class="settings-item-desc">画面全体の配色テーマを切り替えます（選択すると即座に反映されます）</div>
                 </div>
-                <div id="secLevelDescText" style="font-size: 0.74rem; color: var(--text-dim, #64748b); margin-top: 3px; line-height: 1.45;">パスワード不要。他人のLoome保護と、library.db単体の不正コピー・引き抜き防止が有効になります。</div>
-              </div>
-              <button type="button" class="btn btn-secondary btn-xs" id="secLockNowBtn" style="display: none; white-space: nowrap;" title="画面を今すぐロックします">🔒 今すぐロック</button>
-            </div>
-
-            <select id="secLevelSelect" class="styled-select" style="width: 100%; font-size: 0.8rem;">
-              <option value="0">Lv.0: エシカルモード（標準：他人のLoome拒否 ＆ DB引き抜き防止）</option>
-              <option value="1">Lv.1: 起動ロック ＆ DBロック（パスワード起動 ＋ サムネイル暗号化）</option>
-              <option value="2">Lv.2: フルロック（Lv.1 ＋ Loome実ファイルのカプセル化保護）</option>
-            </select>
-
-            <div id="secPasswordFieldsBox" style="display: flex; flex-direction: column; gap: 6px; margin-top: 2px;">
-              <input type="password" id="secCurrentPassInput" class="styled-input" placeholder="現在のパスワード（Lv.1/2 から変更・解除時のみ）" autocomplete="new-password" style="width: 100%; padding: 6px 8px; font-size: 0.8rem; border-radius: 4px; border: 1px solid var(--border-soft, rgba(255,255,255,0.18)); background: var(--bg-primary, #141413); color: var(--text-main, #eceae4);">
-              <input type="password" id="secNewPassInput" class="styled-input" placeholder="設定するパスワード（4文字以上 / Lv.1・Lv.2 用）" autocomplete="new-password" style="width: 100%; padding: 6px 8px; font-size: 0.8rem; border-radius: 4px; border: 1px solid var(--border-soft, rgba(255,255,255,0.18)); background: var(--bg-primary, #141413); color: var(--text-main, #eceae4);">
-            </div>
-
-            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 2px;">
-              <div style="font-size: 0.72rem; color: var(--text-muted, #94a3b8); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                救済キー: <code id="secRecoveryCodeText" style="color: var(--accent-primary, #c89d66); font-weight: 600;">----</code>
-                <button type="button" class="btn btn-secondary btn-xs" id="secCopyRecoveryCodeBtn" style="font-size: 0.68rem; padding: 1px 6px; margin-left: 4px;">コピー</button>
-              </div>
-              <button type="button" class="btn btn-primary btn-sm" id="secApplyConfigBtn" style="white-space: nowrap;">設定を適用</button>
-            </div>
-          </div>
-          <!-- バックアップ作成・管理 -->
-          <div style="background: var(--bg-secondary, rgba(255,255,255,0.04)); border: 1px solid var(--border-soft, rgba(255,255,255,0.1)); border-radius: var(--radius-sm, 4px); padding: 12px; display: flex; flex-direction: column; gap: 8px;">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-              <div class="settings-hover-caption">
-                <span style="font-weight: 600; color: var(--text-main, #eceae4);">データベースのバックアップ</span>
-                <div class="settings-caption-tooltip tooltip-up">
-                  <div>評価・タグ・サムネイルを含むライブラリDBの世代バックアップを作成・管理します</div>
-                  <div id="dbMaintBackupInfoText" style="margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--border-soft, rgba(255,255,255,0.12)); color: var(--accent-primary, #c89d66); font-size: 0.72rem;">確認中...</div>
+                <div class="settings-item-control">
+                  <select id="settingThemeSelect" class="styled-select" style="width: 100%;">
+                    <option value="tetheract-d">Tetheract D（ダーク：シャンパン＆モノトーン）</option>
+                    <option value="tetheract-l">Tetheract L（ライト：アンバー＆ソフトモノトーン）</option>
+                    <option value="sumi">夜墨 / Sumi（ダーク：銀墨 × 朱色）</option>
+                    <option value="paper">和紙 / Paper（ライト：生成り和紙 × 朱色）</option>
+                  </select>
                 </div>
               </div>
-              <button class="btn btn-primary btn-sm" id="dbMaintBackupBtn" style="white-space: nowrap;">今すぐ作成</button>
-            </div>
-            <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
-              <button class="btn btn-secondary btn-sm" id="dbMaintOpenBackupDirBtn" style="font-size: 0.76rem; padding: 2px 8px;">保存先フォルダを開く</button>
-            </div>
-          </div>
-        </div>
 
-        <!-- 右ペイン: タグツリーエディタ（構造・名前の編集専用） -->
-        <div class="settings-right-pane">
-          <div class="settings-tag-editor-header">
-            <div class="settings-hover-caption">
-              <span style="font-weight: 700; font-size: 0.92rem; color: var(--text-main, #eceae4);">タグツリーエディタ（構造・名前の編集専用）</span>
-              <div class="settings-caption-tooltip tooltip-wide">タグをドラッグ＆ドロップして他のタグの配下へ移動、またはリネーム・子タグ追加（+子）・全体削除が行えます</div>
+              <!-- モーションアジャスタ（Slap & Sweep）設定 -->
+              <div class="settings-item-card">
+                <div class="settings-item-info">
+                  <div class="settings-item-title">モーションアジャスタ（Slap &amp; Sweep）</div>
+                  <div class="settings-item-desc">画面切り替えやビューア開閉時の余韻（タメ・フェード）を調整します。左端「Slap (0%)」で瞬時切替、右端「Sweep (100%)」で暗室ビューアのような滑らかな余韻になります</div>
+                </div>
+                <div class="settings-item-control settings-motion-control">
+                  <button type="button" id="settingMotionSlapBtn" class="motion-preset-btn" title="余韻なしの瞬時切替 (0%) に設定">Slap</button>
+                  <input type="range" id="settingMotionSweepSlider" class="motion-sweep-slider" min="0" max="100" step="5" value="60" aria-label="Slap & Sweep モーション余韻度合い">
+                  <button type="button" id="settingMotionSweepBtn" class="motion-preset-btn" title="滑らかな余韻ビューア (100%) に設定">Sweep</button>
+                  <span id="settingMotionSweepVal" class="motion-sweep-badge">60% (Sweep)</span>
+                </div>
+              </div>
+
+              <!-- ツールバーの配置（フッター / ヘッダー）設定 -->
+              <div class="settings-item-card">
+                <div class="settings-item-info">
+                  <div class="settings-item-title">ツールバーの配置</div>
+                  <div class="settings-item-desc">メインツールバーを画面下部（フッター）または上部（ヘッダー）に配置します</div>
+                </div>
+                <div class="settings-item-control">
+                  <select id="settingToolbarPositionSelect" class="styled-select" style="width: 100%;">
+                    <option value="bottom">下部（フッター表示・上部ヘッダーなし）</option>
+                    <option value="top">上部（ヘッダー表示）</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- 左ペイン・フィルタツリーの表示スタイル設定 -->
+              <div class="settings-item-card">
+                <div class="settings-item-info">
+                  <div class="settings-item-title">左ペインのツリー表示スタイル</div>
+                  <div class="settings-item-desc">左サイドバーの全フィルタ項目（フォルダ・タグ・撮影地・年月・機材）を「ボックス枠（カード型）」または「フラット（シンプル行）」で一括統一します</div>
+                </div>
+                <div class="settings-item-control">
+                  <select id="settingSidebarTreeStyleSelect" class="styled-select" style="width: 100%;">
+                    <option value="boxed">ボックス枠（NeXTSTEP風カード・全フィルタ統一）</option>
+                    <option value="flat">フラット（シンプル行・全フィルタ統一）</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- 起動時のウィンドウサイズ設定 -->
+              <div class="settings-item-card">
+                <div class="settings-item-info">
+                  <div class="settings-item-title">起動時のウィンドウサイズ</div>
+                  <div class="settings-item-desc">アプリ起動時のウィンドウ状態を設定します（選択すると即座に現在の画面にも反映されます）</div>
+                </div>
+                <div class="settings-item-control">
+                  <select id="settingStartupWindowModeSelect" class="styled-select" style="width: 100%;">
+                    <option value="maximized">最大化（標準・タスクバーあり）</option>
+                    <option value="remember">前回のサイズ・位置を記憶（システム標準）</option>
+                    <option value="center">画面中央（約80%サイズ）</option>
+                    <option value="left_half">◧ 画面の左半分にスナップ（50%）</option>
+                    <option value="right_half">◨ 画面の右半分にスナップ（50%）</option>
+                    <option value="fullscreen">フルスクリーン（枠なし全画面 / F11）</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- UI表示言語切替 -->
+              <div class="settings-item-card settings-item-row">
+                <div class="settings-item-info">
+                  <div class="settings-item-title">UI表示言語 (Language)</div>
+                  <div class="settings-item-desc">インターフェイスの表示言語を日本語（JP）と英語（EN）で切り替えます</div>
+                </div>
+                <div class="settings-item-action">
+                  <button id="langToggleBtn" class="btn btn-secondary btn-sm" title="UI言語切り替え (日本語 ⇄ English)">
+                    <span class="lang-icon" id="langToggleIcon" style="display: none;"></span>
+                    <span id="langToggleLabel">JP</span>
+                  </button>
+                </div>
+              </div>
             </div>
-            <div style="display: flex; gap: 4px; flex-shrink: 0;">
-              <button type="button" class="tag-sort-count-toggle-btn" id="settingsTagSortToggleBtn" style="height: 24px !important; padding: 0 8px; font-size: 0.72rem;" title="クリックで「名前順（自然順）」と「枚数順」を切り替え（エディタのみ独立）">名前順</button>
-              <button type="button" class="btn btn-secondary btn-xs" id="settingsTagExpandAllBtn" title="すべての階層を展開">すべて展開</button>
-              <button type="button" class="btn btn-secondary btn-xs" id="settingsTagCollapseAllBtn" title="すべて折りたたむ">折りたたむ</button>
+          </section>
+
+          <!-- ==================== タブ2: フォルダ・メディア (folders) ==================== -->
+          <section class="settings-vtab-pane" data-settings-pane="folders" id="settingsPaneFolders">
+            <div class="settings-pane-header">
+              <h3>フォルダ・メディア管理</h3>
+              <p>写真ファイルのLoomeへの取り込み、フォルダパス指定スキャン、スキャン時のAI自動タグ設定、および登録済みメディア（SDカード・外部ドライブ）の管理を行います。</p>
             </div>
-          </div>
 
-          <!-- ルート（最上位階層）への移動ドロップゾーン -->
-          <div class="settings-tag-root-dropzone" id="settingsTagRootDropZone">
-            <span>子タグをここにドラッグ＆ドロップで「ルート（最上位階層）」へ独立移動</span>
-          </div>
+            <div class="settings-card-stack">
+              <!-- 写真ファイルの取り込み ＆ スキャン時AIタグ自動付与 -->
+              <div class="settings-item-card">
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+                  <div class="settings-item-info" style="flex: 1; min-width: 220px;">
+                    <div class="settings-item-title">写真・フォルダの取り込み ＆ スキャンオプション</div>
+                    <div class="settings-item-desc">PC内の写真ファイルまたはフォルダごと（サブフォルダ構造を維持して）保管庫 Loome へコピー取り込むか、スキャン後のAI自動タグ付与を切り替えます</div>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0; flex-wrap: wrap;">
+                    <button type="button" class="btn btn-primary btn-sm" id="uploadFolderBtn" title="PC内のフォルダを丸ごと（フォルダ名・子フォルダ階層・RAWペアを維持して）Loome へコピー取り込みます">フォルダごと取り込み...</button>
+                    <button type="button" class="btn btn-secondary btn-sm" id="uploadFilesBtn" title="PCの写真ファイルを選んで Loome へコピー＆取り込みます">写真ファイルを取り込み...</button>
+                    <input type="file" id="fileUploadInput" multiple accept="image/*,.rw2,.arw,.cr2,.cr3,.nef,.nrw,.dng,.raf,.orf,.pef,.srw,.x3f,.heic,.heif,.avif,.xmp,.pp3,.arp,.dop,.on1,.cos,.nksc,.spd" style="display:none;">
+                    <button type="button" class="btn btn-secondary btn-sm" id="folderAutoAiToggleBtn" title="スキャン完了後にAIタグを自動付与するかどうかを切り替えます">AI: OFF</button>
+                  </div>
+                </div>
 
-          <!-- タグツリー本体 -->
-          <div class="settings-tag-tree-container" id="settingsTagTreeContainer">
-            <!-- JSで動的生成 -->
-          </div>
+                <!-- フォルダパス直接入力スキャンバー -->
+                <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-soft, rgba(255,255,255,0.08));">
+                  <div style="font-size: 0.78rem; color: var(--text-muted, #94a3b8); margin-bottom: 6px;">フォルダパスを直接指定して管理下にスキャン追加:</div>
+                  <div class="folder-path-input-bar" id="folderPathInputBar" style="margin: 0; padding: 0; border: none; background: transparent;">
+                    <input type="text" id="folderPathInput" class="folder-path-input" placeholder="パスを直接入力してスキャン (例: D:\Photos\2026)..." title="フォルダパスを入力して Enter または右のボタンでスキャンを開始します">
+                    <button id="folderPathScanBtn" class="folder-path-scan-btn" title="入力したフォルダをスキャンして管理に追加">▶ スキャン</button>
+                  </div>
+                </div>
+              </div>
 
-          <!-- 最下部: 新規ルートタグ追加バー -->
-          <div class="settings-tag-root-add-bar">
-            <input type="text" id="settingsNewRootTagInput" class="inspector-tree-inline-input" placeholder="新規ルートタグ（または 親/子）を入力..." autocomplete="off">
-            <button type="button" class="btn btn-primary btn-xs" id="settingsAddRootTagBtn">+ 新規作成</button>
-          </div>
+              <!-- 管理対象メディア一覧（SDカード・外部ドライブ） -->
+              <div class="settings-item-card" style="display: flex; flex-direction: column; gap: 10px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+                  <div class="settings-item-info">
+                    <div class="settings-item-title">管理対象メディア一覧（SDカード・ドライブ）</div>
+                    <div class="settings-item-desc">登録済みのSDカードや外部ドライブごとの収録枚数・識別名・未接続キャッシュの削除を管理します</div>
+                  </div>
+                  <button type="button" class="btn btn-secondary btn-xs" id="refreshManagedMediaModalBtn" title="メディアの接続状態と集計を再読み込み">再読込</button>
+                </div>
+                <div id="managedMediaListContainer" style="display: flex; flex-direction: column; gap: 8px; max-height: 360px; overflow-y: auto; padding-right: 2px;">
+                  <!-- JSで動的生成 -->
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ==================== タブ3: タグツリー編集 (tags) ==================== -->
+          <section class="settings-vtab-pane settings-vtab-pane-tags" data-settings-pane="tags" id="settingsPaneTags">
+            <div class="settings-pane-header">
+              <h3>タグツリー構造エディタ</h3>
+              <p>タグの名前順ソートルールの設定、およびドラッグ＆ドロップによるタグ階層移動・リネーム・子タグ追加・一括削除を行います。</p>
+            </div>
+
+            <!-- タグツリーの並び順設定 -->
+            <div class="settings-item-card" style="margin-bottom: 10px; flex-shrink: 0;">
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+                <div class="settings-item-info" style="flex: 1; min-width: 200px;">
+                  <div class="settings-item-title">タグの名前順ルール</div>
+                  <div class="settings-item-desc">左ペインおよび右インスペクタで「枚数順」がオフのときに使われる名前ソート順</div>
+                </div>
+                <div style="min-width: 280px; flex: 1;">
+                  <select id="settingTagSortModeSelect" class="styled-select" style="width: 100%;">
+                    <option value="natural">数値の自然順・昇順（標準 / 例: 1 → 2 → 10 / 24 → 25 → 2410）</option>
+                    <option value="natural_desc">数値の自然順・降順（例: 2410 → 25 → 24 / 10 → 2 → 1）</option>
+                    <option value="lexical">文字順・昇順（例: 24-イベント → 2410-旅行 → 25-正月）</option>
+                    <option value="lexical_desc">文字順・降順（例: 25-正月 → 2410-旅行 → 24-イベント）</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- タグツリーエディタ本体 -->
+            <div class="settings-right-pane" style="flex: 1; min-height: 300px;">
+              <div class="settings-tag-editor-header">
+                <div class="settings-hover-caption">
+                  <span style="font-weight: 700; font-size: 0.9rem; color: var(--text-main, #eceae4);">タグ階層ツリー（ドラッグ＆ドロップで親タグ変更・リネーム）</span>
+                </div>
+                <div style="display: flex; gap: 4px; flex-shrink: 0;">
+                  <button type="button" class="tag-sort-count-toggle-btn" id="settingsTagSortToggleBtn" style="height: 24px !important; padding: 0 8px; font-size: 0.72rem;" title="クリックで「名前順（自然順）」と「枚数順」を切り替え（エディタのみ独立）">名前順</button>
+                  <button type="button" class="btn btn-secondary btn-xs" id="settingsTagExpandAllBtn" title="すべての階層を展開">すべて展開</button>
+                  <button type="button" class="btn btn-secondary btn-xs" id="settingsTagCollapseAllBtn" title="すべて折りたたむ">折りたたむ</button>
+                </div>
+              </div>
+
+              <!-- ルート（最上位階層）への移動ドロップゾーン -->
+              <div class="settings-tag-root-dropzone" id="settingsTagRootDropZone">
+                <span>子タグをここにドラッグ＆ドロップで「ルート（最上位階層）」へ独立移動</span>
+              </div>
+
+              <!-- タグツリー本体 -->
+              <div class="settings-tag-tree-container" id="settingsTagTreeContainer">
+                <!-- JSで動的生成 -->
+              </div>
+
+              <!-- 最下部: 新規ルートタグ追加バー -->
+              <div class="settings-tag-root-add-bar">
+                <input type="text" id="settingsNewRootTagInput" class="inspector-tree-inline-input" placeholder="新規ルートタグ（または 親/子）を入力..." autocomplete="off">
+                <button type="button" class="btn btn-primary btn-xs" id="settingsAddRootTagBtn">+ 新規作成</button>
+              </div>
+            </div>
+          </section>
+
+          <!-- ==================== タブ4: データベース・保守 (database) ==================== -->
+          <section class="settings-vtab-pane" data-settings-pane="database" id="settingsPaneDatabase">
+            <div class="settings-pane-header">
+              <h3>データベース・保守</h3>
+              <p>ライブラリデータベース（library.db）の統計確認、世代バックアップの作成・復元フォルダ参照、および空き領域の最適化（VACUUM）を行います。</p>
+            </div>
+
+            <div class="settings-card-stack">
+              <!-- DB状態サマリー -->
+              <div class="settings-item-card">
+                <div class="settings-item-title" style="margin-bottom: 8px;">データベースの状態</div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.85rem; color: var(--text-muted, #94a3b8);">
+                  <div>登録写真数: <strong id="dbMaintPhotoCount" style="color: var(--text-main, #eceae4);">-</strong></div>
+                  <div>DBサイズ: <strong id="dbMaintDbSize" style="color: var(--text-main, #eceae4);">-</strong></div>
+                  <div>サムネイル数: <strong id="dbMaintThumbCount" style="color: var(--text-main, #eceae4);">-</strong></div>
+                  <div>解放可能領域: <strong id="dbMaintWalSize" style="color: var(--text-main, #eceae4);">-</strong></div>
+                </div>
+              </div>
+
+              <!-- バックアップ作成・管理 -->
+              <div class="settings-item-card">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;">
+                  <div class="settings-item-info">
+                    <div class="settings-item-title">データベースのバックアップ</div>
+                    <div class="settings-item-desc">評価・タグ・サムネイルを含むライブラリDBの世代バックアップを作成・管理します</div>
+                    <div id="dbMaintBackupInfoText" style="margin-top: 6px; color: var(--accent-primary, #c89d66); font-size: 0.78rem;">確認中...</div>
+                  </div>
+                  <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex-shrink: 0;">
+                    <button class="btn btn-primary btn-sm" id="dbMaintBackupBtn" style="white-space: nowrap;">今すぐバックアップ作成</button>
+                    <button class="btn btn-secondary btn-xs" id="dbMaintOpenBackupDirBtn">保存先フォルダを開く</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 最適化 (VACUUM) -->
+              <div class="settings-item-card settings-item-row">
+                <div class="settings-item-info">
+                  <div class="settings-item-title">データベース最適化 (VACUUM)</div>
+                  <div class="settings-item-desc">削除後の不要領域を解放してファイルサイズを縮小し、インデックスと読み書き速度を最適化します</div>
+                </div>
+                <div class="settings-item-action">
+                  <button class="btn btn-secondary btn-sm" id="dbMaintVacuumBtn" style="white-space: nowrap;">最適化を実行</button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ==================== タブ5: セキュリティ (security) ==================== -->
+          <section class="settings-vtab-pane" data-settings-pane="security" id="settingsPaneSecurity">
+            <div class="settings-pane-header">
+              <h3>セキュリティ ＆ エシカル保護設定</h3>
+              <p>持ち歩き運用時のプライバシー保護レベル（Lv.0〜Lv.2）、起動パスワード、および緊急救済キーを管理します。</p>
+            </div>
+
+            <div class="settings-card-stack">
+              <div class="settings-item-card" style="border-color: rgba(200, 157, 102, 0.35);">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 8px;">
+                  <div style="min-width: 0; flex: 1;">
+                    <div style="font-weight: 700; color: var(--text-main, #eceae4); display: flex; align-items: center; gap: 8px;">
+                      <span>セキュリティ保護レベル</span>
+                      <span id="secSettingsCurrentBadge" style="font-size: 0.75rem; padding: 2px 8px; border-radius: 4px; background: rgba(200,157,102,0.18); color: var(--accent-primary, #c89d66);">Lv.0</span>
+                    </div>
+                    <div id="secLevelDescText" style="font-size: 0.8rem; color: var(--text-dim, #64748b); margin-top: 4px; line-height: 1.5;">パスワード不要。他人のLoome保護と、library.db単体の不正コピー・引き抜き防止が有効になります。</div>
+                  </div>
+                  <button type="button" class="btn btn-secondary btn-xs" id="secLockNowBtn" style="display: none; white-space: nowrap;" title="画面を今すぐロックします">🔒 今すぐロック</button>
+                </div>
+
+                <select id="secLevelSelect" class="styled-select" style="width: 100%; font-size: 0.84rem; margin-bottom: 8px;">
+                  <option value="0">Lv.0: エシカルモード（標準：他人のLoome拒否 ＆ DB引き抜き防止）</option>
+                  <option value="1">Lv.1: 起動ロック ＆ DBロック（パスワード起動 ＋ サムネイル暗号化）</option>
+                  <option value="2">Lv.2: フルロック（Lv.1 ＋ Loome実ファイルのカプセル化保護）</option>
+                </select>
+
+                <div id="secPasswordFieldsBox" style="display: flex; flex-direction: column; gap: 8px; margin-top: 4px;">
+                  <input type="password" id="secCurrentPassInput" class="styled-input" placeholder="現在のパスワード（Lv.1/2 から変更・解除時のみ）" autocomplete="new-password" style="width: 100%; padding: 8px 10px; font-size: 0.84rem; border-radius: 4px; border: 1px solid var(--border-soft, rgba(255,255,255,0.18)); background: var(--bg-primary, #141413); color: var(--text-main, #eceae4);">
+                  <input type="password" id="secNewPassInput" class="styled-input" placeholder="設定するパスワード（4文字以上 / Lv.1・Lv.2 用）" autocomplete="new-password" style="width: 100%; padding: 8px 10px; font-size: 0.84rem; border-radius: 4px; border: 1px solid var(--border-soft, rgba(255,255,255,0.18)); background: var(--bg-primary, #141413); color: var(--text-main, #eceae4);">
+                </div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border-soft, rgba(255,255,255,0.08));">
+                  <div style="font-size: 0.78rem; color: var(--text-muted, #94a3b8); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                    救済キー: <code id="secRecoveryCodeText" style="color: var(--accent-primary, #c89d66); font-weight: 600;">----</code>
+                    <button type="button" class="btn btn-secondary btn-xs" id="secCopyRecoveryCodeBtn" style="font-size: 0.72rem; padding: 2px 8px; margin-left: 6px;">コピー</button>
+                  </div>
+                  <button type="button" class="btn btn-primary btn-sm" id="secApplyConfigBtn" style="white-space: nowrap;">設定を適用</button>
+                </div>
+              </div>
+            </div>
+          </section>
         </div>
       </div>
 
@@ -2332,7 +2521,7 @@
           
           <div class="takeout-summary-text">
             <span class="takeout-summary-title">対象写真: <strong id="smartTakeoutPhotoCount">0</strong> 枚</span>
-            <span class="takeout-summary-desc">元の写真ファイルは一切変更されず、指定のフォルダへ新しく書き出されます</span>
+            <span class="takeout-summary-desc">元ファイルは変更されません（RAW+JPEGはJPEG原本から、RAW単体は内蔵プレビューから書き出します）</span>
           </div>
         </div>
 
@@ -2354,6 +2543,10 @@
                 <label class="takeout-checkbox-label" id="labelExportXmpSidecar" title="書き出し画像と一緒に評価・タグ・GPS・調整情報を記録した .xmp サイドカーファイルも出力します">
                   <input type="checkbox" id="exportXmpSidecarCheck">
                   <span>XMPサイドカー (.xmp) も一緒に出力する（評価・タグ・調整情報の保持）</span>
+                </label>
+                <label class="takeout-checkbox-label" id="labelExportRawOriginal" title="RAW単体またはRAW+JPEGペアの写真について、元のRAWファイル（.ARW / .CR3 / .NEF / .DNG 等）を一切加工せず同じベース名で出力先へ同時コピーします">
+                  <input type="checkbox" id="exportRawOriginalCheck">
+                  <span>RAW原本も無加工で抱き合わせ出力する（.ARW / .CR3 / .NEF 等）</span>
                 </label>
               </div>
             </div>
@@ -2688,8 +2881,8 @@
   <div class="drag-drop-overlay" id="dragDropOverlay" style="display: none;">
     <div class="drag-drop-box">
       <div class="drag-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></div>
-      <h2>写真をドロップして追加</h2>
-      <p>JPEG, PNG, WebP などの画像ファイルをここにドロップしてください</p>
+      <h2 id="dragDropOverlayTitle">写真・フォルダをドロップして Loome へ取り込み</h2>
+      <p id="dragDropOverlayDesc">画像・RAWファイル、またはフォルダごとここにドロップしてください（子フォルダ階層も維持されます）</p>
     </div>
   </div>
 
@@ -2783,6 +2976,55 @@
       <div class="modal-footer">
         <button class="btn btn-secondary" id="cancelStorageFolderModalBtn">キャンセル (Esc)</button>
         <button class="btn btn-primary" id="storageFolderSubmitBtn">作成する</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loome 保存先・移動先フォルダ選択モーダル（小窓） -->
+  <div class="modal-backdrop" id="loomePickerModal" style="display: none;">
+    <div class="modal-card loome-picker-modal-card" style="max-width: 540px;">
+      <div class="modal-header">
+        <div class="modal-header-title">
+          <h2 id="loomePickerModalTitle">Loome へコピー</h2>
+          <span class="modal-subtitle" id="loomePickerModalSubtitle">取り込み先のフォルダを選択（ダブルクリックで子フォルダを開く）</span>
+        </div>
+        <button type="button" class="modal-close-btn" id="closeLoomePickerModalBtn" title="閉じる">&times;</button>
+      </div>
+
+      <div class="modal-body loome-picker-modal-body">
+        <!-- Loome ドライブ切替タブ（本体 Loome / 外付けメディア Loome） -->
+        <div class="loome-picker-drive-tabs" id="loomePickerDriveTabs"></div>
+
+        <!-- ナビゲーションバー（上へボタン ＋ パンくずパス ＋ 新規フォルダ作成トグル） -->
+        <div class="loome-picker-nav-bar">
+          <button type="button" class="btn btn-secondary btn-xs loome-picker-up-btn" id="loomePickerUpBtn" title="上の階層へ戻る (Backspace)">↑ 上へ</button>
+          <div class="loome-picker-breadcrumbs" id="loomePickerBreadcrumbs"></div>
+          <button type="button" class="btn btn-secondary btn-xs loome-picker-new-btn" id="loomePickerToggleNewFolderBtn" title="現在開いている階層に新しいサブフォルダを作成します">＋ 新規フォルダ</button>
+        </div>
+
+        <!-- インライン新規サブフォルダ作成バー -->
+        <div class="loome-picker-new-folder-bar" id="loomePickerNewFolderBar" style="display: none;">
+          <input type="text" id="loomePickerNewFolderInput" class="loome-picker-new-input" placeholder="新しいフォルダ名を入力して Enter..." autocomplete="off">
+          <button type="button" class="btn btn-primary btn-xs" id="loomePickerCreateFolderBtn">作成</button>
+          <button type="button" class="btn btn-secondary btn-xs" id="loomePickerCancelNewFolderBtn" title="キャンセル">&times;</button>
+        </div>
+
+        <!-- 操作ヒント -->
+        <div class="loome-picker-hint" id="loomePickerHint">クリックで保存先を選択 ／ ダブルクリック（または「開く ▸」）で子フォルダを展開</div>
+
+        <!-- 子フォルダ一覧 -->
+        <div class="loome-picker-folder-list" id="loomePickerFolderList"></div>
+      </div>
+
+      <div class="modal-footer loome-picker-footer">
+        <div class="loome-picker-footer-dest">
+          <span class="loome-picker-dest-caption" id="loomePickerDestCaption">保存先:</span>
+          <code class="loome-picker-dest-val" id="loomePickerTargetPreview">Loome (直下)</code>
+        </div>
+        <div class="loome-picker-footer-actions">
+          <button type="button" class="btn btn-secondary" id="cancelLoomePickerModalBtn">キャンセル (Esc)</button>
+          <button type="button" class="btn btn-primary" id="loomePickerSubmitBtn">ここへ取り込む</button>
+        </div>
       </div>
     </div>
   </div>
@@ -2950,8 +3192,12 @@
           </div>
         </div>
         <details class="legacy-takeout-details">
-          <summary class="legacy-takeout-summary">簡易フォルダコピー (take_out/)</summary>
+          <summary class="legacy-takeout-summary">無加工フォルダコピー (take_out/)</summary>
           <div class="legacy-takeout-body">
+            <label id="contextImportIncludeRawLabel" style="display: flex; align-items: center; gap: 6px; padding: 4px 8px 6px 8px; font-size: 0.74rem; color: var(--text-secondary); cursor: pointer;" title="ONにすると、RAW+JPEGペアのRAW原本も一緒に無加工コピーし、RAW単体の写真もコピー対象に含めます">
+              <input type="checkbox" id="contextImportIncludeRawCheck">
+              <span>RAW抱き合わせ（無加工原本もコピー）</span>
+            </label>
             <div class="submenu-create-input">
               <input type="text" id="contextNewImportFolderInput" placeholder="新規フォルダ名..." autocomplete="off">
               <button class="btn btn-primary btn-xs" id="contextConfirmNewImportFolderBtn" title="take_out内にフォルダを作成してコピー">作成&amp;送信</button>
@@ -2977,28 +3223,16 @@
     <!-- Loome セクション（セパレーター ＋ 小キャプション） -->
     <div class="context-menu-divider" id="contextMenuStorageTopDivider" style="display: none;"></div>
     <div class="context-menu-section-caption" id="contextMenuStorageCaption" style="display: none;">📦 Loome 保管庫操作</div>
-    <!-- Loome へコピー（外部写真選択時） -->
-    <div class="context-menu-item has-submenu" id="contextMenuStorageImportItem" style="display: none;">
+    <!-- Loome へコピー（小窓ピッカーで保存先を選択） -->
+    <div class="context-menu-item" id="contextMenuStorageImportItem" style="display: none;">
       <div class="menu-item-content">
-        <span title="選択した写真を Loome フォルダへコピー＆取り込みます">Loomeへコピー</span>
-        <span class="submenu-arrow">▶</span>
-      </div>
-      <div class="context-submenu ns-loome-submenu" id="contextStorageImportSubmenu">
-        <div class="submenu-folder-list ns-cascade-root" id="contextStorageImportFolderList">
-          <div class="submenu-folder-loading">読み込み中...</div>
-        </div>
+        <span id="contextMenuStorageImportLabel" title="小窓を開いて Loome・サブフォルダを選択し、写真をコピー取り込みます">Loomeへコピー...</span>
       </div>
     </div>
-    <!-- Loome 内で移動（Loome内写真選択時） -->
-    <div class="context-menu-item has-submenu" id="contextMenuStorageMoveItem" style="display: none;">
+    <!-- Loome 内で移動（小窓ピッカーで移動先を選択） -->
+    <div class="context-menu-item" id="contextMenuStorageMoveItem" style="display: none;">
       <div class="menu-item-content">
-        <span title="Loome 内の写真を別サブフォルダへ移動します">Loome内で移動</span>
-        <span class="submenu-arrow">▶</span>
-      </div>
-      <div class="context-submenu ns-loome-submenu" id="contextStorageMoveSubmenu">
-        <div class="submenu-folder-list ns-cascade-root" id="contextStorageMoveFolderList">
-          <div class="submenu-folder-loading">読み込み中...</div>
-        </div>
+        <span id="contextMenuStorageMoveLabel" title="小窓を開いて移動先の Loome・サブフォルダを選択します">Loome内で移動...</span>
       </div>
     </div>
     <!-- Loome ファイル名変更 / 一括連番リネーム（Loome内写真選択時） -->
@@ -3049,6 +3283,17 @@
     <!-- Loome 専用メニュー項目 -->
     <div class="folder-menu-group" id="folderMenuStorageGroup" style="display: none;">
       <div class="context-menu-section-caption" id="folderMenuStorageCaption">📦 Loome 保管庫操作</div>
+      <div class="context-menu-item" id="folderMenuStorageImportFolder" title="PC内のフォルダを丸ごと（フォルダ名・子フォルダ階層ごと）この Loome フォルダへコピー取り込みます">
+        <div class="menu-item-content">
+          <span>外部フォルダごと取り込み...</span>
+        </div>
+      </div>
+      <div class="context-menu-item" id="folderMenuStorageImportFiles" title="PC内の写真ファイルを選択してこの Loome フォルダへコピー取り込みます">
+        <div class="menu-item-content">
+          <span>写真ファイルを取り込み...</span>
+        </div>
+      </div>
+      <div class="context-menu-divider" style="margin: 4px 0;"></div>
       <div class="context-menu-item" id="folderMenuStorageCreateSub">
         <div class="menu-item-content">
           <span>新規サブフォルダを作成...</span>
@@ -3140,6 +3385,11 @@
     </div>
 
     <div class="context-menu-divider"></div>
+    <div class="context-menu-item" id="folderMenuCopyFolderToLoome" style="display: none;" title="このフォルダを丸ごと（子フォルダ階層・RAWペア・評価タグを維持して）Loome へコピー取り込みます">
+      <div class="menu-item-content">
+        <span id="folderMenuCopyFolderToLoomeLabel">📦 このフォルダごと Loome へコピー...</span>
+      </div>
+    </div>
     <div class="context-menu-item" id="folderMenuCreateLoome" style="display: none;">
       <div class="menu-item-content">
         <span>📦 このドライブに Loome を作成...</span>
@@ -3157,28 +3407,32 @@
     </div>
   </div>
 
-  <script src="/js/common.js?v=1.8.10"></script>
-  <script src="/js/selection.js?v=1.8.10"></script>
-  <script src="/js/inspector.js?v=1.8.10"></script>
-  <script src="/js/lightbox.js?v=1.8.10"></script>
-  <script src="/js/adjust.js?v=1.8.10"></script>
-  <script src="/js/histogram.js?v=1.8.10"></script>
-  <script src="/js/compare.js?v=1.8.10"></script>
-  <script src="/js/takeout.js?v=1.8.10"></script>
-  <script src="/js/presets.js?v=1.8.10"></script>
-  <script src="/js/slideshow.js?v=1.8.10"></script>
-  <script src="/js/location_tree.js?v=1.8.10"></script>
-  <script src="/js/folder_tree.js?v=1.8.10"></script>
-  <script src="/js/location_map.js?v=1.8.10"></script>
-  <script src="/js/lab.js?v=1.8.10"></script>
-  <script src="/js/sidebar_filters.js?v=1.8.10"></script>
-  <script src="/js/storage.js?v=1.8.10"></script>
-  <script src="/js/maintenance_reminders.js?v=1.8.10"></script>
-  <script src="/js/filter_chips.js?v=1.8.10"></script>
-  <script src="/js/media_volumes.js?v=1.8.10"></script>
-  <script src="/js/security_ui.js?v=1.8.10"></script>
-  <script src="/js/app.js?v=1.8.10"></script>
-  <script src="/js/i18n_dict.js?v=1.8.10"></script>
-  <script src="/js/i18n.js?v=1.8.10"></script>
+  <script src="/js/core/tree_builder.js?v=2.2.1"></script>
+  <script src="/js/common.js?v=2.2.1"></script>
+  <script src="/js/selection.js?v=2.2.1"></script>
+  <script src="/js/inspector.js?v=2.2.1"></script>
+  <script src="/js/lightbox.js?v=2.2.1"></script>
+  <script src="/js/adjust.js?v=2.2.1"></script>
+  <script src="/js/histogram.js?v=2.2.1"></script>
+  <script src="/js/compare.js?v=2.2.1"></script>
+  <script src="/js/takeout.js?v=2.2.1"></script>
+  <script src="/js/presets.js?v=2.2.1"></script>
+  <script src="/js/slideshow.js?v=2.2.1"></script>
+  <script src="/js/location_tree.js?v=2.2.1"></script>
+  <script src="/js/folder_tree.js?v=2.2.1"></script>
+  <script src="/js/location_map.js?v=2.2.1"></script>
+  <script src="/js/lab.js?v=2.2.1"></script>
+  <script src="/js/sidebar_filters.js?v=2.2.1"></script>
+  <script src="/js/sidebar_cascade_flyout.js?v=2.2.1"></script>
+  <script src="/js/storage.js?v=2.2.1"></script>
+  <script src="/js/loome_picker.js?v=2.2.1"></script>
+  <script src="/js/maintenance_reminders.js?v=2.2.1"></script>
+  <script src="/js/filter_chips.js?v=2.2.1"></script>
+  <script src="/js/media_volumes.js?v=2.2.1"></script>
+  <script src="/js/security_ui.js?v=2.2.1"></script>
+  <script src="/js/field_log_panel.js?v=2.2.1"></script>
+  <script src="/js/app.js?v=2.2.1"></script>
+  <script src="/js/i18n_dict.js?v=2.2.1"></script>
+  <script src="/js/i18n.js?v=2.2.1"></script>
 </body>
 </html>

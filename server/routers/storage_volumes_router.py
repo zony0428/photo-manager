@@ -19,6 +19,7 @@ from ..database import (
 from ..database.folders import clear_folders_fs_cache
 from ..media_watcher import update_known_volume_meta
 from ..scanner import clear_online_cache
+from ..storage_folder_import import import_folder_to_storage
 from ..storage_manager import (
     batch_rename_photos_in_storage,
     create_storage_subfolder,
@@ -251,6 +252,11 @@ class StorageImportPhotosRequest(BaseModel):
     destination: Optional[str] = ""
 
 
+class StorageImportFolderRequest(BaseModel):
+    source_dir: Optional[str] = None
+    destination: Optional[str] = ""
+
+
 class StorageMovePhotosRequest(BaseModel):
     photo_ids: List[int]
     destination: Optional[str] = ""
@@ -302,6 +308,8 @@ def api_rename_storage_folder(req: StorageRenameFolderRequest):
     try:
         res = rename_storage_subfolder(req.folder_path, req.new_name)
         clear_folders_fs_cache()
+        invalidate_loome_roots_cache()
+        clear_api_photos_cache()
         return res
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))
@@ -319,6 +327,8 @@ def api_delete_storage_folder(
     try:
         res = delete_storage_subfolder(target_path)
         clear_folders_fs_cache()
+        invalidate_loome_roots_cache()
+        clear_api_photos_cache()
         return res
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))
@@ -332,6 +342,23 @@ def api_import_photos_to_storage(req: StorageImportPhotosRequest):
     try:
         res = import_photos_to_storage(req.photo_ids, req.destination)
         clear_folders_fs_cache()
+        invalidate_loome_roots_cache()
+        clear_api_photos_cache()
+        return res
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/api/storage/import-folder")
+def api_import_folder_to_storage(req: StorageImportFolderRequest):
+    """外部フォルダをフォルダ構造・RAWペア・付随サイドカーごと Loome 指定先へコピー取り込みする"""
+    try:
+        res = import_folder_to_storage(source_dir=req.source_dir, destination=req.destination)
+        clear_folders_fs_cache()
+        invalidate_loome_roots_cache()
+        clear_api_photos_cache()
         return res
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))
@@ -345,6 +372,8 @@ def api_move_photos_in_storage(req: StorageMovePhotosRequest):
     try:
         res = move_photos_in_storage(req.photo_ids, req.destination)
         clear_folders_fs_cache()
+        invalidate_loome_roots_cache()
+        clear_api_photos_cache()
         return res
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))
@@ -358,6 +387,8 @@ def api_rename_photo_in_storage(req: StorageRenamePhotoRequest):
     try:
         res = rename_photo_in_storage(req.photo_id, req.new_name)
         clear_folders_fs_cache()
+        invalidate_loome_roots_cache()
+        clear_api_photos_cache()
         return res
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))
@@ -376,6 +407,8 @@ def api_batch_rename_photos_in_storage(req: StorageBatchRenamePhotosRequest):
             start_number=req.start_number,
         )
         clear_folders_fs_cache()
+        invalidate_loome_roots_cache()
+        clear_api_photos_cache()
         return res
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))

@@ -19,6 +19,8 @@
   let labelExifSyncDb = null;
   let exportXmpSidecarEl = null;
   let labelExportXmpSidecar = null;
+  let exportRawOriginalEl = null;
+  let labelExportRawOriginal = null;
   let customSizeInput = null;
   let qualitySlider = null;
   let qualityVal = null;
@@ -53,6 +55,8 @@
     labelExifSyncDb = document.getElementById('labelExifSyncDb');
     exportXmpSidecarEl = document.getElementById('exportXmpSidecarCheck');
     labelExportXmpSidecar = document.getElementById('labelExportXmpSidecar');
+    exportRawOriginalEl = document.getElementById('exportRawOriginalCheck');
+    labelExportRawOriginal = document.getElementById('labelExportRawOriginal');
     customSizeInput = document.getElementById('takeoutCustomSize');
     qualitySlider = document.getElementById('takeoutQualitySlider');
     qualityVal = document.getElementById('takeoutQualityVal');
@@ -112,6 +116,7 @@
         apply_adjustments: opts.apply_adjustments,
         exif_sync_db: opts.exif_sync_db,
         export_xmp_sidecar: opts.export_xmp_sidecar,
+        export_raw_original: opts.export_raw_original,
         resize_mode: opts.resize_mode,
         custom_long_edge: opts.custom_long_edge,
         format: opts.format,
@@ -157,6 +162,7 @@
       apply_adjustments: applyAdjustmentsEl ? applyAdjustmentsEl.checked : true,
       exif_sync_db: exifSyncDbEl ? exifSyncDbEl.checked : true,
       export_xmp_sidecar: !!(exportXmpSidecarEl ? exportXmpSidecarEl.checked : document.getElementById('exportXmpSidecarCheck')?.checked),
+      export_raw_original: !!(exportRawOriginalEl ? exportRawOriginalEl.checked : document.getElementById('exportRawOriginalCheck')?.checked),
       exif_remove_gps: exifGpsEl ? exifGpsEl.checked : false,
       exif_remove_exposure: exifExposureEl ? exifExposureEl.checked : false,
       exif_remove_camera: exifCameraEl ? exifCameraEl.checked : false,
@@ -179,6 +185,9 @@
       }
       if (exportXmpSidecarEl && typeof saved.export_xmp_sidecar === 'boolean') {
         exportXmpSidecarEl.checked = saved.export_xmp_sidecar;
+      }
+      if (exportRawOriginalEl && typeof saved.export_raw_original === 'boolean') {
+        exportRawOriginalEl.checked = saved.export_raw_original;
       }
       if (saved.resize_mode) {
         const r = document.querySelector(`input[name="takeoutResize"][value="${saved.resize_mode}"]`);
@@ -497,7 +506,8 @@
       if (progressStatus) progressStatus.textContent = '完了しました！';
       if (progressCount) progressCount.textContent = `${result.success_count} / ${result.total}`;
 
-      const msg = `${result.success_count}枚の写真を「${opts.destination || 'take_out'}」に書き出しました！` +
+      const rawBundleNote = result.raw_copied_count > 0 ? `（RAW原本 ${result.raw_copied_count}枚も無加工コピー）` : '';
+      const msg = `${result.success_count}枚の写真を「${opts.destination || 'take_out'}」に書き出しました！${rawBundleNote}` +
         (result.failed_count > 0 ? ` (${result.failed_count}枚失敗)` : '');
 
       _showToast(msg, result.failed_count > 0 ? 'warning' : 'success', 5000);

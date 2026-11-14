@@ -168,7 +168,7 @@ body.selection-active .card-select-checkbox {
 .context-menu-item > .context-submenu.is-submenu-open,
 .context-menu-item:focus-within > .context-submenu {
   display: flex;
-  animation: nsMenuSoftFadeIn 0.18s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: nsMenuSoftFadeIn var(--motion-cascade-fade, 0.11s) cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .context-menu.submenu-left .context-submenu {
@@ -581,7 +581,7 @@ body.selection-active .card-select-checkbox {
   background: rgba(251, 249, 244, 0.99);
   border-radius: 2px;
   overflow: visible !important;
-  animation: nsMenuSoftFadeIn 0.18s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: nsMenuSoftFadeIn var(--motion-cascade-fade, 0.11s) cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 /* 第2階層以降の右展開カスケードパネル */

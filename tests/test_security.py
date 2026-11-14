@@ -4,10 +4,14 @@
 （同梱 Python に pytest は無いため、末尾の unittest ラッパー経由で discover からも実行される）
 """
 
+import contextlib
+import io
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any, Dict
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
@@ -15,11 +19,127 @@ if str(ROOT) not in sys.path:
 
 from fastapi.testclient import TestClient  # noqa: E402
 
+from server import database as db_pkg_mod, field_log_store, lan_access, mobile_bundle, mobile_delta, security as security_mod, storage_manager  # noqa: E402
 from server.app import app  # noqa: E402
+from server.database import close_all_connections, initialize_database, stats as db_stats_mod, switch_database_path as _raw_switch_database_path  # noqa: E402
+from server.database import connection as db_conn_mod  # noqa: E402
 from server.lan_access import LAN_TOKEN, LAN_TOKEN_COOKIE, is_host_header_allowed, is_lan_path_allowed  # noqa: E402
+from server.security import get_instance_file_path, initialize_security_state, set_instance_file_for_test  # noqa: E402
+
+# テスト高速化パッチ適用前の本番 PBKDF2 反復回数を退避・検証用に保持
+_PROD_PBKDF2_ITERATIONS = security_mod.PBKDF2_ITERATIONS
+_PROD_DERIVE_KEK_DEFAULTS = security_mod.derive_kek.__defaults__
+_TEST_PBKDF2_ITERATIONS = 1_000
+
+_MODULE_CTX: Dict[str, Any] = {}
 
 LOCAL = TestClient(app, base_url="http://127.0.0.1:8088")
 LAN_IP = "192.168.1.50"
+
+
+def switch_database_path(new_path: Path) -> Path:
+    """connection.DB_PATH に加え stats.DB_PATH（vacuum_database等）も同期切替して本番DB接触を完全に防ぐ"""
+    old_path = _raw_switch_database_path(new_path)
+    resolved = Path(new_path)
+    db_stats_mod.DB_PATH = resolved
+    db_pkg_mod.DB_PATH = resolved
+    return old_path
+
+
+def setUpModule() -> None:
+    """本番 cache/library.db や Tetheract_Mobile.html に一切触れないよう一時環境へ完全隔離し、PBKDF2・LAN待受を軽量化する"""
+    if _MODULE_CTX.get("active"):
+        return
+    temp_dir = tempfile.TemporaryDirectory()
+    tmp_root = Path(temp_dir.name)
+    tmp_cache = tmp_root / "cache"
+    tmp_loome = tmp_root / "Loome"
+    tmp_cache.mkdir(parents=True, exist_ok=True)
+    tmp_loome.mkdir(parents=True, exist_ok=True)
+
+    stack = contextlib.ExitStack()
+    mock_lan_main = stack.enter_context(
+        patch("server.lan_access.ensure_lan_listeners", return_value=["192.168.1.10"])
+    )
+    mock_lan_router = stack.enter_context(
+        patch("server.routers.mobile_router.ensure_lan_listeners", return_value=["192.168.1.10"])
+    )
+    stack.enter_context(patch("server.database.switch_database_path", side_effect=switch_database_path))
+    stack.enter_context(patch("server.database.connection.switch_database_path", side_effect=switch_database_path))
+
+    _MODULE_CTX.update({
+        "active": True,
+        "temp_dir": temp_dir,
+        "stack": stack,
+        "mock_lan_main": mock_lan_main,
+        "mock_lan_router": mock_lan_router,
+        "orig_db_path": db_conn_mod.DB_PATH,
+        "orig_lan_auth_file": lan_access._LAN_AUTH_FILE,
+        "orig_lan_paired": lan_access._lan_paired,
+        "orig_lan_token": lan_access.LAN_TOKEN,
+        "orig_approved_ips": dict(lan_access._approved_client_ips),
+        "orig_standalone_html": mobile_bundle.STANDALONE_HTML_PATH,
+        "orig_delta_db": mobile_delta.DELTA_DB_PATH,
+        "orig_locker_state": mobile_delta.LOCKER_STATE_PATH,
+        "orig_loome_dir": storage_manager.LOOME_DIR,
+        "orig_storage_dir": storage_manager.STORAGE_DIR,
+        "orig_legacy_dir": storage_manager.LEGACY_STORAGE_DIR,
+        "orig_field_logs_dir": field_log_store.FIELD_LOGS_DIR,
+    })
+
+    security_mod.PBKDF2_ITERATIONS = _TEST_PBKDF2_ITERATIONS
+    security_mod.derive_kek.__defaults__ = (_TEST_PBKDF2_ITERATIONS,)
+
+    lan_access._LAN_AUTH_FILE = tmp_cache / ".mobile_lan_auth.json"
+    mobile_bundle.STANDALONE_HTML_PATH = tmp_root / "Tetheract_Mobile.html"
+    mobile_delta.DELTA_DB_PATH = tmp_cache / "mobile_delta.db"
+    mobile_delta.LOCKER_STATE_PATH = tmp_cache / "mobile_locker_state.json"
+    storage_manager.LOOME_DIR = tmp_loome
+    storage_manager.STORAGE_DIR = tmp_loome
+    storage_manager.LEGACY_STORAGE_DIR = tmp_root / "legacy_storage_unused"
+    field_log_store.FIELD_LOGS_DIR = tmp_cache / "field_logs"
+
+    set_instance_file_for_test(tmp_root / ".tetheract_instance_sec_module")
+    switch_database_path(tmp_cache / "sec_module_library.db")
+    initialize_database()
+    initialize_security_state(force_reload=True)
+
+
+def tearDownModule() -> None:
+    """一時DB・モック・パッチをすべて解除し、本番DBファイルを開かずに元の設定値へ戻す"""
+    if not _MODULE_CTX.get("active"):
+        return
+    try:
+        close_all_connections()
+        set_instance_file_for_test(None)
+        switch_database_path(_MODULE_CTX["orig_db_path"])
+
+        security_mod.PBKDF2_ITERATIONS = _PROD_PBKDF2_ITERATIONS
+        security_mod.derive_kek.__defaults__ = _PROD_DERIVE_KEK_DEFAULTS
+
+        lan_access._LAN_AUTH_FILE = _MODULE_CTX["orig_lan_auth_file"]
+        lan_access._lan_paired = _MODULE_CTX["orig_lan_paired"]
+        lan_access.LAN_TOKEN = _MODULE_CTX["orig_lan_token"]
+        lan_access._approved_client_ips.clear()
+        lan_access._approved_client_ips.update(_MODULE_CTX["orig_approved_ips"])
+
+        mobile_bundle.STANDALONE_HTML_PATH = _MODULE_CTX["orig_standalone_html"]
+        mobile_delta.DELTA_DB_PATH = _MODULE_CTX["orig_delta_db"]
+        mobile_delta.LOCKER_STATE_PATH = _MODULE_CTX["orig_locker_state"]
+        storage_manager.LOOME_DIR = _MODULE_CTX["orig_loome_dir"]
+        storage_manager.STORAGE_DIR = _MODULE_CTX["orig_storage_dir"]
+        storage_manager.LEGACY_STORAGE_DIR = _MODULE_CTX["orig_legacy_dir"]
+        field_log_store.FIELD_LOGS_DIR = _MODULE_CTX["orig_field_logs_dir"]
+    finally:
+        _MODULE_CTX["stack"].close()
+        _MODULE_CTX["temp_dir"].cleanup()
+        _MODULE_CTX.clear()
+
+
+def test_production_pbkdf2_iterations_constant():
+    """本番の PBKDF2 ストレッチング反復回数が安全な定数値（200,000回以上）に維持されていることを確認"""
+    assert _PROD_PBKDF2_ITERATIONS >= 200_000
+    assert _PROD_DERIVE_KEK_DEFAULTS == (_PROD_PBKDF2_ITERATIONS,)
 
 
 def _lan_client(with_cookie: bool = False) -> TestClient:
@@ -84,13 +204,6 @@ def test_lan_requires_token():
     assert LAN_TOKEN_COOKIE in r.headers.get("set-cookie", "")
     assert _lan_client(with_cookie=True).get("/api/version").status_code == 200
     assert _lan_client().get("/api/version?t=wrong-token").status_code == 401
-    # LAN TCP中継スレッド経由（127.0.0.1 + X-Tetheract-Lan-Client）でもLANクライアントとして厳格に検証される
-    assert LOCAL.get("/api/version", headers={"X-Tetheract-Lan-Client": LAN_IP}).status_code == 401
-    assert LOCAL.post("/api/shutdown", headers={"X-Tetheract-Lan-Client": LAN_IP}, cookies={LAN_TOKEN_COOKIE: LAN_TOKEN}).status_code == 403
-    from server.lan_access import _rewrite_http_request_header
-    rewritten = _rewrite_http_request_header(b"GET /api/version HTTP/1.1\r\nHost: 192.168.1.10:8088\r\nX-Tetheract-Lan-Client: 127.0.0.1", LAN_IP)
-    assert b"X-Tetheract-Lan-Client: 192.168.1.50" in rewritten
-    assert b"X-Tetheract-Lan-Client: 127.0.0.1" not in rewritten
 
 
 def test_lan_whitelist_blocks_admin_apis():
@@ -100,14 +213,16 @@ def test_lan_whitelist_blocks_admin_apis():
         ("POST", "/api/shutdown"),
         ("POST", "/api/photos/batch-shift-date"),
         ("POST", "/api/storage/move-photos"),
+        ("POST", "/api/storage/import-folder"),
         ("POST", "/api/volumes/DEADBEEF/loome"),
         ("DELETE", "/api/volumes/DEADBEEF/loome"),
         ("DELETE", "/api/tags/foo"),
         ("POST", "/api/photo/1/adjust"),
         ("POST", "/api/photo/1/open-file"),
         ("GET", "/api/browse"),
-        ("GET", "/api/photo/1/view"),
         ("GET", "/api/mobile/info"),
+        ("POST", "/api/mobile/reset-pairing"),
+        ("POST", "/api/mobile/approve-pair"),
         ("POST", "/api/media/check"),
         ("GET", "/api/media/events"),
         ("POST", "/api/photos/check-external-updates"),
@@ -124,12 +239,51 @@ def test_lan_whitelist_allows_mobile_apis():
         ("GET", "/js/mobile.js"),
         ("GET", "/api/photos"),
         ("GET", "/api/photo/12/thumbnail"),
+        ("GET", "/api/photo/12/view"),
         ("POST", "/api/photo/12/rate"),
+        ("POST", "/api/photo/12/set-primary"),
+        ("POST", "/api/photo/12/adjustments"),
         ("POST", "/api/photos/batch-rate"),
         ("POST", "/api/photo/12/tags"),
         ("DELETE", "/api/photo/12/tags/%E7%8C%AB"),
         ("POST", "/api/mobile/sync-import"),
+        ("GET", "/api/mobile/pair-info"),
+        ("GET", "/api/mobile/locker-sync"),
+        ("GET", "/css/touch-responsive.css"),
+        ("GET", "/js/core/tree_builder.js"),
+        ("GET", "/js/adapters/data_adapter.js"),
+        ("GET", "/js/views/touch/touch_layout.js"),
     ]
+    lan_no_tok = _lan_client(with_cookie=False)
+    assert lan_no_tok.get("/api/mobile/locker-sync?mode=status").status_code == 401
+    assert lan_no_tok.get("/api/mobile/pair-info").status_code == 401
+    # トークン未所持のLANクライアントからの discover は母艦情報のみ返し、秘密トークンは漏洩しない
+    r_disc_unauth = lan_no_tok.get("/api/mobile/discover?request_pair=1&device=PixelTest")
+    assert r_disc_unauth.status_code == 200
+    disc_json = r_disc_unauth.json()
+    assert disc_json.get("service") == "tetheract-pm"
+    assert disc_json.get("paired_match") is False
+    assert disc_json.get("pair_token") == ""
+    assert disc_json.get("pairing_pending") is True
+    # localhost 側で承認すると、承認された LAN クライアントへ pair_token が交付される
+    r_approve = LOCAL.post("/api/mobile/approve-pair", json={"client_ip": LAN_IP})
+    assert r_approve.status_code == 200
+    if _MODULE_CTX.get("mock_lan_router") is not None:
+        assert _MODULE_CTX["mock_lan_router"].called is True
+    r_disc_approved = lan_no_tok.get("/api/mobile/discover")
+    assert r_disc_approved.status_code == 200
+    assert r_disc_approved.json().get("paired_match") is True
+    assert r_disc_approved.json().get("pair_token") == LAN_TOKEN
+    from server import lan_access as _la
+    _la._approved_client_ips.clear()
+
+    lan_tok = _lan_client(with_cookie=True)
+    r_pair = lan_tok.get("/api/mobile/pair-info")
+    assert r_pair.status_code == 200
+    assert r_pair.json().get("deep_link", "").startswith("tetheract://pair?")
+    r_st = lan_tok.get("/api/mobile/locker-sync?mode=status")
+    assert r_st.status_code == 200
+    assert r_st.json().get("ok") is True
     for method, path in allowed:
         assert is_lan_path_allowed(method, path), f"{method} {path} はLANから許可されるべき"
 
@@ -191,6 +345,7 @@ def test_three_tier_security_and_ethical_protection(tmp_path):
     )
 
     orig_db = db_conn_mod.DB_PATH
+    orig_inst = get_instance_file_path()
     inst_a = tmp_path / ".tetheract_instance_A"
     inst_b = tmp_path / ".tetheract_instance_B"
     inst_c = tmp_path / ".tetheract_instance_C"
@@ -377,7 +532,7 @@ def test_three_tier_security_and_ethical_protection(tmp_path):
 
     finally:
         close_thread_connection()
-        set_instance_file_for_test(None)
+        set_instance_file_for_test(orig_inst)
         switch_database_path(orig_db)
         initialize_security_state(force_reload=True)
 
@@ -393,7 +548,6 @@ def test_red_blue_team_failsafe_and_salvage(tmp_path: Path):
     """
     import os as _os
     from server.database import (
-        DB_PATH,
         close_all_connections,
         close_thread_connection,
         get_connection,
@@ -414,7 +568,8 @@ def test_red_blue_team_failsafe_and_salvage(tmp_path: Path):
         unlock_with_password_or_recovery,
     )
 
-    orig_db = DB_PATH
+    orig_db = db_conn_mod.DB_PATH
+    orig_inst = get_instance_file_path()
     db_first = tmp_path / "library_v1.db"
     db_recreated = tmp_path / "library_recreated.db"
     inst_first = tmp_path / ".tetheract_instance"
@@ -577,21 +732,515 @@ def test_red_blue_team_failsafe_and_salvage(tmp_path: Path):
         finally:
             legacy_conn.close()
 
-        # [検証7] モバイル用 sql-wasm.js / Tetheract_Mobile.html の create_function が SQLITE_DETERMINISTIC (2049) を備えていること
+        # [検証7] モバイル用 sql-wasm.js および単体モバイルHTML生成出力の create_function が SQLITE_DETERMINISTIC (2049) を備えていること
         sql_wasm_js = (ROOT / "frontend" / "vendor" / "sqljs" / "sql-wasm.js").read_text(encoding="utf-8")
         assert "tb(this.db,g,l.length,2049,0,n,0,0,0)" in sql_wasm_js
-        standalone_html = (ROOT / "Tetheract_Mobile.html").read_text(encoding="utf-8")
+        standalone_html = mobile_bundle.build_standalone_mobile_html()
         assert "tb(this.db,g,l.length,2049,0,n,0,0,0)" in standalone_html
+
+        # [検証8] 3層分離モジュール群（core/・adapters/・views/touch/）および Android ネイティブシェルの契約・インライン化検証
+        from scripts.build_android_apk import verify_project_integrity
+        with contextlib.redirect_stdout(io.StringIO()):
+            assert verify_project_integrity(sync_assets=False) is True
+        modular_files = [
+            "frontend/js/core/tree_builder.js",
+            "frontend/js/adapters/data_adapter.js",
+            "frontend/js/adapters/field_log_adapter.js",
+            "frontend/js/adapters/phone_case_adapter.js",
+            "frontend/js/views/touch/touch_layout.js",
+            "frontend/js/views/touch/touch_gestures.js",
+            "frontend/js/views/touch/morph_thumb_bar.js",
+            "frontend/js/views/touch/touch_duel.js",
+            "frontend/js/views/touch/touch_field_log.js",
+            "frontend/js/views/touch/touch_phone_case.js",
+            "frontend/css/touch-responsive.css",
+            "frontend/css/touch-fieldlog.css",
+        ]
+        for rel_mod in modular_files:
+            mod_path = ROOT / rel_mod
+            assert mod_path.exists(), f"Missing modular file: {rel_mod}"
+            assert f"=== Inlined {rel_mod.removeprefix('frontend/')} ===" in standalone_html
 
     finally:
         close_thread_connection()
-        set_instance_file_for_test(None)
+        set_instance_file_for_test(orig_inst)
         switch_database_path(orig_db)
         initialize_security_state(force_reload=True)
 
 
+def test_android_bridge_blocks_arbitrary_sql_write():
+    """Android の WebView ブリッジから任意の書き込み SQL を実行できないことを静的に確認する"""
+    pkg_dir = ROOT / "android" / "app" / "src" / "main" / "java" / "com" / "tetheract" / "pm"
+    bridge_code = (pkg_dir / "TetheractNativeBridge.kt").read_text(encoding="utf-8")
+    locker_code = (pkg_dir / "LockerDatabaseManager.kt").read_text(encoding="utf-8")
+    mobile_js = (ROOT / "frontend" / "js" / "mobile.js").read_text(encoding="utf-8")
+
+    assert "fun execSqlJson" not in bridge_code, "任意SQL実行ブリッジ execSqlJson を公開してはならない"
+    assert "execSqlSafeJson" not in locker_code
+    assert "execSqlJson" not in mobile_js
+    # 読み取り用 rawQueryJson は読み取り専用判定を必ず通す
+    assert "if (!isReadOnlySql(sql))" in locker_code
+    assert "WRITE_SQL_REGEX" in locker_code
+
+
+def test_field_log_lan_and_token_security(tmp_path: Path):
+    """
+    フィールドログAPIのLANアクセス制御を検証する:
+      1. POST /api/mobile/field-logs はLANからトークン無しなら401、正しいトークン付きなら200で通過する
+      2. PC管理・照合・削除・GPX出力・Undo系の全エンドポイントは、正しいトークン付きのLANクライアントからでも403で遮断される
+    """
+    import hashlib
+    import json
+    from server import field_log_store
+
+    assert is_lan_path_allowed("POST", "/api/mobile/field-logs") is True
+    assert is_lan_path_allowed("GET", "/css/touch-fieldlog.css") is True
+
+    dev_id = "3f2a1111-2222-4333-8444-555566667777"
+    sample_jsonl = (
+        json.dumps({
+            "type": "header",
+            "format": "tetheract-fieldlog-v1",
+            "device_id": dev_id,
+            "device_name": "Pixel SecTest",
+            "date": "2026-11-09",
+        })
+        + "\n"
+        + json.dumps({
+            "type": "pt",
+            "t": 1762646400000,
+            "tz": 540,
+            "lat": 35.0116,
+            "lon": 135.7681,
+        })
+        + "\n"
+    )
+    sha = hashlib.sha256(sample_jsonl.encode("utf-8")).hexdigest()
+    upload_payload = {
+        "device_id": dev_id,
+        "device_name": "Pixel SecTest",
+        "date": "2026-11-09",
+        "sha256": sha,
+        "content": sample_jsonl,
+    }
+
+    orig_logs_dir = field_log_store.FIELD_LOGS_DIR
+    field_log_store.FIELD_LOGS_DIR = tmp_path / "sec_field_logs"
+    try:
+        lan_no_tok = _lan_client(with_cookie=False)
+        assert lan_no_tok.post("/api/mobile/field-logs", json=upload_payload).status_code == 401
+        assert lan_no_tok.post("/api/mobile/field-logs?t=wrong-token", json=upload_payload).status_code == 401
+
+        lan_tok = _lan_client(with_cookie=True)
+        r_ok = lan_tok.post("/api/mobile/field-logs", json=upload_payload)
+        assert r_ok.status_code == 200
+        assert r_ok.json().get("ok") is True
+        assert r_ok.json().get("points") == 1
+
+        # トークン付きLANクライアントであっても、PC側の管理・照合・削除・GPX・Undoはすべて 403 で遮断される
+        localhost_only_calls = [
+            ("GET", "/api/field-logs", None),
+            ("POST", "/api/field-logs/delete", {"all": True}),
+            ("GET", f"/api/field-logs/{dev_id}/2026-11-09.gpx", None),
+            ("POST", "/api/field-logs/match/preview", {"dates": ["2026-11-09"]}),
+            ("POST", "/api/field-logs/match/apply", {"dates": ["2026-11-09"]}),
+            ("GET", "/api/field-logs/match/batches", None),
+            ("POST", "/api/field-logs/match/undo", {"batch_id": "20261109-120000-abcd"}),
+        ]
+        for method, path, body in localhost_only_calls:
+            resp = lan_tok.request(method, path, json=body) if body is not None else lan_tok.request(method, path)
+            assert resp.status_code == 403, f"{method} {path} はトークン付きLANからでも403で拒否されるべき (got {resp.status_code})"
+    finally:
+        field_log_store.FIELD_LOGS_DIR = orig_logs_dir
+
+
+def test_mobile_case_preflight_and_upload_security(tmp_path: Path):
+    """スマホ内フォルダから母艦 Loome\\case\\YYYY-MM-DD への転送APIのLANトークン認証・重複スキップ・拡張子防御の検証"""
+    from PIL import Image
+    import server.storage_manager as sm_mod
+    from server.database import close_thread_connection, initialize_database, switch_database_path
+
+    lan_no_tok = _lan_client(with_cookie=False)
+    assert lan_no_tok.post("/api/mobile/case-preflight", json={"items": []}).status_code == 401
+    assert lan_no_tok.post("/api/mobile/case-upload?file_name=test.jpg", content=b"123").status_code == 401
+
+    lan_tok = _lan_client(with_cookie=True)
+    r_bad_ext = lan_tok.post("/api/mobile/case-upload?file_name=malware.exe", content=b"MZ...")
+    assert r_bad_ext.status_code == 400
+
+    orig_db = db_conn_mod.DB_PATH
+    orig_storage_dir = sm_mod.STORAGE_DIR
+    orig_loome_dir = sm_mod.LOOME_DIR
+    orig_legacy_dir = sm_mod.LEGACY_STORAGE_DIR
+    test_loome = tmp_path / "Loome"
+    test_loome.mkdir(parents=True, exist_ok=True)
+    sm_mod.LOOME_DIR = test_loome
+    sm_mod.LEGACY_STORAGE_DIR = tmp_path / "legacy_storage_unused"
+    sm_mod.STORAGE_DIR = test_loome
+    switch_database_path(tmp_path / "case_sec_test.db")
+    initialize_database()
+    try:
+        buf = io.BytesIO()
+        Image.new("RGB", (64, 48), color=(40, 120, 200)).save(buf, format="JPEG", quality=85)
+        jpg_bytes = buf.getvalue()
+        fname = f"IMG_CASE_SEC_{len(jpg_bytes)}.jpg"
+        mod_ms = 1762743600000
+
+        pre1 = lan_tok.post(
+            "/api/mobile/case-preflight",
+            json={"items": [{"client_id": "cid_1", "file_name": fname, "file_size": len(jpg_bytes), "last_modified_ms": mod_ms}]},
+        )
+        assert pre1.status_code == 200
+        assert "cid_1" in pre1.json().get("upload_client_ids", [])
+
+        up1 = lan_tok.post(
+            f"/api/mobile/case-upload?file_name=../../{fname}&last_modified_ms={mod_ms}&rating=2&tags_json=%5B%22CaseTestTag%22%5D",
+            content=jpg_bytes,
+            headers={"Content-Type": "application/octet-stream"},
+        )
+        assert up1.status_code == 200
+        up1_data = up1.json()
+        assert up1_data.get("ok") is True
+        assert up1_data.get("status") == "imported"
+        assert up1_data.get("rel_folder", "").startswith("case\\")
+        saved_file = test_loome / up1_data["rel_path"].replace("\\", "/")
+        assert saved_file.exists()
+
+        pre2 = lan_tok.post(
+            "/api/mobile/case-preflight",
+            json={"items": [{"client_id": "cid_1", "file_name": fname, "file_size": len(jpg_bytes), "last_modified_ms": mod_ms}]},
+        )
+        assert pre2.status_code == 200
+        assert "cid_1" in pre2.json().get("skipped_client_ids", [])
+    finally:
+        close_thread_connection()
+        switch_database_path(orig_db)
+        sm_mod.LOOME_DIR = orig_loome_dir
+        sm_mod.LEGACY_STORAGE_DIR = orig_legacy_dir
+        sm_mod.STORAGE_DIR = orig_storage_dir
+
+
+def test_drive_by_null_origin_and_pna_blocked():
+    """[SEC-1] 127.0.0.1 発でも Origin: null + PNA の無認証越境リクエストが全遮断され PNA 許可ヘッダも付与されないこと"""
+    null_pna_headers = {
+        "Origin": "null",
+        "Access-Control-Request-Private-Network": "true",
+        "Access-Control-Request-Method": "POST",
+    }
+    blocked_targets = [
+        ("GET", "/api/mobile/locker-sync?mode=full"),
+        ("GET", "/api/mobile/info?enable_lan=1"),
+        ("GET", "/api/mobile/pair-info"),
+        ("GET", "/api/mobile/discover"),
+        ("POST", "/api/mobile/case-upload?file_name=evil.jpg"),
+        ("POST", "/api/mobile/sync-import"),
+    ]
+    for method, target in blocked_targets:
+        # OPTIONS プリフライト（トークン無し）は 403 で拒否され PNA 許可ヘッダも一切返さない
+        r_opt = LOCAL.options(target, headers=null_pna_headers)
+        assert r_opt.status_code == 403, f"OPTIONS {target} with Origin: null must be 403 (got {r_opt.status_code})"
+        assert "access-control-allow-private-network" not in {k.lower() for k in r_opt.headers.keys()}
+
+        # 実リクエスト（トークン無し）もループバック特権を与えず 403 で拒否される
+        req_kwargs: Dict[str, Any] = {"headers": {"Origin": "null", "Access-Control-Request-Private-Network": "true"}}
+        if method == "POST" and "sync-import" in target:
+            req_kwargs["json"] = {"changes": []}
+        elif method == "POST":
+            req_kwargs["content"] = b"\xff\xd8\xff\xd9"
+        r_act = LOCAL.request(method, target, **req_kwargs)
+        assert r_act.status_code == 403, f"{method} {target} with Origin: null must be 403 (got {r_act.status_code})"
+        assert "access-control-allow-private-network" not in {k.lower() for k in r_act.headers.keys()}
+
+    # Cookie 単体（アンビエント認証）では Origin: null の /api/mobile/sync-import を通過できない
+    cookie_local = TestClient(app, base_url="http://127.0.0.1:8088")
+    cookie_local.cookies.set(LAN_TOKEN_COOKIE, LAN_TOKEN)
+    r_cookie_only = cookie_local.post(
+        "/api/mobile/sync-import",
+        json={"changes": []},
+        headers={"Origin": "null"},
+    )
+    assert r_cookie_only.status_code == 403
+
+    # 正規の明示トークン提示時のみ単体HTML用の /api/mobile/sync-import が動作し、それでも PNA ヘッダは返さない
+    r_valid_opt = LOCAL.options(
+        f"/api/mobile/sync-import?t={LAN_TOKEN}",
+        headers=null_pna_headers,
+    )
+    assert r_valid_opt.status_code == 204
+    assert "access-control-allow-private-network" not in {k.lower() for k in r_valid_opt.headers.keys()}
+
+    r_valid_sync = LOCAL.post(
+        "/api/mobile/sync-import",
+        json={"changes": []},
+        headers={
+            "Origin": "null",
+            "X-Tetheract-Lan-Token": LAN_TOKEN,
+            "Access-Control-Request-Private-Network": "true",
+        },
+    )
+    assert r_valid_sync.status_code == 200
+    assert "access-control-allow-private-network" not in {k.lower() for k in r_valid_sync.headers.keys()}
+
+    # トークン提示があっても Origin: null から PCローカル自動検出ファイル読込 (use_detected_file) は 403 拒否
+    r_detected = LOCAL.post(
+        "/api/mobile/sync-import",
+        json={"use_detected_file": True},
+        headers={"Origin": "null", "X-Tetheract-Lan-Token": LAN_TOKEN},
+    )
+    assert r_detected.status_code == 403
+
+
+def test_lan_one_time_ip_pairing_and_third_party_isolation():
+    """[SEC-2] グローバル全IP開放廃止・指定IPワンタイム承認・第三者LAN IP遮断・無認証Cookie不交付を検証"""
+    assert not hasattr(lan_access, "_pairing_window_until"), "グローバル _pairing_window_until は廃止済みであるべき"
+    lan_access._approved_client_ips.clear()
+    try:
+        approved_client = TestClient(app, base_url="http://192.168.1.10:8088", client=("192.168.1.50", 51050))
+        attacker_client = TestClient(app, base_url="http://192.168.1.10:8088", client=("192.168.1.99", 51099))
+
+        # 1. enable_lan=1 単体では未認証LAN IPにトークンもAPIも開放されない
+        r_info = LOCAL.get("/api/mobile/info?enable_lan=1")
+        assert r_info.status_code == 200
+        r_disc_pre = approved_client.get("/api/mobile/discover")
+        assert r_disc_pre.status_code == 200
+        assert r_disc_pre.json().get("pair_token") == ""
+        r_unauth_api = approved_client.get("/api/photos")
+        assert r_unauth_api.status_code == 401
+        assert LAN_TOKEN_COOKIE not in r_unauth_api.headers.get("set-cookie", "")
+
+        # 不正な client_ip（ワイルドカード・空文字・パブリックIP）での承認要求は 400 で拒否
+        for bad_ip in ("", "*", "8.8.8.8"):
+            assert LOCAL.post("/api/mobile/approve-pair", json={"client_ip": bad_ip}).status_code == 400
+
+        # 2. 特定IP (192.168.1.50) を承認した状態での検証
+        r_app = LOCAL.post("/api/mobile/approve-pair", json={"client_ip": "192.168.1.50"})
+        assert r_app.status_code == 200
+
+        # 第三者IP (192.168.1.99) は承認中であってもトークン取得・一般API通過・Cookie取得のいずれも不可
+        r_att_disc = attacker_client.get("/api/mobile/discover")
+        assert r_att_disc.status_code == 200
+        assert r_att_disc.json().get("paired_match") is False
+        assert r_att_disc.json().get("pair_token") == ""
+        assert LAN_TOKEN_COOKIE not in r_att_disc.headers.get("set-cookie", "")
+        r_att_m = attacker_client.get("/m")
+        assert r_att_m.status_code == 401
+        assert LAN_TOKEN_COOKIE not in r_att_m.headers.get("set-cookie", "")
+        assert attacker_client.get("/api/mobile/locker-sync?mode=status").status_code == 401
+
+        # 承認済みIP (192.168.1.50) であってもトークン未提示のまま一般APIを叩いた場合はミドルウェア通過せず Cookie も交付されない
+        r_no_tok_m = approved_client.get("/m")
+        assert r_no_tok_m.status_code == 401
+        assert LAN_TOKEN_COOKIE not in r_no_tok_m.headers.get("set-cookie", "")
+
+        # UDP 探索 (udp=1) には秘密トークンを含めず、かつワンタイム承認も消費しない
+        r_udp = approved_client.get("/api/mobile/discover?udp=1")
+        assert r_udp.status_code == 200
+        assert r_udp.json().get("pair_token") == ""
+
+        # 3. 承認された 192.168.1.50 が TCP discover で1回だけトークンを受け取り、直後にワンタイム失効する
+        r_claim1 = approved_client.get("/api/mobile/discover")
+        assert r_claim1.status_code == 200
+        assert r_claim1.json().get("paired_match") is True
+        claimed_token = r_claim1.json().get("pair_token")
+        assert claimed_token == LAN_TOKEN
+        assert LAN_TOKEN_COOKIE not in r_claim1.headers.get("set-cookie", "")
+
+        # ワンタイム消費後の2回目無認証 discover では再取得できない
+        r_claim2 = approved_client.get("/api/mobile/discover")
+        assert r_claim2.status_code == 200
+        assert r_claim2.json().get("paired_match") is False
+        assert r_claim2.json().get("pair_token") == ""
+
+        # 取得したトークンを明示提示すれば正常に LAN API 通信できる
+        r_sync_ok = approved_client.get(
+            "/api/mobile/locker-sync?mode=status",
+            headers={"X-Tetheract-Lan-Token": claimed_token},
+        )
+        assert r_sync_ok.status_code == 200
+        assert r_sync_ok.json().get("ok") is True
+    finally:
+        lan_access._approved_client_ips.clear()
+
+
+def test_lan_bridge_oversized_unterminated_header_fail_closed():
+    """[SEC-3] lan_bridge.py が \\r\\n\\r\\n 無しの32KB超データに対して上流未接続のまま 431 で即時切断すること"""
+    import socket
+    import threading
+    from server import lan_bridge
+
+    c_sock, s_sock = socket.socketpair()
+    try:
+        oversized_payload = b"GET /api/photos HTTP/1.1\r\nX-Junk: " + (b"A" * (lan_bridge.MAX_HTTP_HEADER_BYTES + 4096))
+        with patch(
+            "server.lan_bridge.socket.create_connection",
+            side_effect=AssertionError("32KB超未完結ヘッダ時に上流 127.0.0.1 へ接続してはならない"),
+        ) as mock_upstream:
+            t = threading.Thread(target=lan_bridge._handle_tcp_client, args=(s_sock, "192.168.1.77", 8088))
+            t.start()
+            c_sock.sendall(oversized_payload)
+            c_sock.settimeout(3.0)
+            resp_bytes = b""
+            while True:
+                try:
+                    chunk = c_sock.recv(4096)
+                except ConnectionError:
+                    break
+                if not chunk:
+                    break
+                resp_bytes += chunk
+            t.join(timeout=3.0)
+            assert not t.is_alive()
+            assert mock_upstream.call_count == 0
+        assert resp_bytes.startswith(b"HTTP/1.1 431 Request Header Fields Too Large"), f"Unexpected response: {resp_bytes[:80]!r}"
+    finally:
+        c_sock.close()
+        s_sock.close()
+
+    # LF単独改行や先頭空白を用いた偽装 X-Tetheract-Lan-Client ヘッダも除去・上書きされること
+    spoofed = b"GET /api/photos HTTP/1.1\n  X-Tetheract-Lan-Client: 127.0.0.1\nHost: 192.168.1.10:8088"
+    rewritten = lan_bridge._rewrite_http_request_header(spoofed, "192.168.1.88")
+    assert b"127.0.0.1" not in rewritten
+    assert b"X-Tetheract-Lan-Client: 192.168.1.88\r\n" in rewritten
+
+
+def test_mobile_connection_status_and_raw_jpg_online_rules(tmp_path: Path):
+    """[v2.2.2] /api/mobile/connection-status のLAN認証・ロック保護と、RAW+JPGペアのJPEG基準オンライン判定を検証"""
+    from server import app as app_mod, scanner
+    from server.database import get_connection
+
+    assert is_lan_path_allowed("GET", "/api/mobile/connection-status") is True
+    lan_no_tok = _lan_client(with_cookie=False)
+    assert lan_no_tok.get("/api/mobile/connection-status").status_code == 401
+
+    online_dir = tmp_path / "online_jpg"
+    online_dir.mkdir(parents=True, exist_ok=True)
+    online_jpg = online_dir / "IMG_1001.JPG"
+    online_jpg.write_bytes(b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xd9")
+
+    offline_raw_dir = Path(r"Q:\DCIM\100RAW")
+    offline_raw_path = offline_raw_dir / "IMG_1001.CR3"
+    offline_solo_dir = Path(r"Q:\DCIM\100SOLO")
+    offline_solo_path = offline_solo_dir / "IMG_2002.JPG"
+
+    with get_connection() as conn:
+        conn.execute("DELETE FROM photos")
+        conn.execute("DELETE FROM photo_links")
+        conn.execute(
+            """
+            INSERT INTO photos (
+                id, file_path, file_name, directory_path, volume_serial, content_key,
+                file_size, width, height, rating, is_raw, paired_raw_path, is_unlinked
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+            """,
+            (
+                101,
+                str(online_jpg),
+                "IMG_1001.JPG",
+                str(online_dir),
+                "",
+                "CK_TEST_101",
+                128,
+                1600,
+                1200,
+                1,
+                0,
+                str(offline_raw_path),
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO photos (
+                id, file_path, file_name, directory_path, volume_serial, content_key,
+                file_size, width, height, rating, is_raw, paired_raw_path, is_unlinked
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+            """,
+            (
+                102,
+                str(offline_raw_path),
+                "IMG_1001.CR3",
+                str(offline_raw_dir),
+                "OFFLINE-RAW-VSN",
+                "CK_TEST_102",
+                256,
+                1600,
+                1200,
+                0,
+                1,
+                str(online_jpg),
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO photos (
+                id, file_path, file_name, directory_path, volume_serial, content_key,
+                file_size, width, height, rating, is_raw, paired_raw_path, is_unlinked
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+            """,
+            (
+                103,
+                str(offline_solo_path),
+                "IMG_2002.JPG",
+                str(offline_solo_dir),
+                "OFFLINE-SOLO-VSN",
+                "CK_TEST_103",
+                128,
+                1600,
+                1200,
+                0,
+                0,
+                "",
+            ),
+        )
+        conn.commit()
+
+    scanner.clear_online_cache()
+    app_mod._API_PHOTOS_RESPONSE_CACHE.clear()
+
+    # 1. トークン付きLANおよびLOCALから接続状態スナップショットを取得できること
+    lan_ok = _lan_client(with_cookie=True)
+    r_status = lan_ok.get("/api/mobile/connection-status")
+    assert r_status.status_code == 200
+    st = r_status.json()
+    assert st["ok"] is True
+    assert st["revision"]
+    offline_set = set(st["ids"]) if st["mode"] == "offline_ids" else ({101, 102, 103} - set(st["ids"]))
+    # JPEGがオンラインである101はオンライン、103は未接続ドライブのためオフライン
+    assert 101 not in offline_set
+    assert 102 not in offline_set
+    assert 103 in offline_set
+
+    # 2. /api/photos と /api/photo/{id} でも JPEG 基準でオンライン判定されること
+    r_list = LOCAL.get("/api/photos?rating=all&limit=50")
+    assert r_list.status_code == 200
+    by_id = {p["id"]: p for p in r_list.json().get("photos", [])}
+    assert by_id[101]["is_offline"] is False
+    assert by_id[103]["is_offline"] is True
+
+    r_jpg_detail = LOCAL.get("/api/photo/101")
+    assert r_jpg_detail.status_code == 200
+    assert r_jpg_detail.json()["is_offline"] is False
+    assert r_jpg_detail.json()["paired_is_offline"] is True
+
+    r_raw_detail = LOCAL.get("/api/photo/102")
+    assert r_raw_detail.status_code == 200
+    assert r_raw_detail.json()["is_offline"] is False
+    assert r_raw_detail.json()["paired_is_offline"] is False
+
+    # 3. 未接続ペアRAWを開く要求は404（例外クラッシュしない）
+    r_open_raw = LOCAL.post("/api/photo/101/open-raw")
+    assert r_open_raw.status_code == 404
+
+    # 4. アプリロック時は 423 Locked で拒否すること
+    with patch("server.security.is_app_locked", return_value=True):
+        r_locked = lan_ok.get("/api/mobile/connection-status")
+        assert r_locked.status_code == 423
+
+
 class TestSecurityRegression(unittest.TestCase):
     """unittest discover からも上記のセキュリティ回帰テストを実行するためのラッパー"""
+
+    def test_production_pbkdf2_iterations_constant(self):
+        test_production_pbkdf2_iterations_constant()
 
     def test_local_access_ok(self):
         test_local_access_ok()
@@ -632,19 +1281,47 @@ class TestSecurityRegression(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             test_red_blue_team_failsafe_and_salvage(Path(tmp_dir))
 
+    def test_android_bridge_blocks_arbitrary_sql_write(self):
+        test_android_bridge_blocks_arbitrary_sql_write()
+
+    def test_field_log_lan_and_token_security(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            test_field_log_lan_and_token_security(Path(tmp_dir))
+
+    def test_mobile_case_preflight_and_upload_security(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            test_mobile_case_preflight_and_upload_security(Path(tmp_dir))
+
+    def test_drive_by_null_origin_and_pna_blocked(self):
+        test_drive_by_null_origin_and_pna_blocked()
+
+    def test_lan_one_time_ip_pairing_and_third_party_isolation(self):
+        test_lan_one_time_ip_pairing_and_third_party_isolation()
+
+    def test_lan_bridge_oversized_unterminated_header_fail_closed(self):
+        test_lan_bridge_oversized_unterminated_header_fail_closed()
+
+    def test_mobile_connection_status_and_raw_jpg_online_rules(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            test_mobile_connection_status_and_raw_jpg_online_rules(Path(tmp_dir))
+
 
 if __name__ == "__main__":
     failures = 0
-    for name, func in list(globals().items()):
-        if name.startswith("test_") and callable(func):
-            try:
-                if "tmp_path" in func.__code__.co_varnames[: func.__code__.co_argcount]:
-                    with tempfile.TemporaryDirectory() as d:
-                        func(Path(d))
-                else:
-                    func()
-                print(f"[PASS] {name}")
-            except Exception as e:
-                failures += 1
-                print(f"[FAIL] {name}: {e!r}")
+    setUpModule()
+    try:
+        for name, func in list(globals().items()):
+            if name.startswith("test_") and callable(func):
+                try:
+                    if "tmp_path" in func.__code__.co_varnames[: func.__code__.co_argcount]:
+                        with tempfile.TemporaryDirectory() as d:
+                            func(Path(d))
+                    else:
+                        func()
+                    print(f"[PASS] {name}")
+                except Exception as e:
+                    failures += 1
+                    print(f"[FAIL] {name}: {e!r}")
+    finally:
+        tearDownModule()
     sys.exit(1 if failures else 0)

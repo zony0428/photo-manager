@@ -5,6 +5,7 @@
 
 // 展開状態のパス（Set: "country", "country/state"）
 const locationExpandedPaths = new Set();
+let _cachedLocationTree = null;
 
 /**
  * 場所ツリーの初期化
@@ -65,6 +66,7 @@ async function loadLocationTree() {
     const data = await res.json();
 
     const tree = data.tree || [];
+    _cachedLocationTree = tree;
     const noLocCount = data.no_location_count || 0;
 
     // 位置情報なしバッジの更新
@@ -119,11 +121,12 @@ function createCountryNode(country) {
 
   const row = document.createElement('div');
   row.className = 'location-node-row';
+  row._locationNode = { level: 'country', country: country.country, count: country.count, states: country.states || [] };
 
   // 矢印（子要素がある場合）
   const hasStates = country.states && country.states.length > 0;
   const toggle = document.createElement('span');
-  toggle.className = `location-node-toggle ${isExpanded ? 'is-expanded' : ''}`;
+  toggle.className = `location-node-toggle ${isExpanded ? 'is-expanded' : ''}${hasStates ? '' : ' is-leaf'}`.trim();
   toggle.textContent = hasStates ? (isExpanded ? '▼' : '▶') : '•';
   if (hasStates) {
     toggle.addEventListener('click', (e) => {
@@ -133,7 +136,11 @@ function createCountryNode(country) {
       } else {
         locationExpandedPaths.add(cPath);
       }
-      loadLocationTree();
+      if (_cachedLocationTree) {
+        renderLocationTree(_cachedLocationTree);
+      } else {
+        loadLocationTree();
+      }
     });
   }
   row.appendChild(toggle);
@@ -189,10 +196,11 @@ function createStateNode(countryName, state) {
 
   const row = document.createElement('div');
   row.className = 'location-node-row';
+  row._locationNode = { level: 'state', country: countryName, state: state.state, count: state.count, cities: state.cities || [] };
 
   const hasCities = state.cities && state.cities.length > 0;
   const toggle = document.createElement('span');
-  toggle.className = `location-node-toggle ${isExpanded ? 'is-expanded' : ''}`;
+  toggle.className = `location-node-toggle ${isExpanded ? 'is-expanded' : ''}${hasCities ? '' : ' is-leaf'}`.trim();
   toggle.textContent = hasCities ? (isExpanded ? '▼' : '▶') : '•';
   if (hasCities) {
     toggle.addEventListener('click', (e) => {
@@ -202,7 +210,11 @@ function createStateNode(countryName, state) {
       } else {
         locationExpandedPaths.add(sPath);
       }
-      loadLocationTree();
+      if (_cachedLocationTree) {
+        renderLocationTree(_cachedLocationTree);
+      } else {
+        loadLocationTree();
+      }
     });
   }
   row.appendChild(toggle);
@@ -254,9 +266,10 @@ function createCityNode(countryName, stateName, city) {
 
   const row = document.createElement('div');
   row.className = 'location-node-row';
+  row._locationNode = { level: 'city', country: countryName, state: stateName, city: city.city, count: city.count };
 
   const dot = document.createElement('span');
-  dot.className = 'location-node-toggle';
+  dot.className = 'location-node-toggle is-leaf';
   dot.textContent = '•';
   row.appendChild(dot);
 
@@ -425,16 +438,23 @@ function updateLocationTreeActiveState() {
 /**
  * すべての場所階層を展開する
  */
-function expandAllLocations() {
-  const treeContainer = document.getElementById('locationTree');
-  if (!treeContainer) return;
-  const nodes = treeContainer.querySelectorAll('.location-tree-node');
-  nodes.forEach(n => {
-    if (n.dataset.locationPath) {
-      locationExpandedPaths.add(n.dataset.locationPath);
+async function expandAllLocations() {
+  if (!_cachedLocationTree) {
+    await loadLocationTree();
+  }
+  if (!Array.isArray(_cachedLocationTree) || _cachedLocationTree.length === 0) return;
+  _cachedLocationTree.forEach(country => {
+    if (!country || !country.country) return;
+    locationExpandedPaths.add(country.country);
+    if (Array.isArray(country.states)) {
+      country.states.forEach(st => {
+        if (st && st.state) {
+          locationExpandedPaths.add(`${country.country}/${st.state}`);
+        }
+      });
     }
   });
-  loadLocationTree();
+  renderLocationTree(_cachedLocationTree);
 }
 
 /**
@@ -442,7 +462,11 @@ function expandAllLocations() {
  */
 function collapseAllLocations() {
   locationExpandedPaths.clear();
-  loadLocationTree();
+  if (_cachedLocationTree) {
+    renderLocationTree(_cachedLocationTree);
+  } else {
+    loadLocationTree();
+  }
 }
 
 /**
@@ -453,7 +477,11 @@ async function revealActiveLocationInTree() {
   const { country, state: st } = state.activeLocation;
   if (country) locationExpandedPaths.add(country);
   if (country && st) locationExpandedPaths.add(`${country}/${st}`);
-  await loadLocationTree();
+  if (_cachedLocationTree) {
+    renderLocationTree(_cachedLocationTree);
+  } else {
+    await loadLocationTree();
+  }
 }
 
 // グローバル公開

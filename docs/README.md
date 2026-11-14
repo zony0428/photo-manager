@@ -1,6 +1,6 @@
 # Tetheract Photo Manager - ドキュメントポータル (Documentation Portal)
 
-本ディレクトリは、Photo Manager の設計文書、技術知見、リリースノート、および開発履歴アーカイブを集約したドキュメント基底ポータルである。
+本ディレクトリは、Tetheract Photo Manager のコア設計文書、リリースノート、監査・改修計画、および過去の開発アーカイブを集約したドキュメントポータルである。
 
 ---
 
@@ -8,150 +8,98 @@
 
 ```text
 docs/
-├── README.md               ★ 本ポータル（全体索引）
-├── knowledge/              ★ アーキテクチャ設計・技術知見集（Knowledge Base）
-│   ├── README.md           ★ ナレッジ索引
-│   ├── feature-code-map.md ★ 機能別コードマップ（UI/API/DB対応表）
-│   ├── ui-design-system-and-tiat-guidelines.md ★ v3.00 Tiat志向デザインシステム
-│   ├── security-architecture.md ★ セキュリティアーキテクチャ ＆ 防御層設計書
-│   └── ...                 ★ 各種最適化・ストレージ・モバイル知見
-├── release_notes/          ★ バージョン別リリースノートアーカイブ
-│   ├── RELEASE_NOTES_v3.0.1.md
-│   ├── RELEASE_NOTES_v3.00.md
-│   ├── RELEASE_NOTES_v2.44.md
-│   └── ...
-├── archive/tasks/          ★ 過去の改修タスク計画・ウォークスルー（全49タスク）
-└── images/                 ★ ドキュメント用スクリーンショット
+├── README.md                          ★ 本ポータル（全体索引）
+├── knowledge/                         ★ 現行アーキテクチャ設計・コア技術知見集（コア6本）
+│   ├── README.md                      ★ ナレッジ索引
+│   ├── design-philosophy-four-pillars.md
+│   ├── portable-storage-patterns.md
+│   ├── security-architecture.md
+│   ├── ui-design-system-and-tiat-guidelines.md
+│   ├── architecture-scalability-and-side-effects.md
+│   └── android-app-and-touch-architecture.md
+├── release_notes/                     ★ バージョン別リリースノート（v1.0.0〜v2.x 新系列 ＆ v0.x 旧系列）
+├── <topic>/                           ★ 進行中・直近の大型タスク計画・監査記録（task / implementation_plan / walkthrough）
+├── archive/                           ★ 過去の設計記録・旧ルール・タスク履歴アーカイブ
+│   ├── knowledge/                     ★ 過渡期ナレッジ・旧コードマップ等の履歴保管
+│   ├── rules_legacy/                  ★ AGENTS.md 統合前の旧 .agents/rules/ 保管
+│   ├── agents_legacy/                 ★ 旧専門サブエージェント定義の保管
+│   └── tasks/                         ★ 過去の改修タスク計画・ウォークスルー（全52タスク）
+└── images/                            ★ ドキュメント用スクリーンショット・図版
 ```
 
 ---
 
-## 2. コアドキュメント一覧
-
-### ユーザー・開発者向け主要ドキュメント（プロジェクトルート）
+## 2. ルート直下の主要ドキュメント
 
 | ファイル | 対象 | 主な内容 |
 | :--- | :--- | :--- |
-| [MANUAL.md](../MANUAL.md) | 全ユーザー | 操作マニュアル完全版（選別・画像調整・スマートテイクアウト・ショートカット一覧・トラブルシューティング） |
-| [README.md](../README.md) / [EN](../README_EN.md) | 全体 | プロジェクト概要、高速選別アーキテクチャ、導入手順、動作環境 |
+| [MANUAL.md](../MANUAL.md) | 全ユーザー | 操作マニュアル完全版（選別・画像調整・Loome管理・スマートテイクアウト・ショートカット一覧） |
+| [README.md](../README.md) / [README_EN.md](../README_EN.md) | 全体 | プロジェクト概要、4つの設計原則、導入手順、動作環境（日本語 / 英語） |
 | [README_USB.md](../README_USB.md) | USB利用者 | ポータブルSSD / USBメモリでの持ち歩き自走運用ガイド |
 | [RELEASE_NOTES.md](../RELEASE_NOTES.md) | 全体 | 最新リリース内容および過去の更新履歴（Changelog）統合版 |
-| [AGENTS.md](../AGENTS.md) | AIエージェント / 開発者 | 開発原則（Karpathy LLM Guidelines）、コーディング規約、文字化け対策、ディレクトリ構造マップ |
+| [AGENTS.md](../AGENTS.md) | AIエージェント / 開発者 | コア開発原則、ポータブル＆非破壊境界、セキュリティ・SQLite・UTF-8鉄則、開発ワークフロー |
 
 ---
 
-## 3. 技術知見・設計仕様 (docs/knowledge/)
+## 3. コア技術知見・設計仕様 (`docs/knowledge/`)
 
-Photo Manager の設計判断、パフォーマンス最適化パターン、セキュリティ防御層などを蓄積したナレッジ集。
-詳細は [docs/knowledge/README.md](knowledge/README.md) を参照。
+現行アーキテクチャの不変条件と設計仕様を6本のコアドキュメントに集約している（索引は [docs/knowledge/README.md](knowledge/README.md)、過渡期の旧仕様書・履歴資料は `docs/archive/knowledge/` を参照）。
 
 | ドキュメント | 概要 |
 | :--- | :--- |
-| [design-philosophy-four-pillars.md](knowledge/design-philosophy-four-pillars.md) | **【4つの設計原則（4本の柱）】** プロダクトの基本思想4原則と、それを実現する全機能体系・対外文章の編集原則 |
-| [feature-code-map.md](knowledge/feature-code-map.md) | **【機能別コードマップ】** 14の大分類（グリッド・ライトボックス・タグ・スタック・スキャン・storage・画像調整・セキュリティ等）とコードの対応表 |
-| [ui-design-system-and-tiat-guidelines.md](knowledge/ui-design-system-and-tiat-guidelines.md) | **【UI/UXデザインシステム】** 2段階左サイドバー、1段ヘッダー、4:3インスペクタ、脱絵文字、4カラーテーマ、カスタム確認モーダル（`#commonConfirmModal`）統一等の規約 |
-| [security-architecture.md](knowledge/security-architecture.md) | **【セキュリティ ＆ 3段階エシカル保護設計】** 4層ネットワーク防御、3段階エシカル保護（Lv.0 他人のLoome完全拒否＆DB単体引き抜き検知・3大救済手段／Lv.1 起動ロック＆サムネイル暗号化／Lv.2 Loome先頭64KBカプセル化 `TETHVLT1`）、鍵自動サルベージ＆セルフブリック防止設計 |
-| [storage-and-xmp-sidecar-architecture.md](knowledge/storage-and-xmp-sidecar-architecture.md) | **【storage・XMP連携】** アプリ内ストレージ管理、XMPサイドカー追従・プレビュー・隔離取込 |
-| [v1-v2-branch-and-dist-workflow.md](knowledge/v1-v2-branch-and-dist-workflow.md) | **【v1.8系 / v2.0系 ブランチ・dist分離規約】** `main`（v1.8系 PC単体安定版 → `dist/`）と `v2`（v2.0系 Android連携版 → `dist_v2/`）のソース・配布物の完全分離と並行開発手順 |
-| [mobile-hybrid-architecture.md](knowledge/mobile-hybrid-architecture.md) | **【モバイル連携】** Wi-Fi直結モード（`/m`）および WebAssembly SQLite (`sql.js`) 直接読込 |
-| [performance-optimization-patterns.md](knowledge/performance-optimization-patterns.md) | **【最適化パターン】** 範囲比較フォルダ絞込、差分スキャン、高速JSON、BLOBサムネイル |
-| [portable-storage-patterns.md](knowledge/portable-storage-patterns.md) | **【ポータブル運用・所在リンク】** 相対パス原則、ドライブレター変動追跡、VSN照合、ユニーク画像 (`photos`) と複数メディア所在リンク (`photo_links`) の分離 |
-| [sqlite-blob-thumbnails.md](knowledge/sqlite-blob-thumbnails.md) | **【サムネイル・タグDB設計】** SQLite BLOB格納、`photo_id INTEGER PRIMARY KEY` ROWID直結、`photo_tags` の `WITHOUT ROWID` クラスタ化、安全マイグレーション |
+| [design-philosophy-four-pillars.md](knowledge/design-philosophy-four-pillars.md) | **【4つの設計原則（4本の柱）】** プロダクトの根幹思想4原則と、それを実現する機能体系・対外文章の編集原則 |
+| [portable-storage-patterns.md](knowledge/portable-storage-patterns.md) | **【ポータブル運用・所在リンク・Loome・XMP連携】** 相対パス原則、VSN照合、`photos` / `photo_links` 分離、専用保管庫 `Loome` 管理、`server/sidecar.py` によるXMP非破壊連携 |
+| [security-architecture.md](knowledge/security-architecture.md) | **【セキュリティ ＆ 3段階エシカル保護】** 4層ネットワーク防御、Lv.0/1/2 エシカル保護（他環境 `Loome` 拒否・起動ロック・`TETHVLT1` 先頭64KBカプセル化）、`.loome_seal` 鍵自動サルベージ |
+| [ui-design-system-and-tiat-guidelines.md](knowledge/ui-design-system-and-tiat-guidelines.md) | **【UI/UXデザインシステム】** 1段メインツールバー、2段階左サイドバー、4:3インスペクタ、単色SVG徹底、2階建て4カラーテーマ、`#commonConfirmModal`、カスケード＆タグツリー仕様 |
+| [architecture-scalability-and-side-effects.md](knowledge/architecture-scalability-and-side-effects.md) | **【スケーラビリティ ＆ 禁止アンチパターン】** SQLite・スキャン・UI描画で他部位を壊さないための禁止アンチパターンと、本番DBを汚さないテスト接続切替原則 |
+| [android-app-and-touch-architecture.md](knowledge/android-app-and-touch-architecture.md) | **【Android (`TETHERACT ld`) ＆ タッチUI設計】** スマホ内ロッカーDB、Wi-Fi差分同期、Read-Only USB `Loome` オンメモリ復号、手許 `PhoneCase` / Uplink、`lan_bridge`、GPSフィールドログ、JS/Kotlin構成 |
 
 ---
 
-## 4. リリースノート (docs/release_notes/)
+## 4. リリースノート (`docs/release_notes/`)
 
-GitHub Releases 投稿用に作成されたバージョン別リリースノート。差分アップデート版（`*diff.zip`）とフル版の使い分け、日英対訳の更新内容を収録。
-
-> 旧系列（旧称 Photo Manager: v2.x〜v3.2.1）と新系列（Tetheract Photo Manager: v1.0.0〜）が同居している。下表に無い版（v3.0.2〜v3.2.1 等）は `release_notes/` を直接参照。
+GitHub Releases 投稿用に作成されたバージョン別リリースノート（全ファイル一覧は `docs/release_notes/` を直接参照）。
+旧称 Photo Manager 時代のリリースノート（旧 v2.41〜v3.2.1）は、新系列（v1.0.0〜）と区別するため `RELEASE_NOTES_v0.2.41.md` 〜 `RELEASE_NOTES_v0.3.21.md` として保管されている。
 
 | バージョン | 主な更新内容 | ファイル |
 | :--- | :--- | :--- |
-| **v1.8.10** | バースト・ブラケット・重複スタックおよびRAW+JPEGペア編成時の既存タグ自動同期（外部レタッチ画像のタグ引き継ぎ）、スタック再計算時の一覧キャッシュ即時無効化、日英README最新化（v1.8.5〜v1.8.9の改善含む） | [RELEASE_NOTES_v1.8.10.md](release_notes/RELEASE_NOTES_v1.8.10.md) |
-| **v1.8.4** | ライトボックスのちらつき解消・サムネイル最大2倍拡大・マウス「戻る」ボタン対応、右クリック＆Loomeサブメニューの0.3秒ホバー遅延、スマホ連携インプロセスTCPリレー化＆`sql.js`大規模DB読込高速化、1GB超DBの2回目以降起動高速化（v1.8.2〜v1.8.3含む） | [RELEASE_NOTES_v1.8.4.md](release_notes/RELEASE_NOTES_v1.8.4.md) |
-| **v1.8.1** | 左端アクティビティレールの並び順再編＆アイコン刷新、Binder「保存済みセット」カードの1行スリム化＆ホバー条件表示、右インスペクタ上部ヘッダー廃止＆クイックアクションバー統合 | [RELEASE_NOTES_v1.8.1.md](release_notes/RELEASE_NOTES_v1.8.1.md) |
-| **v1.8.0** | ローカル完結クリーン・アップデーター（`diff.zip`自動適用）、配布フォルダのルート階層整理（`tools/`集約＆`Loome/`標準化）、`autorun.inf`設置確認ダイアログ | [RELEASE_NOTES_v1.8.0.md](release_notes/RELEASE_NOTES_v1.8.0.md) |
-| **v1.7.2** | フロントエンドJS・バックエンドAPI・CSSのモジュール分割（モノリス解消）、双方向監査によるデッドコード＆未使用CSS（2,562行）の撤去、2階建てテーマ属性（`paper`/`sumi`）修正、423ロック中の不要通信抑止＆エラーハンドリング整備 | [RELEASE_NOTES_v1.7.2.md](release_notes/RELEASE_NOTES_v1.7.2.md) |
-| **v1.7.1** | Lv.0 エシカルモードの誤ロック修正・DB非破壊オンメモリロック・自己修復、大容量DB起動高速化 ＆ Win32 `CopyFileExW` DBバックアップ高速化、1週間バックアップ未実施リマインドモーダル | [RELEASE_NOTES_v1.7.1.md](release_notes/RELEASE_NOTES_v1.7.1.md) |
-| **v1.7.0** | 3段階セキュリティ＆エシカル保護（Lv.0 他人のLoome完全拒否＆DB単体引き抜き検知・3大救済手段、Lv.1 起動パスワードロック＆DBサムネイルAEAD暗号化、Lv.2 Loome先頭64KBカプセル化保護 `TETHVLT1` ＆1ビット完全復元）、`Loome/.loome_seal` からの鍵自動サルベージ・セルフブリック防止 | [RELEASE_NOTES_v1.7.0.md](release_notes/RELEASE_NOTES_v1.7.0.md) |
-| **v1.6.1** | リンク消失写真の選択削除＆絞り込み削除・矛盾操作防止と混在選択スキップ通知、Exif欠落画像のサンプリングハッシュ同一認識＆重複自動統合、フッター三大フィルタの意図しない解除防止 | [RELEASE_NOTES_v1.6.1.md](release_notes/RELEASE_NOTES_v1.6.1.md) |
-| **v1.6.0** | `Loome` への超高速並列ファイルコピー（Win32 `CopyFileExW` ＋ドライブ種別自動並列化＋EXIF再解析スキップ）、NeXTSTEP風右展開カスケードメニュー、空フォルダ化時のリンク整理＆空サブフォルダ誤検知修正 | [RELEASE_NOTES_v1.6.0.md](release_notes/RELEASE_NOTES_v1.6.0.md) |
-| **v1.5.0** | イベント駆動メディア抜き挿し自動検知（`WM_DEVICECHANGE`＋SSE）、外部アプリ編集の自動同期、全画面リアクティブ同期 | [RELEASE_NOTES_v1.5.0.md](release_notes/RELEASE_NOTES_v1.5.0.md) |
+| **v2.2.1** | モーションアジャスタ（Slap & Sweep）搭載、タグ/スタック/インスペクタ即時同期＆キャッシュ無効化漏れ修正 | [RELEASE_NOTES_v2.2.1.md](release_notes/RELEASE_NOTES_v2.2.1.md) |
+| **v2.2.0** | 手許PhoneCase一括転送＆GPS補完、PC 2D仮想スクロール＆SQL高速化、Android並列DB＆一括保存、LANペアリング防御強化 | [RELEASE_NOTES_v2.2.0.md](release_notes/RELEASE_NOTES_v2.2.0.md) |
+| **v2.1.7** | RAWスタッキング修正、形式フィルタ整理＆RAW抱き合わせ出力、共通タグ一括削除、Loomeフォルダ単位取り込み＆ピッカー小窓 | [RELEASE_NOTES_v2.1.7.md](release_notes/RELEASE_NOTES_v2.1.7.md) |
+| **v2.1.6** | SONY α RAW（`.ARW` ロスレス圧縮M/S等）のプレビューJPEG・サムネイル・EXIF抽出修正とリフレッシュ再取得対応 | [RELEASE_NOTES_v2.1.6.md](release_notes/RELEASE_NOTES_v2.1.6.md) |
+| **v2.1.3** | モバイル非破壊調整API・EVスケール統一＆二重掛け防止、Android USB RAWプレビュー抽出、Duel比較＆スタック連携修正 | [RELEASE_NOTES_v2.1.3.md](release_notes/RELEASE_NOTES_v2.1.3.md) |
+| **v2.0.2** | 左ペインのカード枠精緻化＆NeXTSTEP風 300ms ホバー右展開カスケード、ライトボックスフェードイン・マウス戻るボタン対応 | [RELEASE_NOTES_v2.0.2.md](release_notes/RELEASE_NOTES_v2.0.2.md) |
+| **v1.8.1** | アクティビティレール再編＆アイコン刷新、1行コンパクトBinderプリセット、インスペクタ整理、ローカルクリーンアップデータ | [RELEASE_NOTES_v1.8.1.md](release_notes/RELEASE_NOTES_v1.8.1.md) |
+| **v1.8.0** | `diff.zip` 自動適用のローカルクリーンアップデータ、ルートディレクトリ整理（`tools/` ＆ `Loome/`） | [RELEASE_NOTES_v1.8.0.md](release_notes/RELEASE_NOTES_v1.8.0.md) |
+| **v1.7.2** | フロントエンドJS・バックエンドAPI・CSSのモジュール分割、デッドコード＆未使用CSS撤去、2階建てテーマ属性修正 | [RELEASE_NOTES_v1.7.2.md](release_notes/RELEASE_NOTES_v1.7.2.md) |
+| **v1.7.1** | Lv.0 エシカルモード誤ロック修正・非破壊オンメモリロック、大容量DB起動高速化、Win32 `CopyFileExW` DBバックアップ高速化 | [RELEASE_NOTES_v1.7.1.md](release_notes/RELEASE_NOTES_v1.7.1.md) |
+| **v1.7.0** | 3段階セキュリティ＆エシカル保護（Lv.0/1/2）、`TETHVLT1` 先頭64KBカプセル化、`Loome/.loome_seal` からの鍵自動サルベージ | [RELEASE_NOTES_v1.7.0.md](release_notes/RELEASE_NOTES_v1.7.0.md) |
+| **v1.6.1** | リンク消失写真の選択削除＆絞り込み削除、Exif欠落画像のサンプリングハッシュ同一認識＆重複自動統合 | [RELEASE_NOTES_v1.6.1.md](release_notes/RELEASE_NOTES_v1.6.1.md) |
+| **v1.6.0** | `Loome` への並列ファイルコピー（`CopyFileExW`）、右展開カスケードメニュー、空フォルダ化時のリンク整理 | [RELEASE_NOTES_v1.6.0.md](release_notes/RELEASE_NOTES_v1.6.0.md) |
+| **v1.5.0** | イベント駆動メディア抜き挿し自動検知（`WM_DEVICECHANGE`＋SSE）、外部アプリ編集の自動同期 | [RELEASE_NOTES_v1.5.0.md](release_notes/RELEASE_NOTES_v1.5.0.md) |
 | **v1.4.1** | 日英翻訳（JP/EN）の網羅性向上、アプリ内ヘルプ＆ドキュメント同期 | [RELEASE_NOTES_v1.4.1.md](release_notes/RELEASE_NOTES_v1.4.1.md) |
-| **v1.4.0** | 専用保管庫「Loome」・外部ドライブ Loome 増設、下部フッターツールバー刷新、評価・フィルタ切替の超高速化 | [RELEASE_NOTES_v1.4.0.md](release_notes/RELEASE_NOTES_v1.4.0.md) |
-| **v1.2.2** | フォルダ更新（差分検出）・消失写真リンク解除 ＆ アプリ全体の確認ダイアログをカスタムモーダル（`#commonConfirmModal`）に統一、大規模DBマイグレーション時の起動待機時間延長（最大180秒） | [RELEASE_NOTES_v1.2.2.md](release_notes/RELEASE_NOTES_v1.2.2.md) |
-| **v1.2.1** | DBマイグレーション時の `ON DELETE CASCADE` 遮断と事前バックアップからの自動自己修復復元、4KBパディング連写・ブラケット識別精度向上、フルブリード新アプリアイコン | [RELEASE_NOTES_v1.2.1.md](release_notes/RELEASE_NOTES_v1.2.1.md) |
-| **v1.2.0** | ユニーク画像エンティティ（`photos`）と実ファイル所在リンク（`photo_links`）の分離、`thumbnails` ROWID直結化、`photo_tags` `WITHOUT ROWID` クラスタ化 | [RELEASE_NOTES_v1.2.0.md](release_notes/RELEASE_NOTES_v1.2.0.md) |
-| **v1.1.1** | サブフォルダ差分検出、親フォルダ管理統合、複数SDカードVSN安定化、ランチャーアイコンキャッシュ更新 | [RELEASE_NOTES_v1.1.1.md](release_notes/RELEASE_NOTES_v1.1.1.md) |
+| **v1.4.0** | 専用保管庫「Loome」・外部ドライブ Loome 増設、下部フッターツールバー刷新、評価・フィルタ切替高速化 | [RELEASE_NOTES_v1.4.0.md](release_notes/RELEASE_NOTES_v1.4.0.md) |
+| **v1.2.2** | フォルダ更新（差分検出）・消失写真リンク解除、カスタム確認モーダル（`#commonConfirmModal`）統一 | [RELEASE_NOTES_v1.2.2.md](release_notes/RELEASE_NOTES_v1.2.2.md) |
+| **v1.2.1** | DBマイグレーション時の `ON DELETE CASCADE` 遮断と自動自己修復、4KBパディング連写識別精度向上 | [RELEASE_NOTES_v1.2.1.md](release_notes/RELEASE_NOTES_v1.2.1.md) |
+| **v1.2.0** | ユニーク画像（`photos`）と所在リンク（`photo_links`）の分離、`thumbnails` ROWID直結化、`photo_tags` `WITHOUT ROWID` 化 | [RELEASE_NOTES_v1.2.0.md](release_notes/RELEASE_NOTES_v1.2.0.md) |
+| **v1.1.1** | サブフォルダ差分検出、親フォルダ管理統合、複数SDカードVSN安定化 | [RELEASE_NOTES_v1.1.1.md](release_notes/RELEASE_NOTES_v1.1.1.md) |
 | **v1.1.0** | 複数SDカードのVSN個体識別・メタデータ引き継ぎ、撮影カレンダー、AIカラータグ単独再判定 | [RELEASE_NOTES_v1.1.0.md](release_notes/RELEASE_NOTES_v1.1.0.md) |
-| **v1.0.0** | 「Tetheract Photo Manager」へ改称しバージョンを v1.0.0 から再出発、tag_key スキーマ、Tetheract D/L テーマ | [RELEASE_NOTES_v1.0.0.md](release_notes/RELEASE_NOTES_v1.0.0.md) |
-| **v3.0.1** | セキュリティ多層防御（DNS Rebinding・LANトークン認証・APIホワイトリスト）、ポータブルパス保護、フォント/Leafletローカル同梱、UI・ドキュメント整備 | [RELEASE_NOTES_v3.0.1.md](release_notes/RELEASE_NOTES_v3.0.1.md) |
-| **v3.00** | メジャーUI大改装（2段階左サイドバー・1段ヘッダー・4:3インスペクタ・脱絵文字・下部バー廃止）、起動高速化 | [RELEASE_NOTES_v3.00.md](release_notes/RELEASE_NOTES_v3.00.md) |
-| **v2.44** | UIレイアウト交通整理（Step 1）、基本ビューア体験強化（Step 2: 矢印キー移動・Before/After比較・画像コピー・12種ソート） | [RELEASE_NOTES_v2.44.md](release_notes/RELEASE_NOTES_v2.44.md) |
-| **v2.43** | タグ並び順「📊 枚数順」トグル＆名前順4ルール、2ペイン設定＆タグツリーエディタでのD&D階層移動 | [RELEASE_NOTES_v2.43.md](release_notes/RELEASE_NOTES_v2.43.md) |
-| **v2.42** | アプリ内ストレージ（storage/）完結管理・D&D移動・一括連番リネーム、XMPサイドカープレビュー | [RELEASE_NOTES_v2.42.md](release_notes/RELEASE_NOTES_v2.42.md) |
-| **v2.41** | ローカルセキュリティ強化（127.0.0.1既定バインド・CORS/CSRF遮断・インジェクション対策） | [RELEASE_NOTES_v2.41.md](release_notes/RELEASE_NOTES_v2.41.md) |
+| **v1.0.0** | 「Tetheract Photo Manager」へ改称し新系列 v1.0.0 から再出発、`tag_key` スキーマ、Tetheract D/L テーマ | [RELEASE_NOTES_v1.0.0.md](release_notes/RELEASE_NOTES_v1.0.0.md) |
+| **旧 v3.2.1** | 旧称 Photo Manager 最終版（改称前） | [RELEASE_NOTES_v0.3.21.md](release_notes/RELEASE_NOTES_v0.3.21.md) |
+| **旧 v3.0.1** | セキュリティ多層防御（DNS Rebinding・LANトークン認証・APIホワイトリスト）、ローカルアセット同梱 | [RELEASE_NOTES_v0.3.1.md](release_notes/RELEASE_NOTES_v0.3.1.md) |
+| **旧 v3.00** | メジャーUI改装（2段階左サイドバー・1段ツールバー・4:3インスペクタ・脱絵文字・下部選択バー廃止） | [RELEASE_NOTES_v0.3.0.md](release_notes/RELEASE_NOTES_v0.3.0.md) |
+| **旧 v2.44** | UIレイアウト交通整理、矢印キー移動・Before/After比較・画像コピー | [RELEASE_NOTES_v0.2.44.md](release_notes/RELEASE_NOTES_v0.2.44.md) |
+| **旧 v2.43** | タグ並び順「枚数順」トグル＆名前順4ルール、2ペイン設定＆タグツリーエディタD&D階層移動 | [RELEASE_NOTES_v0.2.43.md](release_notes/RELEASE_NOTES_v0.2.43.md) |
+| **旧 v2.42** | アプリ内ストレージ完結管理・D&D移動・一括連番リネーム、XMPサイドカープレビュー | [RELEASE_NOTES_v0.2.42.md](release_notes/RELEASE_NOTES_v0.2.42.md) |
+| **旧 v2.41** | ローカルセキュリティ強化（127.0.0.1既定バインド・Origin遮断・インジェクション対策） | [RELEASE_NOTES_v0.2.41.md](release_notes/RELEASE_NOTES_v0.2.41.md) |
 
 ---
 
-## 5. タスクアーカイブ (docs/archive/tasks/)
+## 5. アーカイブ (`docs/archive/`)
 
-過去の機能追加・改修において作成された作業計画（`implementation_plan.md`）、タスク管理（`task.md`）、検証記録（`walkthrough.md`）のアーカイブ。
-設計意図や当時の検証経緯を確認する際に参照できる。
+過去の機能追加・移行期における設計記録および統合前の旧ルール群は、現行開発のコンテキストを肥大化させないよう `docs/archive/` 配下に分類保管されている。
 
-<details>
-<summary>収録タスク一覧（クリックで展開・全49タスク）</summary>
-
-- `accordion_bottom_docking`
-- `accordion_exclusive_and_folder_fix`
-- `accordion_sidebar_renewal`
-- `ai_auto_tagging`
-- `auto_clear_selection`
-- `batch_tagging_and_inspector_tags_fix`
-- `duplicate_photo_detection_and_inspector_details`
-- `duplicate_photo_smart_management`
-- `filter_presets`
-- `floating_bar_and_menu_contrast_fix`
-- `floating_bar_popover_actions`
-- `floating_bar_rate_popover_order`
-- `folder_auto_refresh_confirm`
-- `folder_tree_consolidation`
-- `frontend_refactoring`
-- `import_photos_feature`
-- `inspector_button_right_refine`
-- `inspector_tag_layout_and_ai_expander`
-- `inspector_tag_tree_foldable`
-- `left_sidebar_divider`
-- `left_sidebar_tag_delete_fix`
-- `location_tree_geocoding`
-- `menu_contrast_and_inspector_improvements`
-- `multilanguage_support`
-- `nondestructive_crop_and_rotate`
-- `offline_display_redesign`
-- `performance_audit`
-- `quick_access_folders`
-- `rating_filter_redesign`
-- `rating_system_renewal`
-- `scan_progress_footer_migration`
-- `sidebar_button_left_refine`
-- `sidebar_resize_and_cleanup`
-- `sidebar_toggle_collapse`
-- `slideshow`
-- `smart_takeout_export`
-- `step3_backlog_completion`
-- `storage_folder_management`
-- `system_tray_shutdown`
-- `tag_ancestor_storage`
-- `tag_filter_section_adjustment`
-- `three_tier_ethical_security_v170`
-- `thumbnail_refresh_action`
-- `thumbnail_sqlite_blob_migration`
-- `ui_layout_declutter_step1`
-- `upload_auto_cleanup`
-- `v300_ui_overhaul_and_step3`
-- `viewer_ux_enhancement_step2`
-- `volume_label_display`
-- `windowless_auto_shutdown`
-
-</details>
+- **`docs/archive/knowledge/`**: 過渡期の旧アーキテクチャ解説、旧コードマップ、将来構想メモ等のアーカイブ
+- **`docs/archive/rules_legacy/`**: `AGENTS.md` スリム化統合前の旧 `.agents/rules/` ファイル群
+- **`docs/archive/agents_legacy/`**: UI改装・README刷新時に使用した旧専門サブエージェント定義
+- **`docs/archive/tasks/`**: 過去の改修タスク計画（`implementation_plan.md` / `task.md` / `walkthrough.md`、全52タスク）

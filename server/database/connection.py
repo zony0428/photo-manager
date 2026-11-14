@@ -5,6 +5,7 @@ SQLiteの接続プール（スレッドローカル再利用）とパフォー�
 
 import logging
 import math
+import re
 import shutil
 import sqlite3
 import threading
@@ -159,36 +160,207 @@ _local_db = threading.local()
 _all_connections_lock = threading.Lock()
 _all_connections: list[sqlite3.Connection] = []
 _DB_COMMIT_SEQ: int = 0
+_PHOTOS_SEQ: int = 0
+_TAGS_SEQ: int = 0
+_LINKS_SEQ: int = 0
+_THUMBNAILS_SEQ: int = 0
+
+_ALL_SEQ_DOMAINS = ("db", "photos", "tags", "links", "thumbnails")
+_DML_TABLE_RE = re.compile(
+    r"^\s*(?:WITH\b[\s\S]*?\b)?(INSERT|REPLACE|UPDATE|DELETE)\b"
+    r"(?:\s+OR\s+\w+)?(?:\s+INTO|\s+FROM)?\s+[`\"'\[]?(?:\w+\.)?(\w+)",
+    re.IGNORECASE,
+)
+_PHOTOS_LINK_COLS_RE = re.compile(
+    r"\b(is_unlinked|volume_serial|directory_path|file_path|link_count|paired_raw_path|is_raw)\s*=",
+    re.IGNORECASE,
+)
+
+
+def _classify_write_sql(sql: str):
+    """実行SQLが変更するキャッシュドメイン群を判定する（読み取りクエリはNoneを返す）"""
+    if not sql:
+        return None
+    s = sql.lstrip()
+    if not s:
+        return None
+    head = s[:10].upper()
+    if head.startswith(("SELECT", "PRAGMA", "EXPLAIN", "BEGIN", "COMMIT", "END", "ROLLBACK", "SAVEPOINT", "RELEASE")):
+        return None
+    if head.startswith("CREATE") and "IF NOT EXISTS" in s[:80].upper():
+        return None
+    if head.startswith("WITH"):
+        s_upper = s.upper()
+        if not any(k in s_upper for k in ("INSERT ", "UPDATE ", "DELETE ", "REPLACE ")):
+            return None
+
+    m = _DML_TABLE_RE.match(s)
+    if not m:
+        return _ALL_SEQ_DOMAINS
+
+    verb = m.group(1).upper()
+    table = m.group(2).lower()
+
+    if table == "thumbnails":
+        return ("thumbnails",)
+    if table in ("photo_tags", "tag_definitions"):
+        return ("db", "tags")
+    if table in ("photo_links", "volumes", "scan_roots", "ignored_folders"):
+        return ("db", "photos", "links")
+    if table == "photos":
+        if verb in ("INSERT", "DELETE", "REPLACE"):
+            return _ALL_SEQ_DOMAINS
+        where_idx = s.upper().find(" WHERE ")
+        set_part = s[:where_idx] if where_idx != -1 else s
+        if _PHOTOS_LINK_COLS_RE.search(set_part):
+            return ("db", "photos", "links")
+        return ("db", "photos")
+    if table in ("filter_presets", "field_logs", "field_log_points", "migrations", "app_meta", "security_meta"):
+        return ("db",)
+    return _ALL_SEQ_DOMAINS
+
+
+def _apply_domain_bumps(domains) -> None:
+    """指定されたキャッシュドメイン群の世代番号をインクリメントする"""
+    global _DB_COMMIT_SEQ, _PHOTOS_SEQ, _TAGS_SEQ, _LINKS_SEQ, _THUMBNAILS_SEQ
+    if "db" in domains:
+        _DB_COMMIT_SEQ += 1
+    if "photos" in domains:
+        _PHOTOS_SEQ += 1
+    if "tags" in domains:
+        _TAGS_SEQ += 1
+    if "links" in domains:
+        _LINKS_SEQ += 1
+    if "thumbnails" in domains:
+        _THUMBNAILS_SEQ += 1
+
+
+class _TrackedCursor(sqlite3.Cursor):
+    """書き込み対象テーブルを記録するSQLiteカーソル"""
+
+    def execute(self, sql: str, parameters=(), /):
+        domains = _classify_write_sql(sql)
+        if domains is not None:
+            self.connection._record_tx_domains(domains)
+        return super().execute(sql, parameters)
+
+    def executemany(self, sql: str, seq_of_parameters, /):
+        domains = _classify_write_sql(sql)
+        if domains is not None:
+            self.connection._record_tx_domains(domains)
+        return super().executemany(sql, seq_of_parameters)
+
+    def executescript(self, sql_script: str, /):
+        self.connection._record_tx_domains(_ALL_SEQ_DOMAINS)
+        return super().executescript(sql_script)
 
 
 class _TrackedConnection(sqlite3.Connection):
-    """トランザクションコミット時に世代番号を自動インクリメントするSQLite接続"""
+    """トランザクションコミット時に変更ドメイン別の世代番号を自動インクリメントするSQLite接続"""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._tx_domains: set[str] = set()
+
+    def _record_tx_domains(self, domains) -> None:
+        self._tx_domains.update(domains)
+
+    def cursor(self, factory=None):
+        if factory is None:
+            factory = _TrackedCursor
+        return super().cursor(factory)
+
+    def execute(self, sql: str, parameters=(), /):
+        domains = _classify_write_sql(sql)
+        if domains is not None:
+            self._tx_domains.update(domains)
+        return super().execute(sql, parameters)
+
+    def executemany(self, sql: str, seq_of_parameters, /):
+        domains = _classify_write_sql(sql)
+        if domains is not None:
+            self._tx_domains.update(domains)
+        return super().executemany(sql, seq_of_parameters)
+
+    def executescript(self, sql_script: str, /):
+        self._tx_domains.update(_ALL_SEQ_DOMAINS)
+        return super().executescript(sql_script)
 
     def commit(self) -> None:
-        global _DB_COMMIT_SEQ
         was_in_tx = self.in_transaction
+        domains = tuple(self._tx_domains) if self._tx_domains else _ALL_SEQ_DOMAINS
         super().commit()
+        self._tx_domains.clear()
         if was_in_tx:
-            _DB_COMMIT_SEQ += 1
+            _apply_domain_bumps(domains)
+
+    def rollback(self) -> None:
+        super().rollback()
+        self._tx_domains.clear()
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        global _DB_COMMIT_SEQ
         was_in_tx = self.in_transaction
+        domains = tuple(self._tx_domains) if self._tx_domains else _ALL_SEQ_DOMAINS
         res = super().__exit__(exc_type, exc_val, exc_tb)
+        self._tx_domains.clear()
         if exc_type is None and was_in_tx:
-            _DB_COMMIT_SEQ += 1
+            _apply_domain_bumps(domains)
         return res
 
 
 def get_db_commit_seq() -> int:
-    """データベースの書き込みコミット世代番号を返す"""
+    """データベースの書き込みコミット世代番号（サムネイル単体更新を除く）を返す"""
     return _DB_COMMIT_SEQ
 
 
-def bump_db_commit_seq() -> None:
+def get_photos_seq() -> int:
+    """写真メタデータ・リンク変更の世代番号を返す"""
+    return _PHOTOS_SEQ
+
+
+def get_tags_seq() -> int:
+    """タグ・タグ定義変更の世代番号を返す"""
+    return _TAGS_SEQ
+
+
+def get_links_seq() -> int:
+    """写真増減・リンク所在・フォルダ構成変更の世代番号を返す"""
+    return _LINKS_SEQ
+
+
+def get_thumbnails_seq() -> int:
+    """サムネイルBLOB変更の世代番号を返す"""
+    return _THUMBNAILS_SEQ
+
+
+def bump_photos_seq() -> None:
+    """写真一覧キャッシュ世代を明示インクリメントする"""
+    _apply_domain_bumps(("photos",))
+
+
+def bump_tags_seq() -> None:
+    """タグキャッシュ世代を明示インクリメントする"""
+    _apply_domain_bumps(("tags",))
+
+
+def bump_links_seq() -> None:
+    """リンク・フォルダ接続死活キャッシュ世代を明示インクリメントする"""
+    _apply_domain_bumps(("links",))
+
+
+def bump_thumbnails_seq() -> None:
+    """サムネイルキャッシュ世代を明示インクリメントする"""
+    _apply_domain_bumps(("thumbnails",))
+
+
+def bump_db_commit_seq(domains=None) -> None:
     """キャッシュ無効化時に世代番号を明示インクリメントする"""
-    global _DB_COMMIT_SEQ
-    _DB_COMMIT_SEQ += 1
+    if domains is None:
+        _apply_domain_bumps(_ALL_SEQ_DOMAINS)
+    elif isinstance(domains, str):
+        _apply_domain_bumps(("db", domains))
+    else:
+        _apply_domain_bumps(("db", *domains))
 
 
 def get_connection() -> sqlite3.Connection:
@@ -256,6 +428,34 @@ def close_all_connections() -> None:
             c.close()
         except Exception:
             pass
+
+
+def get_or_create_library_id() -> str:
+    """library.db 固有の不変識別子 (library_id) を app_meta から取得する（未設定時は生成して永続化）"""
+    import uuid
+
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS app_meta (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    cur.execute("SELECT value FROM app_meta WHERE key = 'library_id'")
+    row = cur.fetchone()
+    if row and row["value"] and str(row["value"]).strip():
+        return str(row["value"]).strip()
+    new_id = f"lib_{uuid.uuid4().hex}"
+    cur.execute(
+        "INSERT OR REPLACE INTO app_meta (key, value, updated_at) VALUES ('library_id', ?, CURRENT_TIMESTAMP)",
+        (new_id,),
+    )
+    conn.commit()
+    return new_id
 
 
 def switch_database_path(new_path: Path) -> Path:

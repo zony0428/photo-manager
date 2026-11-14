@@ -69,6 +69,11 @@
   --shadow-lg: 0 8px 24px rgba(42, 41, 38, 0.12);
   --transition-fast: 0.12s ease;
   --transition-normal: 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-sweep-ratio: 0.6;
+  --motion-grid-fade: 272ms;
+  --motion-lightbox-fade: 300ms;
+  --motion-modal-fade: 228ms;
+  --motion-cascade-fade: 114ms;
 }
 
 [data-theme="sumi"] {
@@ -135,6 +140,11 @@
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
   --transition-fast: 0.12s ease;
   --transition-normal: 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-sweep-ratio: 0.6;
+  --motion-grid-fade: 272ms;
+  --motion-lightbox-fade: 300ms;
+  --motion-modal-fade: 228ms;
+  --motion-cascade-fade: 114ms;
 }
 
 /* ==========================================================================
@@ -444,6 +454,38 @@ button, input, select, textarea {
   user-select: none;
   white-space: nowrap;
   flex-shrink: 0;
+}
+
+/* ロゴボタン化（設定・管理コンソール起動トリガー） */
+.logo.logo-settings-btn {
+  cursor: pointer;
+  padding: 3px 8px 3px 6px;
+  border-radius: var(--radius-sm, 4px);
+  border: 1px solid transparent;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.logo.logo-settings-btn:hover,
+.logo.logo-settings-btn:focus-visible {
+  background: var(--bg-hover, rgba(255, 255, 255, 0.06));
+  border-color: var(--border-color, rgba(255, 255, 255, 0.16));
+  outline: none;
+}
+
+.logo-settings-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  opacity: 0.65;
+  margin-left: 2px;
+  transition: color 0.15s ease, opacity 0.15s ease, transform 0.25s ease;
+}
+
+.logo.logo-settings-btn:hover .logo-settings-badge {
+  color: var(--accent-primary);
+  opacity: 1;
+  transform: rotate(35deg);
 }
 
 /* テーマ切り替えボタン（和紙 ⇄ 夜墨） */
@@ -2615,4 +2657,70 @@ body.resizing .resize-handle {
   font-weight: 600;
   font-style: italic;
 }
+
+/* ==========================================================================
+   モーションアジャスタ（Slap & Sweep）設定コントロール & Slap(0%) 即時モード
+   ========================================================================== */
+.settings-motion-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 280px;
+}
+
+.motion-preset-btn {
+  padding: 4px 10px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  border-radius: var(--radius-sm, 4px);
+  border: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.motion-preset-btn:hover {
+  color: var(--text-main);
+  border-color: var(--accent-primary);
+}
+
+.motion-preset-btn.active {
+  background: var(--accent-subtle);
+  color: var(--accent-primary);
+  border-color: var(--accent-primary);
+}
+
+.motion-sweep-slider {
+  flex: 1;
+  min-width: 110px;
+  accent-color: var(--accent-primary);
+  cursor: pointer;
+}
+
+.motion-sweep-badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-main);
+  min-width: 92px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+[data-motion-mode="slap"] .photo-card,
+[data-motion-mode="slap"] .card-thumb-img,
+[data-motion-mode="slap"] .card-rating-bar,
+[data-motion-mode="slap"] .lightbox-modal,
+[data-motion-mode="slap"] #lightboxImage,
+[data-motion-mode="slap"] .ns-cascade-panel,
+[data-motion-mode="slap"] .context-submenu,
+[data-motion-mode="slap"] .inspector-panel,
+[data-motion-mode="slap"] .compare-modal {
+  transition-duration: 0s !important;
+  transition-delay: 0s !important;
+  animation: none !important;
+}
+
 

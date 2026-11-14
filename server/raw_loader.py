@@ -100,9 +100,8 @@ def extract_fallback_lens_model(file_path: Union[str, Path]) -> Optional[str]:
       2. XMP メタデータ (aux:Lens / exifEX:LensModel — SILKYPIX現像JPEGやNikon D200等)
     """
     try:
-        with open(file_path, "rb") as f:
-            from .security import read_loome_file_decrypted_bytes
-            raw = read_loome_file_decrypted_bytes(file_path, max_bytes=131072)
+        from .security import read_loome_file_decrypted_bytes
+        raw = read_loome_file_decrypted_bytes(file_path, max_bytes=131072)
     except Exception as e:
         logger.debug(f"レンズ情報フォールバック読み取りスキップ ({file_path}): {e}")
         return None
@@ -231,7 +230,7 @@ def _extract_tiff_preview_and_info(file_path: Path) -> Tuple[Optional[Image.Imag
     (最大解像度の埋め込みプレビューImage, IFD0 Orientation, センサー幅, センサー高さ) を返す。
     Sony αのロスレス圧縮RAW (M/S/L) や新型ボディ等、LibRawが未対応のRAWでも1ms未満で確実に抽出できる。
     """
-    from .security import decrypted_file_path_context
+    from .security import open_loome_decrypted_stream
 
     ifd0_orient: Optional[int] = None
     sensor_w = 0
@@ -239,7 +238,7 @@ def _extract_tiff_preview_and_info(file_path: Path) -> Tuple[Optional[Image.Imag
     candidates: List[Tuple[int, int]] = []  # (offset, length)
 
     try:
-        with decrypted_file_path_context(file_path) as dec_p, open(dec_p, "rb") as f:
+        with open_loome_decrypted_stream(file_path) as f:
             f.seek(0, os.SEEK_END)
             fsize = f.tell()
             if fsize < 64:
@@ -532,11 +531,26 @@ def extract_raw_thumbnail_image(file_path: Union[str, Path]) -> Optional[Image.I
     if not path_obj.exists():
         return None
 
-    # 1. rawpy (LibRaw) による埋め込みサムネイル抽出
+    from .security import (
+        decrypted_bytes_context,
+        is_vault_encrypted_file,
+        read_loome_file_decrypted_bytes,
+    )
+    is_encrypted = is_vault_encrypted_file(path_obj)
+
+    # Lv.2 カプセル化済み TIFF 系 RAW は 64KB 復号ストリームの IFD 直接シークで全量メモリ展開を回避
+    if is_encrypted:
+        try:
+            tiff_fast_img, _, _, _ = _extract_tiff_preview_and_info(path_obj)
+            if tiff_fast_img is not None and max(tiff_fast_img.width, tiff_fast_img.height) >= 400:
+                return tiff_fast_img
+        except Exception as e:
+            logger.debug(f"Lv.2 TIFFプレビュー高速抽出スキップ ({path_obj.name}): {e}")
+
+    # 1. rawpy (LibRaw) による埋め込みサムネイル抽出（%TEMP% 一時ファイル不使用・オンメモリ対応）
     if rawpy is not None:
         try:
-            from .security import decrypted_file_path_context
-            with decrypted_file_path_context(path_obj) as dec_p, rawpy.imread(str(dec_p)) as raw:
+            with decrypted_bytes_context(path_obj) as raw_src, rawpy.imread(raw_src) as raw:
                 flip_orient = None
                 if hasattr(raw, "sizes"):
                     flip_val = getattr(raw.sizes, "flip", 0)
@@ -584,8 +598,7 @@ def extract_raw_thumbnail_image(file_path: Union[str, Path]) -> Optional[Image.I
 
     # 3. フォールバック: DNGなどPillow自身で直接開ける非圧縮/標準TIFF RAWの場合
     try:
-        from .security import is_vault_encrypted_file, read_loome_file_decrypted_bytes
-        src = io.BytesIO(read_loome_file_decrypted_bytes(path_obj)) if is_vault_encrypted_file(path_obj) else path_obj
+        src = io.BytesIO(read_loome_file_decrypted_bytes(path_obj)) if is_encrypted else path_obj
         with Image.open(src) as img:
             img.load()
             img = ImageOps.exif_transpose(img)
@@ -596,8 +609,7 @@ def extract_raw_thumbnail_image(file_path: Union[str, Path]) -> Optional[Image.I
     # 4. 最終フォールバック: 埋め込みJPEGを持たないRAWに対してrawpyの高速ハーフサイズ現像を試行
     if rawpy is not None:
         try:
-            from .security import decrypted_file_path_context
-            with decrypted_file_path_context(path_obj) as dec_p, rawpy.imread(str(dec_p)) as raw:
+            with decrypted_bytes_context(path_obj) as raw_src, rawpy.imread(raw_src) as raw:
                 rgb = raw.postprocess(half_size=True, use_camera_wb=True)
                 return Image.fromarray(rgb)
         except Exception as e:
@@ -675,8 +687,9 @@ def extract_raw_metadata(file_path: Path) -> Dict[str, Any]:
     埋め込みプレビューのExif、外側TIFF IFD0/ExifIFD、およびRAWファイル構造から網羅的に取得する。
     """
     stat = file_path.stat()
-    from .security import decrypted_file_path_context, get_logical_file_size
+    from .security import decrypted_bytes_context, get_logical_file_size, is_vault_encrypted_file
     file_size = get_logical_file_size(file_path)
+    is_encrypted = is_vault_encrypted_file(file_path)
 
     # デフォルト値（ファイル更新日時フォールバック）
     fallback_dt = datetime.fromtimestamp(stat.st_mtime)
@@ -698,10 +711,18 @@ def extract_raw_metadata(file_path: Path) -> Dict[str, Any]:
     # 1. まず外側TIFFヘッダ (IFD0 / ExifIFD) を直接解析（ARW等のメタデータの主格納場所）
     exif, exif_ifd = _load_outer_tiff_exif(file_path)
 
-    # 2. rawpy から基本サイズおよび埋め込みプレビューのExifを取得・補完
-    if rawpy is not None:
+    # Lv.2 カプセル化時は先に 64KB 復号ストリームの IFD 走査でセンサー寸法取得を試み、全量 BytesIO 展開を最小化
+    if is_encrypted and exif and exif_ifd:
+        tiff_img_enc, _, sensor_w_enc, sensor_h_enc = _extract_tiff_preview_and_info(file_path)
+        if sensor_w_enc > 0 and sensor_h_enc > 0:
+            width, height = sensor_w_enc, sensor_h_enc
+        elif tiff_img_enc is not None:
+            width, height = tiff_img_enc.size
+
+    # 2. rawpy から基本サイズおよび埋め込みプレビューのExifを取得・補完（%TEMP% 不使用）
+    if rawpy is not None and (not is_encrypted or width <= 0 or height <= 0 or not exif or not exif_ifd):
         try:
-            with decrypted_file_path_context(file_path) as dec_raw_path, rawpy.imread(str(dec_raw_path)) as raw:
+            with decrypted_bytes_context(file_path) as raw_src, rawpy.imread(raw_src) as raw:
                 if hasattr(raw, "sizes"):
                     width = int(raw.sizes.width)
                     height = int(raw.sizes.height)
@@ -910,7 +931,7 @@ def extract_raw_metadata(file_path: Path) -> Dict[str, Any]:
         "f_number": f_number,
         "iso": iso,
         "focal_length": focal_length,
-        "lens_model": lens_model,
+        "lens_model": lens_model if is_valid_lens_name(lens_model) else "",
         "subsec_time": subsec_time,
         "is_raw": 1,
         "raw_format": file_path.suffix.lower(),

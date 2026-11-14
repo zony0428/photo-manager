@@ -5,6 +5,31 @@
 
 let _lightboxOpenRafId = null;
 let _lightboxViewPreloadImg = null;
+let _lightboxPanRafId = null;
+const _lightboxStageMetricsCache = {
+  bodyWidth: 0,
+  bodyHeight: 0,
+  stageRect: null,
+  dirty: true,
+};
+
+function invalidateLightboxStageMetrics() {
+  _lightboxStageMetricsCache.dirty = true;
+  _lightboxStageMetricsCache.stageRect = null;
+}
+
+function _ensureLightboxStageMetrics() {
+  if (!_lightboxStageMetricsCache.dirty && _lightboxStageMetricsCache.bodyWidth > 0) {
+    return _lightboxStageMetricsCache;
+  }
+  const bodyEl = elements.lightboxModal ? elements.lightboxModal.querySelector('.lightbox-body') : null;
+  const bodyRect = bodyEl ? bodyEl.getBoundingClientRect() : null;
+  _lightboxStageMetricsCache.bodyWidth = (bodyRect && bodyRect.width > 100) ? bodyRect.width : window.innerWidth;
+  _lightboxStageMetricsCache.bodyHeight = (bodyRect && bodyRect.height > 100) ? bodyRect.height : window.innerHeight;
+  _lightboxStageMetricsCache.stageRect = elements.imageStage ? elements.imageStage.getBoundingClientRect() : bodyRect;
+  _lightboxStageMetricsCache.dirty = false;
+  return _lightboxStageMetricsCache;
+}
 
 function computeFilmstripPhotosKey() {
   const len = Array.isArray(state.photos) ? state.photos.length : 0;
@@ -23,6 +48,7 @@ function openLightbox(index) {
   state.currentRotation = photo ? (photo.rotation || 0) : 0;
   resetLightboxZoom();
   elements.lightboxModal.style.display = 'flex';
+  invalidateLightboxStageMetrics();
   document.body.style.overflow = 'hidden';
 
   try {
@@ -105,7 +131,7 @@ function _getLightboxPhotoMetrics(photo, naturalW, naturalH) {
     metaH = Math.max(1, Math.round(metaH * (ch > 0 && ch < 1 ? ch : 1)));
   }
   const isBaked = typeof hasBakedViewAdjustments === 'function' && hasBakedViewAdjustments(photo);
-  const rotNorm = ((Number(photo?.rotation) || 0) % 360 + 360) % 360;
+  const rotNorm = ((Number(photo?.rotation ?? state.lightboxRotation) || 0) % 360 + 360) % 360;
   if (isBaked && (rotNorm === 90 || rotNorm === 270) && metaW > 0 && metaH > 0) {
     const tmpM = metaW;
     metaW = metaH;
@@ -119,16 +145,13 @@ function _getLightboxPhotoMetrics(photo, naturalW, naturalH) {
     photo?.is_missing ||
     (origMaxDim > 640 && loadedMaxDim > 0 && loadedMaxDim <= 640)
   );
-  const bodyEl = elements.lightboxModal ? elements.lightboxModal.querySelector('.lightbox-body') : null;
-  const bodyRect = bodyEl ? bodyEl.getBoundingClientRect() : null;
-  let maxW = (bodyRect && bodyRect.width > 100) ? (bodyRect.width * 0.9) : (window.innerWidth * 0.9);
-  let maxH = (bodyRect && bodyRect.height > 100) ? Math.min(bodyRect.height * 0.9, window.innerHeight * 0.8) : (window.innerHeight * 0.8);
-  const unbakedRot = isBaked ? 0 : rotNorm;
-  if (unbakedRot === 90 || unbakedRot === 270) {
-    const tmp = maxW;
-    maxW = maxH;
-    maxH = tmp;
-  }
+  const stageMetrics = _ensureLightboxStageMetrics();
+  const maxW = stageMetrics.bodyWidth * 0.9;
+  const maxH = Math.min(stageMetrics.bodyHeight * 0.9, window.innerHeight * 0.8);
+  const cssRot = isBaked ? 0 : (state.lightboxRotation || 0);
+  const isCssRot90 = Math.abs(cssRot) % 180 === 90;
+  const availW = isCssRot90 ? maxH : maxW;
+  const availH = isCssRot90 ? maxW : maxH;
 
   const origW = (nw > 640 || nh > 640) ? nw : (metaW || nw || 1600);
   const origH = (nw > 640 || nh > 640) ? nh : (metaH || nh || 1200);
@@ -142,11 +165,11 @@ function _getLightboxPhotoMetrics(photo, naturalW, naturalH) {
       nw = Math.max(1, Math.round(ow * ratio));
       nh = Math.max(1, Math.round(oh * ratio));
     }
-    const scale = Math.max(1.0, Math.min(2.0, maxW / nw, maxH / nh));
+    const scale = Math.max(1.0, Math.min(2.0, availW / nw, availH / nh));
     baseFitW = Math.max(1, nw * scale);
     baseFitH = Math.max(1, nh * scale);
   } else {
-    const fitScale = Math.min(1.0, maxW / Math.max(1, origW), maxH / Math.max(1, origH));
+    const fitScale = Math.min(1.0, availW / Math.max(1, origW), availH / Math.max(1, origH));
     baseFitW = Math.max(1, origW * fitScale);
     baseFitH = Math.max(1, origH * fitScale);
   }
@@ -176,6 +199,12 @@ function _triggerLightboxImageFadeIn() {
   if (!imgEl) return;
   imgEl.classList.remove('lightbox-image-loading');
   imgEl.classList.remove('lightbox-image-fadein');
+  const skipFade = Boolean(state._lightboxSkipFadeOnce)
+    || (typeof window.getMotionSweepDegree === 'function' && window.getMotionSweepDegree() <= 0);
+  state._lightboxSkipFadeOnce = false;
+  if (skipFade) {
+    return;
+  }
   void imgEl.offsetWidth;
   imgEl.classList.add('lightbox-image-fadein');
 }
@@ -266,13 +295,20 @@ function updateLightboxContent(photo) {
   // EXIFテーブル更新
   elements.exifFileName.textContent = photo.file_name;
 
+  const pairedJpegFilePath = photo.paired_raw_path
+    ? (photo.is_raw ? photo.paired_raw_path : photo.file_path)
+    : photo.file_path;
+  const pairedRawFilePath = photo.paired_raw_path
+    ? (photo.is_raw ? photo.file_path : photo.paired_raw_path)
+    : null;
+
   if (elements.exifFormat) {
     if (photo.paired_raw_path) {
       elements.exifFormat.textContent = 'JPEG + RAW (ペア)';
       if (elements.exifRawPairRow) {
         elements.exifRawPairRow.style.display = 'table-row';
-        elements.exifRawPair.textContent = photo.paired_raw_path;
-        elements.exifRawPair.title = photo.paired_raw_path;
+        elements.exifRawPair.textContent = pairedRawFilePath || photo.paired_raw_path;
+        elements.exifRawPair.title = pairedRawFilePath || photo.paired_raw_path;
       }
     } else if (photo.is_raw) {
       const fmt = (photo.raw_format || 'RAW').toUpperCase().replace('.', '');
@@ -313,7 +349,12 @@ function updateLightboxContent(photo) {
 
   elements.exifDimensions.textContent = (photo.width && photo.height) ? `${photo.width} x ${photo.height} px` : '-';
   elements.exifFileSize.textContent = formatBytes(photo.file_size);
-  elements.exifPath.textContent = photo.file_path;
+  if (photo.paired_raw_path && pairedJpegFilePath && pairedRawFilePath && pairedJpegFilePath !== pairedRawFilePath) {
+    elements.exifPath.textContent = `JPG: ${pairedJpegFilePath} / RAW: ${pairedRawFilePath}`;
+    elements.exifPath.title = `JPEG: ${pairedJpegFilePath}\nRAW: ${pairedRawFilePath}`;
+  } else {
+    elements.exifPath.textContent = pairedJpegFilePath || photo.file_path || '-';
+  }
 
   // 写真タグ一覧の描画
   renderLightboxTags(photo);
@@ -765,7 +806,11 @@ async function addTagToCurrentPhoto(photoId, tag) {
       if (state.isInspectorOpen && state.activeInspectorPhotoId === photoId && typeof updateInspectorView === 'function') {
         updateInspectorView();
       }
-      renderPhotoGrid();
+      if (typeof syncGridCardAfterSingleTagChange === 'function') {
+        await syncGridCardAfterSingleTagChange(photoId);
+      } else if (typeof updateCardTagsDirectly === 'function') {
+        updateCardTagsDirectly(photoId);
+      }
       fetchTags(); // サイドバーの件数も更新
     }
     elements.lightboxNewTagInput.value = '';
@@ -793,8 +838,16 @@ async function removeTagFromCurrentPhoto(photoId, tag) {
     if (photo && !instances.includes(photo)) instances.push(photo);
 
     instances.forEach(inst => {
-      if (inst.tags) inst.tags = inst.tags.filter(t => t !== tag && !t.startsWith(tag + '/'));
-      if (inst.tag_details) inst.tag_details = inst.tag_details.filter(d => d.tag !== tag && !d.tag.startsWith(tag + '/'));
+      if (inst.tags) {
+        inst.tags = typeof pruneRemovedTagFromArray === 'function'
+          ? pruneRemovedTagFromArray(inst.tags, tag)
+          : inst.tags.filter(t => t !== tag && !t.startsWith(tag + '/'));
+      }
+      if (inst.tag_details) {
+        inst.tag_details = typeof pruneRemovedTagDetailsFromArray === 'function'
+          ? pruneRemovedTagDetailsFromArray(inst.tag_details, tag)
+          : inst.tag_details.filter(d => d.tag !== tag && !d.tag.startsWith(tag + '/'));
+      }
     });
 
     if (photo) {
@@ -805,7 +858,11 @@ async function removeTagFromCurrentPhoto(photoId, tag) {
       if (state.isInspectorOpen && state.activeInspectorPhotoId === photoId && typeof updateInspectorView === 'function') {
         updateInspectorView();
       }
-      renderPhotoGrid();
+      if (typeof syncGridCardAfterSingleTagChange === 'function') {
+        await syncGridCardAfterSingleTagChange(photoId);
+      } else if (typeof updateCardTagsDirectly === 'function') {
+        updateCardTagsDirectly(photoId);
+      }
       fetchTags();
     }
   } catch (err) {
@@ -838,8 +895,9 @@ async function promoteTagForPhoto(photoId, tag) {
         }
       }
     });
-    if (state.currentPhotoIndex < 0 && state.selectedPhotoIds && state.selectedPhotoIds.size > 0 && typeof clearSelection === 'function') {
-      state.activeInspectorPhotoId = photoId;
+    state.activeInspectorPhotoId = photoId;
+    const isSingleSelectedTarget = state.selectedPhotoIds && state.selectedPhotoIds.size === 1 && state.selectedPhotoIds.has(photoId);
+    if (state.currentPhotoIndex < 0 && state.selectedPhotoIds && state.selectedPhotoIds.size > 0 && !isSingleSelectedTarget && typeof clearSelection === 'function') {
       clearSelection();
     } else if (state.isInspectorOpen && state.activeInspectorPhotoId === photoId) {
       updateInspectorView();
@@ -849,7 +907,11 @@ async function promoteTagForPhoto(photoId, tag) {
     if (curLight && curLight.id === photoId) {
       renderLightboxTags(curLight);
     }
-    renderPhotoGrid();
+    if (typeof syncGridCardAfterSingleTagChange === 'function') {
+      await syncGridCardAfterSingleTagChange(photoId);
+    } else if (typeof updateCardTagsDirectly === 'function') {
+      updateCardTagsDirectly(photoId);
+    }
     fetchTags();
     showToast(`「${tag}」を手動タグとして確定しました`, 'success');
   } catch (err) {
@@ -880,8 +942,9 @@ async function triggerAiTagForSinglePhoto(photoId, btnElement) {
       inst.tags = [...newTagNames];
     });
 
-    if (state.currentPhotoIndex < 0 && state.selectedPhotoIds && state.selectedPhotoIds.size > 0 && typeof clearSelection === 'function') {
-      state.activeInspectorPhotoId = photoId;
+    state.activeInspectorPhotoId = photoId;
+    const isSingleSelectedTarget = state.selectedPhotoIds && state.selectedPhotoIds.size === 1 && state.selectedPhotoIds.has(photoId);
+    if (state.currentPhotoIndex < 0 && state.selectedPhotoIds && state.selectedPhotoIds.size > 0 && !isSingleSelectedTarget && typeof clearSelection === 'function') {
       clearSelection();
     } else if (state.isInspectorOpen && state.activeInspectorPhotoId === photoId) {
       updateInspectorView();
@@ -890,7 +953,11 @@ async function triggerAiTagForSinglePhoto(photoId, btnElement) {
     if (curLight && curLight.id === photoId) {
       renderLightboxTags(curLight);
     }
-    renderPhotoGrid();
+    if (typeof syncGridCardAfterSingleTagChange === 'function') {
+      await syncGridCardAfterSingleTagChange(photoId);
+    } else if (typeof updateCardTagsDirectly === 'function') {
+      updateCardTagsDirectly(photoId);
+    }
     fetchTags();
 
     const addedTags = (data.predicted || []).map(p => p.tag).join(', ');
@@ -1016,6 +1083,25 @@ async function setCurrentLightboxPhotoAsPrimary() {
         const newGridPhoto = {
           ...oldGridPhoto,
           ...current,
+          rotation: current.rotation ?? 0,
+          fine_angle: current.fine_angle ?? 0,
+          brightness: current.brightness ?? 0,
+          contrast: current.contrast ?? 0,
+          saturation: current.saturation ?? 0,
+          crop_x: current.crop_x ?? null,
+          crop_y: current.crop_y ?? null,
+          crop_w: current.crop_w ?? null,
+          crop_h: current.crop_h ?? null,
+          crop_aspect: current.crop_aspect ?? null,
+          thumb_width: current.thumb_width ?? null,
+          thumb_height: current.thumb_height ?? null,
+          paired_raw_path: current.paired_raw_path ?? null,
+          raw_format: current.raw_format ?? null,
+          subsec_time: current.subsec_time ?? null,
+          has_xmp: current.has_xmp ?? 0,
+          tags: Array.isArray(current.tags) ? [...current.tags] : [],
+          tag_details: Array.isArray(current.tag_details) ? [...current.tag_details] : [],
+          _thumbBust: current._thumbBust,
           stack_id: newPrimaryId,
           is_stack_primary: 1,
           stack_photos: syncedStackPhotos,
@@ -1024,10 +1110,11 @@ async function setCurrentLightboxPhotoAsPrimary() {
           duplicate_count: oldGridPhoto.duplicate_count,
         };
         state.photos[idx] = newGridPhoto;
+        if (typeof rebuildPhotoByIdIndex === 'function') rebuildPhotoByIdIndex();
 
         // メイングリッド上の該当カードを新しい代表写真カードに差し替え
         if (elements.photoGrid && typeof createPhotoCard === 'function') {
-          const oldCard = elements.photoGrid.querySelector(`.photo-card[data-id="${oldPrimaryId}"], .photo-card[data-index="${idx}"]`);
+          const oldCard = elements.photoGrid.querySelector(`.photo-card[data-photo-id="${oldPrimaryId}"], .photo-card[data-id="${oldPrimaryId}"], .photo-card[data-index="${idx}"]`);
           if (oldCard) {
             const newCard = createPhotoCard(newGridPhoto, idx);
             oldCard.replaceWith(newCard);
@@ -1519,6 +1606,10 @@ function closeLightbox(opts) {
     cancelAnimationFrame(filmstripScrollRafId);
     filmstripScrollRafId = null;
   }
+  if (_lightboxPanRafId) {
+    cancelAnimationFrame(_lightboxPanRafId);
+    _lightboxPanRafId = null;
+  }
   elements.lightboxModal.style.display = 'none';
   elements.exifDrawer.style.display = 'none';
   state.currentPhotoIndex = -1;
@@ -1579,16 +1670,20 @@ function _formatLightboxOriginalZoomLabel(zoomVal) {
 /**
  * ライトボックス画像の変形（実ピクセルサイズ・パン・回転）を一括適用（scale拡大によるモザイクを排除）
  */
-function applyLightboxTransform(isImmediate = false) {
+function applyLightboxTransform(isImmediate = false, panOnly = false) {
   if (!elements.lightboxImage) return;
   if (isImmediate) {
     elements.lightboxImage.style.transition = 'none';
   }
   const { lightboxPanX, lightboxPanY, currentRotation, lightboxZoom } = state;
   const z = Math.max(1.0, Number(lightboxZoom) || 1.0);
-  const m = _getLightboxPhotoMetrics(getCurrentLightboxPhoto());
-  elements.lightboxImage.style.width = `${Math.round(m.baseFitW * z)}px`;
-  elements.lightboxImage.style.height = `${Math.round(m.baseFitH * z)}px`;
+  if (!panOnly) {
+    const m = _getLightboxPhotoMetrics(getCurrentLightboxPhoto());
+    const targetW = `${Math.round(m.baseFitW * z)}px`;
+    const targetH = `${Math.round(m.baseFitH * z)}px`;
+    if (elements.lightboxImage.style.width !== targetW) elements.lightboxImage.style.width = targetW;
+    if (elements.lightboxImage.style.height !== targetH) elements.lightboxImage.style.height = targetH;
+  }
   elements.lightboxImage.style.transform = `translate(${Math.round(lightboxPanX)}px, ${Math.round(lightboxPanY)}px) rotate(${currentRotation}deg)`;
   elements.lightboxImage.style.cursor = z > 1.02 ? (state.isLightboxPanning ? 'grabbing' : 'grab') : 'default';
 }
@@ -1651,7 +1746,7 @@ function initLightboxZoomInteractions() {
     }
 
     // カーソル位置へ向かって拡大するパン補正
-    const rect = elements.imageStage.getBoundingClientRect();
+    const rect = _ensureLightboxStageMetrics().stageRect || elements.imageStage.getBoundingClientRect();
     const cursorX = e.clientX - (rect.left + rect.width / 2);
     const cursorY = e.clientY - (rect.top + rect.height / 2);
 
@@ -1729,12 +1824,23 @@ function initLightboxZoomInteractions() {
     if (!state.isLightboxPanning) return;
     state.lightboxPanX = e.clientX - state.lightboxPanStartX;
     state.lightboxPanY = e.clientY - state.lightboxPanStartY;
-    applyLightboxTransform(true);
+    if (!_lightboxPanRafId) {
+      _lightboxPanRafId = requestAnimationFrame(() => {
+        _lightboxPanRafId = null;
+        if (state.isLightboxPanning) {
+          applyLightboxTransform(true, true);
+        }
+      });
+    }
   });
 
   window.addEventListener('mouseup', () => {
     if (state.isLightboxPanning) {
       state.isLightboxPanning = false;
+      if (_lightboxPanRafId) {
+        cancelAnimationFrame(_lightboxPanRafId);
+        _lightboxPanRafId = null;
+      }
       if (elements.lightboxImage) {
         elements.lightboxImage.style.transition = 'transform 0.15s ease';
       }
@@ -1750,7 +1856,7 @@ function initLightboxZoomInteractions() {
       resetLightboxZoom();
       showZoomBadge(_formatLightboxOriginalZoomLabel(1.0));
     } else {
-      const rect = elements.imageStage.getBoundingClientRect();
+      const rect = _ensureLightboxStageMetrics().stageRect || elements.imageStage.getBoundingClientRect();
       const cursorX = e.clientX - (rect.left + rect.width / 2);
       const cursorY = e.clientY - (rect.top + rect.height / 2);
       const targetZoom = m.oneToOneScale;
@@ -1762,10 +1868,6 @@ function initLightboxZoomInteractions() {
     }
   });
 }
-
-/**
- * 写真グリッド親コンテナへのイベント委譲（カードごとのリスナー生成を完全撤廃し、メモリとレンダリング負荷を最小化）
-
 
 /**
  * ライトボックス関連イベントリスナーの登録
@@ -1829,6 +1931,11 @@ function initLightboxEvents() {
         const isHidden = elements.exifDrawer.style.display === 'none' || !elements.exifDrawer.style.display;
         elements.exifDrawer.style.display = isHidden ? 'block' : 'none';
         elements.toggleExifBtn.classList.toggle('active', isHidden);
+        invalidateLightboxStageMetrics();
+        const current = getCurrentLightboxPhoto();
+        if (current && elements.lightboxImage) {
+          _applyLightboxBaseSize(current, elements.lightboxImage.naturalWidth, elements.lightboxImage.naturalHeight);
+        }
       }
     });
   }
@@ -1864,12 +1971,13 @@ function initLightboxEvents() {
 
   window.addEventListener('resize', () => {
     if (elements.lightboxModal && elements.lightboxModal.style.display === 'flex') {
+      invalidateLightboxStageMetrics();
       const current = getCurrentLightboxPhoto();
       if (current && elements.lightboxImage) {
         _applyLightboxBaseSize(current, elements.lightboxImage.naturalWidth, elements.lightboxImage.naturalHeight);
       }
     }
-  });
+  }, { passive: true });
 
   // マウスの「戻る」ボタン（第4ボタン: button === 3）およびブラウザ戻る（popstate）でライトボックスを閉じる
   const isLightboxVisible = () => Boolean(

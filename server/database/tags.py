@@ -264,8 +264,54 @@ def add_tag_to_photo(photo_id: int, tag: str) -> bool:
         return cursor.rowcount > 0
 
 
+def _cleanup_orphan_ancestor_tags(cursor: Any, cleaned_tag: str, target_ids: Optional[List[int]] = None) -> int:
+    """
+    階層タグ削除後、対象写真に他の同系統子孫タグ（anc/*）が1つも残っていない場合は
+    自動付与されていた親・祖先タグも深い順（下位→上位）に連動削除する。
+    """
+    ancestors = list(reversed(_expand_ancestor_tags(cleaned_tag)[:-1]))
+    if not ancestors:
+        return 0
+    deleted = 0
+    chunk_size = 500
+    for anc in ancestors:
+        if target_ids:
+            for i in range(0, len(target_ids), chunk_size):
+                chunk = target_ids[i : i + chunk_size]
+                placeholders = ",".join(["?"] * len(chunk))
+                cursor.execute(
+                    f"""
+                    DELETE FROM photo_tags
+                    WHERE photo_id IN ({placeholders})
+                      AND tag = ?
+                      AND NOT EXISTS (
+                          SELECT 1 FROM photo_tags pt_child
+                          WHERE pt_child.photo_id = photo_tags.photo_id
+                            AND pt_child.tag LIKE ?
+                      )
+                    """,
+                    chunk + [anc, f"{anc}/%"],
+                )
+                deleted += cursor.rowcount
+        else:
+            cursor.execute(
+                """
+                DELETE FROM photo_tags
+                WHERE tag = ?
+                  AND NOT EXISTS (
+                      SELECT 1 FROM photo_tags pt_child
+                      WHERE pt_child.photo_id = photo_tags.photo_id
+                        AND pt_child.tag LIKE ?
+                  )
+                """,
+                (anc, f"{anc}/%"),
+            )
+            deleted += cursor.rowcount
+    return deleted
+
+
 def remove_tag_from_photo(photo_id: int, tag: str) -> bool:
-    """写真から特定のタグとその子孫タグを削除する（スタック・ペア全体にも自動連動、祖先タグは残す）"""
+    """写真から特定のタグとその子孫タグを削除する（他の子タグが無い孤立親タグも連動削除）"""
     cleaned_tag = tag.strip().strip("/")
     if not cleaned_tag:
         return False
@@ -284,6 +330,7 @@ def remove_tag_from_photo(photo_id: int, tag: str) -> bool:
                 chunk + [cleaned_tag, f"{cleaned_tag}/%"],
             )
             total_deleted += cursor.rowcount
+        total_deleted += _cleanup_orphan_ancestor_tags(cursor, cleaned_tag, target_ids)
         conn.commit()
         return total_deleted > 0
 
@@ -467,8 +514,8 @@ def get_photo_tags_details(photo_id: int) -> List[Dict[str, Any]]:
 
 
 def batch_remove_tag(photo_ids: List[int], tag: str) -> int:
-    """複数の写真（および同一スタック・ペア全体）から一括でタグを削除する（マルチ選択用・完全一致および配下タグ対応）"""
-    cleaned_tag = tag.strip()
+    """複数の写真（および同一スタック・ペア全体）から一括でタグを削除する（他の子タグが無い孤立親タグも連動削除）"""
+    cleaned_tag = tag.strip().strip("/")
     if not cleaned_tag or not photo_ids:
         return 0
     with get_connection() as conn:
@@ -490,6 +537,7 @@ def batch_remove_tag(photo_ids: List[int], tag: str) -> int:
                 chunk + [cleaned_tag, f"{cleaned_tag}/%"],
             )
             total_deleted += cursor.rowcount
+        total_deleted += _cleanup_orphan_ancestor_tags(cursor, cleaned_tag, target_ids)
         conn.commit()
         return total_deleted
 
@@ -818,7 +866,7 @@ def get_all_tags_summary() -> List[Dict[str, Any]]:
 
 
 def delete_tag(tag: str) -> int:
-    """指定されたタグを全写真およびタグ定義から一括削除する（子孫タグも含めて完全除去）"""
+    """指定されたタグを全写真およびタグ定義から一括削除する（子孫タグおよび孤立した親タグも含めて除去）"""
     cleaned_tag = tag.strip().strip("/")
     if not cleaned_tag:
         return 0
@@ -830,10 +878,12 @@ def delete_tag(tag: str) -> int:
             (cleaned_tag, f"{cleaned_tag}/%"),
         )
         deleted = cursor.rowcount
+        deleted += _cleanup_orphan_ancestor_tags(cursor, cleaned_tag)
         cursor.execute(
             "DELETE FROM tag_definitions WHERE tag = ? OR tag LIKE ?",
             (cleaned_tag, f"{cleaned_tag}/%"),
         )
+        deleted += cursor.rowcount
         conn.commit()
         return deleted
 

@@ -373,10 +373,7 @@ async function fetchManagedVolumes() {
     const data = await res.json();
     state.managedVolumes = Array.isArray(data.volumes) ? data.volumes : [];
     renderSidebarMediaList();
-    const modal = document.getElementById('managedMediaModal');
-    if (modal && modal.style.display !== 'none') {
-      renderManagedMediaModalList();
-    }
+    renderManagedMediaModalList();
   } catch (err) {
     console.warn('[WARN] fetchManagedVolumes エラー:', err);
   }
@@ -384,152 +381,125 @@ async function fetchManagedVolumes() {
 window.fetchManagedVolumes = fetchManagedVolumes;
 
 /**
- * サイドバー上部の「登録メディア」コンパクトリストを描画
+ * 指定されたVSNのメディア（SDカード・外部ドライブ）を確認モーダル経由でDB管理から外す（登録削除）
+ * @param {string} volumeSerial
+ * @param {string} [displayNameHint]
+ * @param {number} [photoCountHint]
+ * @returns {Promise<boolean>}
+ */
+async function promptAndRemoveManagedVolume(volumeSerial, displayNameHint = '', photoCountHint = null) {
+  const rawVsn = String(volumeSerial || '').trim();
+  const cleanVsn = rawVsn.replace(/-/g, '').toUpperCase();
+  if (!cleanVsn) return false;
+
+  const volumes = Array.isArray(state.managedVolumes) ? state.managedVolumes : [];
+  const matched = volumes.find(
+    v => String(v.volume_serial || '').replace(/-/g, '').toUpperCase() === cleanVsn
+  );
+
+  const shortId = (matched && matched.short_serial)
+    ? matched.short_serial
+    : (cleanVsn.length === 8 ? `${cleanVsn.slice(0, 4)}-${cleanVsn.slice(4)}` : rawVsn);
+  const primaryName = (matched && (matched.custom_name || matched.volume_label))
+    || displayNameHint
+    || `メディア [${shortId}]`;
+  const photoCount = (matched && typeof matched.photo_count === 'number')
+    ? matched.photo_count
+    : (typeof photoCountHint === 'number' ? photoCountHint : 0);
+  const isOnline = matched ? Boolean(matched.is_online) : false;
+  const driveLetter = (matched && matched.drive_letter) ? matched.drive_letter : '';
+
+  const ok = await showConfirmModal({
+    title: 'メディアの登録削除（管理から外す）',
+    subtitle: 'データベースからのメディア登録・キャッシュ解除',
+    icon: 'trash',
+    headingPrefix: 'メディア',
+    targetName: `${primaryName} (ID:${shortId})`,
+    headingSuffix: `（${photoCount.toLocaleString()}枚）を管理から外しますか？`,
+    detailRows: [
+      {
+        label: '接続状態:',
+        value: isOnline ? `接続中 (${driveLetter || 'オンライン'})` : `未接続（キャッシュのみ${driveLetter ? ' / 最終:' + driveLetter : ''}）`,
+        color: isOnline ? '#22c55e' : 'var(--warning, #e67e22)',
+      },
+      {
+        label: '登録写真:',
+        value: `${photoCount.toLocaleString()} 枚`,
+        subText: '（キャッシュ済みサムネイル・登録レコード）',
+      },
+    ],
+    descriptionLines: [
+      'Tetheract のデータベースからこのメディアの登録情報およびキャッシュ済みサムネイル・レコードを削除します。',
+      '※ 写真が Loome や別のドライブにも存在する場合は、それらの別メディア側のリンクは保護されます。',
+      '※ PCやメディア内の実際の写真ファイルは一切削除されません。',
+    ],
+    confirmText: '管理から外す（登録削除）',
+    confirmVariant: 'danger',
+  });
+  if (!ok) return false;
+
+  try {
+    const delRes = await fetch(`/api/volumes/${encodeURIComponent(cleanVsn)}`, { method: 'DELETE' });
+    const delData = await delRes.json().catch(() => ({}));
+    if (!delRes.ok) {
+      throw new Error(delData.detail || 'メディアの登録削除に失敗しました');
+    }
+    showToast(`メディア「${primaryName} (ID:${shortId})」を管理から外しました（${delData.removed_count ?? photoCount}枚）`, 'info');
+
+    const cf = state.currentFilter || {};
+    const cfVsn = String(cf.volumeSerial || '').replace(/-/g, '').toUpperCase();
+    if (cfVsn === cleanVsn) {
+      state.currentFilter = { type: 'all', value: null };
+      if (elements.viewTitle) elements.viewTitle.textContent = 'すべての写真';
+      if (typeof updateFolderWarningBanner === 'function') updateFolderWarningBanner();
+    }
+
+    await refreshAll();
+    const modal = document.getElementById('managedMediaModal');
+    if (modal && modal.style.display !== 'none') {
+      renderManagedMediaModalList();
+    }
+    return true;
+  } catch (err) {
+    showToast(`エラー: ${err.message}`, 'error');
+    return false;
+  }
+}
+window.promptAndRemoveManagedVolume = promptAndRemoveManagedVolume;
+
+let _lastRenderedVolumesSig = '';
+
+/**
+ * サイドバーのメディア状態をフォルダツリーへ同期する（上部メディアエキスパンダは下部ツリー統合に伴い常時非表示）
  */
 function renderSidebarMediaList() {
   const sectionEl = document.getElementById('sidebarMediaSection');
   const listEl = document.getElementById('sidebarMediaList');
-  const badgeEl = document.getElementById('sidebarMediaCountBadge');
-  if (!sectionEl || !listEl) return;
+  if (sectionEl) sectionEl.style.display = 'none';
+  if (listEl) listEl.innerHTML = '';
 
   const volumes = Array.isArray(state.managedVolumes) ? state.managedVolumes : [];
-  if (volumes.length === 0) {
-    sectionEl.style.display = 'none';
-    listEl.innerHTML = '';
-    return;
+  const nextSig = volumes.map(v => `${v.volume_serial}:${v.is_online ? 1 : 0}:${v.drive_letter || ''}:${v.custom_name || ''}:${v.volume_label || ''}:${v.loome_enabled ? 1 : 0}`).join('|');
+  if (nextSig !== _lastRenderedVolumesSig) {
+    _lastRenderedVolumesSig = nextSig;
+    if (typeof renderFolderTree === 'function' && typeof folderTreeState !== 'undefined' && folderTreeState.roots) {
+      renderFolderTree();
+    }
   }
-
-  sectionEl.style.display = 'block';
-  const onlineCount = volumes.filter(v => v.is_online).length;
-  if (badgeEl) {
-    badgeEl.textContent = `${onlineCount}/${volumes.length} 接続中`;
-  }
-
-  listEl.innerHTML = '';
-  volumes.forEach(v => {
-    const vsn = v.volume_serial;
-    const shortId = v.short_serial || vsn;
-    const primaryName = v.custom_name || v.volume_label || `メディア [${shortId}]`;
-    const subTag = v.is_online && v.drive_letter
-      ? `${v.drive_letter}`
-      : `ID:${shortId}`;
-    const filterTitle = `${primaryName} (${subTag})`;
-
-    const dateRangeStr = v.min_date
-      ? (v.min_date === v.max_date ? v.min_date : `${v.min_date} 〜 ${v.max_date}`)
-      : '日付記録なし';
-    const camStr = (v.cameras && v.cameras.length > 0) ? v.cameras.join(', ') : 'カメラ記録なし';
-
-    const row = document.createElement('div');
-    row.className = 'sidebar-media-item';
-    row.dataset.volumeSerial = vsn;
-    row.style.cssText = 'display:flex; align-items:center; justify-content:space-between; gap:6px; padding:4px 6px; border-radius:5px; border:1px solid transparent; cursor:pointer; font-size:11.5px; background:rgba(255,255,255,0.03); transition:background 0.15s;';
-    row.title = [
-      `メディア: ${primaryName}`,
-      v.custom_name && v.volume_label ? `ボリュームラベル: ${v.volume_label}` : null,
-      `シリアルID: ${shortId}${v.drive_letter ? ` (${v.is_online ? '現在' : '最終'}: ${v.drive_letter})` : ''}`,
-      `登録写真: ${v.photo_count} 枚 (優:${v.excellent_count || 0} / 良:${v.good_count || 0})`,
-      `撮影期間: ${dateRangeStr}`,
-      `使用機材: ${camStr}`,
-      '左クリック: このメディアの写真のみ表示（再クリックで解除）',
-      '右クリック: このメディアの写真を除外 [-]',
-    ].filter(Boolean).join('\n');
-
-    const left = document.createElement('div');
-    left.style.cssText = 'display:flex; align-items:center; gap:5px; min-width:0; flex:1; overflow:hidden;';
-
-    const dot = document.createElement('span');
-    dot.textContent = v.is_online ? '●' : '○';
-    dot.style.cssText = `font-size:10px; flex-shrink:0; color:${v.is_online ? '#22c55e' : 'var(--warning, #e67e22)'};`;
-
-    const nameSpan = document.createElement('span');
-    nameSpan.textContent = primaryName;
-    nameSpan.style.cssText = 'font-weight:600; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;';
-
-    const tagSpan = document.createElement('span');
-    tagSpan.textContent = subTag;
-    tagSpan.style.cssText = 'font-size:10px; color:var(--text-muted); font-family:monospace; flex-shrink:0;';
-
-    left.appendChild(dot);
-    left.appendChild(nameSpan);
-    left.appendChild(tagSpan);
-
-    const right = document.createElement('div');
-    right.style.cssText = 'display:flex; align-items:center; gap:4px; flex-shrink:0;';
-
-    const countSpan = document.createElement('span');
-    countSpan.textContent = `${v.photo_count}`;
-    countSpan.style.cssText = 'font-size:10.5px; color:var(--text-secondary); padding:0 4px; border-radius:8px; background:rgba(255,255,255,0.06);';
-
-    const editBtn = document.createElement('button');
-    editBtn.type = 'button';
-    editBtn.textContent = '✎';
-    editBtn.title = 'メディア識別名・ボリュームラベルを設定';
-    editBtn.style.cssText = 'background:transparent; border:none; color:var(--text-muted); cursor:pointer; font-size:11px; padding:1px 3px; border-radius:3px; line-height:1;';
-    editBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      promptRenameVolume(vsn, v.custom_name || '', v.volume_label || '', v.drive_letter || '');
-    });
-
-    right.appendChild(countSpan);
-    right.appendChild(editBtn);
-
-    row.appendChild(left);
-    row.appendChild(right);
-
-    row.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const cf = state.currentFilter || {};
-      if (cf.type === 'folder' && !cf.value && String(cf.volumeSerial || '').toUpperCase() === vsn) {
-        state.currentFilter = { type: 'all', value: null };
-        if (elements.viewTitle) elements.viewTitle.textContent = 'すべての写真';
-        syncSidebarMediaActiveStates();
-        if (typeof window.syncFolderTreeFilterStates === 'function') window.syncFolderTreeFilterStates();
-        fetchPhotos();
-      } else {
-        setFilter('folder', '', filterTitle, {
-          volumeSerial: vsn,
-          serialMode: 'match',
-          isOffline: !v.is_online,
-        });
-      }
-    });
-
-    row.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const cf = state.currentFilter || {};
-      if (cf.type === 'folder_exclude' && !cf.value && String(cf.volumeSerial || '').toUpperCase() === vsn) {
-        state.currentFilter = { type: 'all', value: null };
-        if (elements.viewTitle) elements.viewTitle.textContent = 'すべての写真';
-        syncSidebarMediaActiveStates();
-        if (typeof window.syncFolderTreeFilterStates === 'function') window.syncFolderTreeFilterStates();
-        fetchPhotos();
-      } else {
-        setFilter('folder_exclude', '', `除外: ${filterTitle}`, {
-          volumeSerial: vsn,
-          serialMode: 'match',
-          isOffline: !v.is_online,
-        });
-      }
-    });
-
-    listEl.appendChild(row);
-  });
-
-  syncSidebarMediaActiveStates();
 }
 
 /**
- * 登録メディア（SDカード・ドライブ）管理一覧モーダルを開く
+ * 登録メディア（SDカード・ドライブ）管理一覧モーダルを開く（統合設定モーダルの「フォルダ・メディア」タブを開く）
  */
 async function openManagedMediaModal() {
   _bindManagedMediaStaticControls();
-  const modal = document.getElementById('managedMediaModal');
-  if (!modal) return;
-  modal.style.display = 'flex';
+  if (typeof window.openSettingsModal === 'function') {
+    window.openSettingsModal('folders');
+    return;
+  }
+  const dbModal = document.getElementById('dbMaintenanceModal');
+  if (dbModal) dbModal.style.display = 'flex';
   await fetchManagedVolumes();
-  renderManagedMediaModalList();
 }
 window.openManagedMediaModal = openManagedMediaModal;
 
@@ -539,6 +509,8 @@ window.openManagedMediaModal = openManagedMediaModal;
 function closeManagedMediaModal() {
   const modal = document.getElementById('managedMediaModal');
   if (modal) modal.style.display = 'none';
+  const dbModal = document.getElementById('dbMaintenanceModal');
+  if (dbModal) dbModal.style.display = 'none';
 }
 window.closeManagedMediaModal = closeManagedMediaModal;
 
@@ -696,45 +668,12 @@ function renderManagedMediaModalList() {
     unmanageBtn.type = 'button';
     unmanageBtn.className = 'btn btn-secondary';
     unmanageBtn.style.cssText = 'font-size:11.5px; padding:4px 10px; color:#ef4444; border-color:rgba(239,68,68,0.35);';
-    unmanageBtn.textContent = '一覧から登録解除';
+    unmanageBtn.textContent = '✕ 管理から外す（登録削除）';
+    unmanageBtn.title = 'このメディアの登録とキャッシュ済みサムネイル・レコードをDBから削除します（実ファイルは削除されません）';
     unmanageBtn.addEventListener('click', async () => {
-      const ok = typeof showConfirmModal === 'function'
-        ? await showConfirmModal({
-            title: '登録メディアの管理解除',
-            subtitle: 'SDカード・外部メディアの登録解除',
-            icon: 'folder',
-            headingPrefix: 'メディア',
-            targetName: `${primaryName} [ID:${shortId}]`,
-            headingSuffix: `（写真 ${(v.photo_count || 0).toLocaleString()} 枚）を管理対象から解除しますか？`,
-            descriptionLines: [
-              'ライブラリ上の登録インデックスが解除されます。',
-              '※ SDカードやドライブ内の実際の写真ファイルは一切削除されません。',
-            ],
-            confirmText: '登録を解除する',
-            confirmVariant: 'danger',
-          })
-        : window.confirm(
-            `メディア「${primaryName} [ID:${shortId}]」の登録（写真インデックス ${v.photo_count} 枚分）を Tetheract Photo Manager の管理対象から解除しますか？\n\n※SDカードやドライブ内の実際の写真ファイルは一切削除されません。`
-          );
-      if (!ok) return;
-      try {
-        unmanageBtn.disabled = true;
-        const delRes = await fetch(`/api/volumes/${encodeURIComponent(vsn)}`, { method: 'DELETE' });
-        const delData = await delRes.json().catch(() => ({}));
-        if (!delRes.ok) {
-          throw new Error(delData.detail || 'メディア登録解除に失敗しました');
-        }
-        showToast(`メディア「${primaryName}」の管理登録を解除しました（${delData.removed_count || 0}枚）`, 'info');
-        if (state.currentFilter && String(state.currentFilter.volumeSerial || '').toUpperCase() === vsn) {
-          state.currentFilter = { type: 'all', value: null };
-          if (elements.viewTitle) elements.viewTitle.textContent = 'すべての写真';
-        }
-        await refreshAll();
-        await fetchManagedVolumes();
-      } catch (err) {
-        unmanageBtn.disabled = false;
-        showToast(`エラー: ${err.message}`, 'error');
-      }
+      unmanageBtn.disabled = true;
+      await promptAndRemoveManagedVolume(vsn, primaryName, v.photo_count);
+      unmanageBtn.disabled = false;
     });
 
     actionRow.appendChild(leftBtns);

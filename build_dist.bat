@@ -1,6 +1,5 @@
 @echo off
 setlocal
-if /i "%~1"=="--nopause" set "NO_PAUSE=1"
 chcp 65001 >nul 2>&1
 
 title Tetheract Photo Manager - Build Distribution (Full ^& Lightweight Update)
@@ -26,11 +25,13 @@ title Tetheract Photo Manager - Build Distribution (Full ^& Lightweight Update)
 :: ================================================================
 
 set "SRC=%~dp0"
-set "VER_STR=1.8.4"
+set "VER_STR=1.8.3"
 if exist "%SRC%VERSION" (
     set /p VER_STR=<"%SRC%VERSION"
 )
+set "IS_V2=0"
 if "%VER_STR:~0,2%"=="2." (
+    set "IS_V2=1"
     set "DIST=%~dp0dist_v2"
     set "DIST_UPD=%~dp0dist_v2_update"
 ) else (
@@ -53,20 +54,37 @@ if not exist "%SRC%run.py" (
     echo [ERROR] run.py not found.
     echo         Place this script in the photo-manager root folder.
     echo.
-    pause
+    if not defined NO_PAUSE pause
     exit /b 1
 )
 if not exist "%SRC%frontend" (
     echo [ERROR] frontend/ folder not found.
     echo.
-    pause
+    if not defined NO_PAUSE pause
     exit /b 1
 )
 if not exist "%SRC%server" (
     echo [ERROR] server/ folder not found.
     echo.
-    pause
+    if not defined NO_PAUSE pause
     exit /b 1
+)
+
+:: --- Guard for v2 build: verify dist_v2\android\Tetheract_Android.apk exists and is fresh ---
+if "%IS_V2%"=="1" (
+    if not "%SKIP_APK_FRESHNESS_CHECK%"=="1" (
+        if not exist "%DIST%\android\Tetheract_Android.apk" (
+            echo [ERROR] dist_v2\android\Tetheract_Android.apk not found.
+            echo         Run ".\python\python.exe scripts\build_android_apk.py" before building v2 packages.
+            goto :FAILED
+        )
+        if exist "%SRC%python\python.exe" (
+            "%SRC%python\python.exe" "%SRC%scripts\publish_release.py" --check-v2-apk
+            if errorlevel 1 goto :FAILED
+        )
+    ) else (
+        echo [WARN] SKIP_APK_FRESHNESS_CHECK=1 set; skipping v2 APK freshness guard.
+    )
 )
 
 :: --- Check for portable python (warn only) ---
@@ -222,6 +240,12 @@ if exist "%SRC%Tetheract_Mobile.html" (
     copy /y "%SRC%Tetheract_Mobile.html" "%DIST_UPD%\Tetheract_Mobile.html" >nul 2>&1
 )
 
+:: --- Android APK & UI bundle (v2 only: sync dist_v2/android -> dist_v2_update/android) ---
+if exist "%DIST%\android" (
+    echo        android/        -^> dist_update/
+    robocopy "%DIST%\android" "%DIST_UPD%\android" /MIR /R:1 /W:1 /NJH /NJS /NDL /NFL /NC /NS >nul
+)
+
 :: --- Standard working directories (Loome & take_out) ---
 if not exist "%DIST%\Loome" mkdir "%DIST%\Loome" 2>nul
 if not exist "%DIST%\take_out" mkdir "%DIST%\take_out" 2>nul
@@ -245,12 +269,17 @@ if not exist "%CSC%" (
 if exist "%CSC%" (
     "%CSC%" /nologo /target:winexe /optimize+ /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll /win32icon:"%SRC%frontend\favicon.ico" /out:"%DIST%\Tetheract.exe" "%SRC%launcher\Launcher.cs" >nul 2>&1
     if exist "%DIST%\Tetheract.exe" (
-        if exist "%SRC%PhotoManager.exe" del /f /q "%SRC%PhotoManager.exe" >nul 2>&1
-        if exist "%SRC%Tetheract.exe" del /f /q "%SRC%Tetheract.exe" >nul 2>&1
-        copy /y "%DIST%\Tetheract.exe" "%SRC%Tetheract.exe" >nul 2>&1
-        if exist "%SRC%python\python.exe" "%SRC%python\python.exe" -c "import pathlib, run; run.refresh_windows_exe_icon(pathlib.Path('Tetheract.exe'))" >nul 2>&1
+        if exist "%SRC%python\python.exe" "%SRC%python\python.exe" -c "import pathlib, sys, run; run.refresh_windows_exe_icon(pathlib.Path(sys.argv[1]))" "%DIST%\Tetheract.exe" >nul 2>&1
         copy /y "%DIST%\Tetheract.exe" "%DIST_UPD%\Tetheract.exe" >nul 2>&1
-        echo        [OK] Tetheract.exe compiled and bundled.
+        if "%IS_V2%"=="1" (
+            echo        [OK] Tetheract.exe compiled into dist_v2/ ^(root Tetheract.exe preserved^).
+        ) else (
+            if exist "%SRC%PhotoManager.exe" del /f /q "%SRC%PhotoManager.exe" >nul 2>&1
+            if exist "%SRC%Tetheract.exe" del /f /q "%SRC%Tetheract.exe" >nul 2>&1
+            copy /y "%DIST%\Tetheract.exe" "%SRC%Tetheract.exe" >nul 2>&1
+            if exist "%SRC%python\python.exe" "%SRC%python\python.exe" -c "import pathlib, run; run.refresh_windows_exe_icon(pathlib.Path('Tetheract.exe'))" >nul 2>&1
+            echo        [OK] Tetheract.exe compiled and bundled.
+        )
         goto :MAKE_ZIPS
     )
 )
@@ -291,6 +320,12 @@ if not exist "%DIST_UPD%\tools\Launcher.cs" set "OK=0"
 if not exist "%DIST_UPD%\Tetheract.exe" set "OK=0"
 if exist "%SRC%models" (
     if not exist "%DIST%\models" set "OK=0"
+)
+if "%IS_V2%"=="1" (
+    if not "%SKIP_APK_FRESHNESS_CHECK%"=="1" (
+        if not exist "%DIST%\android\Tetheract_Android.apk" set "OK=0"
+        if not exist "%DIST_UPD%\android\Tetheract_Android.apk" set "OK=0"
+    )
 )
 
 if "%OK%"=="0" goto :VERIFY_FAIL

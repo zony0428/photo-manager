@@ -37,6 +37,7 @@ class CopyToImportRequest(BaseModel):
     photo_ids: List[int]
     folder_name: Optional[str] = None
     destination: Optional[str] = None
+    include_raw: bool = False
 
 
 class OpenImportFolderRequest(BaseModel):
@@ -109,7 +110,8 @@ def api_create_import_folder(req: CreateImportFolderRequest):
 
 @router.post("/api/import/copy")
 def api_copy_to_import(req: CopyToImportRequest):
-    """選択された写真を import フォルダ（または指定サブフォルダ）へコピーする (JPG限定)"""
+    """選択された写真を take_out フォルダ（または指定サブフォルダ）へ無加工コピーする（include_raw=True 時はRAW原本も抱き合わせコピー）"""
+    from ..raw_loader import is_raw_file
     IMPORT_DIR.mkdir(parents=True, exist_ok=True)
 
     folder_target = (req.folder_name or req.destination or "").strip()
@@ -121,6 +123,7 @@ def api_copy_to_import(req: CopyToImportRequest):
     dest_dir.mkdir(parents=True, exist_ok=True)
 
     copied = []
+    raw_copied = []
     skipped = []
     errors = []
 
@@ -129,49 +132,68 @@ def api_copy_to_import(req: CopyToImportRequest):
         if not photo:
             continue
 
-        # JPG/JPEG ファイルの特定（RAW限定ファイルはスキップ、RAW+JPGペアはJPG側）
-        src_path = None
-
+        jpg_src = None
+        raw_src = None
         vol_serial = photo.get("volume_serial")
-        main_raw = photo.get("file_path")
-        if main_raw:
-            p_main, is_main_online = resolve_portable_path(main_raw, expected_serial=vol_serial)
-            if is_main_online and p_main.suffix.lower() in (".jpg", ".jpeg"):
-                src_path = p_main
+        main_fp = photo.get("file_path")
+        if main_fp:
+            p_main, is_main_online = resolve_portable_path(main_fp, expected_serial=vol_serial)
+            if is_main_online and p_main.exists():
+                if is_raw_file(p_main) or photo.get("is_raw"):
+                    raw_src = p_main
+                elif p_main.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp"):
+                    jpg_src = p_main
 
-        if not src_path:
-            # RAW+JPG ペアの場合、ペアのJPG側を探す
-            paired_raw = photo.get("paired_raw_path")
-            if paired_raw:
-                p_paired, is_paired_online = resolve_portable_path(paired_raw, expected_serial=vol_serial)
-                if is_paired_online and p_paired.suffix.lower() in (".jpg", ".jpeg"):
-                    src_path = p_paired
+        paired_fp = photo.get("paired_raw_path")
+        if paired_fp:
+            p_paired, is_paired_online = resolve_portable_path(paired_fp, expected_serial=vol_serial)
+            if is_paired_online and p_paired.exists():
+                if is_raw_file(p_paired):
+                    raw_src = p_paired
+                elif not jpg_src and p_paired.suffix.lower() in (".jpg", ".jpeg"):
+                    jpg_src = p_paired
 
-        if not src_path or not src_path.exists():
+        want_raw = bool(req.include_raw and raw_src)
+        if not jpg_src and not want_raw:
             skipped.append(photo.get("file_name", str(pid)))
             continue
 
-        stem = src_path.stem
-        ext = src_path.suffix.lower()
+        base_stem = (jpg_src or raw_src).stem
+        jpg_ext = jpg_src.suffix.lower() if jpg_src else ""
+        raw_ext = raw_src.suffix if want_raw and raw_src else ""
 
-        # 同名衝突回避のためのナンバリング
-        target_file = dest_dir / f"{stem}{ext}"
+        stem_candidate = base_stem
         counter = 1
-        while target_file.exists():
-            target_file = dest_dir / f"{stem}_{counter}{ext}"
+        while (
+            (jpg_ext and (dest_dir / f"{stem_candidate}{jpg_ext}").exists())
+            or (raw_ext and (dest_dir / f"{stem_candidate}{raw_ext}").exists())
+        ):
+            stem_candidate = f"{base_stem}_{counter}"
             counter += 1
 
-        try:
-            copy_file_unsealed(src_path, target_file)
-            copied.append(target_file.name)
-        except Exception as e:
-            errors.append(f"{src_path.name}: {e}")
+        if jpg_src:
+            target_jpg = dest_dir / f"{stem_candidate}{jpg_ext}"
+            try:
+                copy_file_unsealed(jpg_src, target_jpg)
+                copied.append(target_jpg.name)
+            except Exception as e:
+                errors.append(f"{jpg_src.name}: {e}")
+
+        if want_raw and raw_src:
+            target_raw = dest_dir / f"{stem_candidate}{raw_ext}"
+            try:
+                copy_file_unsealed(raw_src, target_raw)
+                raw_copied.append(target_raw.name)
+            except Exception as e:
+                errors.append(f"{raw_src.name}: {e}")
 
     return {
         "status": "ok",
         "copied_count": len(copied),
+        "raw_copied_count": len(raw_copied),
         "skipped_count": len(skipped),
         "copied_files": copied,
+        "raw_copied_files": raw_copied,
         "skipped_files": skipped,
         "errors": errors,
         "destination_name": dest_dir.name if dest_dir != IMPORT_DIR else "take_out (直下)",
@@ -219,6 +241,7 @@ class SmartExportRequest(BaseModel):
     exif_remove_other: bool = False
     exif_remove_all: bool = False
     export_xmp_sidecar: bool = False
+    export_raw_original: bool = False
     open_folder_after: bool = True
 
 

@@ -1014,7 +1014,7 @@ body.resizing .sidebar-rail-resizer::before {
   height: 100% !important;
   overflow-y: auto !important;
   overflow-x: hidden !important;
-  padding: 10px 10px 16px 10px;
+  padding: 7px 6px 14px 6px;
 }
 
 .sidebar-two-stage .folder-tree,
@@ -1502,4 +1502,390 @@ body.resizing .sidebar-rail-resizer::before {
 
 [data-scheme="tetheract-l"] .sidebar-persistent-filters {
   background: #eae7e1 !important;
+}
+
+
+/* ==========================================================================
+   13. 左ペイン・フィルタツリー表示スタイル一括切替 (data-tree-style="boxed" | "flat")
+   ========================================================================== */
+
+/* 上部バーの枠表示/フラット切替ボタン */
+.sidebar-tree-style-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 9px;
+  font-size: 0.73rem;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  border-radius: var(--ui-radius-click, 5px) !important;
+  transition: all 0.14s ease;
+}
+
+.sidebar-tree-style-btn:hover {
+  color: var(--text-main);
+  background: var(--bg-hover);
+  border-color: var(--text-muted);
+}
+
+/* --------------------------------------------------------------------------
+   モードA: ボックス枠（NeXTSTEP風カード・全フィルタ統一）[既定: data-tree-style="boxed"]
+   -------------------------------------------------------------------------- */
+
+/* 1. 全セクション（Folder / Tag / Place / Historia / Gear / NavItem）の共通カード枠 */
+html:not([data-tree-style="flat"]) .sidebar .folder-tree-item,
+html:not([data-tree-style="flat"]) .sidebar .tag-pill-item,
+html:not([data-tree-style="flat"]) .sidebar .location-node-row,
+html:not([data-tree-style="flat"]) .sidebar .timeline-year-header,
+html:not([data-tree-style="flat"]) .sidebar .timeline-month-item,
+html:not([data-tree-style="flat"]) .sidebar .camera-tree-item,
+html:not([data-tree-style="flat"]) .sidebar .camera-lens-item,
+html:not([data-tree-style="flat"]) .sidebar .nav-item {
+  border-radius: 1.5px !important;
+  min-height: 29px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  box-sizing: border-box;
+  transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease, box-shadow 0.12s ease;
+}
+
+/* 通常（未選択・子フィルタ通知なし）時のカード背景・立体ベベル枠 */
+html:not([data-tree-style="flat"]) .sidebar .folder-tree-item:not(.active):not(.active-exclude):not(.has-active-child):not(.has-active-child-include):not(.has-active-child-exclude),
+html:not([data-tree-style="flat"]) .sidebar .tag-pill-item:not(.state-include):not(.state-exclude):not(.has-active-child-include):not(.has-active-child-exclude),
+html:not([data-tree-style="flat"]) .sidebar .location-node-row:not(.active):not(.has-active-child),
+html:not([data-tree-style="flat"]) .sidebar .timeline-year-header:not(.active):not(.has-active-child),
+html:not([data-tree-style="flat"]) .sidebar .timeline-month-item:not(.active),
+html:not([data-tree-style="flat"]) .sidebar .camera-tree-item:not(.active):not(.state-include):not(.state-exclude):not(.has-active-child-include):not(.has-active-child-exclude),
+html:not([data-tree-style="flat"]) .sidebar .camera-lens-item:not(.active):not(.state-include):not(.state-exclude),
+html:not([data-tree-style="flat"]) .sidebar .nav-item:not(.active) {
+  background: var(--bg-tertiary) !important;
+  border: 1px solid var(--border-color) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.055), 0 1px 2px rgba(0, 0, 0, 0.14);
+}
+
+/* ライトモード（Tetheract L / 和紙 Paper）でのNeXTSTEPカード質感 */
+html[data-theme="paper"]:not([data-tree-style="flat"]) .sidebar .folder-tree-item:not(.active):not(.active-exclude):not(.has-active-child):not(.has-active-child-include):not(.has-active-child-exclude),
+html[data-theme="paper"]:not([data-tree-style="flat"]) .sidebar .tag-pill-item:not(.state-include):not(.state-exclude):not(.has-active-child-include):not(.has-active-child-exclude),
+html[data-theme="paper"]:not([data-tree-style="flat"]) .sidebar .location-node-row:not(.active):not(.has-active-child),
+html[data-theme="paper"]:not([data-tree-style="flat"]) .sidebar .timeline-year-header:not(.active):not(.has-active-child),
+html[data-theme="paper"]:not([data-tree-style="flat"]) .sidebar .timeline-month-item:not(.active),
+html[data-theme="paper"]:not([data-tree-style="flat"]) .sidebar .camera-tree-item:not(.active):not(.state-include):not(.state-exclude):not(.has-active-child-include):not(.has-active-child-exclude),
+html[data-theme="paper"]:not([data-tree-style="flat"]) .sidebar .camera-lens-item:not(.active):not(.state-include):not(.state-exclude),
+html[data-theme="paper"]:not([data-tree-style="flat"]) .sidebar .nav-item:not(.active) {
+  background: rgba(255, 255, 255, 0.72) !important;
+  border: 1px solid var(--border-color) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+/* ホバー時のエッジ強調 */
+html:not([data-tree-style="flat"]) .sidebar .folder-tree-item:not(.active):not(.active-exclude):hover,
+html:not([data-tree-style="flat"]) .sidebar .tag-pill-item:not(.state-include):not(.state-exclude):hover,
+html:not([data-tree-style="flat"]) .sidebar .location-node-row:not(.active):hover,
+html:not([data-tree-style="flat"]) .sidebar .timeline-year-header:not(.active):hover,
+html:not([data-tree-style="flat"]) .sidebar .timeline-month-item:not(.active):hover,
+html:not([data-tree-style="flat"]) .sidebar .camera-tree-item:not(.active):not(.state-include):not(.state-exclude):hover,
+html:not([data-tree-style="flat"]) .sidebar .camera-lens-item:not(.active):not(.state-include):not(.state-exclude):hover,
+html:not([data-tree-style="flat"]) .sidebar .nav-item:not(.active):hover {
+  background: var(--bg-hover) !important;
+  border-color: var(--text-muted) !important;
+}
+
+/* 行間のリズム統一（カード同士が密着しすぎないよう 2〜3px の隙間を確保 / .hidden 時は非表示を維持） */
+html:not([data-tree-style="flat"]) .sidebar .folder-tree:not(.hidden),
+html:not([data-tree-style="flat"]) .sidebar .folder-tree-children:not(.hidden),
+html:not([data-tree-style="flat"]) .sidebar .tag-pill-list:not(.hidden),
+html:not([data-tree-style="flat"]) .sidebar .tag-tree-children:not(.hidden),
+html:not([data-tree-style="flat"]) .sidebar .location-tree:not(.hidden),
+html:not([data-tree-style="flat"]) .sidebar .location-sub-tree:not(.hidden),
+html:not([data-tree-style="flat"]) .sidebar .timeline-tree:not(.hidden),
+html:not([data-tree-style="flat"]) .sidebar .timeline-month-list:not(.hidden),
+html:not([data-tree-style="flat"]) .sidebar .camera-tree-list:not(.hidden),
+html:not([data-tree-style="flat"]) .sidebar .camera-lens-sublist:not(.hidden) {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5px !important;
+}
+
+html:not([data-tree-style="flat"]) .sidebar .tag-tree-children,
+html:not([data-tree-style="flat"]) .sidebar .folder-tree-children,
+html:not([data-tree-style="flat"]) .sidebar .timeline-month-list,
+html:not([data-tree-style="flat"]) .sidebar .camera-lens-sublist {
+  margin-top: 1.5px !important;
+}
+
+.sidebar .timeline-month-list.hidden,
+.sidebar .camera-lens-sublist.hidden,
+.sidebar .tag-tree-children.hidden,
+.sidebar .folder-tree-children.hidden,
+.sidebar .location-sub-tree.hidden {
+  display: none !important;
+}
+
+html:not([data-tree-style="flat"]) .sidebar .folder-tree-node,
+html:not([data-tree-style="flat"]) .sidebar .tag-tree-node,
+html:not([data-tree-style="flat"]) .sidebar .location-tree-node,
+html:not([data-tree-style="flat"]) .sidebar .timeline-year-group,
+html:not([data-tree-style="flat"]) .sidebar .camera-tree-node {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5px;
+}
+
+/* Place（撮影地）のサブツリーも Folder / Tag と同じ破線ガイド付きインデントに統一 */
+html:not([data-tree-style="flat"]) .sidebar .location-sub-tree {
+  margin-left: 13px !important;
+  padding-left: 6px !important;
+  border-left: 1px dashed var(--border-color) !important;
+  margin-top: 1px !important;
+}
+
+html:not([data-tree-style="flat"]) .sidebar .location-country-node > .location-node-row,
+html:not([data-tree-style="flat"]) .sidebar .location-state-node > .location-node-row,
+html:not([data-tree-style="flat"]) .sidebar .location-city-node > .location-node-row {
+  padding-left: 7px !important;
+}
+
+/* 2. すべての開閉トグルボタン（[▶] / [▼]）を角丸四角の物理サブボタンに統一 */
+html:not([data-tree-style="flat"]) .sidebar .folder-toggle-btn,
+html:not([data-tree-style="flat"]) .sidebar .tree-toggle-btn,
+html:not([data-tree-style="flat"]) .sidebar .location-node-toggle:not(.is-leaf),
+html:not([data-tree-style="flat"]) .sidebar .camera-tree-expander,
+html:not([data-tree-style="flat"]) .sidebar .timeline-arrow {
+  width: 17px !important;
+  height: 17px !important;
+  min-width: 17px !important;
+  border-radius: 1.5px !important;
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid var(--border-soft);
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 0.58rem !important;
+  line-height: 1 !important;
+  flex-shrink: 0;
+}
+
+html[data-theme="paper"]:not([data-tree-style="flat"]) .sidebar .folder-toggle-btn,
+html[data-theme="paper"]:not([data-tree-style="flat"]) .sidebar .tree-toggle-btn,
+html[data-theme="paper"]:not([data-tree-style="flat"]) .sidebar .location-node-toggle:not(.is-leaf),
+html[data-theme="paper"]:not([data-tree-style="flat"]) .sidebar .camera-tree-expander,
+html[data-theme="paper"]:not([data-tree-style="flat"]) .sidebar .timeline-arrow {
+  background: rgba(0, 0, 0, 0.045);
+  border-color: var(--border-color);
+}
+
+html:not([data-tree-style="flat"]) .sidebar .folder-toggle-btn:hover,
+html:not([data-tree-style="flat"]) .sidebar .tree-toggle-btn:hover,
+html:not([data-tree-style="flat"]) .sidebar .location-node-toggle:not(.is-leaf):hover,
+html:not([data-tree-style="flat"]) .sidebar .camera-tree-expander:hover,
+html:not([data-tree-style="flat"]) .sidebar .timeline-year-header:hover .timeline-arrow {
+  background: rgba(var(--accent-rgb, 200, 157, 102), 0.18) !important;
+  border-color: var(--accent-primary) !important;
+  color: var(--accent-primary) !important;
+}
+
+/* --------------------------------------------------------------------------
+   モードB: フラット（シンプル行・全フィルタ統一）[data-tree-style="flat"]
+   -------------------------------------------------------------------------- */
+
+/* Tag を含むすべての左ペイン行からカード背景・枠線・影を除去してフラット行に統一 */
+html[data-tree-style="flat"] .sidebar .folder-tree-item:not(.active):not(.active-exclude):not(.has-active-child):not(.has-active-child-include):not(.has-active-child-exclude),
+html[data-tree-style="flat"] .sidebar .tag-pill-item:not(.state-include):not(.state-exclude):not(.has-active-child-include):not(.has-active-child-exclude),
+html[data-tree-style="flat"] .sidebar .location-node-row:not(.active):not(.has-active-child),
+html[data-tree-style="flat"] .sidebar .timeline-year-header:not(.active):not(.has-active-child),
+html[data-tree-style="flat"] .sidebar .timeline-month-item:not(.active),
+html[data-tree-style="flat"] .sidebar .camera-tree-item:not(.active):not(.state-include):not(.state-exclude):not(.has-active-child-include):not(.has-active-child-exclude),
+html[data-tree-style="flat"] .sidebar .camera-lens-item:not(.active):not(.state-include):not(.state-exclude),
+html[data-tree-style="flat"] .sidebar .nav-item:not(.active) {
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  box-shadow: none !important;
+  border-radius: 1.5px !important;
+}
+
+.sidebar .color-palette-section,
+.sidebar .preset-item,
+.sidebar .sidebar-mini-calendar-box {
+  border-radius: 1.5px !important;
+}
+
+html:not([data-tree-style="flat"]) .sidebar .tag-pill-count,
+html:not([data-tree-style="flat"]) .sidebar .nav-count,
+html:not([data-tree-style="flat"]) .sidebar .location-node-count,
+html:not([data-tree-style="flat"]) .sidebar .folder-count-badge,
+html:not([data-tree-style="flat"]) .sidebar .camera-state-badge {
+  border-radius: 2px !important;
+}
+
+html[data-tree-style="flat"] .sidebar .folder-tree-item:not(.active):not(.active-exclude):hover,
+html[data-tree-style="flat"] .sidebar .tag-pill-item:not(.state-include):not(.state-exclude):hover,
+html[data-tree-style="flat"] .sidebar .location-node-row:not(.active):hover,
+html[data-tree-style="flat"] .sidebar .timeline-year-header:not(.active):hover,
+html[data-tree-style="flat"] .sidebar .timeline-month-item:not(.active):hover,
+html[data-tree-style="flat"] .sidebar .camera-tree-item:not(.active):not(.state-include):not(.state-exclude):hover,
+html[data-tree-style="flat"] .sidebar .camera-lens-item:not(.active):not(.state-include):not(.state-exclude):hover,
+html[data-tree-style="flat"] .sidebar .nav-item:not(.active):hover {
+  background: var(--bg-hover) !important;
+  border-color: transparent !important;
+}
+
+html[data-tree-style="flat"] .sidebar .folder-toggle-btn,
+html[data-tree-style="flat"] .sidebar .tree-toggle-btn,
+html[data-tree-style="flat"] .sidebar .location-node-toggle,
+html[data-tree-style="flat"] .sidebar .camera-tree-expander,
+html[data-tree-style="flat"] .sidebar .timeline-arrow {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+/* ==========================================================================
+   左ペイン NeXTSTEP 風 カスケード・フライアウトメニュー (#nsFilterFlyoutRoot)
+   ========================================================================== */
+.ns-filter-flyout-root {
+  position: fixed;
+  z-index: 10050;
+  width: 244px;
+  pointer-events: auto;
+}
+
+/* 左ペインから第1パネルへの斜め移動時にホバーを切らさない透明ブリッジ */
+.ns-filter-flyout-root::before {
+  content: '';
+  position: absolute;
+  top: -10px;
+  left: -16px;
+  width: 18px;
+  height: calc(100% + 20px);
+  background: transparent;
+  pointer-events: auto;
+}
+
+.ns-cascade-panel.ns-filter-panel {
+  border: 1px solid var(--border-color, #444);
+  border-radius: 2px;
+  box-shadow: 4px 6px 22px rgba(0, 0, 0, 0.42);
+}
+
+.ns-cascade-panel.ns-filter-panel.ns-cal-flyout-panel {
+  width: 256px;
+}
+
+.ns-cal-flyout-body {
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+.ns-flyout-minical-wrap {
+  padding: 6px 8px 8px 8px;
+}
+
+/* 黒い NeXTSTEP タイトルバー（情報パネル統合版） */
+.ns-menu-titlebar.ns-integrated-titlebar {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  padding: 6px 10px;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.ns-menu-titlebar.ns-integrated-titlebar:hover {
+  background: #2f2d2a;
+  border-left-color: var(--accent-primary, #e14d2a);
+}
+
+[data-theme='sumi'] .ns-menu-titlebar.ns-integrated-titlebar:hover {
+  background: #1a1f29;
+  border-left-color: var(--accent-primary, #e14d2a);
+}
+
+.ns-menu-titlebar.ns-integrated-titlebar.is-filter-include {
+  border-left-color: var(--accent-primary, #e14d2a);
+}
+
+.ns-menu-titlebar.ns-integrated-titlebar.is-filter-exclude {
+  border-left-color: #ef4444;
+}
+
+.ns-titlebar-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ns-titlebar-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 0.66rem;
+  font-weight: 500;
+  line-height: 1.3;
+  color: rgba(245, 243, 239, 0.72);
+  word-break: break-all;
+}
+
+.ns-meta-mono {
+  font-family: monospace;
+  font-size: 0.65rem;
+  opacity: 0.9;
+}
+
+.ns-filter-state-holder {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.ns-state-pill {
+  font-size: 0.68rem;
+  font-weight: 700;
+  font-family: monospace;
+  padding: 0 4px;
+  border-radius: 3px;
+  line-height: 1.3;
+}
+
+.ns-state-pill.is-include {
+  color: var(--accent-primary, #e14d2a);
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.16);
+}
+
+.ns-state-pill.is-exclude {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.16);
+}
+
+.ns-menu-item.ns-filter-item.is-filter-include {
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.15);
+  border-left-color: var(--accent-primary, #e14d2a);
+  color: var(--accent-primary, #e14d2a);
+  font-weight: 600;
+}
+
+.ns-menu-item.ns-filter-item.is-filter-exclude {
+  background: rgba(239, 68, 68, 0.14);
+  border-left-color: #ef4444;
+  color: #ef4444;
+  font-weight: 600;
+}
+
+.ns-menu-item.ns-filter-item.has-child-filter {
+  border-left-color: rgba(var(--accent-rgb, 225, 77, 42), 0.55);
+}
+
+.sidebar .is-ns-flyout-open {
+  outline: 1px solid var(--accent-primary, #e14d2a) !important;
+  outline-offset: -1px;
 }

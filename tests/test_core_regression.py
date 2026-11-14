@@ -1269,11 +1269,51 @@ class TestCoreRegression(unittest.TestCase):
         self.assertEqual(map_sd1[r"E:\DCIM\100MSDCF\DSC00001.JPG"][0], sd1_p1)
         self.assertEqual(map_sd2[r"E:\DCIM\100MSDCF\DSC00001.JPG"][0], sd2_p1)
 
-        # 5. VSN指定でのフォルダ登録解除で、他方のSDカードの写真が巻き添え削除されないこと
+        # 5. VSN指定でのフォルダ登録解除で、他方のSDカードの写真が巻き添え削除されないこと、かつ0枚になったボリュームがゴースト残存しないこと
         rem_res = remove_folder_photos(r"E:\DCIM", recursive=True, volume_serial="1111AAAA")
         self.assertEqual(rem_res["deleted_count"], 2)
         remaining_sd2 = get_photos(folder=r"E:\DCIM", volume_serial="2222BBBB", serial_mode="match", stacked=False)
         self.assertEqual(len(remaining_sd2), 2, "SDカード②の2枚は無傷で残っていること")
+        from server.database import get_all_volumes, remove_volume_by_serial
+        vols_after_sd1 = {v["volume_serial"]: v for v in get_all_volumes()}
+        self.assertNotIn("1111AAAA", vols_after_sd1, "写真0枚になったSDカード①はカスタム名があってもゴーストとして残らないこと")
+
+        # 5-b. remove_volume_by_serial でハイフン付き VSN (CEFC-39D6) を指定した場合でも volumes/photo_links から完全削除され、他メディアリンクは保護されること
+        upsert_volume("CEFC39D6", "128GB", "E:")
+        update_volume_custom_name("CEFC39D6", "フォーマット済みSD")
+        sd3_only = upsert_photo({
+            "file_path": r"E:\DCIM\100MSDCF\DSC00901.JPG",
+            "directory_path": r"E:\DCIM\100MSDCF",
+            "file_name": "DSC00901.JPG",
+            "file_size": 7100111,
+            "date_taken": "2026-10-03 11:00:00",
+            "volume_serial": "CEFC39D6",
+        })
+        sd3_shared = upsert_photo({
+            "file_path": r"E:\DCIM\100MSDCF\DSC00902.JPG",
+            "directory_path": r"E:\DCIM\100MSDCF",
+            "file_name": "DSC00902.JPG",
+            "file_size": 7200222,
+            "date_taken": "2026-10-03 11:05:00",
+            "volume_serial": "CEFC39D6",
+        })
+        # 同一写真が別ドライブ(C:)のLoomeにもコピーされている状態を再現
+        upsert_photo({
+            "file_path": r"C:\Loome\2026\DSC00902.JPG",
+            "directory_path": r"C:\Loome\2026",
+            "file_name": "DSC00902.JPG",
+            "file_size": 7200222,
+            "date_taken": "2026-10-03 11:05:00",
+            "volume_serial": "CAFE9999",
+        })
+        del_vol_res = remove_volume_by_serial("CEFC-39D6")
+        self.assertEqual(del_vol_res["removed_count"], 2)
+        self.assertIsNone(get_photo_by_id(sd3_only), "CEFC-39D6 のみに存在した写真はDBから削除されること")
+        shared_after = get_photo_by_id(sd3_shared)
+        self.assertIsNotNone(shared_after, "Loome側にもリンクがある写真は保護されること")
+        self.assertEqual(shared_after["volume_serial"], "CAFE9999")
+        vols_after_sd3 = {v["volume_serial"]: v for v in get_all_volumes()}
+        self.assertNotIn("CEFC39D6", vols_after_sd3, "remove_volume_by_serial 後に volumes テーブルから完全に消えること")
 
         # 6. クラウドドライブ相対パスフォールバック (_resolve_cloud_drive_path) の検証
         fake_home = Path(self._temp_dir.name) / "FakeUserHome"
@@ -1907,6 +1947,67 @@ class TestCoreRegression(unittest.TestCase):
 
         photos_f = get_photos(folder=r"F:\DCIM\100MSDCF", volume_serial="AAAA1111", serial_mode="match", stacked=True)
         self.assertEqual([p["id"] for p in photos_f], [a_jpg])
+
+        # 5. 別ドライブ間でステム名 + 撮影日時 + カメラ機種が完全一致する RAW+JPEG ペアは結合され、タグも自動同期されること
+        from server.database import add_tag_to_photo
+        cross_jpg = upsert_photo({
+            "file_path": r"G:\Photo\260815\P1131082.JPG",
+            "directory_path": r"G:\Photo\260815",
+            "file_name": "P1131082.JPG",
+            "file_size": 8100000,
+            "date_taken": "2026-08-15 20:24:41",
+            "camera_model": "DC-S1R",
+            "is_raw": 0,
+            "volume_serial": "19831116",
+        })
+        cross_raw = upsert_photo({
+            "file_path": r"X:\260815\RAW\P1131082.RW2",
+            "directory_path": r"X:\260815\RAW",
+            "file_name": "P1131082.RW2",
+            "file_size": 68000000,
+            "date_taken": "2026-08-15 20:24:41",
+            "camera_model": "DC-S1R",
+            "is_raw": 1,
+            "raw_format": ".rw2",
+            "volume_serial": "4F64CDF0",
+        })
+        add_tag_to_photo(cross_jpg, "オフ会/260815-MSpRお披露目")
+        add_tag_to_photo(cross_jpg, "自動車/MAZDA/MSpR ROADSTER")
+        add_tag_to_photo(cross_raw, "オフ会/260815-MSpRお披露目")
+
+        recalculate_stacks(directory_path=r"G:\Photo\260815", recursive=True)
+
+        cross_jpg_row = get_photo_by_id(cross_jpg)
+        cross_raw_row = get_photo_by_id(cross_raw)
+        self.assertEqual(cross_jpg_row["paired_raw_path"], r"X:\260815\RAW\P1131082.RW2")
+        self.assertEqual(cross_raw_row["paired_raw_path"], r"G:\Photo\260815\P1131082.JPG")
+        self.assertIn("自動車/MAZDA/MSpR ROADSTER", cross_raw_row["tags"], "ペアリング時にJPEG側のタグがRAW側へ自動同期されること")
+
+        # 全体・タグ表示時は代表のJPEGのみ表示され、RAWは裏に隠れること
+        both_view = get_photos(included_tags=["オフ会/260815-MSpRお披露目"], stacked=True)
+        self.assertEqual([p["id"] for p in both_view], [cross_jpg])
+
+        # RAW側フォルダを「除外」した場合は JPEG側がそのまま表示されること
+        ex_raw_view = get_photos(included_tags=["オフ会/260815-MSpRお披露目"], exclude_folder=r"X:\260815\RAW", stacked=True)
+        self.assertEqual([p["id"] for p in ex_raw_view], [cross_jpg])
+
+        # JPEG側フォルダを「除外」した場合、またはRAW側フォルダを「選択」した場合は、隠れていたRAWが自動で浮上して表示されること
+        ex_jpg_view = get_photos(included_tags=["オフ会/260815-MSpRお披露目"], exclude_folder=r"G:\Photo\260815", stacked=True)
+        self.assertEqual([p["id"] for p in ex_jpg_view], [cross_raw])
+        only_raw_folder_view = get_photos(folder=r"X:\260815\RAW", stacked=True)
+        self.assertEqual([p["id"] for p in only_raw_folder_view], [cross_raw])
+
+        # 6. 階層タグ「オフ会/260815-MSpRお披露目」や「自動車/MAZDA/MSpR ROADSTER」を削除した際、
+        #    他の同系統子タグが無ければ親階層タグ（「オフ会」「自動車/MAZDA」「自動車」）も残らず一括削除されること
+        from server.database import batch_remove_tag
+        batch_remove_tag([cross_jpg], "自動車/MAZDA/MSpR ROADSTER")
+        after_rm_jpg = get_photo_by_id(cross_jpg)
+        after_rm_raw = get_photo_by_id(cross_raw)
+        self.assertNotIn("自動車/MAZDA/MSpR ROADSTER", after_rm_jpg["tags"])
+        self.assertNotIn("自動車/MAZDA", after_rm_jpg["tags"], "孤立した中間親タグも連動削除されること")
+        self.assertNotIn("自動車", after_rm_jpg["tags"], "孤立したルート親タグも連動削除されること")
+        self.assertNotIn("自動車", after_rm_raw["tags"], "ペアRAW側でも親タグごと連動削除されること")
+        self.assertIn("オフ会/260815-MSpRお披露目", after_rm_jpg["tags"], "別系統のタグは維持されること")
 
     def test_24_parent_folder_with_only_subfolder_photos_is_managed(self) -> None:
         """
@@ -2884,50 +2985,166 @@ class TestCoreRegression(unittest.TestCase):
             self.assertIsNotNone(get_photo_by_id(pid_a))
             self.assertEqual(get_unlinked_photos_count(), 1)
 
-    def test_27_mobile_adjustments_endpoint_preserves_rotation_and_crop(self):
-        """モバイル用 /api/photo/{id}/adjustments が既存の rotation / crop を維持したままトーンと傾きを更新すること"""
+    def test_32_mobile_sync_import_crop_favorite_and_safe_matching(self):
+        """モバイル同期でトリミング・お気に入りが反映され、照合できない変更は報告され、サイズ違いの同名写真へ誤適用しないことを確認"""
+        from unittest import mock
+        from server.routers import mobile_router
+
+        model_dump = mobile_router.MobileSyncChangeItem(
+            file_size=5, is_favorite=1, crop_x=0.1, crop_y=0.2, crop_w=0.3, crop_h=0.4
+        ).model_dump()
+        for key in ("file_size", "is_favorite", "crop_x", "crop_y", "crop_w", "crop_h"):
+            self.assertIsNotNone(model_dump[key], f"{key} が同期リクエストのモデルで破棄されないこと")
+
+        target_id = upsert_photo({
+            "file_path": r"C:\Mobile\IMG_9001.JPG",
+            "directory_path": r"C:\Mobile",
+            "file_name": "IMG_9001.JPG",
+            "file_size": 4321,
+            "date_taken": "2026:06:01 09:00:00",
+            "width": 100,
+            "height": 100,
+        })
+        same_name_id = upsert_photo({
+            "file_path": r"C:\Mobile\DUP_NAME.JPG",
+            "directory_path": r"C:\Mobile",
+            "file_name": "DUP_NAME.JPG",
+            "file_size": 1000,
+            "date_taken": "2026:06:02 09:00:00",
+            "width": 100,
+            "height": 100,
+        })
+
+        scheduled_ids = []
+        with mock.patch.object(
+            mobile_router, "_schedule_thumbnail_refresh", side_effect=lambda ids: scheduled_ids.extend(ids)
+        ), mock.patch("server.mobile_delta.ensure_mobile_delta_db", return_value=None):
+            res = mobile_router._apply_mobile_sync_changes([
+                {
+                    "photo_id": target_id,
+                    "file_name": "IMG_9001.JPG",
+                    "is_favorite": 1,
+                    "crop_x": 0.1,
+                    "crop_y": 0.2,
+                    "crop_w": 0.5,
+                    "crop_h": 1.5,
+                },
+                {"file_name": "DUP_NAME.JPG", "file_size": 9999, "rating": 2},
+                {"photo_id": 999999, "file_name": "NOT_FOUND.JPG", "rating": 1},
+            ])
+
+        self.assertEqual(res["applied_count"], 1)
+        self.assertEqual(res["skipped_count"], 2)
+        self.assertEqual(
+            sorted(item["file_name"] for item in res["skipped_items"]),
+            ["DUP_NAME.JPG", "NOT_FOUND.JPG"],
+        )
+        with get_connection() as conn:
+            row = conn.execute(
+                "SELECT is_favorite, crop_x, crop_y, crop_w, crop_h FROM photos WHERE id = ?", (target_id,)
+            ).fetchone()
+            same_name_rating = conn.execute(
+                "SELECT rating FROM photos WHERE id = ?", (same_name_id,)
+            ).fetchone()["rating"]
+        self.assertEqual(row["is_favorite"], 1)
+        self.assertAlmostEqual(row["crop_x"], 0.1)
+        self.assertAlmostEqual(row["crop_y"], 0.2)
+        self.assertAlmostEqual(row["crop_w"], 0.5)
+        self.assertAlmostEqual(row["crop_h"], 1.0, msg="範囲外のトリミング値は 0〜1 に丸められること")
+        self.assertEqual(same_name_rating, 0, "ファイルサイズが異なる同名写真へは評価を適用しないこと")
+        self.assertEqual(scheduled_ids, [target_id], "トリミング変更した写真だけがサムネイル再生成の対象になること")
+
+        # モバイル非破壊調整API (/api/photo/{id}/adjustments) が既存の回転・クロップを維持したままトーン・傾きを更新できること
         from fastapi.testclient import TestClient
         from server.app import app
-        from server.database import get_photo_by_id, update_photo_adjustments
-
-        tc = TestClient(app, base_url="http://127.0.0.1:8088")
-        pid = upsert_photo({
-            "file_path": r"C:\Photos\Adj\IMG_ADJ_01.JPG",
-            "directory_path": r"C:\Photos\Adj",
-            "file_name": "IMG_ADJ_01.JPG",
-            "file_size": 123456,
-            "date_taken": "2026:07:01 12:00:00",
-            "width": 4000,
-            "height": 3000,
-        })
+        from server.database import update_photo_adjustments, get_photo_by_id
         update_photo_adjustments(
-            photo_id=pid,
+            photo_id=target_id,
             rotation=90,
             fine_angle=1.5,
             crop_x=0.1,
             crop_y=0.2,
-            crop_w=0.8,
+            crop_w=0.6,
             crop_h=0.7,
-            crop_aspect="4:3",
-            brightness=10,
-            contrast=5,
+            crop_aspect="3:2",
+            brightness=5,
+            contrast=10,
             saturation=-5,
         )
-        res = tc.post(
-            f"/api/photo/{pid}/adjustments",
-            json={"brightness": 25, "contrast": -15, "saturation": 30, "fine_angle": -2.5},
+        tc = TestClient(app, base_url="http://127.0.0.1:8088")
+        r_adj = tc.post(
+            f"/api/photo/{target_id}/adjustments",
+            json={"brightness": 15, "contrast": 20, "saturation": 10, "fine_angle": -2.5},
         )
-        self.assertEqual(res.status_code, 200)
-        after = get_photo_by_id(pid)
-        self.assertEqual(after["rotation"], 90)
-        self.assertAlmostEqual(after["crop_x"], 0.1)
-        self.assertAlmostEqual(after["crop_w"], 0.8)
-        self.assertEqual(after["crop_aspect"], "4:3")
-        self.assertEqual(after["brightness"], 25)
-        self.assertEqual(after["contrast"], -15)
-        self.assertEqual(after["saturation"], 30)
-        self.assertAlmostEqual(after["fine_angle"], -2.5)
+        self.assertEqual(r_adj.status_code, 200)
+        after_p = get_photo_by_id(target_id)
+        self.assertEqual(after_p["rotation"], 90, "モバイル調整保存で既存の90°回転が消えないこと")
+        self.assertAlmostEqual(after_p["crop_w"], 0.6, msg="モバイル調整保存で既存のクロップ範囲が消えないこと")
+        self.assertEqual(after_p["crop_aspect"], "3:2")
+        self.assertEqual(after_p["brightness"], 15)
+        self.assertEqual(after_p["contrast"], 20)
+        self.assertEqual(after_p["saturation"], 10)
+        self.assertAlmostEqual(after_p["fine_angle"], -2.5)
 
+        # スマホ単体運用時の仮ID (900,000,000+) で付けた評価・タグが、PC側で別ファイル名にリネームされていたとしても
+        # 撮影日時＋ファイルサイズ (および機材・サンプリングハッシュ) で正確に名寄せ・反映されること
+        from server.routers.mobile_case_router import _find_existing_photos_by_name_and_size
+        renamed_id = upsert_photo(
+            {
+                "file_path": r"C:\Mobile\renamed_on_pc_001.jpg",
+                "file_name": "renamed_on_pc_001.jpg",
+                "directory_path": r"C:\Mobile",
+                "file_size": 4567890,
+                "file_mtime": 1700001000.0,
+                "width": 4000,
+                "height": 3000,
+                "date_taken": "2026-10-20 15:40:12",
+                "year_month": "2026-10",
+                "camera_make": "Google",
+                "camera_model": "Pixel 9 Pro",
+                "rating": 0,
+            }
+        )
+        exifless_id = upsert_photo(
+            {
+                "file_path": r"C:\Mobile\line_saved_renamed.jpg",
+                "file_name": "line_saved_renamed.jpg",
+                "directory_path": r"C:\Mobile",
+                "file_size": 888777,
+                "file_mtime": 1700002000.0,
+                "width": 1200,
+                "height": 900,
+                "date_taken": "2026-11-01 09:00:00",
+                "year_month": "2026-11",
+                "content_hash": "a1b2c3d4e5f60718",
+                "rating": 0,
+            }
+        )
+        # 1) case_preflight / upload 用の重複照合インデックス検証（ファイル名が完全に異なっても一致すること）
+        _, dt_map, dt_cam_map, hash_map = _find_existing_photos_by_name_and_size(
+            [("pxl_20261020_154012.jpg", 4567890), ("img_0001.jpg", 888777)]
+        )
+        self.assertEqual(dt_cam_map.get(("2026-10-20 15:40:12", "pixel 9 pro", 4567890)), renamed_id)
+        self.assertEqual(dt_map.get(("2026-10-20 15:40:12", 4567890)), renamed_id)
+        self.assertEqual(hash_map.get(("a1b2c3d4e5f60718", 888777)), exifless_id)
+
+        # 2) スマホ単体で仮ID (900000001) に付けた評価・タグが、ファイル名不一致でも撮影日時+サイズでPCの写真に統合されること
+        with mock.patch("server.mobile_delta.ensure_mobile_delta_db", return_value=None):
+            res_standalone = mobile_router._apply_mobile_sync_changes(
+                [
+                    {
+                        "photo_id": 900000001,
+                        "content_key": "dt:2026-10-20 15:40:12|sz:4567890|raw:0",
+                        "file_name": "PXL_20261020_154012.jpg",
+                        "file_size": 4567890,
+                        "date_taken": "2026-10-20 15:40:12",
+                        "rating": 2,
+                        "tags": ["旅行/箱根"],
+                    }
+                ]
+            )
+        self.assertEqual(res_standalone["applied_count"], 1)
+        self.assertEqual(get_photo_by_id(renamed_id)["rating"], 2)
 
     def test_sony_arw_preview_thumbnail_and_metadata_extraction(self) -> None:
         """
@@ -3071,12 +3288,8 @@ class TestCoreRegression(unittest.TestCase):
         self.assertEqual(refreshed["iso"], 800)
 
 
-
-
-    def test_raw_jpeg_pair_and_burst_stack_exclusion_and_batch_tag_cache(self) -> None:
-        """RAW+JPEGペア・連写スタックでの従属RAW除外および一括タグ削除時の/api/photosキャッシュ即時更新を検証"""
-        from fastapi.testclient import TestClient
-        from server.app import app
+    def test_raw_jpeg_pair_and_burst_stack_exclusion(self) -> None:
+        """RAW+JPEGペアおよびRAW+JPEG連写スタックで従属RAW行が一覧・枚数・stack_photosから除外されることを検証"""
         from server.database import (
             get_photo_by_id,
             get_photos,
@@ -3089,16 +3302,17 @@ class TestCoreRegression(unittest.TestCase):
         pair_dir = Path(self._temp_dir.name) / "raw_pair_stack_test"
         pair_dir.mkdir(parents=True, exist_ok=True)
         for fname, content in [
-            ("DSC00630.JPG", b"jpg0_bytes"),
-            ("DSC00630.ARW", b"arw0_raw_payload_bytes"),
-            ("DSC00631.JPG", b"jpg1_bytes_diff"),
-            ("DSC00631.ARW", b"arw1_raw_payload_bytes_diff"),
-            ("DSC00633.JPG", b"jpg3_bytes_single"),
-            ("DSC00633.ARW", b"arw3_raw_payload_single"),
-            ("DSC00699.ARW", b"arw_standalone_only_bytes"),
+            ("DSC00630.JPG", b"jpg0"),
+            ("DSC00630.ARW", b"arw0_raw_payload"),
+            ("DSC00631.JPG", b"jpg1"),
+            ("DSC00631.ARW", b"arw1_raw_payload"),
+            ("DSC00633.JPG", b"jpg3"),
+            ("DSC00633.ARW", b"arw3_raw_payload"),
+            ("DSC00699.ARW", b"arw_standalone_only"),
         ]:
             (pair_dir / fname).write_bytes(content)
 
+        # 連写2コマ (DSC00630, DSC00631: 同一秒 + subsec差) × RAW+JPEG = 4行
         j0 = upsert_photo({
             "file_path": str(pair_dir / "DSC00630.JPG"),
             "file_name": "DSC00630.JPG",
@@ -3145,6 +3359,8 @@ class TestCoreRegression(unittest.TestCase):
             "is_raw": 1,
             "raw_format": "ARW",
         })
+
+        # 単発RAW+JPEGペア (DSC00633) = 2行
         j3 = upsert_photo({
             "file_path": str(pair_dir / "DSC00633.JPG"),
             "file_name": "DSC00633.JPG",
@@ -3166,7 +3382,9 @@ class TestCoreRegression(unittest.TestCase):
             "is_raw": 1,
             "raw_format": "ARW",
         })
-        r_only = upsert_photo({
+
+        # RAW単体撮影 (DSC00699.ARW) = 1行（ペア無しのため表示されなければならない）
+        r_solo = upsert_photo({
             "file_path": str(pair_dir / "DSC00699.ARW"),
             "file_name": "DSC00699.ARW",
             "directory_path": str(pair_dir),
@@ -3178,48 +3396,288 @@ class TestCoreRegression(unittest.TestCase):
             "raw_format": "ARW",
         })
 
-        recalculate_stacks(str(pair_dir), recursive=False)
+        recalculate_stacks()
 
+        # 総枚数は JPEG 3枚 + 単独RAW 1枚 = 4枚（従属RAW 3枚は除外）
+        self.assertEqual(get_total_photos_count(), 4)
+
+        # スタックOFF時は 4枚（従属ARWは出ない、単独ARWは出る）
         unstacked = get_photos(folder=str(pair_dir), stacked=False)
-        self.assertEqual(
-            sorted(p["file_name"] for p in unstacked),
-            ["DSC00630.JPG", "DSC00631.JPG", "DSC00633.JPG", "DSC00699.ARW"],
-        )
+        self.assertEqual(sorted([r["id"] for r in unstacked]), sorted([j0, j1, j3, r_solo]))
 
-        stacked_rows = get_photos(folder=str(pair_dir), stacked=True)
-        self.assertEqual(len(stacked_rows), 3)
-        burst_rep = next(p for p in stacked_rows if p["file_name"] in ("DSC00630.JPG", "DSC00631.JPG"))
+        # スタックON時は [連写代表(j0), 単発ペア(j3), 単独RAW(r_solo)] の3件で、連写の stack_count は 4 ではなく 2
+        stacked = get_photos(folder=str(pair_dir), stacked=True)
+        self.assertEqual(len(stacked), 3)
+        burst_rep = next(r for r in stacked if r["id"] in (j0, j1))
         self.assertEqual(burst_rep["stack_count"], 2)
-        self.assertEqual(
-            sorted(sp["file_name"] for sp in burst_rep["stack_photos"]),
-            ["DSC00630.JPG", "DSC00631.JPG"],
-        )
+        self.assertEqual(sorted([sp["id"] for sp in burst_rep["stack_photos"]]), sorted([j0, j1]))
+        self.assertTrue(all(sp.get("paired_raw_path") for sp in burst_rep["stack_photos"]))
 
         detail = get_photo_by_id(burst_rep["id"])
+        self.assertIsNotNone(detail)
         self.assertEqual(detail["stack_count"], 2)
-        self.assertEqual(
-            sorted(sp["file_name"] for sp in detail["stack_photos"]),
-            ["DSC00630.JPG", "DSC00631.JPG"],
-        )
 
+        # モバイル単体HTML / localdb クエリにも SQL_NOT_PAIRED_RAW_P が組み込まれていること
         mobile_html = build_standalone_mobile_html()
-        self.assertIn("SQL_NOT_PAIRED_RAW", mobile_html)
+        self.assertIn("SQL_NOT_PAIRED_RAW_P", mobile_html)
 
-        # 一括タグ付与・削除時の /api/photos キャッシュ即時無効化を検証
+        # 形式フィルタ排他検証: JPEG単体1枚を追加して raw / raw_pair / raw_any / jpeg の完全分離を確認
+        from PIL import Image
+        import io
+        buf_jpg = io.BytesIO()
+        Image.new("RGB", (160, 120), (40, 120, 200)).save(buf_jpg, format="JPEG")
+        valid_jpg_bytes = buf_jpg.getvalue()
+        (pair_dir / "DSC00633.JPG").write_bytes(valid_jpg_bytes)
+        (pair_dir / "DSC00700.JPG").write_bytes(valid_jpg_bytes)
+        j_solo = upsert_photo({
+            "file_path": str(pair_dir / "DSC00700.JPG"),
+            "file_name": "DSC00700.JPG",
+            "directory_path": str(pair_dir),
+            "file_size": len(valid_jpg_bytes),
+            "date_taken": "2026-11-11 10:15:00",
+            "year_month": "2026-11",
+            "camera_model": "ILCE-7M4",
+            "is_raw": 0,
+        })
+        recalculate_stacks()
+
+        only_raw = get_photos(folder=str(pair_dir), attr_filter="raw", stacked=False)
+        self.assertEqual([r["id"] for r in only_raw], [r_solo])
+
+        only_pair = get_photos(folder=str(pair_dir), attr_filter="raw_pair", stacked=False)
+        self.assertEqual(sorted([r["id"] for r in only_pair]), sorted([j0, j1, j3]))
+
+        any_raw = get_photos(folder=str(pair_dir), attr_filter="raw_any", stacked=False)
+        self.assertEqual(sorted([r["id"] for r in any_raw]), sorted([j0, j1, j3, r_solo]))
+
+        only_jpg = get_photos(folder=str(pair_dir), attr_filter="jpeg", stacked=False)
+        self.assertEqual([r["id"] for r in only_jpg], [j_solo])
+
+        # スマート・テイクアウト RAW抱き合わせ(無加工)モード検証: 連番リネーム時もベース名が一致して .ARW が無加工コピーされること
+        from server.exporter import run_smart_export
+        from server.routers.export_import_router import CopyToImportRequest, api_copy_to_import
+        import unittest.mock as _mock
+
+        smart_out_dir = Path(self._temp_dir.name) / "smart_raw_bundle_out"
+        smart_res = run_smart_export({
+            "photo_ids": [j3, j_solo],
+            "destination": str(smart_out_dir),
+            "format": "jpeg",
+            "naming_rule": "custom_seq",
+            "custom_prefix": "Select",
+            "export_xmp_sidecar": True,
+            "export_raw_original": True,
+            "open_folder_after": False,
+        })
+        self.assertEqual(smart_res["status"], "ok")
+        self.assertEqual(smart_res["success_count"], 2)
+        self.assertEqual(smart_res["raw_copied_count"], 1)
+        self.assertTrue((smart_out_dir / "Select_001.jpg").exists())
+        self.assertTrue((smart_out_dir / "Select_001.ARW").exists())
+        self.assertEqual((smart_out_dir / "Select_001.ARW").read_bytes(), b"arw3_raw_payload")
+        self.assertTrue((smart_out_dir / "Select_001.xmp").exists())
+        self.assertTrue((smart_out_dir / "Select_002.jpg").exists())
+        self.assertFalse((smart_out_dir / "Select_002.ARW").exists())
+
+        # 無加工フォルダコピー (take_out/) の include_raw ON/OFF 検証
+        fake_import_dir = Path(self._temp_dir.name) / "fake_take_out"
+        with _mock.patch("server.routers.export_import_router.IMPORT_DIR", fake_import_dir):
+            res_no_raw = api_copy_to_import(CopyToImportRequest(photo_ids=[j3, r_solo], destination="off", include_raw=False))
+            self.assertEqual(res_no_raw["copied_count"], 1)
+            self.assertEqual(res_no_raw["raw_copied_count"], 0)
+            self.assertEqual(res_no_raw["skipped_count"], 1)
+
+            res_with_raw = api_copy_to_import(CopyToImportRequest(photo_ids=[j3, r_solo], destination="on", include_raw=True))
+            self.assertEqual(res_with_raw["copied_count"], 1)
+            self.assertEqual(res_with_raw["raw_copied_count"], 2)
+            self.assertEqual(res_with_raw["skipped_count"], 0)
+            self.assertEqual((fake_import_dir / "on" / "DSC00633.ARW").read_bytes(), b"arw3_raw_payload")
+            self.assertEqual((fake_import_dir / "on" / "DSC00699.ARW").read_bytes(), b"arw_standalone_only")
+
+
+    def test_31_loome_folder_unit_import_upload_relpath_and_batch_tag_cache(self):
+        """フォルダ単位でのLoome取り込み(階層・RAWペア・評価タグ継承)・rel_pathアップロード・一括タグ削除キャッシュ更新を検証"""
+        import base64
+        import io
+        import unittest.mock as _mock
+        from PIL import Image
+        from fastapi.testclient import TestClient
+        from server.app import app
+        from server.database import add_tag_to_photo, get_photos, update_rating, upsert_photo
+        from server.storage_folder_import import import_folder_to_storage
+
+        buf = io.BytesIO()
+        Image.new("RGB", (120, 90), (80, 140, 210)).save(buf, format="JPEG")
+        jpg_bytes = buf.getvalue()
+
+        ext_trip_dir = Path(self._temp_dir.name) / "2026_Kyoto_Trip"
+        day1_dir = ext_trip_dir / "Day1_Arashiyama"
+        day2_dir = ext_trip_dir / "Day2_Fushimi"
+        day1_dir.mkdir(parents=True, exist_ok=True)
+        day2_dir.mkdir(parents=True, exist_ok=True)
+
+        # Day1: RAW+JPEG ペア + XMP サイドカー（事前にDB登録して評価・タグを付与）
+        p1_jpg = day1_dir / "DSC01001.JPG"
+        p1_arw = day1_dir / "DSC01001.ARW"
+        p1_xmp = day1_dir / "DSC01001.xmp"
+        p1_jpg.write_bytes(jpg_bytes)
+        p1_arw.write_bytes(b"SONY_RAW_DUMMY_PAYLOAD_1001")
+        p1_xmp.write_text("<x:xmpmeta/>", encoding="utf-8")
+
+        src_id = upsert_photo({
+            "file_path": str(p1_jpg),
+            "file_name": "DSC01001.JPG",
+            "directory_path": str(day1_dir),
+            "file_size": len(jpg_bytes),
+            "date_taken": "2026-11-10 09:30:00",
+            "year_month": "2026-11",
+            "camera_model": "ILCE-7M4",
+            "is_raw": 0,
+            "paired_raw_path": str(p1_arw),
+        })
+        update_rating(src_id, 2)
+        add_tag_to_photo(src_id, "旅行/京都")
+
+        # Day2: 未スキャンの新規 JPEG
+        p2_jpg = day2_dir / "DSC01002.JPG"
+        p2_jpg.write_bytes(jpg_bytes)
+
+        fake_loome_root = Path(self._temp_dir.name) / "TestLoomeBox"
+        fake_loome_root.mkdir(parents=True, exist_ok=True)
+
+        with _mock.patch(
+            "server.storage_folder_import.resolve_storage_target_with_root",
+            return_value=(fake_loome_root, fake_loome_root),
+        ):
+            res = import_folder_to_storage(source_dir=str(ext_trip_dir), destination="")
+
+        self.assertEqual(res["status"], "ok")
+        self.assertEqual(res["folder_name"], "2026_Kyoto_Trip")
+        self.assertEqual(res["imported_count"], 2)
+
+        copied_day1 = fake_loome_root / "2026_Kyoto_Trip" / "Day1_Arashiyama"
+        copied_day2 = fake_loome_root / "2026_Kyoto_Trip" / "Day2_Fushimi"
+        self.assertTrue((copied_day1 / "DSC01001.JPG").exists())
+        self.assertTrue((copied_day1 / "DSC01001.ARW").exists())
+        self.assertTrue((copied_day1 / "DSC01001.xmp").exists())
+        self.assertTrue((copied_day2 / "DSC01002.JPG").exists())
+
+        imported_photos = get_photos(folder=str(fake_loome_root / "2026_Kyoto_Trip"), stacked=False)
+        self.assertEqual(len(imported_photos), 2)
+        by_name = {p["file_name"]: p for p in imported_photos}
+        self.assertEqual(by_name["DSC01001.JPG"]["rating"], 2)
+        self.assertIn("旅行/京都", by_name["DSC01001.JPG"]["tags"])
+        self.assertTrue(str(by_name["DSC01001.JPG"]["paired_raw_path"]).endswith("DSC01001.ARW"))
+
+        # API経由のフォルダD&Dアップロード (rel_path 付き) と一括タグ削除のキャッシュ即時反映を検証
+        buf_a = io.BytesIO()
+        Image.new("RGB", (32, 32), (40, 120, 210)).save(buf_a, format="JPEG")
+        buf_b = io.BytesIO()
+        Image.new("RGB", (64, 48), (210, 140, 40)).save(buf_b, format="JPEG")
+        b64_a = "data:image/jpeg;base64," + base64.b64encode(buf_a.getvalue()).decode("ascii")
+        b64_b = "data:image/jpeg;base64," + base64.b64encode(buf_b.getvalue()).decode("ascii")
+
         client = TestClient(app, base_url="http://127.0.0.1:8088")
-        sel_ids = [j0, j3, r_only]
-        client.post("/api/photos/batch-tags", json={"photo_ids": sel_ids, "tag": "共通タグ", "action": "add"})
-        client.post(f"/api/photo/{j0}/tags", json={"tag": "個別タグ"})
-        warm = client.get("/api/photos", params={"folder": str(pair_dir), "stacked": "false"})
+        with _mock.patch(
+            "server.app.resolve_storage_target_with_root",
+            return_value=(fake_loome_root, fake_loome_root),
+        ):
+            up_res = client.post(
+                "/api/upload",
+                json={
+                    "destination": "",
+                    "files": [
+                        {"filename": "DROP_A.JPG", "rel_path": "DroppedAlbum/SubA/DROP_A.JPG", "content_base64": b64_a},
+                        {"filename": "DROP_B.JPG", "rel_path": "DroppedAlbum/SubB/DROP_B.JPG", "content_base64": b64_b},
+                    ],
+                },
+            )
+        self.assertEqual(up_res.status_code, 200)
+        self.assertEqual(up_res.json()["uploaded_count"], 2)
+        self.assertTrue((fake_loome_root / "DroppedAlbum" / "SubA" / "DROP_A.JPG").exists())
+        self.assertTrue((fake_loome_root / "DroppedAlbum" / "SubB" / "DROP_B.JPG").exists())
+
+        dropped_rows = get_photos(folder=str(fake_loome_root / "DroppedAlbum"), stacked=False)
+        self.assertEqual(len(dropped_rows), 2)
+        drop_ids = [r["id"] for r in dropped_rows]
+
+        # 2枚共通タグ「共通タグ」＋1枚のみ「個別タグ」を付与し、/api/photos キャッシュを温めた後に共通タグを一括削除
+        client.post("/api/photos/batch-tags", json={"photo_ids": drop_ids, "tag": "共通タグ", "action": "add"})
+        client.post(f"/api/photo/{drop_ids[0]}/tags", json={"tag": "個別タグ"})
+        warm = client.get("/api/photos", params={"folder": str(fake_loome_root / "DroppedAlbum"), "stacked": "false"})
         self.assertEqual(warm.status_code, 200)
 
-        rm_res = client.post("/api/photos/batch-tags", json={"photo_ids": sel_ids, "tag": "共通タグ", "action": "remove"})
+        rm_res = client.post("/api/photos/batch-tags", json={"photo_ids": drop_ids, "tag": "共通タグ", "action": "remove"})
         self.assertEqual(rm_res.status_code, 200)
-        after_photos = client.get("/api/photos", params={"folder": str(pair_dir), "stacked": "false"}).json()["photos"]
-        tags_by_id = {p["id"]: p["tags"] for p in after_photos}
-        for pid in sel_ids:
-            self.assertNotIn("共通タグ", tags_by_id[pid])
-        self.assertIn("個別タグ", tags_by_id[j0])
+
+        after_rows = client.get("/api/photos", params={"folder": str(fake_loome_root / "DroppedAlbum"), "stacked": "false"}).json()["photos"]
+        after_map = {r["id"]: r["tags"] for r in after_rows}
+        self.assertNotIn("共通タグ", after_map[drop_ids[0]])
+        self.assertNotIn("共通タグ", after_map[drop_ids[1]])
+        self.assertIn("個別タグ", after_map[drop_ids[0]])
+
+    def test_mobile_case_upload_activity_guard_and_exifless_mtime(self) -> None:
+        """
+        スマホ case 転送中に is_case_upload_active() が True となって mobile_delta 再生成競合を抑止できること、
+        および EXIF の無い画像でも last_modified_ms が extract_metadata 前に反映されて元の日付フォルダへ収納されることを検証
+        """
+        from datetime import datetime
+        import io
+        import unittest.mock as _mock
+        from PIL import Image
+        from fastapi.testclient import TestClient
+        from server.app import app
+        from server.database import get_photos
+        import server.routers.mobile_case_router as mcase
+
+        buf = io.BytesIO()
+        Image.new("RGB", (64, 48), (120, 180, 90)).save(buf, format="JPEG")
+        exifless_jpg = buf.getvalue()
+
+        target_dt = datetime(2024, 7, 15, 14, 20, 30)
+        target_ms = int(target_dt.timestamp() * 1000)
+
+        fake_loome = Path(self._temp_dir.name) / "CaseMtimeLoome"
+        fake_loome.mkdir(parents=True, exist_ok=True)
+
+        with mcase._case_upload_lock:
+            mcase._last_case_upload_ts = 0.0
+        self.assertFalse(mcase.is_case_upload_active(cooldown_sec=12.0))
+
+        client = TestClient(app, base_url="http://127.0.0.1:8088")
+        with _mock.patch("server.routers.mobile_case_router.ensure_storage_dir", return_value=fake_loome):
+            pf_res = client.post(
+                "/api/mobile/case-preflight",
+                json={
+                    "items": [
+                        {
+                            "client_id": "c1",
+                            "file_name": "NOEXIF_SNAP.JPG",
+                            "file_size": len(exifless_jpg),
+                            "last_modified_ms": target_ms,
+                        }
+                    ]
+                },
+            )
+            self.assertEqual(pf_res.status_code, 200)
+            self.assertEqual(pf_res.json()["upload_client_ids"], ["c1"])
+            self.assertTrue(mcase.is_case_upload_active(cooldown_sec=12.0))
+
+            up_res = client.post(
+                "/api/mobile/case-upload",
+                params={"file_name": "NOEXIF_SNAP.JPG", "last_modified_ms": target_ms},
+                content=exifless_jpg,
+                headers={"Content-Type": "application/octet-stream"},
+            )
+            self.assertEqual(up_res.status_code, 200)
+            up_body = up_res.json()
+            self.assertEqual(up_body["status"], "imported")
+            self.assertEqual(up_body["date_folder"], "2024-07-15")
+
+        stored_rows = get_photos(folder=str(fake_loome / "case" / "2024-07-15"), stacked=False)
+        self.assertEqual(len(stored_rows), 1)
+        self.assertTrue(str(stored_rows[0]["date_taken"]).startswith("2024-07-15"))
+        self.assertFalse(mcase.is_case_upload_active(cooldown_sec=0.0))
 
     def test_retouched_photo_burst_stack_tag_inheritance(self) -> None:
         """

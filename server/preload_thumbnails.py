@@ -94,7 +94,7 @@ def preload_all_thumbnails(batch_size: int = 50):
                        p.rotation, p.fine_angle, p.crop_x, p.crop_y, p.crop_w, p.crop_h,
                        p.brightness, p.contrast, p.saturation
                 FROM photos p
-                LEFT JOIN thumbnails t ON p.id = t.photo_id
+                LEFT JOIN thumbnails t INDEXED BY idx_thumbnails_dims ON p.id = t.photo_id
                 WHERE t.photo_id IS NULL
                   AND IFNULL(p.is_unlinked, 0) = 0
                   AND NOT (COALESCE(p.is_raw, 0) = 1 AND p.paired_raw_path IS NOT NULL AND p.paired_raw_path != '')

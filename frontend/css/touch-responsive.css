@@ -1,0 +1,784 @@
+/* ==========================================================================
+   Tetheract Touch & Tablet Responsive UI Stylesheet (Layer 3)
+   Phone (1ペイン + 変身親指バー + 自動収納シート) ⇄ Tablet (左54pxレール + 中央グリッド + 右インスペクタ)
+   4テーマ完全対応: tetheract-d / tetheract-l / sumi / paper
+   ========================================================================== */
+
+:root,
+[data-theme="paper"] {
+  --surface-card: var(--bg-secondary, #dedad0);
+  --surface-elevated: var(--bg-panel, #fbf9f4);
+  --text-primary: var(--text-main, #2a2926);
+  --accent-rgb: 225, 77, 42;
+  --rail-width: 54px;
+  --thumb-bar-height: 56px;
+}
+
+[data-theme="sumi"] {
+  --surface-card: var(--bg-secondary, #1e2126);
+  --surface-elevated: var(--bg-panel, #262a31);
+  --text-primary: var(--text-main, #eceae4);
+  --accent-rgb: 225, 77, 42;
+}
+
+[data-scheme="tetheract-d"] {
+  --bg-primary: #171615;
+  --bg-secondary: #21201e;
+  --bg-tertiary: #1b1a18;
+  --surface-card: #21201e;
+  --surface-elevated: #2b2926;
+  --text-main: #edeae4;
+  --text-primary: #edeae4;
+  --text-muted: #a39e93;
+  --text-dim: #706c64;
+  --accent-primary: #c89d6c;
+  --accent-rgb: 200, 157, 108;
+  --accent-subtle: rgba(200, 157, 108, 0.14);
+  --rating-excellent: #e2b857;
+  --rating-good: #c89d6c;
+  --rating-discard: #5c5954;
+  --border-color: rgba(242, 213, 178, 0.12);
+  --border-soft: rgba(242, 213, 178, 0.06);
+}
+
+[data-scheme="tetheract-l"] {
+  --bg-primary: #e8e6e1;
+  --bg-secondary: #f2f0ec;
+  --bg-tertiary: #dfdcd5;
+  --surface-card: #f2f0ec;
+  --surface-elevated: #faf9f6;
+  --text-main: #262523;
+  --text-primary: #262523;
+  --text-muted: #595650;
+  --text-dim: #87837b;
+  --accent-primary: #a86825;
+  --accent-rgb: 168, 104, 37;
+  --accent-subtle: rgba(168, 104, 37, 0.11);
+  --rating-excellent: #c28d14;
+  --rating-good: #a86825;
+  --rating-discard: #78746d;
+  --border-color: rgba(38, 37, 35, 0.12);
+  --border-soft: rgba(38, 37, 35, 0.06);
+}
+
+/* ==================== 1. モード切替トグル (Auto / Phone / Tablet) ==================== */
+.t-mode-switch-group {
+  display: inline-flex; align-items: center; gap: 2px;
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px; padding: 2px;
+}
+
+.t-mode-switch-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  height: 28px; padding: 0 8px;
+  border: none; border-radius: 4px;
+  background: transparent; color: var(--text-muted);
+  font-family: "Inter", "Yu Gothic UI", "Meiryo", sans-serif;
+  font-size: 11px; font-weight: 600; cursor: pointer;
+  transition: background-color 0.14s ease, color 0.14s ease;
+}
+
+.t-mode-switch-btn.is-active {
+  background-color: var(--surface-card);
+  color: var(--accent-primary);
+}
+
+/* ==================== 2. Android 専用ロッカー＆USB同期ステータスバー ==================== */
+.t-locker-sync-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  min-height: 36px; padding: 4px 10px;
+  background-color: var(--surface-card);
+  border-bottom: 1px solid var(--border-color);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0; overflow-x: auto; scrollbar-width: none;
+}
+.t-locker-sync-bar::-webkit-scrollbar { display: none; }
+
+.t-locker-status-left,
+.t-locker-status-right {
+  display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0;
+}
+
+.t-locker-conn-pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: 12px;
+  font-size: 11px; font-weight: 600;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-tertiary); color: var(--text-primary);
+}
+.t-locker-conn-pill.is-usb-connected {
+  border-color: rgba(16, 185, 129, 0.45);
+  background-color: rgba(16, 185, 129, 0.14);
+  color: #34d399;
+}
+
+.t-locker-count-label { font-size: 11px; color: var(--text-muted); font-weight: 600; }
+
+.t-locker-pending-badge {
+  padding: 2px 7px; border-radius: 10px;
+  font-size: 11px; font-weight: 600;
+  background-color: var(--bg-tertiary); color: var(--text-muted);
+  border: 1px solid var(--border-soft);
+}
+.t-locker-pending-badge.has-pending {
+  background-color: var(--accent-subtle);
+  color: var(--accent-primary);
+  border-color: var(--accent-primary);
+}
+
+.t-locker-action-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  height: 26px; padding: 0 9px; border-radius: 5px;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-tertiary); color: var(--text-primary);
+  font-size: 11px; font-weight: 600; cursor: pointer;
+}
+.t-locker-action-btn.is-update-ready {
+  background-color: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: #ffffff;
+}
+
+/* ==================== 3. Phone ⇄ Tablet レスポンシブワークスペース ==================== */
+.t-tablet-workspace {
+  display: flex; flex: 1; min-height: 0; width: 100%;
+  overflow: hidden; position: relative;
+}
+
+[data-device-mode="phone"] .t-tablet-rail,
+[data-device-mode="phone"] .t-tablet-stage,
+[data-device-mode="phone"] .t-tablet-inspector {
+  display: none !important;
+}
+
+[data-device-mode="phone"] .m-main {
+  padding-bottom: calc(var(--thumb-bar-height) + 16px + env(safe-area-inset-bottom, 0px));
+}
+
+[data-device-mode="tablet"] #mOpenDrawerBtn {
+  display: none;
+}
+
+[data-device-mode="tablet"] .m-photo-grid {
+  gap: 5px;
+}
+
+[data-device-mode="tablet"] .m-main {
+  padding-bottom: calc(var(--thumb-bar-height) + 16px + env(safe-area-inset-bottom, 0px));
+}
+
+#mBatchBar {
+  display: none !important;
+}
+
+.m-native-only {
+  display: none !important;
+}
+html.is-native-app .m-native-only {
+  display: block !important;
+}
+html.is-native-app span.m-native-only {
+  display: inline !important;
+}
+html.is-native-app button.m-native-only {
+  display: inline-flex !important;
+}
+
+.t-tablet-rail {
+  width: var(--rail-width); flex-shrink: 0;
+  display: flex; flex-direction: column; align-items: center;
+  padding: 6px 0; gap: 3px;
+  background-color: var(--bg-tertiary);
+  border-right: 1px solid var(--border-color);
+  overflow-y: auto; scrollbar-width: none;
+  z-index: 18;
+}
+.t-tablet-rail::-webkit-scrollbar { display: none; }
+
+.t-rail-btn {
+  width: 44px; height: 42px; flex-shrink: 0;
+  border: 1px solid transparent; border-radius: 6px;
+  background: transparent; color: var(--text-muted);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 2px; cursor: pointer;
+}
+.t-rail-btn.is-active {
+  background-color: var(--surface-card);
+  border-color: var(--border-color);
+  color: var(--accent-primary);
+}
+.t-rail-label { font-size: 9px; font-weight: 600; }
+.t-rail-divider { width: 28px; height: 1px; background-color: var(--border-color); margin: 3px 0; flex-shrink: 0; }
+.t-rail-gap { height: 6px; flex-shrink: 0; }
+.t-rail-spacer { flex: 1; min-height: 8px; }
+
+.t-tablet-stage {
+  width: 0; overflow: hidden; flex-shrink: 0;
+  background-color: var(--surface-card);
+  border-right: 1px solid transparent;
+  display: flex; flex-direction: column;
+  transition: width 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.t-tablet-stage.is-open { width: 248px; border-right-color: var(--border-color); }
+
+.t-stage-header {
+  display: flex; align-items: center; justify-content: space-between;
+  height: 42px; padding: 0 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+.t-stage-title { font-size: 13px; font-weight: 700; color: var(--text-primary); }
+.t-stage-body { flex: 1; overflow-y: auto; padding: 8px; }
+
+.t-tablet-inspector {
+  width: 276px; flex-shrink: 0;
+  background-color: var(--surface-card);
+  border-left: 1px solid var(--border-color);
+  display: flex; flex-direction: column; overflow-y: auto;
+  transition: width 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.t-tablet-inspector.is-collapsed { width: 0; border-left-color: transparent; overflow: hidden; }
+
+.t-inspector-preview-4x3 {
+  width: 100%; aspect-ratio: 4 / 3;
+  background-color: var(--bg-primary);
+  border-bottom: 1px solid var(--border-color);
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden; position: relative; cursor: pointer;
+}
+.t-inspector-preview-img { width: 100%; height: 100%; object-fit: contain; }
+.t-inspector-expand-btn {
+  position: absolute; right: 8px; bottom: 8px;
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 8px; border-radius: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background-color: rgba(14, 16, 20, 0.82); color: #f0f2f5;
+  font-size: 11px; font-weight: 600; cursor: pointer;
+}
+.t-inspector-empty { padding: 16px; font-size: 12px; color: var(--text-muted); text-align: center; line-height: 1.5; }
+.t-inspector-body {
+  padding: 12px;
+  padding-bottom: calc(var(--thumb-bar-height) + 20px);
+  display: flex; flex-direction: column; gap: 10px;
+}
+.t-inspector-filename { font-size: 13px; font-weight: 700; color: var(--text-primary); word-break: break-all; }
+.t-inspector-submeta { font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; line-height: 1.4; }
+.t-inspector-rate-bar {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px;
+}
+.t-inspector-rate-btn {
+  height: 32px; border-radius: 5px;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-tertiary); color: var(--text-primary);
+  font-size: 11px; font-weight: 700; cursor: pointer;
+}
+.t-inspector-rate-btn.is-active.is-discard { background-color: rgba(107, 114, 128, 0.28); border-color: #9ca3af; color: #e5e7eb; }
+.t-inspector-rate-btn.is-active.is-normal { background-color: var(--accent-subtle); border-color: var(--accent-primary); color: var(--accent-primary); }
+.t-inspector-rate-btn.is-active.is-good { background-color: rgba(225, 77, 42, 0.22); border-color: #e14d2a; color: #ff7a59; }
+.t-inspector-rate-btn.is-active.is-excellent { background-color: rgba(240, 185, 41, 0.22); border-color: #f0b929; color: #facc15; }
+.t-inspector-quick-exif, .t-inspector-tags { display: flex; flex-wrap: wrap; gap: 5px; }
+
+.t-exif-pill,
+.t-tag-pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 8px; border-radius: 4px;
+  font-size: 11px; font-variant-numeric: tabular-nums;
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+}
+.t-tag-pill { background-color: var(--accent-subtle); border-color: var(--accent-primary); }
+.t-tag-pill-del {
+  border: none; background: transparent; color: var(--text-muted);
+  font-size: 11px; line-height: 1; padding: 0 2px; cursor: pointer;
+}
+.t-inspector-section-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 2px; }
+.t-inspector-section-label { font-size: 11px; font-weight: 600; color: var(--text-muted); }
+.t-inspector-link-btn {
+  border: 1px solid var(--border-color); border-radius: 4px;
+  background-color: var(--bg-tertiary); color: var(--accent-primary);
+  font-size: 11px; font-weight: 600; padding: 2px 7px; cursor: pointer;
+}
+.t-inspector-inline-tag-form { display: flex; gap: 5px; width: 100%; margin-top: 2px; }
+.t-inspector-tag-input {
+  flex: 1; min-width: 0; height: 30px; padding: 0 8px;
+  border-radius: 5px; border: 1px solid var(--border-color);
+  background-color: var(--bg-primary); color: var(--text-primary); font-size: 11px;
+}
+.t-inspector-tag-add-btn {
+  height: 30px; padding: 0 10px; border-radius: 5px;
+  border: 1px solid var(--accent-primary);
+  background-color: var(--accent-subtle); color: var(--accent-primary);
+  font-size: 11px; font-weight: 700; cursor: pointer; white-space: nowrap;
+}
+.t-inspector-muted { font-size: 11px; color: var(--text-muted); }
+
+/* ==================== 4. Phone 自動収納 7視点ナビゲーションシート ==================== */
+.t-nav-sheet-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  bottom: calc(var(--thumb-bar-height) + env(safe-area-inset-bottom, 0px));
+  background-color: rgba(12, 13, 15, 0.68);
+  backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+  display: flex; flex-direction: column; justify-content: flex-end;
+  z-index: 90;
+}
+
+.t-nav-sheet {
+  background-color: var(--surface-card); color: var(--text-primary);
+  border-top: 1px solid var(--border-color);
+  border-radius: 14px 14px 0 0; max-height: 78vh;
+  display: flex; flex-direction: column;
+  transform: translateY(102%);
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  padding-bottom: 0;
+}
+.t-nav-sheet.is-open { transform: translateY(0); }
+.t-nav-sheet-handle-wrap { display: flex; justify-content: center; padding: 8px 0 6px; border-bottom: 1px solid var(--border-soft); flex-shrink: 0; }
+.t-nav-sheet-handle { width: 36px; height: 4px; border-radius: 2px; background-color: var(--text-dim); }
+
+.t-nav-sheet-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 14px; border-top: 1px solid var(--border-color);
+  background-color: var(--surface-card); flex-shrink: 0;
+}
+.t-nav-sheet-title-group { display: flex; flex-direction: column; gap: 2px; }
+.t-nav-sheet-title { font-size: 13px; font-weight: 700; }
+.t-nav-sheet-hint { font-size: 10.5px; color: var(--text-muted); }
+.t-nav-sheet-actions { display: flex; align-items: center; gap: 8px; }
+
+.t-pin-toggle-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  height: 30px; padding: 0 10px; border-radius: 15px;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-tertiary); color: var(--text-muted);
+  font-size: 11px; font-weight: 600; cursor: pointer;
+}
+.t-pin-toggle-btn.is-pinned {
+  background-color: var(--accent-subtle);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
+.t-icon-close-btn {
+  width: 32px; height: 32px; border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-tertiary); color: var(--text-primary);
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+}
+
+.t-perspective-tabs {
+  display: grid; grid-template-columns: repeat(7, minmax(44px, 1fr)); gap: 3px;
+  padding: 6px 8px; background-color: var(--bg-tertiary);
+  border-top: 1px solid var(--border-color); overflow-x: auto; flex-shrink: 0;
+}
+.t-perspective-tab {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  height: 48px; padding: 2px 1px; border-radius: 6px; border: 1px solid transparent;
+  background: transparent; color: var(--text-muted);
+  font-size: 10px; font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.t-perspective-tab-label {
+  white-space: nowrap; line-height: 1.1; letter-spacing: -0.02em;
+}
+.t-perspective-tab.is-active {
+  background-color: var(--surface-card);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+.t-nav-sheet-body { flex: 1; min-height: 0; overflow-y: auto; padding: 10px 12px; }
+.t-perspective-ext-slot { margin-top: 10px; }
+.t-perspective-ext-slot[data-perspective-slot="folder"] { margin-top: 0; margin-bottom: 12px; }
+
+/* ==================== 5. フィルタ行（44px高）＆ 左スワイプ除外インジケータ ==================== */
+.m-filter-item,
+.t-filter-row {
+  position: relative; min-height: 40px; padding: 6px 10px 6px 8px;
+  margin-bottom: 4px;
+  display: flex; align-items: center; justify-content: space-between;
+  border-radius: 4px;
+  background-color: var(--bg-tertiary, #252b34);
+  border: 1px solid var(--border-color, #384150);
+  border-top-color: rgba(255, 255, 255, 0.14);
+  border-left-color: rgba(255, 255, 255, 0.10);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 1px 2px rgba(0, 0, 0, 0.24);
+  transition: transform 0.1s ease, background-color 0.12s ease, border-color 0.12s ease;
+  touch-action: pan-y;
+}
+
+.t-swipe-exclude-indicator {
+  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 8px; border-radius: 4px;
+  background-color: rgba(239, 68, 68, 0.2);
+  border: 1px solid #ef4444; color: #f87171;
+  font-size: 11px; font-weight: 700;
+  opacity: 0; pointer-events: none; transition: opacity 0.12s ease;
+}
+.m-filter-item.is-swiping-left .t-swipe-exclude-indicator,
+.t-filter-row.is-swiping-left .t-swipe-exclude-indicator { opacity: 1; }
+.t-drag-select-pulse { transform: scale(0.96); transition: transform 0.12s ease; }
+
+/* ==================== 6. キャンバス全面スクラブ調整 HUD ==================== */
+.t-canvas-scrub-hud {
+  position: fixed; top: 50%; left: 50%;
+  transform: translate(-50%, -50%) scale(0.96);
+  min-width: 210px; padding: 14px 18px; border-radius: 10px;
+  background-color: rgba(20, 20, 20, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  color: #f0f2f5; display: flex; flex-direction: column; gap: 10px;
+  z-index: 140; pointer-events: none; opacity: 0;
+  transition: opacity 0.14s ease, transform 0.14s ease;
+}
+.t-canvas-scrub-hud.is-visible { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+.t-scrub-hud-header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.t-scrub-hud-label { font-size: 12px; font-weight: 600; color: #a39e93; }
+.t-scrub-hud-value { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--accent-primary); }
+.t-scrub-hud-track { position: relative; height: 4px; border-radius: 2px; background-color: rgba(255, 255, 255, 0.16); overflow: hidden; }
+.t-scrub-hud-center-tick { position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; background-color: rgba(255, 255, 255, 0.5); }
+.t-scrub-hud-fill { position: absolute; top: 0; bottom: 0; background-color: var(--accent-primary); }
+
+/* ==================== 7. 変身する親指バー (Context-Morphing Thumb Bar, 56px) ==================== */
+.t-morph-thumb-bar {
+  position: fixed; left: 0; right: 0; bottom: 0;
+  min-height: calc(var(--thumb-bar-height) + env(safe-area-inset-bottom, 0px));
+  padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
+  background-color: var(--surface-card);
+  border-top: 1px solid var(--border-color);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 95; transition: transform 0.16s ease, opacity 0.16s ease;
+}
+.t-morph-thumb-bar[data-thumb-mode="adjust"] {
+  z-index: 150;
+}
+.t-morph-thumb-bar.is-morphing { transform: translateY(3px); }
+.t-thumb-slot-group { display: flex; align-items: center; justify-content: space-between; gap: 5px; width: 100%; max-width: 680px; }
+
+.t-thumb-btn {
+  flex: 1 1 auto; height: 42px; padding: 0 8px;
+  border-radius: 7px; border: 1px solid var(--border-color);
+  background-color: var(--bg-tertiary); color: var(--text-primary);
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums;
+  cursor: pointer; white-space: nowrap;
+}
+.t-thumb-btn:active { transform: scale(0.95); }
+.t-thumb-btn.is-active,
+.t-thumb-btn.is-primary-btn {
+  background-color: var(--accent-subtle);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+.t-thumb-btn.is-rate-excellent.is-active { border-color: var(--rating-excellent); color: var(--rating-excellent); }
+.t-thumb-btn.is-rate-good.is-active { border-color: var(--rating-good); color: var(--rating-good); }
+.t-thumb-btn-icon-only { flex: 0 0 40px; padding: 0; }
+.t-thumb-divider { width: 1px; height: 24px; background-color: var(--border-color); flex-shrink: 0; }
+
+.t-thumb-selection-badge {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 0 10px; height: 42px; border-radius: 7px;
+  background-color: var(--accent-subtle);
+  border: 1px solid var(--accent-primary);
+  color: var(--accent-primary); font-variant-numeric: tabular-nums;
+}
+.t-thumb-selection-num { font-size: 15px; font-weight: 700; }
+.t-thumb-selection-unit { font-size: 11px; font-weight: 600; }
+
+.t-thumb-batch-rate-popover {
+  position: absolute; bottom: calc(100% + 8px); left: 12px; right: 12px;
+  max-width: 420px; margin: 0 auto; padding: 8px; border-radius: 10px;
+  background-color: var(--surface-card); border: 1px solid var(--border-color);
+  grid-template-columns: repeat(4, 1fr); gap: 6px;
+}
+.t-thumb-rate-pill {
+  height: 38px; border-radius: 6px; border: 1px solid var(--border-color);
+  background-color: var(--bg-tertiary); color: var(--text-primary);
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  font-size: 12px; font-weight: 700; cursor: pointer;
+}
+
+/* ==================== 8. Duel 2枚比較ビュー（Side-by-Side / Top-Bottom / Flip） ==================== */
+.t-duel-modal {
+  position: fixed; inset: 0;
+  padding-bottom: calc(var(--thumb-bar-height) + env(safe-area-inset-bottom, 0px));
+  background-color: var(--bg-primary); color: var(--text-primary);
+  display: flex; flex-direction: column; z-index: 88;
+}
+.t-duel-topbar {
+  height: 46px; padding: 0 12px; flex-shrink: 0;
+  background-color: var(--surface-card);
+  border-bottom: 1px solid var(--border-color);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.t-duel-topbar-left, .t-duel-topbar-right { display: inline-flex; align-items: center; gap: 8px; }
+.t-duel-badge {
+  padding: 2px 7px; border-radius: 4px;
+  background-color: var(--accent-subtle);
+  border: 1px solid var(--accent-primary);
+  color: var(--accent-primary); font-size: 11px; font-weight: 700;
+}
+.t-duel-sync-indicator { font-size: 11px; color: var(--text-muted); font-weight: 600; }
+.t-duel-layout-btn, .t-duel-close-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 32px; padding: 0 10px; border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-tertiary); color: var(--text-primary);
+  font-size: 12px; font-weight: 600; cursor: pointer;
+}
+
+.t-duel-stage { flex: 1; display: flex; min-height: 0; overflow: hidden; position: relative; }
+.t-duel-modal[data-duel-layout="side-by-side"] .t-duel-stage { flex-direction: row; }
+.t-duel-modal[data-duel-layout="top-bottom"] .t-duel-stage { flex-direction: column; }
+
+.t-duel-pane {
+  flex: 1; position: relative; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+  background-color: var(--bg-primary); touch-action: none;
+}
+.t-duel-divider { background-color: var(--border-color); flex-shrink: 0; }
+.t-duel-modal[data-duel-layout="side-by-side"] .t-duel-divider { width: 1px; height: 100%; }
+.t-duel-modal[data-duel-layout="top-bottom"] .t-duel-divider { width: 100%; height: 1px; }
+
+.t-duel-flip-switcher {
+  display: none; padding: 6px 12px; gap: 8px;
+  background-color: var(--surface-card);
+  border-top: 1px solid var(--border-color);
+}
+.t-duel-modal[data-duel-layout="flip"] .t-duel-flip-switcher { display: flex; }
+.t-duel-modal[data-duel-layout="flip"] .t-duel-divider,
+.t-duel-modal[data-duel-layout="flip"][data-duel-flip-slot="A"] #tDuelPaneB,
+.t-duel-modal[data-duel-layout="flip"][data-duel-flip-slot="B"] #tDuelPaneA { display: none; }
+
+.t-duel-flip-btn {
+  flex: 1; height: 34px; border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-tertiary); color: var(--text-muted);
+  font-size: 12px; font-weight: 700; cursor: pointer;
+}
+.t-duel-flip-btn.is-active {
+  background-color: var(--accent-subtle);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
+.t-duel-pane-overlay-top {
+  position: absolute; top: 8px; left: 8px; right: 8px;
+  display: flex; align-items: center; gap: 6px;
+  pointer-events: none; z-index: 5;
+}
+.t-duel-slot-pill, .t-duel-filename, .t-duel-zoom-badge {
+  padding: 2px 7px; border-radius: 4px;
+  background-color: rgba(20, 20, 20, 0.68);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(4px); color: #eceae4;
+  font-size: 11px; font-variant-numeric: tabular-nums;
+}
+.t-duel-zoom-badge { margin-left: auto; }
+.t-duel-canvas-wrap { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.t-duel-img {
+  max-width: none; max-height: none; flex: 0 0 auto; object-fit: contain;
+  transform-origin: center center;
+  user-select: none; -webkit-user-drag: none;
+}
+.t-duel-exif-strip {
+  position: absolute; bottom: 6px; left: 8px; right: 8px;
+  font-size: 11px; color: #d1d5db;
+  background-color: rgba(20, 20, 20, 0.62); backdrop-filter: blur(4px);
+  padding: 3px 8px; border-radius: 4px; pointer-events: none;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* ==================== 9. フルスクリーンビューアの下部4段階評価ドック見切れ防止 ==================== */
+.m-viewer-modal {
+  height: 100%;
+  max-height: 100dvh;
+  overflow: hidden;
+  z-index: 110;
+}
+.m-viewer-stage {
+  flex: 1 1 0%;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+.m-viewer-img-wrapper {
+  position: absolute;
+  inset: 0;
+  min-height: 0;
+  min-width: 0;
+  overflow: visible;
+}
+.m-viewer-dock {
+  flex-shrink: 0;
+  padding: 8px 10px calc(16px + env(safe-area-inset-bottom, 0px));
+}
+.m-sheet-overlay {
+  z-index: 130;
+}
+
+/* ==================== 10. Phone 2段スリムAppBar & 4タブ親指ボトムナビゲーション ==================== */
+.m-brand {
+  cursor: pointer;
+  padding: 2px 6px;
+  margin-left: -4px;
+  border-radius: 6px;
+  transition: background-color 0.14s ease, transform 0.1s ease;
+}
+.m-brand:hover {
+  background-color: var(--bg-tertiary);
+}
+.m-brand:active {
+  background-color: var(--bg-tertiary);
+  transform: scale(0.97);
+}
+
+[data-device-mode="phone"] .m-header {
+  flex-wrap: wrap;
+  height: auto;
+  padding: 6px 10px;
+  row-gap: 6px;
+}
+
+[data-device-mode="phone"] .m-header-left {
+  order: 1;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+[data-device-mode="phone"] .m-header-right {
+  order: 2;
+  flex: 0 0 auto;
+  gap: 5px;
+}
+
+[data-device-mode="phone"] .m-header-center {
+  order: 3;
+  flex: 1 0 100%;
+  width: 100%;
+  padding-top: 5px;
+  border-top: 1px solid var(--border-soft);
+}
+
+[data-device-mode="phone"] .m-quick-scroll {
+  margin: 0;
+  width: 100%;
+}
+
+[data-device-mode="phone"] .m-viewer-nav {
+  display: none !important;
+}
+
+@media (max-width: 400px) {
+  [data-device-mode="phone"] .m-btn-db .m-btn-db-label {
+    display: none;
+  }
+}
+
+.t-phone-bottom-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  min-height: calc(var(--thumb-bar-height) + env(safe-area-inset-bottom, 0px));
+  padding: 4px 4px calc(4px + env(safe-area-inset-bottom, 0px));
+  background-color: var(--surface-card);
+  border-top: 1px solid var(--border-color);
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 2px;
+  z-index: 92;
+}
+
+[data-device-mode="tablet"] .t-phone-bottom-nav,
+body.has-visible-thumb-bar .t-phone-bottom-nav {
+  display: none !important;
+}
+
+.t-bnav-btn {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  height: 46px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.t-bnav-btn:active {
+  background-color: var(--bg-tertiary);
+}
+
+.t-bnav-btn.is-active {
+  color: var(--accent-primary);
+}
+
+.t-bnav-dot {
+  position: absolute;
+  top: 5px;
+  right: calc(50% - 16px);
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: var(--accent-primary);
+}
+
+.t-bnav-badge {
+  position: absolute;
+  top: 3px;
+  right: calc(50% - 22px);
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background-color: var(--accent-primary);
+  color: #ffffff;
+  font-size: 9.5px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ==================== 9. スマホ内カメラフォルダ統合 & Loome\case 転送 UI ==================== */
+.t-pcase-folder-card { background-color: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 11px; display: flex; flex-direction: column; gap: 8px; }
+.t-pcase-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.t-pcase-card-title { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: var(--text-primary); }
+.t-pcase-card-sub { font-size: 11px; color: var(--text-muted); line-height: 1.45; }
+.t-pcase-add-folder-btn { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 9px; border-radius: 5px; border: 1px solid var(--accent-primary); background-color: var(--accent-subtle); color: var(--accent-primary); font-size: 11px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.t-pcase-folder-list { display: flex; flex-direction: column; gap: 5px; }
+.t-pcase-folder-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 40px; padding: 5px 8px 5px 10px; border-radius: 6px; border: 1px solid var(--border-color); background-color: var(--surface-card); color: var(--text-primary); cursor: pointer; }
+.t-pcase-folder-row-main { display: flex; align-items: center; gap: 7px; flex: 1; min-width: 0; font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.t-pcase-folder-row-actions { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; }
+.t-pcase-open-pill { padding: 3px 8px; border-radius: 4px; background-color: var(--accent-subtle); color: var(--accent-primary); border: 1px solid var(--accent-primary); font-size: 10.5px; font-weight: 700; white-space: nowrap; }
+.t-pcase-unlink-btn { width: 26px; height: 26px; border-radius: 4px; border: 1px solid var(--border-color); background: transparent; color: var(--text-muted); font-size: 11px; cursor: pointer; }
+.t-pcase-modal { position: fixed; inset: 0; z-index: 130; background-color: var(--bg-primary); color: var(--text-primary); display: flex; flex-direction: column; overflow: hidden; }
+.t-pcase-topbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 48px; padding: calc(6px + env(safe-area-inset-top, 0px)) 10px 6px 10px; background-color: var(--surface-card); border-bottom: 1px solid var(--border-color); flex-shrink: 0; }
+.t-pcase-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 6px 10px; background-color: var(--bg-tertiary); border-bottom: 1px solid var(--border-color); flex-wrap: wrap; flex-shrink: 0; }
+.t-pcase-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; touch-action: pan-y; overscroll-behavior-y: contain; padding: 8px; }
+.t-pcase-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: max-content; gap: 6px; width: 100%; }
+[data-device-mode="tablet"] .t-pcase-grid { grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); }
+.t-pcase-cell { position: relative; width: 100%; aspect-ratio: 1 / 1; border-radius: 6px; overflow: hidden; background-color: var(--bg-tertiary); border: 2px solid transparent; cursor: pointer; contain: layout paint style; }
+.t-pcase-cell.is-selected { border-color: var(--accent-primary); }
+.t-pcase-cell.is-stored { opacity: 0.62; }
+.t-pcase-cell img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
+.t-pcase-check { position: absolute; top: 5px; left: 5px; z-index: 2; width: 22px; height: 22px; border-radius: 50%; background: rgba(15, 16, 19, 0.72); border: 1.5px solid rgba(255, 255, 255, 0.78); color: #fff; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+.t-pcase-cell.is-selected .t-pcase-check { background-color: var(--accent-primary); border-color: var(--accent-primary); }
+.t-pcase-badge-top-right { position: absolute; top: 5px; right: 5px; z-index: 2; display: inline-flex; align-items: center; gap: 3px; }
+.t-pcase-rate-badge, .t-pcase-stored-badge, .t-pcase-tag-badge { padding: 2px 5px; border-radius: 4px; font-size: 10px; font-weight: 700; background: rgba(15, 16, 19, 0.82); color: #fff; }
+.t-pcase-stored-badge { background: rgba(16, 185, 129, 0.86); }
+.t-pcase-cell-foot { position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; padding: 4px 5px; background: linear-gradient(transparent, rgba(0, 0, 0, 0.84)); display: flex; align-items: center; justify-content: space-between; gap: 4px; font-size: 9.5px; color: #eceae4; }
+.t-pcase-bottom-panel { background-color: var(--surface-card); border-top: 1px solid var(--border-color); padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 7px; flex-shrink: 0; }
+.t-pcase-curation-row { display: flex; align-items: center; gap: 5px; overflow-x: auto; scrollbar-width: none; }
+.t-pcase-curation-row::-webkit-scrollbar { display: none; }
+.t-pcase-submit-btn { width: 100%; height: 42px; padding: 0 10px; border-radius: 7px; border: 1px solid var(--accent-primary); background-color: var(--accent-primary); color: #ffffff; font-size: 12.5px; font-weight: 700; white-space: nowrap; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.t-pcase-submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+

@@ -38,8 +38,6 @@ dist/
 dist_update/
 dist_v2/
 dist_v2_update/
-.android_toolchain/
-android/
 zip/
 *.zip
 PhotoManager.exe
@@ -58,3 +56,12 @@ autorun.inf
 # OS固有
 Thumbs.db
 Desktop.ini
+
+# Android ポータブルツールチェーン・ビルドキャッシュ・同期アセット
+.android_toolchain/
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/app/src/main/assets/
+*.apk

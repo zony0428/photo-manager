@@ -14,7 +14,7 @@ import shutil
 import uuid
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 logger = logging.getLogger("photo_manager.sidecar")
 
@@ -215,6 +215,120 @@ def _update_xmp_raw_filename_in_file(xmp_path: Path, old_file_path: Path, new_fi
             logger.warning(f"XMP内の crs:RawFileName 更新失敗 ({xmp_path}): {e}")
 
 
+def sync_photo_has_xmp_by_paths(paths: Iterable[Union[str, Path]]) -> int:
+    """指定画像パス群に一致する登録済み写真レコードの has_xmp カラムを実ファイル状態と同期する"""
+    norm_paths: List[str] = []
+    seen: set = set()
+    for p in paths:
+        if not p:
+            continue
+        try:
+            ab = os.path.abspath(str(p))
+        except Exception:
+            continue
+        key = ab.lower()
+        if key not in seen:
+            seen.add(key)
+            norm_paths.append(ab)
+
+    if not norm_paths:
+        return 0
+
+    try:
+        from .database.connection import get_connection
+        from .database.photos import invalidate_fast_cache
+        from .scanner import resolve_portable_path
+
+        with get_connection() as conn:
+            ph = ",".join("?" * len(norm_paths))
+            params = norm_paths + norm_paths + norm_paths
+            rows = conn.execute(
+                f"""
+                SELECT DISTINCT p.id, p.file_path, p.paired_raw_path, p.volume_serial,
+                                COALESCE(p.has_xmp, 0) AS has_xmp
+                FROM photos p
+                LEFT JOIN photo_links pl ON pl.photo_id = p.id
+                WHERE p.file_path COLLATE NOCASE IN ({ph})
+                   OR p.paired_raw_path COLLATE NOCASE IN ({ph})
+                   OR pl.file_path COLLATE NOCASE IN ({ph})
+                """,
+                params,
+            ).fetchall()
+            if not rows:
+                return 0
+
+            updates: List[Tuple[int, int]] = []
+            for r in rows:
+                pid = int(r["id"])
+                vsn = r["volume_serial"]
+                res_p, is_online = resolve_portable_path(r["file_path"], expected_serial=vsn)
+                found_xmp = False
+                if is_online and _find_best_xmp_for_photo(res_p, r["paired_raw_path"], volume_serial=vsn) is not None:
+                    found_xmp = True
+                if not found_xmp:
+                    link_rows = conn.execute(
+                        "SELECT file_path, volume_serial FROM photo_links WHERE photo_id = ?",
+                        (pid,),
+                    ).fetchall()
+                    for lr in link_rows:
+                        lp, l_online = resolve_portable_path(lr["file_path"], expected_serial=lr["volume_serial"])
+                        if l_online and _find_best_xmp_for_photo(lp, None, volume_serial=lr["volume_serial"]) is not None:
+                            found_xmp = True
+                            break
+                new_flag = 1 if found_xmp else 0
+                if new_flag != int(r["has_xmp"] or 0):
+                    updates.append((new_flag, pid))
+
+            if updates:
+                conn.executemany("UPDATE photos SET has_xmp = ? WHERE id = ?", updates)
+                conn.commit()
+        if updates:
+            invalidate_fast_cache()
+        return len(updates)
+    except Exception as e:
+        logger.debug(f"has_xmp DB同期スキップ: {e}")
+        return 0
+
+
+def delete_xmp_sidecar_for_photo(
+    file_path: Union[str, Path],
+    paired_raw_path: Optional[str] = None,
+    volume_serial: Optional[str] = None,
+) -> int:
+    """対象写真（およびペアRAW）に付随する .xmp サイドカーを削除し、DB の has_xmp を同期する"""
+    deleted = 0
+    targets: List[Path] = []
+    if file_path:
+        targets.append(Path(file_path))
+    if paired_raw_path:
+        try:
+            from .scanner import resolve_portable_path
+            p_cand, is_online = resolve_portable_path(paired_raw_path, expected_serial=volume_serial)
+            targets.append(p_cand if is_online else Path(paired_raw_path))
+        except Exception:
+            targets.append(Path(paired_raw_path))
+
+    seen_sc: set = set()
+    for tp in targets:
+        for sc in find_sidecars_for_file(tp):
+            if sc["ext"].lower() != ".xmp":
+                continue
+            sc_p: Path = sc["path"]
+            key = str(sc_p).lower()
+            if key in seen_sc:
+                continue
+            seen_sc.add(key)
+            try:
+                if sc_p.exists():
+                    sc_p.unlink()
+                    deleted += 1
+            except Exception as e:
+                logger.warning(f"XMPサイドカー削除失敗 ({sc_p}): {e}")
+
+    sync_photo_has_xmp_by_paths(targets)
+    return deleted
+
+
 def copy_sidecars_for_file(src_file: Union[str, Path], dest_file: Union[str, Path]) -> List[Path]:
     """
     src_file に付随する全サイドカーを dest_file.parent へ shutil.copy2 でコピーする。
@@ -243,6 +357,8 @@ def copy_sidecars_for_file(src_file: Union[str, Path], dest_file: Union[str, Pat
         except Exception as e:
             logger.warning(f"サイドカーのコピー失敗 ({sc_path} -> {dest_sc}): {e}")
 
+    if any(p.suffix.lower() == ".xmp" for p in copied):
+        sync_photo_has_xmp_by_paths([dest_p])
     return copied
 
 
@@ -274,6 +390,8 @@ def move_sidecars_for_file(src_file: Union[str, Path], dest_file: Union[str, Pat
         except Exception as e:
             logger.warning(f"サイドカーの移動失敗 ({sc_path} -> {dest_sc}): {e}")
 
+    if any(p.suffix.lower() == ".xmp" for p in moved):
+        sync_photo_has_xmp_by_paths([src_p, dest_p])
     return moved
 
 
@@ -320,6 +438,8 @@ def rename_sidecars_for_file(src_file: Union[str, Path], new_file: Union[str, Pa
         except Exception as e:
             logger.warning(f"サイドカーのリネーム失敗 ({sc_path} -> {new_sc}): {e}")
 
+    if any(p.suffix.lower() == ".xmp" for p in renamed):
+        sync_photo_has_xmp_by_paths([src_p, new_p])
     return renamed
 
 
@@ -1120,6 +1240,7 @@ def write_xmp_sidecar_for_photo(
     try:
         with open(xmp_path, "w", encoding="utf-8") as f:
             f.write(xmp_content)
+        sync_photo_has_xmp_by_paths([target_p])
         return xmp_path
     except Exception as e:
         logger.warning(f"XMPサイドカー書き出し失敗 ({xmp_path}): {e}")

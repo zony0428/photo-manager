@@ -109,8 +109,8 @@
     if (typeof fetchPhotos === 'function') {
       fetchPhotos();
     }
-    if (typeof updateTimelineFilterState === 'function') {
-      updateTimelineFilterState();
+    if (typeof updateTimelineActiveClasses === 'function') {
+      updateTimelineActiveClasses();
     }
     if (typeof renderActiveFilterChips === 'function') {
       renderActiveFilterChips();

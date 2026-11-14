@@ -1429,7 +1429,7 @@ def _is_loome_registered_in_own_db(vsn: str, loome_dir: Path) -> bool:
                 if cur.fetchone():
                     return True
             cur.execute(
-                "SELECT 1 FROM scan_roots WHERE LOWER(root_path) = LOWER(?) LIMIT 1",
+                "SELECT 1 FROM scan_roots WHERE LOWER(folder_path) = LOWER(?) LIMIT 1",
                 (norm_loome,),
             )
             if cur.fetchone():
@@ -2015,7 +2015,7 @@ def copy_file_unsealed(src_path: Union[str, Path], dst_path: Union[str, Path]) -
 @contextlib.contextmanager
 def decrypted_file_path_context(file_path: Union[str, Path]) -> Iterator[Path]:
     """
-    rawpy 等のファイルパスを要求するC拡張ライブラリ向けに、
+    ファイルシステム上の実パスを必須とする外部処理向けに、
     通常ファイルならそのままの Path を返し、Lv.2 カプセル化ファイルなら一時復号ファイルの Path を返して終了時に確実削除する。
     """
     p = Path(file_path)
@@ -2033,8 +2033,146 @@ def decrypted_file_path_context(file_path: Union[str, Path]) -> Iterator[Path]:
         try:
             if tmp_path.exists():
                 tmp_path.unlink()
+        except Exception as e:
+            logger.debug(f"一時復号ファイル削除失敗 ({tmp_path}): {e}")
+
+
+class _VaultDecryptedStream(io.RawIOBase):
+    """Lv.2 カプセル化ファイルの先頭 64KB のみをメモリ復号し、残領域を直接シーク読み取りするストリーム"""
+
+    def __init__(self, file_path: Path) -> None:
+        super().__init__()
+        self._fp = open(file_path, "rb")
+        try:
+            self._fp.seek(0, io.SEEK_END)
+            st_size = self._fp.tell()
+            if st_size <= VAULT_FOOTER_SIZE:
+                raise ValueError("カプセル化ファイルサイズが不正です")
+            candidate_keys = _get_candidate_vault_deks()
+            if not candidate_keys:
+                raise PermissionError("ロック中または復号キーが未ロードのため、保護された Loome ファイルを読み込めません。")
+
+            orig_size = st_size - VAULT_FOOTER_SIZE
+            chunk_len = min(orig_size, VAULT_CHUNK_SIZE)
+            self._fp.seek(0)
+            disk_chunk = self._fp.read(chunk_len)
+            if len(disk_chunk) < 8 or disk_chunk[:8] != VAULT_MAGIC:
+                raise ValueError("カプセル化マジックヘッダが不正です")
+            self._fp.seek(orig_size)
+            footer = self._fp.read(VAULT_FOOTER_SIZE)
+            if len(footer) != VAULT_FOOTER_SIZE or footer[64:72] != VAULT_MAGIC:
+                raise ValueError("カプセル化フッターが破損しています")
+
+            cipher_head8 = footer[0:8]
+            nonce = footer[8:24]
+            mac = footer[24:56]
+            orig_mtime_bytes = footer[56:64]
+            cipher_chunk = cipher_head8 + disk_chunk[8:]
+
+            matched_key: Optional[bytes] = None
+            for cand_key in candidate_keys:
+                mac_key = hashlib.shake_256(cand_key + nonce + b"VAULT_MAC_V1").digest(32)
+                expected_mac = hmac.digest(mac_key, VAULT_MAGIC + nonce + orig_mtime_bytes + cipher_chunk, "sha256")
+                if hmac.compare_digest(mac, expected_mac):
+                    matched_key = cand_key
+                    break
+            if matched_key is None:
+                raise ValueError("カプセル化ファイルの認証MACが一致しません")
+
+            ks = hashlib.shake_256(matched_key + nonce + b"VAULT_ENC_V1").digest(chunk_len)
+            self._plain_chunk = _xor_bytes(cipher_chunk, ks)
+            self._orig_size = orig_size
+            self._chunk_len = chunk_len
+            self._pos = 0
         except Exception:
-            pass
+            self._fp.close()
+            raise
+
+    def readable(self) -> bool:
+        return True
+
+    def seekable(self) -> bool:
+        return True
+
+    def tell(self) -> int:
+        return self._pos
+
+    def seek(self, offset: int, whence: int = io.SEEK_SET) -> int:
+        if whence == io.SEEK_SET:
+            new_pos = offset
+        elif whence == io.SEEK_CUR:
+            new_pos = self._pos + offset
+        elif whence == io.SEEK_END:
+            new_pos = self._orig_size + offset
+        else:
+            raise ValueError(f"不正な whence 値です: {whence}")
+        if new_pos < 0:
+            raise ValueError("負のファイル位置にはシークできません")
+        self._pos = new_pos
+        return self._pos
+
+    def readinto(self, b: Any) -> int:
+        if self.closed:
+            raise ValueError("閉じられたストリームからの読み取りはできません")
+        view = memoryview(b).cast("B")
+        max_n = len(view)
+        if max_n == 0 or self._pos >= self._orig_size:
+            return 0
+        avail = min(max_n, self._orig_size - self._pos)
+        written = 0
+        if self._pos < self._chunk_len:
+            head_n = min(avail, self._chunk_len - self._pos)
+            view[:head_n] = self._plain_chunk[self._pos : self._pos + head_n]
+            self._pos += head_n
+            written += head_n
+            avail -= head_n
+        if avail > 0:
+            self._fp.seek(self._pos)
+            tail = self._fp.read(avail)
+            got = len(tail)
+            if got > 0:
+                view[written : written + got] = tail
+                self._pos += got
+                written += got
+        return written
+
+    def close(self) -> None:
+        if not self.closed:
+            try:
+                self._fp.close()
+            finally:
+                super().close()
+
+
+@contextlib.contextmanager
+def open_loome_decrypted_stream(file_path: Union[str, Path]) -> Iterator[io.BufferedReader]:
+    """通常ファイルまたは Lv.2 カプセル化ファイルを一時ファイル生成なしでシーク可能なバイナリストリームとして開く"""
+    p = Path(file_path)
+    if not is_vault_encrypted_file(p):
+        with open(p, "rb") as f:
+            yield f
+        return
+
+    stream = io.BufferedReader(_VaultDecryptedStream(p))
+    try:
+        yield stream
+    finally:
+        stream.close()
+
+
+@contextlib.contextmanager
+def decrypted_bytes_context(file_path: Union[str, Path]) -> Iterator[Union[str, io.BytesIO]]:
+    """rawpy 等へ渡す入力ソースとして、通常時はファイルパス文字列、Lv.2 カプセル化時はオンメモリ BytesIO を返す"""
+    p = Path(file_path)
+    if not is_vault_encrypted_file(p):
+        yield str(p)
+        return
+
+    buf = io.BytesIO(read_loome_file_decrypted_bytes(p))
+    try:
+        yield buf
+    finally:
+        buf.close()
 
 
 def seal_all_files_in_directory(root_dir: Path, dek: Optional[bytes] = None) -> int:

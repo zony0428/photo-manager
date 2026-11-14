@@ -6,7 +6,7 @@
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 from .connection import get_connection
 from .photos import _build_folder_missing_filter, _directory_filter_sql, _strip_vsn_prefix_raw, invalidate_fast_cache
@@ -94,25 +94,38 @@ def _sync_tags_across_groups(cursor: Any, member_groups: List[List[int]]) -> int
 
 
 def recalculate_stacks(directory_path: Optional[str] = None, recursive: bool = True, existing_paths: Optional[set] = None) -> int:
+    """単一ディレクトリ（またはライブラリ全体）のRAW+JPEGペア・連写・重複スタックを再計算する"""
+    target_dirs = [directory_path] if directory_path else None
+    return recalculate_stacks_for_directories(target_dirs, recursive=recursive, existing_paths=existing_paths)
+
+
+def recalculate_stacks_for_directories(
+    directory_paths: Optional[Iterable[str]] = None,
+    recursive: bool = True,
+    existing_paths: Optional[set] = None,
+) -> int:
     """
-    同一ディレクトリ内の写真を走査し、
-    1. 同名ステムのRAW+JPEGペアの自動紐付け（JPEGを代表、RAWをスタックメンバー化）
-    2. 露出ブラケット（露出補正値の差）および連写（burst）の自動グルーピング
-    を行い、スタックグループ（stack_id）と代表写真（is_stack_primary）を割り当てる。
+    指定された1つ以上のディレクトリ（未指定時は全体）の写真を一括走査し、
+    RAW+JPEGペア・露出ブラケット・連写・重複スタックを単一パスで再計算する。
     """
     with get_connection() as conn:
         cursor = conn.cursor()
 
         # 対象ディレクトリの抽出（photos と photo_links の両方から収集）
-        if directory_path:
-            sql_frag_p, sql_params_p = _build_folder_missing_filter(directory_path, recursive=recursive)
-            cursor.execute(f"SELECT DISTINCT directory_path FROM photos WHERE {sql_frag_p}", sql_params_p)
-            dirs_set = {r["directory_path"] for r in cursor.fetchall() if r["directory_path"]}
-            sql_frag_pl, sql_params_pl = _build_folder_missing_filter(directory_path, recursive=recursive)
-            cursor.execute(f"SELECT DISTINCT directory_path FROM photo_links WHERE {sql_frag_pl}", sql_params_pl)
-            for r in cursor.fetchall():
-                if r["directory_path"]:
-                    dirs_set.add(r["directory_path"])
+        cleaned_targets = [d for d in (directory_paths or []) if d]
+        if cleaned_targets:
+            dirs_set: set = set()
+            for dir_target in cleaned_targets:
+                sql_frag_p, sql_params_p = _build_folder_missing_filter(dir_target, recursive=recursive)
+                cursor.execute(f"SELECT DISTINCT directory_path FROM photos WHERE {sql_frag_p}", sql_params_p)
+                for r in cursor.fetchall():
+                    if r["directory_path"]:
+                        dirs_set.add(r["directory_path"])
+                sql_frag_pl, sql_params_pl = _build_folder_missing_filter(dir_target, recursive=recursive)
+                cursor.execute(f"SELECT DISTINCT directory_path FROM photo_links WHERE {sql_frag_pl}", sql_params_pl)
+                for r in cursor.fetchall():
+                    if r["directory_path"]:
+                        dirs_set.add(r["directory_path"])
             dirs = sorted(dirs_set)
         else:
             cursor.execute("SELECT DISTINCT directory_path FROM photos WHERE directory_path IS NOT NULL")
@@ -128,6 +141,7 @@ def recalculate_stacks(directory_path: Optional[str] = None, recursive: bool = T
             norm_existing_paths = {os.path.normcase(os.path.abspath(p)) for p in existing_paths}
 
         total_stacks_created = 0
+        cleared_paired_counterparts: set = set()
         tag_sync_groups: List[List[int]] = []
 
         for d in dirs:
@@ -138,7 +152,7 @@ def recalculate_stacks(directory_path: Optional[str] = None, recursive: bool = T
                        p.f_number, p.focal_length, p.shutter_speed, p.camera_model,
                        p.stack_id, p.is_stack_primary, p.stack_type, p.rating,
                        COALESCE(pl.paired_raw_path, p.paired_raw_path) AS paired_raw_path,
-                       p.is_raw, p.raw_format, pl.volume_serial
+                       p.is_raw, p.raw_format, pl.volume_serial, COALESCE(p.has_xmp, 0) AS has_xmp
                 FROM photo_links pl
                 INNER JOIN photos p ON pl.photo_id = p.id
                 WHERE pl.directory_path = ? COLLATE NOCASE AND IFNULL(p.is_unlinked, 0) = 0
@@ -147,7 +161,7 @@ def recalculate_stacks(directory_path: Optional[str] = None, recursive: bool = T
                        p.date_taken, p.subsec_time, p.exposure_bias,
                        p.f_number, p.focal_length, p.shutter_speed, p.camera_model,
                        p.stack_id, p.is_stack_primary, p.stack_type, p.rating, p.paired_raw_path,
-                       p.is_raw, p.raw_format, p.volume_serial
+                       p.is_raw, p.raw_format, p.volume_serial, COALESCE(p.has_xmp, 0) AS has_xmp
                 FROM photos p
                 WHERE p.directory_path = ? COLLATE NOCASE AND IFNULL(p.is_unlinked, 0) = 0
                   AND NOT EXISTS (
@@ -171,6 +185,7 @@ def recalculate_stacks(directory_path: Optional[str] = None, recursive: bool = T
 
             pending_updates = []
             pending_link_updates = []
+            pending_xmp_updates = []
 
             # 同一ドライブレター・同一ディレクトリに複数VSNが存在する場合、同時にマウントできるのは1つのVSNのみ
             active_vsn_at_dir = None
@@ -205,6 +220,8 @@ def recalculate_stacks(directory_path: Optional[str] = None, recursive: bool = T
                 def queue_update(photo_id: int, new_stack_id: Optional[int], new_is_primary: int, new_stack_type: Optional[str], new_paired_raw: Optional[str]) -> None:
                     clean_paired = _strip_vsn_prefix_raw(new_paired_raw) if new_paired_raw else None
                     cur = current_vals.get(photo_id)
+                    if cur and cur[3] and not clean_paired:
+                        cleared_paired_counterparts.add(_strip_vsn_prefix_raw(cur[3]))
                     target = (new_stack_id, new_is_primary, new_stack_type, clean_paired)
                     if cur != target:
                         pending_updates.append((new_stack_id, new_is_primary, new_stack_type, clean_paired, photo_id))
@@ -259,6 +276,8 @@ def recalculate_stacks(directory_path: Optional[str] = None, recursive: bool = T
                         primary_rep["paired_raw_path"] = online_raws[0]["_clean_file_path"]
                         for r in raws:
                             r["paired_raw_path"] = primary_rep["_clean_file_path"]
+                        if not primary_rep.get("has_xmp") and any(r.get("has_xmp") for r in online_raws):
+                            pending_xmp_updates.append((1, primary_rep["id"]))
                         primary_rep["attached_raws"] = [j for j in jpegs if j["id"] != primary_rep["id"]] + raws
                         primary_rep["has_pair"] = True
                         representative_list.append(primary_rep)
@@ -507,94 +526,42 @@ def recalculate_stacks(directory_path: Optional[str] = None, recursive: bool = T
                     """,
                     pending_link_updates,
                 )
+            if pending_xmp_updates:
+                cursor.executemany("UPDATE photos SET has_xmp = ? WHERE id = ?", pending_xmp_updates)
 
         # ============================================================
-        # 第2パス: クロスフォルダ RAW+JPEG ペアリング
+        # 第2パス: クロスフォルダ・クロスドライブ RAW+JPEG ペアリング
         # ディレクトリ内ペアリングでマッチしなかった未ペアRAWに対して、
-        # 全スキャン済みフォルダを横断してステム名+撮影日時で対応するJPEGを探す。
-        # （例: 112_PANA/ にJPEG、112_PANA RAW/ にRAW が別管理されるケース）
-        # ※ 別SDカード（異なる volume_serial）の同名ファイルとはペアリングしない。
+        # 全スキャン済みフォルダを横断してステム名+撮影日時(+カメラ機種)で対応するJPEGを探す。
+        # （例: 112_PANA/ にJPEG、112_PANA RAW/ にRAW、あるいは別ドライブにRAWを退避管理するケース）
         # ============================================================
-        cursor.execute(
-            """
-            SELECT id, file_name, file_path, date_taken, volume_serial
-            FROM photos
-            WHERE is_raw = 1 AND paired_raw_path IS NULL AND IFNULL(is_unlinked, 0) = 0
-            """
-        )
-        unpaired_raws = [dict(r) for r in cursor.fetchall()]
-
-        if unpaired_raws:
-            # 全非RAW写真のステム名→写真リスト マップを構築（1回のクエリで完了）
-            cursor.execute(
-                """
-                SELECT id, file_name, file_path, date_taken, volume_serial
-                FROM photos
-                WHERE is_raw = 0 AND paired_raw_path IS NULL AND IFNULL(is_unlinked, 0) = 0
-                """
-            )
-            jpeg_stem_map: Dict[str, List[Dict[str, Any]]] = {}
-            for row in cursor.fetchall():
-                jpeg = dict(row)
-                stem = Path(jpeg["file_name"]).stem.lower()
-                jpeg_stem_map.setdefault(stem, []).append(jpeg)
-
-            cross_pairs_found = 0
-            cross_pair_updates = []
-            for raw_photo in unpaired_raws:
-                raw_stem = Path(raw_photo["file_name"]).stem.lower()
-                raw_date = raw_photo.get("date_taken")
-                raw_vsn = (raw_photo.get("volume_serial") or "").strip().upper()
-
-                all_candidates = jpeg_stem_map.get(raw_stem, [])
-                if not all_candidates:
-                    continue
-
-                # 同一ボリューム（または両方 volume_serial 未設定）の候補のみに限定
-                candidates = [
-                    c for c in all_candidates
-                    if (c.get("volume_serial") or "").strip().upper() == raw_vsn
-                ]
-                if not candidates:
-                    continue
-
-                # 撮影日時が一致する候補を優先（誤マッチ防止）
-                matched = None
-                if raw_date:
-                    for cand in candidates:
-                        if cand.get("date_taken") == raw_date:
-                            matched = cand
-                            break
-
-                # 日時マッチがなければ候補が1件のみの場合に限り採用
-                if not matched and len(candidates) == 1:
-                    matched = candidates[0]
-
-                if matched:
-                    raw_clean_fp = _strip_vsn_prefix_raw(raw_photo["file_path"])
-                    jpeg_clean_fp = _strip_vsn_prefix_raw(matched["file_path"])
-                    # JPEG側: paired_raw_path にRAWのパスを設定
-                    cross_pair_updates.append((raw_clean_fp, matched["id"]))
-                    # RAW側: paired_raw_path にJPEGのパスを設定
-                    cross_pair_updates.append((jpeg_clean_fp, raw_photo["id"]))
-                    tag_sync_groups.append([matched["id"], raw_photo["id"]])
-                    # マッチ済みJPEGを候補から除外（1対1マッチング）
-                    all_candidates.remove(matched)
-                    cross_pairs_found += 1
-
-            if cross_pair_updates:
-                cursor.executemany(
-                    "UPDATE photos SET paired_raw_path = ? WHERE id = ?",
-                    cross_pair_updates,
+        if cleared_paired_counterparts:
+            cp_list = list(cleared_paired_counterparts)
+            chunk_sz = 400
+            for idx_c in range(0, len(cp_list), chunk_sz):
+                chunk_cp = cp_list[idx_c : idx_c + chunk_sz]
+                ph = ",".join(["?"] * len(chunk_cp))
+                cursor.execute(
+                    f"""
+                    UPDATE photos SET paired_raw_path = NULL
+                    WHERE file_path IN ({ph})
+                       OR id IN (SELECT photo_id FROM photo_links WHERE file_path IN ({ph}))
+                    """,
+                    chunk_cp + chunk_cp,
                 )
-                cursor.executemany(
-                    "UPDATE photo_links SET paired_raw_path = ? WHERE photo_id = ?",
-                    cross_pair_updates,
+                cursor.execute(
+                    f"""
+                    UPDATE photo_links SET paired_raw_path = NULL
+                    WHERE file_path IN ({ph})
+                       OR photo_id IN (SELECT id FROM photos WHERE file_path IN ({ph}))
+                    """,
+                    chunk_cp + chunk_cp,
                 )
 
         if tag_sync_groups:
             _sync_tags_across_groups(cursor, tag_sync_groups)
 
+        pair_cross_folder_raw_jpeg(cursor)
         conn.commit()
 
         # ============================================================
@@ -607,6 +574,147 @@ def recalculate_stacks(directory_path: Optional[str] = None, recursive: bool = T
 
         invalidate_fast_cache()
         return total_stacks_created
+
+
+def pair_cross_folder_raw_jpeg(cursor: Any) -> int:
+    """
+    未ペアRAWに対して、全スキャン済みフォルダ・全ドライブを横断して
+    対応するJPEGを探索・ペアリングし、タグと評価を双方向同期する。
+    """
+    cursor.execute(
+        """
+        SELECT id, file_name, file_path, date_taken, camera_model, volume_serial, rating,
+               COALESCE(has_xmp, 0) AS has_xmp
+        FROM photos
+        WHERE is_raw = 1 AND paired_raw_path IS NULL AND IFNULL(is_unlinked, 0) = 0
+        """
+    )
+    unpaired_raws = [dict(r) for r in cursor.fetchall()]
+    if not unpaired_raws:
+        return 0
+
+    cursor.execute(
+        """
+        SELECT id, file_name, file_path, date_taken, camera_model, volume_serial, rating,
+               COALESCE(has_xmp, 0) AS has_xmp
+        FROM photos
+        WHERE is_raw = 0 AND paired_raw_path IS NULL AND IFNULL(is_unlinked, 0) = 0
+        """
+    )
+    jpeg_stem_map: Dict[str, List[Dict[str, Any]]] = {}
+    for row in cursor.fetchall():
+        jpeg = dict(row)
+        stem = Path(jpeg["file_name"]).stem.lower()
+        jpeg_stem_map.setdefault(stem, []).append(jpeg)
+
+    cross_pairs_found = 0
+    cross_pair_updates = []
+    cross_tag_sync_pairs = []
+    cross_rating_updates = []
+    cross_xmp_updates = []
+    invalid_cams = {"", "不明", "raw写真"}
+
+    for raw_photo in unpaired_raws:
+        raw_stem = Path(raw_photo["file_name"]).stem.lower()
+        raw_date = (raw_photo.get("date_taken") or "").strip()
+        raw_cam = (raw_photo.get("camera_model") or "").strip()
+        raw_cam_valid = raw_cam.lower() not in invalid_cams
+        raw_vsn = (raw_photo.get("volume_serial") or "").strip().upper()
+
+        all_candidates = jpeg_stem_map.get(raw_stem, [])
+        if not all_candidates:
+            continue
+
+        # 1. 同一ボリューム（または両方 volume_serial 未設定）の候補を最優先
+        same_vsn_candidates = [
+            c for c in all_candidates
+            if (c.get("volume_serial") or "").strip().upper() == raw_vsn
+        ]
+        matched = None
+        if same_vsn_candidates:
+            if raw_date:
+                for cand in same_vsn_candidates:
+                    if (cand.get("date_taken") or "").strip() == raw_date:
+                        matched = cand
+                        break
+            if not matched and len(same_vsn_candidates) == 1:
+                matched = same_vsn_candidates[0]
+
+        # 2. 別ドライブ・別ボリューム間でも、ステム名 + 撮影日時 + カメラ機種 が完全一致する場合はペアリング
+        #    （別カメラ・別SDカードの同名ファイル誤ペアリングを防ぐため撮影日時と有効なカメラ機種の一致を必須とする）
+        if not matched and raw_date and raw_cam_valid:
+            for cand in all_candidates:
+                cand_vsn = (cand.get("volume_serial") or "").strip().upper()
+                if cand_vsn == raw_vsn:
+                    continue
+                cand_date = (cand.get("date_taken") or "").strip()
+                cand_cam = (cand.get("camera_model") or "").strip()
+                if cand_date == raw_date and cand_cam.lower() not in invalid_cams and cand_cam.lower() == raw_cam.lower():
+                    matched = cand
+                    break
+
+        if matched:
+            raw_clean_fp = _strip_vsn_prefix_raw(raw_photo["file_path"])
+            jpeg_clean_fp = _strip_vsn_prefix_raw(matched["file_path"])
+            cross_pair_updates.append((raw_clean_fp, matched["id"]))
+            cross_pair_updates.append((jpeg_clean_fp, raw_photo["id"]))
+            cross_tag_sync_pairs.append((matched["id"], raw_photo["id"]))
+
+            j_rating = int(matched.get("rating") or 0)
+            r_rating = int(raw_photo.get("rating") or 0)
+            if j_rating != r_rating:
+                merged_rating = j_rating if r_rating == 0 else (r_rating if j_rating == 0 else max(j_rating, r_rating))
+                if j_rating != merged_rating:
+                    cross_rating_updates.append((merged_rating, matched["id"]))
+                if r_rating != merged_rating:
+                    cross_rating_updates.append((merged_rating, raw_photo["id"]))
+
+            if raw_photo.get("has_xmp") and not matched.get("has_xmp"):
+                cross_xmp_updates.append((1, matched["id"]))
+            elif matched.get("has_xmp") and not raw_photo.get("has_xmp"):
+                cross_xmp_updates.append((1, raw_photo["id"]))
+
+            all_candidates.remove(matched)
+            cross_pairs_found += 1
+
+    if cross_pair_updates:
+        cursor.executemany(
+            "UPDATE photos SET paired_raw_path = ? WHERE id = ?",
+            cross_pair_updates,
+        )
+        cursor.executemany(
+            "UPDATE photo_links SET paired_raw_path = ? WHERE photo_id = ?",
+            cross_pair_updates,
+        )
+
+    if cross_tag_sync_pairs:
+        tag_sync_params = []
+        for j_id, r_id in cross_tag_sync_pairs:
+            tag_sync_params.append((r_id, j_id))
+            tag_sync_params.append((j_id, r_id))
+        cursor.executemany(
+            """
+            INSERT INTO photo_tags (photo_id, tag, source, confidence)
+            SELECT ?, tag, source, confidence FROM photo_tags WHERE photo_id = ?
+            ON CONFLICT(photo_id, tag) DO UPDATE SET
+                source = CASE WHEN excluded.source = 'manual' THEN 'manual' ELSE photo_tags.source END,
+                confidence = CASE WHEN excluded.source = 'manual' THEN 1.0 ELSE MAX(photo_tags.confidence, excluded.confidence) END
+            """,
+            tag_sync_params,
+        )
+
+    if cross_rating_updates:
+        cursor.executemany(
+            "UPDATE photos SET rating = ? WHERE id = ?",
+            cross_rating_updates,
+        )
+    if cross_xmp_updates:
+        cursor.executemany(
+            "UPDATE photos SET has_xmp = ? WHERE id = ?",
+            cross_xmp_updates,
+        )
+
+    return cross_pairs_found
 
 
 def recalculate_duplicate_stacks() -> int:
@@ -739,3 +847,93 @@ def set_stack_primary(photo_id: int) -> bool:
         conn.commit()
         invalidate_fast_cache()
         return True
+
+
+def get_stack_detail(stack_id: int) -> Optional[Dict[str, Any]]:
+    """指定された stack_id に属する全メンバー写真のフル属性（EXIF・タグ・調整値・状態）を取得する"""
+    conn = get_connection()
+    rows = conn.execute(
+        """
+        SELECT p.id, p.file_path, p.file_name, p.directory_path, p.file_size, p.file_mtime,
+               p.width, p.height, p.date_taken, p.original_date_taken, p.year_month, p.camera_model,
+               p.exposure_bias, p.shutter_speed, p.f_number, p.iso, p.focal_length,
+               p.lens_model, p.subsec_time, p.latitude, p.longitude, p.gps_source,
+               p.country, p.state, p.city, p.stack_id, p.is_stack_primary, p.stack_type,
+               p.rating, p.is_raw, p.raw_format, p.paired_raw_path, p.volume_serial,
+               p.rotation, p.fine_angle, p.crop_x, p.crop_y, p.crop_w, p.crop_h,
+               p.crop_aspect, p.brightness, p.contrast, p.saturation,
+               p.is_unlinked, COALESCE(p.has_xmp, 0) AS has_xmp,
+               v.volume_label, COALESCE(v.custom_name, '') AS volume_custom_name,
+               v.drive_letter AS volume_drive
+        FROM photos p
+        LEFT JOIN volumes v ON p.volume_serial = v.volume_serial AND COALESCE(p.is_unlinked, 0) = 0
+        WHERE p.stack_id = ?
+          AND IFNULL(p.is_unlinked, 0) = 0
+          AND NOT (COALESCE(p.is_raw, 0) = 1 AND p.paired_raw_path IS NOT NULL AND p.paired_raw_path != '')
+        ORDER BY p.date_taken ASC, p.subsec_time ASC, p.exposure_bias ASC, p.file_name ASC
+        """,
+        (int(stack_id),),
+    ).fetchall()
+    if not rows:
+        return None
+
+    members = [dict(r) for r in rows]
+    photo_ids = [int(m["id"]) for m in members]
+    ph = ",".join("?" * len(photo_ids))
+
+    tags_map: Dict[int, List[str]] = {}
+    tag_details_map: Dict[int, List[Dict[str, Any]]] = {}
+    for tr in conn.execute(
+        f"SELECT photo_id, tag, source, confidence FROM photo_tags WHERE photo_id IN ({ph}) ORDER BY confidence DESC",
+        photo_ids,
+    ).fetchall():
+        pid_t = int(tr["photo_id"])
+        tags_map.setdefault(pid_t, []).append(tr["tag"])
+        tag_details_map.setdefault(pid_t, []).append({
+            "tag": tr["tag"],
+            "source": tr["source"] or "manual",
+            "confidence": tr["confidence"] if tr["confidence"] is not None else 1.0,
+        })
+
+    from ..scanner import resolve_drive_online_path
+    from ..storage_manager import is_path_in_storage
+
+    primary_id: Optional[int] = None
+    stack_type: Optional[str] = None
+    dir_state_cache: Dict[tuple, tuple] = {}
+
+    for m in members:
+        pid = int(m["id"])
+        m["file_path"] = _strip_vsn_prefix_raw(m.get("file_path"))
+        m["tags"] = tags_map.get(pid, [])
+        m["tag_details"] = tag_details_map.get(pid, [])
+        m["has_xmp"] = bool(m.get("has_xmp"))
+        vsn = m.get("volume_serial")
+        dp = m.get("directory_path") or ""
+        ck = (vsn or "", dp)
+        if ck not in dir_state_cache:
+            if dp and not str(dp).startswith("vsn://"):
+                _, is_on = resolve_drive_online_path(dp, expected_serial=vsn)
+                is_st = is_path_in_storage(dp, volume_serial=vsn)
+                dir_state_cache[ck] = (bool(is_on), bool(is_st))
+            else:
+                dir_state_cache[ck] = (False, False)
+        is_on, is_st = dir_state_cache[ck]
+        m["is_offline"] = not is_on
+        m["is_storage"] = is_st
+        m["is_missing"] = False
+        if m.get("is_stack_primary"):
+            primary_id = pid
+        if not stack_type and m.get("stack_type"):
+            stack_type = m["stack_type"]
+
+    if primary_id is None:
+        primary_id = int(members[0]["id"])
+
+    return {
+        "stack_id": int(stack_id),
+        "stack_type": stack_type,
+        "primary_photo_id": primary_id,
+        "stack_count": len(members),
+        "photos": members,
+    }

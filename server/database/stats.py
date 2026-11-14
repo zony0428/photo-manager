@@ -14,13 +14,27 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .connection import CACHE_DIR, DB_PATH, _local_db, close_all_connections, get_connection
+from . import connection as _db_conn
+from .connection import CACHE_DIR, _local_db, close_all_connections, get_connection
 
 logger = logging.getLogger(__name__)
 
 BACKUP_DIR = CACHE_DIR / "backups"
 WEEKLY_BACKUP_REMINDER_DAYS = 7
 _backup_lock = threading.Lock()
+
+
+def _active_db_path() -> Path:
+    """現在アクティブなDBファイルパスを動的に取得する"""
+    return _db_conn.DB_PATH
+
+
+def _active_backup_dir() -> Path:
+    """現在アクティブなDBに対応するバックアップ保存先ディレクトリを取得する"""
+    db_p = _db_conn.DB_PATH
+    if db_p.parent == CACHE_DIR:
+        return BACKUP_DIR
+    return db_p.parent / "backups"
 
 # Win32 CopyFileExW セットアップ（Windows 環境でのみ有効化）
 _win32_copy_file_ex = None
@@ -73,9 +87,11 @@ def get_backup_info() -> Dict[str, Any]:
     """
     既存のバックアップ一覧および最新バックアップのサマリーを取得する。
     """
-    backup_dir_str = str(BACKUP_DIR.resolve())
-    db_file_str = str(DB_PATH.resolve())
-    if not BACKUP_DIR.exists():
+    b_dir = _active_backup_dir()
+    db_p = _active_db_path()
+    backup_dir_str = str(b_dir.resolve())
+    db_file_str = str(db_p.resolve())
+    if not b_dir.exists():
         return {
             "count": 0,
             "latest": None,
@@ -89,7 +105,7 @@ def get_backup_info() -> Dict[str, Any]:
     now_ts = time.time()
     try:
         files = sorted(
-            BACKUP_DIR.glob("library_backup_*.db"),
+            b_dir.glob("library_backup_*.db"),
             key=lambda x: x.stat().st_mtime,
             reverse=True,
         )
@@ -126,11 +142,12 @@ def get_database_stats() -> Dict[str, Any]:
     """
     データベースファイル（library.db + WALログ）のサイズと内部の空き領域（フリーリスト）の統計を取得する。
     """
+    db_p = _active_db_path()
     # 本体およびWALログファイルを合算して実際のディスク消費量を算出
     file_size = 0
-    if DB_PATH.exists():
-        file_size += DB_PATH.stat().st_size
-    wal_path = DB_PATH.with_name(f"{DB_PATH.name}-wal")
+    if db_p.exists():
+        file_size += db_p.stat().st_size
+    wal_path = db_p.with_name(f"{db_p.name}-wal")
     if wal_path.exists():
         file_size += wal_path.stat().st_size
 
@@ -167,9 +184,9 @@ def get_database_stats() -> Dict[str, Any]:
                 library_age_days = max(0, int((datetime.now() - dt_oldest).total_seconds() // 86400))
             except Exception:
                 library_age_days = 0
-        if library_age_days == 0 and DB_PATH.exists():
+        if library_age_days == 0 and db_p.exists():
             try:
-                st_db = DB_PATH.stat()
+                st_db = db_p.stat()
                 oldest_ts = min(float(st_db.st_ctime), float(st_db.st_mtime))
                 library_age_days = max(0, int((time.time() - oldest_ts) // 86400))
             except Exception:
@@ -213,7 +230,8 @@ def vacuum_database() -> Dict[str, Any]:
     close_all_connections()
 
     # VACUUM はアクティブなトランザクション外で実行する必要があるため、独立接続＆自動コミットで実行
-    conn = sqlite3.connect(str(DB_PATH), timeout=60, isolation_level=None)
+    db_p = _active_db_path()
+    conn = sqlite3.connect(str(db_p), timeout=60, isolation_level=None)
     conn.create_function("tetheract_v170_guard", 0, lambda: 1, deterministic=True)
     try:
         conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
@@ -243,28 +261,30 @@ def backup_database(max_backups: int = 5) -> Dict[str, Any]:
     稼働中のDBを100%整合性を保ったまま高速にバックアップする（チェックポイントビジー時は Online Backup API に自動フォールバック）。
     最大保持数 (max_backups) を超える古いバックアップは自動削除（世代管理）する。
     """
-    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    b_dir = _active_backup_dir()
+    db_p = _active_db_path()
+    b_dir.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_path = BACKUP_DIR / f"library_backup_{timestamp}.db"
+    backup_path = b_dir / f"library_backup_{timestamp}.db"
 
     with _backup_lock:
         # アイドル状態のスレッドローカル接続がWALチェックポイントを阻害しないよう一旦解放
         close_all_connections()
 
         copied_fast = False
-        conn = sqlite3.connect(str(DB_PATH), timeout=60, isolation_level=None)
+        conn = sqlite3.connect(str(db_p), timeout=60, isolation_level=None)
         conn.create_function("tetheract_v170_guard", 0, lambda: 1, deterministic=True)
         try:
             try:
                 # 1. WALログを本体 library.db へ100%書き戻して切り詰める
                 chk_row = conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
                 busy = int(chk_row[0]) if chk_row else 1
-                if busy == 0 and DB_PATH.exists():
+                if busy == 0 and db_p.exists():
                     # 2. コピー中の新規書き込みをブロックした状態で OS カーネル高速コピーを実行
                     conn.execute("BEGIN IMMEDIATE")
                     try:
-                        copied_fast = _fast_copy_db_file(DB_PATH, backup_path)
+                        copied_fast = _fast_copy_db_file(db_p, backup_path)
                     finally:
                         conn.execute("COMMIT")
             except Exception as fast_err:
@@ -294,7 +314,7 @@ def backup_database(max_backups: int = 5) -> Dict[str, Any]:
     deleted_count = 0
     try:
         existing_files = sorted(
-            BACKUP_DIR.glob("library_backup_*.db"),
+            b_dir.glob("library_backup_*.db"),
             key=lambda x: x.stat().st_mtime,
             reverse=True,
         )
@@ -315,7 +335,7 @@ def backup_database(max_backups: int = 5) -> Dict[str, Any]:
         from ..security import get_security_status, save_recovery_key_file
         sec = get_security_status()
         if sec.get("recovery_code") and sec.get("owner_id_full"):
-            save_recovery_key_file(sec["recovery_code"], sec["owner_id_full"], target_dir=BACKUP_DIR)
+            save_recovery_key_file(sec["recovery_code"], sec["owner_id_full"], target_dir=b_dir)
     except Exception as rec_err:
         logger.debug(f"バックアップ時の復旧キー保存スキップ: {rec_err}")
 
@@ -333,9 +353,10 @@ def backup_database(max_backups: int = 5) -> Dict[str, Any]:
 
 def open_backup_directory() -> bool:
     """バックアップ保存先ディレクトリをOS標準のファイルマネージャ（Explorer）で開く"""
-    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    b_dir = _active_backup_dir()
+    b_dir.mkdir(parents=True, exist_ok=True)
     try:
-        os.startfile(str(BACKUP_DIR.resolve()))
+        os.startfile(str(b_dir.resolve()))
         return True
     except Exception as e:
         logger.error(f"バックアップフォルダ起動失敗: {e}")

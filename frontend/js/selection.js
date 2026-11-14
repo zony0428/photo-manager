@@ -151,18 +151,25 @@ function updateCardSelectionClasses() {
 function hasMissingThumbnailsInSelection() {
   if (state.selectedPhotoIds.size === 0) return false;
   for (const id of state.selectedPhotoIds) {
-    const photo = state.photos.find(p => p.id === id);
-    if (!photo) continue;
-    // DBフラグが未生成 (0/false) の場合
-    if (!photo.has_thumbnail) return true;
-    // DOM上の画像が未ロードまたは自然幅0（読込失敗）の場合も未取得とみなす
-    const card = document.querySelector(`.photo-card[data-photo-id="${id}"]`);
-    if (card) {
-      if (card.classList.contains('thumb-placeholder')) return true;
-      const img = card.querySelector('.card-thumb-img');
-      if (img && (!img.complete || img.naturalWidth === 0)) {
-        return true;
-      }
+    const photo = typeof getPhotoById === 'function' ? getPhotoById(id) : state.photos.find(p => p.id === id);
+    if (photo && !photo.has_thumbnail) return true;
+  }
+  const grid = elements.photoGrid || document.getElementById('photoGrid') || document;
+  const isCardThumbMissing = (card) => {
+    if (!card) return false;
+    if (card.classList.contains('thumb-placeholder')) return true;
+    const img = card.querySelector('.card-thumb-img');
+    return Boolean(img && (!img.complete || img.naturalWidth === 0));
+  };
+  if (state.selectedPhotoIds.size <= 50) {
+    for (const id of state.selectedPhotoIds) {
+      const card = grid.querySelector(`.photo-card[data-photo-id="${id}"]`);
+      if (isCardThumbMissing(card)) return true;
+    }
+  } else {
+    const selectedCards = grid.querySelectorAll('.photo-card.selected');
+    for (let i = 0; i < selectedCards.length; i++) {
+      if (isCardThumbMissing(selectedCards[i])) return true;
     }
   }
   return false;
@@ -185,13 +192,27 @@ function updateSelectionUI() {
 /* ==========================================================================
    右クリック コンテキストメニュー ＆ 一括タグ付け / インポート (送る)
    ========================================================================== */
+let _contextTagSubmenuDirty = true;
+let _contextImportSubmenuDirty = true;
+
+function _ensureContextSubmenuLoaded(itemEl) {
+  if (!itemEl) return;
+  if (itemEl.id === 'contextMenuTagItem' && _contextTagSubmenuDirty) {
+    _contextTagSubmenuDirty = false;
+    renderContextTagSubmenu();
+  } else if (itemEl.id === 'contextMenuImportItem' && _contextImportSubmenuDirty) {
+    _contextImportSubmenuDirty = false;
+    if (elements.contextImportFolderList) {
+      loadAndRenderContextImportSubmenu();
+    }
+  }
+}
+
 function openContextMenu(x, y) {
-  renderContextTagSubmenu();
+  _contextTagSubmenuDirty = true;
+  _contextImportSubmenuDirty = true;
   if (typeof window.updateStorageContextMenu === 'function') {
     window.updateStorageContextMenu();
-  }
-  if (elements.contextImportFolderList) {
-    loadAndRenderContextImportSubmenu();
   }
 
   // サムネイルメニュー項目の動的ラベル更新
@@ -255,7 +276,7 @@ function openContextMenu(x, y) {
       canCompare = true;
     } else if (count === 1) {
       const selId = Array.from(state.selectedPhotoIds)[0];
-      const selPhoto = state.photos.find(p => p.id === selId);
+      const selPhoto = typeof getPhotoById === 'function' ? getPhotoById(selId) : state.photos.find(p => p.id === selId);
       if (selPhoto && Array.isArray(selPhoto.stack_photos) && selPhoto.stack_photos.length >= 2) {
         canCompare = true;
       }
@@ -294,14 +315,18 @@ function openContextMenu(x, y) {
     let subTimer = null;
     const getSub = () => itemEl.querySelector(':scope > .context-submenu');
     itemEl.addEventListener('mouseenter', () => {
+      _ensureContextSubmenuLoaded(itemEl);
       if (subTimer) clearTimeout(subTimer);
+      const hoverDeg = typeof window.getMotionSweepDegree === 'function' ? window.getMotionSweepDegree() : 60;
+      // サブメニューのホバー遅延も他演出の半分（0% -> 0ms、60% -> 90ms、100% -> 150ms）に抑える
+      const subDelay = hoverDeg <= 0 ? 0 : Math.round(150 * (hoverDeg / 100));
       subTimer = setTimeout(() => {
         elements.contextMenu.querySelectorAll('.context-submenu.is-submenu-open').forEach(other => {
           if (other !== getSub()) other.classList.remove('is-submenu-open');
         });
         const sub = getSub();
         if (sub) sub.classList.add('is-submenu-open');
-      }, 300);
+      }, subDelay);
     });
     itemEl.addEventListener('mouseleave', () => {
       if (subTimer) { clearTimeout(subTimer); subTimer = null; }
@@ -311,6 +336,7 @@ function openContextMenu(x, y) {
     itemEl.addEventListener('click', (e) => {
       if (e.target && e.target.closest('.context-submenu')) return;
       e.stopPropagation();
+      _ensureContextSubmenuLoaded(itemEl);
       if (subTimer) { clearTimeout(subTimer); subTimer = null; }
       elements.contextMenu.querySelectorAll('.context-submenu.is-submenu-open').forEach(other => {
         if (other !== getSub()) other.classList.remove('is-submenu-open');
@@ -430,10 +456,10 @@ function openFolderContextMenu(x, y, node) {
           : '再スキャン（子を含む）';
       }
     }
-    // 写真がある場合のみAIタグ・管理解除を表示
+    // 写真がある場合、または未接続メディア・登録メディア行の場合はAIタグ・管理解除を表示
     setVisible(elements.folderMenuAiTag, hasPhotos);
     setVisible(elements.folderMenuAiColorTag, hasPhotos);
-    setVisible(elements.folderMenuUnmanage, hasPhotos);
+    setVisible(elements.folderMenuUnmanage, hasPhotos || Boolean(node.volumeSerial && (isOffline || node.isMediaItem)));
     // ドライブ・ショートカット自体は「除外」できないので非表示
     setVisible(elements.folderMenuIgnoreFromManaged, !isRootKind);
 
@@ -472,6 +498,10 @@ function openFolderContextMenu(x, y, node) {
   }
   if (removeLoomeEl) {
     removeLoomeEl.style.display = (isStorage && isStorageRoot && !isPrimaryLoome && !!node.volumeSerial) ? 'block' : 'none';
+  }
+  const copyFolderToLoomeEl = document.getElementById('folderMenuCopyFolderToLoome');
+  if (copyFolderToLoomeEl) {
+    copyFolderToLoomeEl.style.display = (!isStorage && !isOffline && !isMissing && kind === 'folder') ? 'block' : 'none';
   }
   if (createLoomeEl) {
     createLoomeEl.style.display = (kind === 'drive' && !isOffline && !!node.volumeSerial && !node.loomeEnabled) ? 'block' : 'none';
@@ -575,6 +605,9 @@ async function importSelectedPhotos(destinationPath = '', displayName = '') {
   }
   const targetLabel = displayName || (destinationPath ? destinationPath : 'take_out (直下)');
 
+  const includeRawEl = document.getElementById('contextImportIncludeRawCheck');
+  const includeRaw = Boolean(includeRawEl && includeRawEl.checked);
+
   try {
     const res = await fetch('/api/import/copy', {
       method: 'POST',
@@ -582,6 +615,7 @@ async function importSelectedPhotos(destinationPath = '', displayName = '') {
       body: JSON.stringify({
         photo_ids: photoIds,
         destination: destinationPath || '',
+        include_raw: includeRaw,
       }),
     });
 
@@ -590,15 +624,19 @@ async function importSelectedPhotos(destinationPath = '', displayName = '') {
       throw new Error(data.detail || '写真のテイクアウトに失敗しました');
     }
 
-    if (data.copied_count === 0) {
-      showToast('選択された写真にJPGがありません（RAW単体は除外されます）', 'warning', 4000);
-    } else if (data.skipped_count > 0) {
-      const unlinkedNote = skippedUnlinkedCount > 0 ? ` / 実体のない${skippedUnlinkedCount}枚もスキップ` : '';
-      showToast(`${data.copied_count}枚のJPGを「${targetLabel}」にテイクアウトしました（※非JPGの${data.skipped_count}枚はスキップ${unlinkedNote}）`, 'success', 4500);
-      clearSelection();
+    const jpgCnt = Number(data.copied_count || 0);
+    const rawCnt = Number(data.raw_copied_count || 0);
+    if (jpgCnt === 0 && rawCnt === 0) {
+      showToast('コピー対象の実ファイルがありません（RAW単体もコピーする場合は「RAW抱き合わせ」をONにしてください）', 'warning', 4500);
     } else {
-      const unlinkedNote = skippedUnlinkedCount > 0 ? `（実体のない ${skippedUnlinkedCount} 枚はスキップしました）` : '';
-      showToast(`${data.copied_count}枚のJPGを「${targetLabel}」にテイクアウトしました${unlinkedNote}`, 'success', 3800);
+      const parts = [];
+      if (jpgCnt > 0) parts.push(`画像 ${jpgCnt}枚`);
+      if (rawCnt > 0) parts.push(`RAW原本 ${rawCnt}枚`);
+      const notes = [];
+      if (data.skipped_count > 0) notes.push(`対象外 ${data.skipped_count}枚スキップ`);
+      if (skippedUnlinkedCount > 0) notes.push(`実体なし ${skippedUnlinkedCount}枚スキップ`);
+      const noteStr = notes.length > 0 ? `（※${notes.join(' / ')}）` : '';
+      showToast(`${parts.join(' ＋ ')}を「${targetLabel}」へ無加工コピーしました${noteStr}`, 'success', 4200);
       clearSelection();
     }
   } catch (err) {
@@ -660,12 +698,20 @@ async function openImportFolderInExplorer() {
 function renderContextTagSubmenu() {
   elements.contextTagTreeContainer.innerHTML = '';
   // 既存タグから選択: AIが付けたタグおよび色タグは除外（手動タグのみ表示）
-  const manualTags = (state.availableTags || []).filter(t => {
-    const isAi = t.source === 'ai';
-    const isColor = (t.tag || t.name) in COLOR_TAG_MAP;
-    return !isAi && !isColor;
-  });
-  const treeRoot = buildTagTree(manualTags);
+  const tb = window.TetheractCore && window.TetheractCore.TreeBuilder;
+  const manualTags = (tb && typeof tb.filterTagsForPcTree === 'function')
+    ? tb.filterTagsForPcTree(state.availableTags || [], {
+        sourceFilter: 'manual_only',
+        colorTagMap: typeof COLOR_TAG_MAP !== 'undefined' ? COLOR_TAG_MAP : null,
+      })
+    : (state.availableTags || []).filter(t => {
+        const isAi = t.source === 'ai';
+        const isColor = (t.tag || t.name) in COLOR_TAG_MAP;
+        return !isAi && !isColor;
+      });
+  const treeRoot = typeof buildTagTree === 'function'
+    ? buildTagTree(manualTags)
+    : (tb && typeof tb.buildTagTreeMap === 'function' ? tb.buildTagTreeMap(manualTags) : { children: new Map() });
 
   function appendSubmenuNodes(parentNode, container, indent = 0) {
     parentNode.children.forEach(node => {
@@ -744,25 +790,16 @@ async function batchRetagAiColorSelection() {
       const pid = Number(pidStr);
       if (!Array.isArray(tagDetails)) continue;
       const newTags = tagDetails.map(t => t.tag);
-      const photo = state.photos.find(p => p.id === pid);
-      if (photo) {
-        photo.tag_details = tagDetails;
-        photo.tags = newTags;
-      }
-      state.photos.forEach(p => {
-        if (Array.isArray(p.stack_photos)) {
-          const sp = p.stack_photos.find(s => s.id === pid);
-          if (sp) {
-            sp.tag_details = tagDetails;
-            sp.tags = [...newTags];
-          }
-        }
-      });
-      if (Array.isArray(state.currentLightboxStackPhotos)) {
-        const lsp = state.currentLightboxStackPhotos.find(s => s.id === pid);
-        if (lsp) {
-          lsp.tag_details = tagDetails;
-          lsp.tags = [...newTags];
+      if (typeof findAllPhotoInstancesById === 'function') {
+        findAllPhotoInstancesById(pid).forEach(inst => {
+          inst.tag_details = tagDetails.map(d => ({ ...d }));
+          inst.tags = [...newTags];
+        });
+      } else {
+        const photo = typeof getPhotoById === 'function' ? getPhotoById(pid) : state.photos.find(p => p.id === pid);
+        if (photo) {
+          photo.tag_details = tagDetails;
+          photo.tags = newTags;
         }
       }
     }
@@ -779,7 +816,9 @@ async function batchRetagAiColorSelection() {
     if (state.selectedPhotoIds && state.selectedPhotoIds.size > 1 && typeof updateInspectorView === 'function') {
       updateInspectorView();
     } else if (state.activeInspectorPhotoId && resultsMap[String(state.activeInspectorPhotoId)]) {
-      const activePhoto = state.photos.find(p => p.id === state.activeInspectorPhotoId);
+      const activePhoto = typeof getPhotoById === 'function'
+        ? getPhotoById(state.activeInspectorPhotoId)
+        : state.photos.find(p => p.id === state.activeInspectorPhotoId);
       if (activePhoto && typeof showSingleInspector === 'function') {
         showSingleInspector(activePhoto);
       }
@@ -850,14 +889,14 @@ function doesSelectionContainStackedCard() {
     ? Array.from(state.selectedPhotoIds)
     : (state.activeInspectorPhotoId ? [state.activeInspectorPhotoId] : []);
   return ids.some(pid => {
-    const p = state.photos.find(x => x.id === pid);
+    const p = typeof getPhotoById === 'function' ? getPhotoById(pid) : state.photos.find(x => x.id === pid);
     return p && ((p.stack_count && p.stack_count > 1) || (Array.isArray(p.stack_photos) && p.stack_photos.length > 1));
   });
 }
 window.doesSelectionContainStackedCard = doesSelectionContainStackedCard;
 
 /**
- * 選択中の写真の評価を一括更新
+ * 選択中の写真の評価を一括更新（全件再取得せずローカル状態とカードDOMを直接部分更新）
  */
 async function batchRateSelection(rating) {
   if (state.selectedPhotoIds.size === 0) return;
@@ -880,17 +919,47 @@ async function batchRateSelection(rating) {
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || '一括評価失敗');
 
+    state.calendarDaysMap = null;
+    const isFilteredOut = (state.ratingFilter instanceof Set) && state.ratingFilter.size > 0 && !state.ratingFilter.has(rating);
+    const idsToRemove = [];
+
+    for (const pid of photoIds) {
+      if (typeof findAllPhotoInstancesById === 'function') {
+        findAllPhotoInstancesById(pid).forEach(inst => {
+          inst.rating = rating;
+        });
+      } else {
+        const target = typeof getPhotoById === 'function' ? getPhotoById(pid) : state.photos.find(p => p.id === pid);
+        if (target) target.rating = rating;
+      }
+      if (isFilteredOut) {
+        idsToRemove.push(pid);
+      } else if (typeof updateCardRatingDirectly === 'function') {
+        updateCardRatingDirectly(pid, rating);
+      }
+    }
+
+    clearSelection();
+    if (idsToRemove.length > 0) {
+      if (typeof removePhotosFromViewBatch === 'function') {
+        removePhotosFromViewBatch(idsToRemove);
+      } else if (typeof removePhotoFromView === 'function') {
+        idsToRemove.forEach(pid => removePhotoFromView(pid));
+      }
+    }
+    if (typeof updateViewHeader === 'function') {
+      updateViewHeader();
+    }
+    if (typeof updateInspectorView === 'function') {
+      updateInspectorView();
+    }
+
     if (typeof showToast === 'function') {
       showToast(`${photoIds.length}枚の評価を「${rateLabels[String(rating)] || rating}」に設定しました`, 'success', 2500);
     }
-    state.calendarDaysMap = null;
-    clearSelection();
-    await fetchPhotos();
   } catch (err) {
     if (typeof showToast === 'function') {
       showToast(`エラー: ${err.message}`, 'error');
-    } else {
-      alert('エラー: ' + err.message);
     }
   }
 }
@@ -908,13 +977,13 @@ async function applyRatingToSelection(rating) {
   } else if (state.selectedPhotoIds.size === 1) {
     const photoId = Array.from(state.selectedPhotoIds)[0];
     await updatePhotoRating(photoId, rating);
-    const photo = state.photos.find(p => p.id === photoId);
+    const photo = typeof getPhotoById === 'function' ? getPhotoById(photoId) : state.photos.find(p => p.id === photoId);
     if (photo && state.activeInspectorPhotoId === photoId) {
       showSingleInspector(photo);
     }
   } else if (state.activeInspectorPhotoId) {
     await updatePhotoRating(state.activeInspectorPhotoId, rating);
-    const photo = state.photos.find(p => p.id === state.activeInspectorPhotoId);
+    const photo = typeof getPhotoById === 'function' ? getPhotoById(state.activeInspectorPhotoId) : state.photos.find(p => p.id === state.activeInspectorPhotoId);
     if (photo) {
       showSingleInspector(photo);
     }
@@ -982,6 +1051,27 @@ function initSelectionEvents() {
     elements.contextOpenImportFolderBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       openImportFolderInExplorer();
+    });
+  }
+
+  // 無加工フォルダコピー (take_out/) の RAW抱き合わせチェック状態初期化・保持
+  const incRawCheck = document.getElementById('contextImportIncludeRawCheck');
+  const incRawLabel = document.getElementById('contextImportIncludeRawLabel');
+  if (incRawLabel) {
+    incRawLabel.addEventListener('click', (e) => e.stopPropagation());
+  }
+  if (incRawCheck) {
+    try {
+      incRawCheck.checked = localStorage.getItem('pm_import_include_raw') === '1';
+    } catch (e) {
+      console.debug('[TAKEOUT] include_raw 復元スキップ:', e);
+    }
+    incRawCheck.addEventListener('change', () => {
+      try {
+        localStorage.setItem('pm_import_include_raw', incRawCheck.checked ? '1' : '0');
+      } catch (e) {
+        console.debug('[TAKEOUT] include_raw 保存スキップ:', e);
+      }
     });
   }
 
@@ -1067,12 +1157,12 @@ function initSelectionEvents() {
       closeContextMenu();
       if (state.selectedPhotoIds.size > 0) {
         const firstSelectedId = Array.from(state.selectedPhotoIds)[0];
-        const photo = state.photos.find(p => p.id === firstSelectedId);
+        const photo = typeof getPhotoById === 'function' ? getPhotoById(firstSelectedId) : state.photos.find(p => p.id === firstSelectedId);
         if (photo && typeof window.openImageAdjustModal === 'function') {
           window.openImageAdjustModal(photo);
         }
       } else if (state.activeInspectorPhotoId) {
-        const photo = state.photos.find(p => p.id === state.activeInspectorPhotoId);
+        const photo = typeof getPhotoById === 'function' ? getPhotoById(state.activeInspectorPhotoId) : state.photos.find(p => p.id === state.activeInspectorPhotoId);
         if (photo && typeof window.openImageAdjustModal === 'function') {
           window.openImageAdjustModal(photo);
         }
@@ -1089,9 +1179,9 @@ function initSelectionEvents() {
       let targetPhoto = null;
       if (state.selectedPhotoIds.size > 0) {
         const firstId = Array.from(state.selectedPhotoIds)[0];
-        targetPhoto = state.photos.find(p => p.id === firstId);
+        targetPhoto = typeof getPhotoById === 'function' ? getPhotoById(firstId) : state.photos.find(p => p.id === firstId);
       } else if (state.activeInspectorPhotoId) {
-        targetPhoto = state.photos.find(p => p.id === state.activeInspectorPhotoId);
+        targetPhoto = typeof getPhotoById === 'function' ? getPhotoById(state.activeInspectorPhotoId) : state.photos.find(p => p.id === state.activeInspectorPhotoId);
       }
       if (targetPhoto && typeof window.copyPhotoToneAdjustments === 'function') {
         window.copyPhotoToneAdjustments(targetPhoto);
@@ -1121,9 +1211,9 @@ function initSelectionEvents() {
       let targetPhoto = null;
       if (state.selectedPhotoIds.size > 0) {
         const firstId = Array.from(state.selectedPhotoIds)[0];
-        targetPhoto = state.photos.find(p => p.id === firstId);
+        targetPhoto = typeof getPhotoById === 'function' ? getPhotoById(firstId) : state.photos.find(p => p.id === firstId);
       } else if (state.activeInspectorPhotoId) {
-        targetPhoto = state.photos.find(p => p.id === state.activeInspectorPhotoId);
+        targetPhoto = typeof getPhotoById === 'function' ? getPhotoById(state.activeInspectorPhotoId) : state.photos.find(p => p.id === state.activeInspectorPhotoId);
       }
       if (targetPhoto && typeof window.copyPhotoImageToClipboard === 'function') {
         window.copyPhotoImageToClipboard(targetPhoto);
@@ -1229,8 +1319,13 @@ async function refreshSelectedThumbnails() {
       const pid = parseInt(card.dataset.photoId, 10);
       if (successSet.has(pid)) {
         // 写真データオブジェクトの has_thumbnail とキャッシュバスターを更新
-        const pObj = state.photos.find(p => p.id === pid);
-        if (pObj) {
+        const pObj = typeof getPhotoById === 'function' ? getPhotoById(pid) : state.photos.find(p => p.id === pid);
+        if (typeof findAllPhotoInstancesById === 'function') {
+          findAllPhotoInstancesById(pid).forEach(inst => {
+            inst.has_thumbnail = 1;
+            inst._thumbBust = now;
+          });
+        } else if (pObj) {
           pObj.has_thumbnail = 1;
           pObj._thumbBust = now;
         }
@@ -1512,18 +1607,6 @@ function openDateShiftModal(targetPhotoIds) {
   }
 
   _dateShiftTargetIds = ids;
-  // コンテキストメニュー: リンク情報なし限定 DB完全消去
-  const ctxPurgeUnlinkedEl = elements.contextMenuPurgeUnlinkedItem || document.getElementById('contextMenuPurgeUnlinkedItem');
-  if (ctxPurgeUnlinkedEl && !ctxPurgeUnlinkedEl.dataset.boundPurge) {
-    ctxPurgeUnlinkedEl.dataset.boundPurge = '1';
-    ctxPurgeUnlinkedEl.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      closeContextMenu();
-      if (typeof window.purgeUnlinkedPhotosAction === 'function') {
-        await window.purgeUnlinkedPhotosAction(Array.from(state.selectedPhotoIds));
-      }
-    });
-  }
 
   // 撮影日時一括シフト補正モーダルのイベント登録
   initDateShiftModalEvents();

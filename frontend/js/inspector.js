@@ -29,7 +29,7 @@ function updateInspectorView() {
     const selectedId = Array.from(state.selectedPhotoIds)[0];
     let photo = null;
     if (state.activeInspectorPhotoId && state.activeInspectorPhotoId !== selectedId) {
-      const parentPhoto = state.photos.find(p => p.id === selectedId);
+      const parentPhoto = typeof getPhotoById === 'function' ? getPhotoById(selectedId) : state.photos.find(p => p.id === selectedId);
       if (parentPhoto && Array.isArray(parentPhoto.stack_photos)) {
         photo = parentPhoto.stack_photos.find(sp => sp.id === state.activeInspectorPhotoId) || null;
       }
@@ -37,7 +37,7 @@ function updateInspectorView() {
     if (!photo) {
       photo = typeof findPhotoByIdAnywhere === 'function'
         ? findPhotoByIdAnywhere(selectedId)
-        : state.photos.find(p => p.id === selectedId);
+        : (typeof getPhotoById === 'function' ? getPhotoById(selectedId) : state.photos.find(p => p.id === selectedId));
     }
     if (photo) {
       state.activeInspectorPhotoId = photo.id;
@@ -47,7 +47,7 @@ function updateInspectorView() {
     // 選択なし時: 直前のアクティブ写真（スタック内サブ写真含む）、または最初の写真を表示
     let photo = typeof findPhotoByIdAnywhere === 'function'
       ? findPhotoByIdAnywhere(state.activeInspectorPhotoId)
-      : state.photos.find(p => p.id === state.activeInspectorPhotoId);
+      : (typeof getPhotoById === 'function' ? getPhotoById(state.activeInspectorPhotoId) : state.photos.find(p => p.id === state.activeInspectorPhotoId));
     if (!photo && state.photos.length > 0) {
       photo = state.photos[0];
       state.activeInspectorPhotoId = photo.id;
@@ -262,10 +262,16 @@ function updateCardRatingDirectly(photoId, rating) {
   });
 }
 
+let _inspectorCurrentPhoto = null;
+const _inspectorDirtyTabs = new Set();
+let _inspectorQuickTreeDebounceTimer = null;
+let _inspectorMapTimer = null;
+
 /**
  * インスペクタのタブ切替 ('tags' | 'exif' | 'map')
+ * 非表示中に dirty となっていたタブは表示された瞬間に遅延描画を実行する
  */
-function switchInspectorTab(tabName) {
+function switchInspectorTab(tabName, options = {}) {
   if (!['tags', 'exif', 'map'].includes(tabName)) {
     tabName = 'tags';
   }
@@ -286,10 +292,15 @@ function switchInspectorTab(tabName) {
   if (paneExif) paneExif.style.display = (tabName === 'exif') ? 'flex' : 'none';
   if (paneMap) paneMap.style.display = (tabName === 'map') ? 'flex' : 'none';
 
-  // マップタブが表示された場合、Leafletマップのサイズを再計算
-  if (tabName === 'map' && state._inspectorMap) {
-    setTimeout(() => {
-      if (state._inspectorMap) {
+  // 単一表示中で該当タブが dirty ならここで遅延描画を実行
+  const isImmediate = options.immediate !== false;
+  if (_inspectorDirtyTabs.has(tabName) && _inspectorCurrentPhoto && (!state.selectedPhotoIds || state.selectedPhotoIds.size <= 1)) {
+    _flushInspectorTabIfDirty(tabName, { immediateTree: isImmediate });
+  } else if (tabName === 'map' && state._inspectorMap) {
+    if (_inspectorMapTimer) clearTimeout(_inspectorMapTimer);
+    _inspectorMapTimer = setTimeout(() => {
+      _inspectorMapTimer = null;
+      if (state._inspectorMap && state.inspectorActiveTab === 'map') {
         state._inspectorMap.invalidateSize();
       }
     }, 50);
@@ -406,7 +417,17 @@ function showSingleInspector(photo) {
         .then(res => res.ok ? res.json() : null)
         .then(detail => {
           if (detail && state.activeInspectorPhotoId === currentId && (!state.selectedPhotoIds || state.selectedPhotoIds.size <= 1)) {
+            const keepTags = Array.isArray(photo.tags) ? photo.tags : null;
+            const keepTagDetails = Array.isArray(photo.tag_details) ? photo.tag_details : null;
+            const keepRating = photo.rating;
             Object.assign(photo, detail);
+            if (keepTags) {
+              photo.tags = keepTags;
+              photo.tag_details = keepTagDetails;
+            }
+            if (keepRating !== undefined) {
+              photo.rating = keepRating;
+            }
             showSingleInspector(photo);
           }
         })
@@ -634,7 +655,8 @@ function showSingleInspector(photo) {
                 updateCardRatingDirectly(photo.id, photo.rating);
               }
               state.activeInspectorPhotoId = photo.id;
-              if (state.currentPhotoIndex < 0 && state.selectedPhotoIds.size > 0 && typeof clearSelection === 'function') {
+              const isSingleSelectedTarget = state.selectedPhotoIds.size === 1 && state.selectedPhotoIds.has(photo.id);
+              if (state.currentPhotoIndex < 0 && state.selectedPhotoIds.size > 0 && !isSingleSelectedTarget && typeof clearSelection === 'function') {
                 clearSelection();
               }
               showSingleInspector(photo);
@@ -679,6 +701,16 @@ function showSingleInspector(photo) {
     elements.inspectorOpenFileBtn.onclick = (e) => {
       e.stopPropagation();
       openPhotoFile(photo.id);
+    };
+  }
+  const inspectorTakeoutBtn = document.getElementById('inspectorTakeoutBtn');
+  if (inspectorTakeoutBtn) {
+    inspectorTakeoutBtn.style.display = photo.is_unlinked ? 'none' : 'inline-flex';
+    inspectorTakeoutBtn.onclick = (e) => {
+      e.stopPropagation();
+      if (typeof window.openSmartTakeoutModal === 'function') {
+        window.openSmartTakeoutModal([photo.id]);
+      }
     };
   }
 
@@ -736,9 +768,6 @@ function showSingleInspector(photo) {
   if (elements.inspectorTabGpsDot) {
     elements.inspectorTabGpsDot.style.display = hasGps ? 'inline-block' : 'none';
   }
-
-  // 現在選択中のタブを反映
-  switchInspectorTab(state.inspectorActiveTab);
 
   // 露出ブラケット / 連写スタックの描画（RAW+JPEGペアはスタックから分離済み）
   if (elements.inspectorBracketSection) {
@@ -924,6 +953,14 @@ function showSingleInspector(photo) {
               openPhotoFile(sp.id);
             };
           }
+          if (inspectorTakeoutBtn) {
+            inspectorTakeoutBtn.onclick = (e) => {
+              e.stopPropagation();
+              if (typeof window.openSmartTakeoutModal === 'function') {
+                window.openSmartTakeoutModal([sp.id]);
+              }
+            };
+          }
 
           const spInStorage = typeof window.isPhotoInStorage === 'function' ? window.isPhotoInStorage(sp) : false;
           if (renameExifBtn) {
@@ -954,12 +991,24 @@ function showSingleInspector(photo) {
                 }
               }
               if (detailPhoto) {
-                if (!detailPhoto.stack_photos || detailPhoto.stack_photos.length === 0) {
-                  detailPhoto.stack_photos = photo.stack_photos;
-                  detailPhoto.stack_id = photo.stack_id;
-                  detailPhoto.stack_type = photo.stack_type;
+                const keepTags = Array.isArray(sp.tags) ? sp.tags : null;
+                const keepTagDetails = Array.isArray(sp.tag_details) ? sp.tag_details : null;
+                const keepRating = sp.rating;
+                for (const [k, v] of Object.entries(detailPhoto)) {
+                  if (k === 'stack_photos' || k === 'stack_count') continue;
+                  sp[k] = v;
                 }
-                showSingleInspector(detailPhoto);
+                if (keepTags) {
+                  sp.tags = keepTags;
+                  sp.tag_details = keepTagDetails;
+                }
+                if (keepRating !== undefined) {
+                  sp.rating = keepRating;
+                }
+                sp._detailLoaded = true;
+                if (state.activeInspectorPhotoId === sp.id) {
+                  showSingleInspector(sp);
+                }
               }
             } catch (err) {
               console.error('写真切り替え失敗:', err);
@@ -1045,15 +1094,42 @@ function showSingleInspector(photo) {
     }
   }
 
-  // タグ一覧の描画
+  // 各タブを dirty としてマークし、現在表示中のアクティブタブのみを描画（非表示タブは切替時まで遅延）
+  _inspectorCurrentPhoto = photo;
+  _inspectorDirtyTabs.add('tags');
+  _inspectorDirtyTabs.add('exif');
+  _inspectorDirtyTabs.add('map');
+  switchInspectorTab(state.inspectorActiveTab, { immediate: false });
+}
+
+/**
+ * 指定タブが dirty の場合に単一写真向けのタブ内容を描画する
+ */
+function _flushInspectorTabIfDirty(tabName, options = {}) {
+  const photo = _inspectorCurrentPhoto;
+  if (!photo || !_inspectorDirtyTabs.has(tabName)) return;
+  if (state.selectedPhotoIds && state.selectedPhotoIds.size > 1) return;
+  _inspectorDirtyTabs.delete(tabName);
+
+  if (tabName === 'tags') {
+    _renderSingleInspectorTagsTab(photo, options);
+  } else if (tabName === 'exif') {
+    _renderSingleInspectorExifTab(photo);
+  } else if (tabName === 'map') {
+    _renderSingleInspectorMapTab(photo);
+  }
+}
+
+/**
+ * 単一写真の「タグ」タブ描画（全タグツリー構築は連続移動時の負荷を抑えるため軽量デバウンス対応）
+ */
+function _renderSingleInspectorTagsTab(photo, options = {}) {
   renderInspectorTagChips(photo);
 
-  // 独立カラーパレットの描画 (複数選択トグル可能)
   if (elements.inspectorColorGrid) {
     renderInspectorColorPalette(elements.inspectorColorGrid, photo, false);
   }
 
-  // 単体写真へのAI自動タグ付けボタンイベント
   const aiBtn = elements.inspectorAiTagBtn || document.getElementById('inspectorAiTagBtn');
   if (aiBtn) {
     aiBtn.onclick = async () => {
@@ -1069,26 +1145,60 @@ function showSingleInspector(photo) {
     };
   }
 
-  // クイック選択ツリーの描画 (AIタグおよびカラータグは除外)
-  renderInspectorQuickTree(elements.inspectorQuickTree, async (chosenTag) => {
-    await addTagToPhoto(photo.id, chosenTag, photo);
-  });
+  if (_inspectorQuickTreeDebounceTimer) {
+    clearTimeout(_inspectorQuickTreeDebounceTimer);
+    _inspectorQuickTreeDebounceTimer = null;
+  }
 
-  // メタデータEXIFテーブル
+  const targetId = photo.id;
+  const runQuickTree = () => {
+    if (state.selectedPhotoIds && state.selectedPhotoIds.size > 1) return;
+    if (_inspectorCurrentPhoto && _inspectorCurrentPhoto.id !== targetId) return;
+    if (state.inspectorActiveTab !== 'tags') {
+      _inspectorDirtyTabs.add('tags');
+      return;
+    }
+    renderInspectorQuickTree(elements.inspectorQuickTree, async (chosenTag) => {
+      await addTagToPhoto(photo.id, chosenTag, photo);
+    });
+  };
+
+  if (options.immediateTree) {
+    runQuickTree();
+  } else {
+    _inspectorQuickTreeDebounceTimer = setTimeout(() => {
+      _inspectorQuickTreeDebounceTimer = null;
+      runQuickTree();
+    }, 65);
+  }
+}
+
+/**
+ * 単一写真の「詳細EXIF」タブ描画
+ */
+function _renderSingleInspectorExifTab(photo) {
   elements.inspectorFileName.textContent = photo.file_name;
 
-  // RAWペア情報の表示（スタックとは分離した独立セクション）
+  const pairedJpegFilePath = photo.paired_raw_path
+    ? (photo.is_raw ? photo.paired_raw_path : photo.file_path)
+    : null;
+  const pairedRawFilePath = photo.paired_raw_path
+    ? (photo.is_raw ? photo.file_path : photo.paired_raw_path)
+    : null;
+
   if (elements.inspectorFormat) {
     if (photo.paired_raw_path) {
-      elements.inspectorFormat.textContent = 'JPEG + RAW (ペア)';
+      elements.inspectorFormat.textContent = 'RAW+JPEG ペア（表示・情報: JPEG基準）';
       if (elements.inspectorRawPairRow) {
         elements.inspectorRawPairRow.style.display = 'block';
-        // ファイル名のみ抽出して見やすく表示
-        const rawFileName = photo.paired_raw_path.split(/[/\\]/).pop() || photo.paired_raw_path;
-        elements.inspectorRawPairPath.textContent = rawFileName;
-        elements.inspectorRawPairPath.title = photo.paired_raw_path;
+        const rawTargetPath = pairedRawFilePath || photo.paired_raw_path;
+        const rawFileName = rawTargetPath.split(/[/\\]/).pop() || rawTargetPath;
+        const rawIsOffline = Boolean(!photo.is_raw && photo.paired_is_offline);
+        elements.inspectorRawPairPath.textContent = rawIsOffline ? `${rawFileName} (未接続)` : rawFileName;
+        elements.inspectorRawPairPath.title = rawIsOffline
+          ? `RAW未接続（JPEGは接続中）: ${rawTargetPath}`
+          : rawTargetPath;
       }
-      // 「RAWを開く」ボタンイベント
       if (elements.inspectorOpenRawBtn) {
         elements.inspectorOpenRawBtn.style.display = photo.is_unlinked ? 'none' : '';
         elements.inspectorOpenRawBtn.onclick = async () => {
@@ -1111,10 +1221,10 @@ function showSingleInspector(photo) {
       }
     } else if (photo.is_raw) {
       const fmt = (photo.raw_format || 'RAW').toUpperCase().replace('.', '');
-      elements.inspectorFormat.textContent = `RAW (${fmt})`;
+      elements.inspectorFormat.textContent = `RAW単体 (${fmt} / 表示: 内蔵プレビュー)`;
       if (elements.inspectorRawPairRow) elements.inspectorRawPairRow.style.display = 'none';
     } else {
-      elements.inspectorFormat.textContent = 'JPEG / 一般画像';
+      elements.inspectorFormat.textContent = 'JPEG単体 / 一般画像';
       if (elements.inspectorRawPairRow) elements.inspectorRawPairRow.style.display = 'none';
     }
   }
@@ -1122,7 +1232,6 @@ function showSingleInspector(photo) {
   elements.inspectorDateTaken.textContent = photo.date_taken ? photo.date_taken.replace('T', ' ') : '不明';
   elements.inspectorCamera.textContent = photo.camera_model || '不明';
 
-  // レンズ機種
   if (elements.inspectorLensRow && elements.inspectorLens) {
     if (photo.lens_model) {
       elements.inspectorLensRow.style.display = '';
@@ -1133,13 +1242,11 @@ function showSingleInspector(photo) {
     }
   }
 
-  // 露出設定（シャッター速度・絞り・ISO・補正）
   if (elements.inspectorExposureRow && elements.inspectorExposureParams) {
     const hasExp = renderExposureTags(elements.inspectorExposureParams, photo);
     elements.inspectorExposureRow.style.display = hasExp ? '' : 'none';
   }
 
-  // 焦点距離
   if (elements.inspectorFocalLengthRow && elements.inspectorFocalLength) {
     if (photo.focal_length != null) {
       elements.inspectorFocalLengthRow.style.display = '';
@@ -1149,10 +1256,11 @@ function showSingleInspector(photo) {
     }
   }
 
-  elements.inspectorDimensions.textContent = (photo.width && photo.height) ? `${photo.width} × ${photo.height}` : '不明';
-  elements.inspectorFileSize.textContent = formatBytes(photo.file_size);
+  const isJpegRepPair = Boolean(photo.paired_raw_path && !photo.is_raw);
+  const sizeSuffix = isJpegRepPair ? ' (JPEG)' : '';
+  elements.inspectorDimensions.textContent = (photo.width && photo.height) ? `${photo.width} × ${photo.height}${sizeSuffix}` : '不明';
+  elements.inspectorFileSize.textContent = `${formatBytes(photo.file_size)}${sizeSuffix}`;
 
-  // 親ディレクトリパス抽出ヘルパー
   const getParentDirPath = (fp) => {
     if (!fp) return '-';
     const match = fp.match(/^(.*)[/\\][^/\\]+$/);
@@ -1164,7 +1272,6 @@ function showSingleInspector(photo) {
   const dups = photo.duplicates || [];
   const hasDuplicates = dups.length > 1;
 
-  // 1. 保存パスの表示（重複時は全コピーのパスを件数分すべて一覧表示）
   if (hasDuplicates) {
     if (elements.inspectorPathLabel) {
       elements.inspectorPathLabel.textContent = `保存パス (${dups.length}件)`;
@@ -1195,22 +1302,47 @@ function showSingleInspector(photo) {
     if (elements.inspectorPathLabel) {
       elements.inspectorPathLabel.textContent = '保存パス';
     }
-    if (elements.inspectorPathRow) {
-      elements.inspectorPathRow.classList.remove('is-multi-row');
-    }
+    const normDirKey = (dirStr) => String(dirStr || '').replace(/\//g, '\\').replace(/[\\]+$/, '').toLowerCase();
     if (photo.is_unlinked) {
+      if (elements.inspectorPathRow) elements.inspectorPathRow.classList.remove('is-multi-row');
       elements.inspectorPath.innerHTML = '<span style="color:var(--warning, #e67e22);">実体パス未登録（リンク消失）</span>';
       elements.inspectorPath.title = photo.file_path ? `元の保存パス: ${photo.file_path}` : '実体ファイルとの紐付けが外れています';
+    } else if (photo.paired_raw_path && pairedJpegFilePath && pairedRawFilePath) {
+      const jpegDir = getParentDirPath(pairedJpegFilePath);
+      const rawDir = getParentDirPath(pairedRawFilePath);
+      const rawOfflineNote = (!photo.is_raw && photo.paired_is_offline) ? ' (未接続)' : '';
+      if (normDirKey(jpegDir) === normDirKey(rawDir)) {
+        if (elements.inspectorPathRow) elements.inspectorPathRow.classList.remove('is-multi-row');
+        elements.inspectorPath.textContent = jpegDir;
+        elements.inspectorPath.title = `JPEG: ${pairedJpegFilePath}\nRAW: ${pairedRawFilePath}`;
+      } else {
+        if (elements.inspectorPathRow) elements.inspectorPathRow.classList.add('is-multi-row');
+        const jpegLinkHtml = photo.is_raw
+          ? `<span class="multi-meta-text" title="JPEG: ${escapeHtml(pairedJpegFilePath)}">JPG: ${escapeHtml(jpegDir)}</span>`
+          : `<a href="javascript:void(0)" class="multi-meta-link" data-photo-id="${photo.id}" title="${escapeHtml(pairedJpegFilePath)}&#10;クリックでフォルダを開く">JPG: ${escapeHtml(jpegDir)}</a>`;
+        elements.inspectorPath.innerHTML = `
+          <div class="multi-meta-list">
+            <div class="multi-meta-item active" data-photo-id="${photo.id}">
+              ${jpegLinkHtml}
+            </div>
+            <div class="multi-meta-item active" data-photo-id="${photo.id}">
+              <span class="multi-meta-text" title="RAW${escapeHtml(rawOfflineNote)}: ${escapeHtml(pairedRawFilePath)}">RAW: ${escapeHtml(rawDir)}${escapeHtml(rawOfflineNote)}</span>
+            </div>
+          </div>
+        `;
+        elements.inspectorPath.title = '';
+      }
     } else if (photo.file_path) {
+      if (elements.inspectorPathRow) elements.inspectorPathRow.classList.remove('is-multi-row');
       elements.inspectorPath.textContent = getParentDirPath(photo.file_path);
       elements.inspectorPath.title = photo.file_path;
     } else {
+      if (elements.inspectorPathRow) elements.inspectorPathRow.classList.remove('is-multi-row');
       elements.inspectorPath.textContent = '-';
       elements.inspectorPath.title = '';
     }
   }
 
-  // 2. ボリューム情報の表示（重複時は全コピーのボリュームを件数分すべて一覧表示）
   if (elements.inspectorVolumeRow) {
     if (hasDuplicates) {
       if (elements.inspectorVolumeLabel) {
@@ -1222,8 +1354,6 @@ function showSingleInspector(photo) {
         <div class="multi-meta-list">
           ${dups.map((dup) => {
             const isCurrent = (dup.id === photo.id);
-            const icon = dup.is_offline ? '○' : '●';
-            const driveInfo = dup.volume_drive ? ` (${dup.volume_drive})` : '';
             const label = (formatInspectorVolumeInfo(dup) || {}).fullText || (dup.volume_label || 'ラベルなし');
             const dupVol = formatInspectorVolumeInfo(dup);
             const dupSerial = (dup.volume_serial || '').trim();
@@ -1245,8 +1375,6 @@ function showSingleInspector(photo) {
       const singleVol = formatInspectorVolumeInfo(photo);
       if (singleVol) {
         elements.inspectorVolumeRow.style.display = '';
-        const driveInfo = photo.volume_drive ? ` (${photo.volume_drive})` : '';
-        const icon = photo.is_offline ? '○' : '●';
         const actionsHtml = singleVol.serial ? `<span class="inspector-vol-actions" style="margin-left:6px; display:inline-flex; gap:4px;"><button type="button" class="btn-xs-action inspector-vol-filter-btn" data-volume-serial="${escapeHtml(singleVol.serial)}" data-filter-title="${escapeHtml(singleVol.filterTitle)}" data-is-offline="${singleVol.isOffline ? '1' : '0'}" title="このメディアの写真のみ表示">絞込</button><button type="button" class="btn-xs-action inspector-vol-rename-btn" data-volume-serial="${escapeHtml(singleVol.serial)}" data-custom-name="${escapeHtml(singleVol.customName)}" data-vol-label="${escapeHtml(singleVol.volLabel)}" data-drive="${escapeHtml(singleVol.drive)}" title="メディアの識別名（ニックネーム）を設定">識別名</button></span>` : '';
         elements.inspectorVolume.innerHTML = `<span style="display:inline-flex; align-items:center; flex-wrap:wrap; gap:4px;"><span>${escapeHtml(singleVol.fullText)}</span>${actionsHtml}</span>`;
         elements.inspectorVolume.title = singleVol.tooltip;
@@ -1255,10 +1383,18 @@ function showSingleInspector(photo) {
       }
     }
   }
+}
 
-  // --- GPS 位置情報の表示 ---
+/**
+ * 単一写真の「地図・GPS」タブ描画（タイマー重複を排除して表示中のみLeafletを更新）
+ */
+function _renderSingleInspectorMapTab(photo) {
+  if (_inspectorMapTimer) {
+    clearTimeout(_inspectorMapTimer);
+    _inspectorMapTimer = null;
+  }
+
   if (photo.latitude != null && photo.longitude != null) {
-    // GPS あり: ミニマップを表示
     elements.inspectorGpsRow.style.display = '';
     const sourceLabel = photo.gps_source === 'copied'
       ? '<span class="gps-source-badge copied">COPIED</span>'
@@ -1269,7 +1405,6 @@ function showSingleInspector(photo) {
           : '';
     elements.inspectorGpsVal.innerHTML = `${photo.latitude.toFixed(5)}, ${photo.longitude.toFixed(5)} ${sourceLabel}`;
 
-    // 撮影地域名
     const locParts = [photo.country, photo.state, photo.city].filter(Boolean);
     if (elements.inspectorLocationRow && elements.inspectorLocationVal) {
       if (locParts.length > 0) {
@@ -1284,13 +1419,21 @@ function showSingleInspector(photo) {
     if (elements.inspectorGpsBtnBar) elements.inspectorGpsBtnBar.style.display = 'flex';
     elements.inspectorGpsActions.style.display = 'none';
 
-    // Leaflet マップの初期化または更新
     if (typeof L !== 'undefined') {
-      setTimeout(() => {
+      const targetId = photo.id;
+      const lat = photo.latitude;
+      const lng = photo.longitude;
+      _inspectorMapTimer = setTimeout(() => {
+        _inspectorMapTimer = null;
+        if (_inspectorCurrentPhoto && _inspectorCurrentPhoto.id !== targetId) return;
+        if (state.inspectorActiveTab !== 'map') {
+          _inspectorDirtyTabs.add('map');
+          return;
+        }
         if (state._inspectorMap) {
-          state._inspectorMap.setView([photo.latitude, photo.longitude], 14);
+          state._inspectorMap.setView([lat, lng], 14);
           if (state._inspectorMarker) {
-            state._inspectorMarker.setLatLng([photo.latitude, photo.longitude]);
+            state._inspectorMarker.setLatLng([lat, lng]);
           }
         } else {
           state._inspectorMap = L.map(elements.inspectorMiniMap, {
@@ -1298,24 +1441,22 @@ function showSingleInspector(photo) {
             attributionControl: false,
             dragging: true,
             scrollWheelZoom: false,
-          }).setView([photo.latitude, photo.longitude], 14);
+          }).setView([lat, lng], 14);
           L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 18,
           }).addTo(state._inspectorMap);
-          state._inspectorMarker = L.marker([photo.latitude, photo.longitude]).addTo(state._inspectorMap);
+          state._inspectorMarker = L.marker([lat, lng]).addTo(state._inspectorMap);
         }
         state._inspectorMap.invalidateSize();
-      }, 100);
+      }, 75);
     }
   } else {
-    // GPS なし: コピーボタンを表示
     elements.inspectorGpsRow.style.display = 'none';
     if (elements.inspectorLocationRow) elements.inspectorLocationRow.style.display = 'none';
     elements.inspectorMiniMap.style.display = 'none';
     if (elements.inspectorGpsBtnBar) elements.inspectorGpsBtnBar.style.display = 'none';
     elements.inspectorGpsActions.style.display = 'flex';
 
-    // マップをクリーンアップ
     if (state._inspectorMap) {
       state._inspectorMap.remove();
       state._inspectorMap = null;
@@ -1384,13 +1525,14 @@ async function showGpsCandidateModal(photo) {
             inst.city = c.city;
           });
           state.activeInspectorPhotoId = photo.id;
-          if (state.currentPhotoIndex < 0 && state.selectedPhotoIds.size > 0 && typeof clearSelection === 'function') {
+          const isSingleSelectedTarget = state.selectedPhotoIds.size === 1 && state.selectedPhotoIds.has(photo.id);
+          if (state.currentPhotoIndex < 0 && state.selectedPhotoIds.size > 0 && !isSingleSelectedTarget && typeof clearSelection === 'function') {
             clearSelection();
           }
           showSingleInspector(photo);
           if (window.loadLocationTree) window.loadLocationTree();
           if (state.activeLocation && typeof fetchPhotos === 'function') {
-            fetchPhotos();
+            await fetchPhotos();
           }
           if (typeof showToast === 'function') {
             showToast('スマホ写真からジオタグを準用しました', 'success', 3000);
@@ -1509,16 +1651,32 @@ async function showGpsCandidateModal(photo) {
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
 
+    let candidateMap = null;
+    let mapInitTimer = null;
+    const closeCandidateModal = () => {
+      if (mapInitTimer) {
+        clearTimeout(mapInitTimer);
+        mapInitTimer = null;
+      }
+      if (candidateMap) {
+        try { candidateMap.remove(); } catch (_) {}
+        candidateMap = null;
+      }
+      overlay.remove();
+    };
+
     // 閉じるボタン
-    header.querySelector('.gps-close-btn').addEventListener('click', () => overlay.remove());
+    header.querySelector('.gps-close-btn').addEventListener('click', closeCandidateModal);
     overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) overlay.remove();
+      if (e.target === overlay) closeCandidateModal();
     });
 
     // 候補ミニマップに全候補をプロット
     if (typeof L !== 'undefined' && candidates.length > 0 && mapContainer.isConnected) {
-      setTimeout(() => {
-        const candidateMap = L.map(mapContainer, {
+      mapInitTimer = setTimeout(() => {
+        mapInitTimer = null;
+        if (!overlay.isConnected || !mapContainer.isConnected) return;
+        candidateMap = L.map(mapContainer, {
           zoomControl: true,
           attributionControl: false,
           scrollWheelZoom: true,
@@ -1709,6 +1867,29 @@ function showBatchInspector() {
       });
     }
   }
+
+  // 一括書き出し ＆ Loomeへ複製ボタン
+  const batchTakeoutBtn = document.getElementById('batchTakeoutBtn');
+  if (batchTakeoutBtn) {
+    batchTakeoutBtn.onclick = (e) => {
+      e.stopPropagation();
+      if (typeof window.openSmartTakeoutModal === 'function') {
+        window.openSmartTakeoutModal(Array.from(state.selectedPhotoIds || []));
+      }
+    };
+  }
+  const batchCopyToLoomeBtn = document.getElementById('batchCopyToLoomeBtn');
+  if (batchCopyToLoomeBtn) {
+    batchCopyToLoomeBtn.onclick = async (e) => {
+      e.stopPropagation();
+      const ids = Array.from(state.selectedPhotoIds || []);
+      if (typeof window.openLoomePickerModal === 'function') {
+        await window.openLoomePickerModal({ mode: 'import', photoIds: ids });
+      } else if (typeof window.importPhotosToStorage === 'function') {
+        await window.importPhotosToStorage(ids, '', 'Loome');
+      }
+    };
+  }
 }
 
 /**
@@ -1786,12 +1967,18 @@ function renderInspectorQuickTree(container, onSelect) {
     state.inspectorQuickTreeExpandedPaths = new Set();
   }
 
-  // 手動タグのみ抽出し、カラーパレットに属する色タグも除外
-  const manualTags = (state.availableTags || []).filter(t => {
-    const isAi = t.source === 'ai';
-    const isColor = (t.tag || t.name) in COLOR_TAG_MAP;
-    return !isAi && !isColor;
-  });
+  // 手動タグのみ抽出し、カラーパレットに属する色タグも除外（TetheractCore.TreeBuilder 共通処理）
+  const tb = window.TetheractCore && window.TetheractCore.TreeBuilder;
+  const manualTags = (tb && typeof tb.filterTagsForPcTree === 'function')
+    ? tb.filterTagsForPcTree(state.availableTags || [], {
+        sourceFilter: 'manual_only',
+        colorTagMap: typeof COLOR_TAG_MAP !== 'undefined' ? COLOR_TAG_MAP : null,
+      })
+    : (state.availableTags || []).filter(t => {
+        const isAi = t.source === 'ai';
+        const isColor = (t.tag || t.name) in COLOR_TAG_MAP;
+        return !isAi && !isColor;
+      });
 
   function appendInlineAddRow(targetEl, parentFullPath = '', parentDisplayName = '', indent = 0, options = {}) {
     const isRoot = !parentFullPath;
@@ -1921,7 +2108,9 @@ function renderInspectorQuickTree(container, onSelect) {
       btn.dataset.bound = 'true';
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
-        if (elements.folderDbMaintenanceBtn) {
+        if (typeof window.openSettingsModal === 'function') {
+          window.openSettingsModal('tags');
+        } else if (elements.folderDbMaintenanceBtn) {
           elements.folderDbMaintenanceBtn.click();
         }
       });
@@ -1938,15 +2127,51 @@ function renderInspectorQuickTree(container, onSelect) {
     return;
   }
 
-  const treeRoot = buildTagTree(manualTags, { sortByCount: Boolean(state.inspectorTagSortByCount) });
+  const treeRoot = typeof buildTagTree === 'function'
+    ? buildTagTree(manualTags, { sortByCount: Boolean(state.inspectorTagSortByCount) })
+    : (tb && typeof tb.buildTagTreeMap === 'function'
+        ? tb.buildTagTreeMap(manualTags, { sortByCount: Boolean(state.inspectorTagSortByCount) })
+        : { children: new Map() });
 
-  // 単一表示時の対象写真に既に付いているタグ集合（スタック展開メンバーも含めて検索）
-  const activeSinglePhoto = (state.selectedPhotoIds.size <= 1 && state.activeInspectorPhotoId)
+  // 単一表示時・一括表示時それぞれで「既に付与済み（一括時は全選択写真に共通）」のタグ集合を算出
+  const isBatchQuickMode = Boolean(state.selectedPhotoIds && state.selectedPhotoIds.size > 1);
+  const activeSinglePhoto = !isBatchQuickMode && state.activeInspectorPhotoId
     ? (typeof findPhotoByIdAnywhere === 'function'
         ? findPhotoByIdAnywhere(state.activeInspectorPhotoId)
         : state.photos.find(p => p.id === state.activeInspectorPhotoId))
     : null;
-  const assignedTagsSet = new Set((activeSinglePhoto && Array.isArray(activeSinglePhoto.tags)) ? activeSinglePhoto.tags : []);
+  let assignedTagsSet = new Set((activeSinglePhoto && Array.isArray(activeSinglePhoto.tags)) ? activeSinglePhoto.tags : []);
+  if (isBatchQuickMode) {
+    const selPhotos = [];
+    state.selectedPhotoIds.forEach(pid => {
+      const p = typeof findPhotoByIdAnywhere === 'function'
+        ? findPhotoByIdAnywhere(pid)
+        : state.photos.find(x => x.id === pid);
+      if (p) selPhotos.push(p);
+    });
+    if (selPhotos.length > 0) {
+      const firstSet = new Set(selPhotos[0].tags || []);
+      for (let i = 1; i < selPhotos.length; i++) {
+        const curSet = new Set(selPhotos[i].tags || []);
+        for (const t of firstSet) {
+          if (!curSet.has(t)) firstSet.delete(t);
+        }
+      }
+      assignedTagsSet = firstSet;
+    }
+  }
+
+  const handleToggleQuickTag = (tagPath, currentlyAssigned) => {
+    if (isBatchQuickMode && typeof batchToggleTag === 'function') {
+      batchToggleTag(tagPath, !currentlyAssigned, { keepSelection: true });
+      return;
+    }
+    if (!isBatchQuickMode && currentlyAssigned && activeSinglePhoto && typeof removeTagFromPhoto === 'function') {
+      removeTagFromPhoto(activeSinglePhoto.id, tagPath, null, activeSinglePhoto);
+      return;
+    }
+    onSelect(tagPath);
+  };
 
   function appendTreeItems(parentNode, targetEl, indent = 0) {
     parentNode.children.forEach(node => {
@@ -1970,7 +2195,7 @@ function renderInspectorQuickTree(container, onSelect) {
       const countText = node.count != null ? `<span class="inspector-tree-count" title="付与されている写真枚数">${node.count}</span>` : '';
       const badgeText = isAssigned ? '✓付与済' : '+追加';
       const badgeTitle = isAssigned
-        ? `「${escapeHtml(node.fullPath)}」はこの写真に付与済みです`
+        ? `クリックで「${escapeHtml(node.fullPath)}」を解除`
         : `「${escapeHtml(node.fullPath)}」を写真に付与`;
 
       item.innerHTML = `
@@ -2048,7 +2273,7 @@ function renderInspectorQuickTree(container, onSelect) {
       if (applyBadge) {
         applyBadge.addEventListener('click', (e) => {
           e.stopPropagation();
-          onSelect(node.fullPath);
+          handleToggleQuickTag(node.fullPath, isAssigned);
         });
       }
 
@@ -2088,14 +2313,14 @@ function renderInspectorQuickTree(container, onSelect) {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = `inspector-pinned-tag-chip${isAssigned ? ' is-assigned' : ''}`;
-      btn.title = `${fullTag}${isAssigned ? ' (付与済み)' : ' (クリックで付与)'}`;
+      btn.title = `${fullTag}${isAssigned ? ' (クリックで解除)' : ' (クリックで付与)'}`;
       btn.style.cssText = isAssigned
         ? 'font-size:0.72rem; padding:2px 7px; border-radius:999px; border:1px solid rgba(16,185,129,0.5); background:rgba(16,185,129,0.14); color:#10b981; cursor:pointer;'
         : 'font-size:0.72rem; padding:2px 7px; border-radius:999px; border:1px solid rgba(245,158,11,0.4); background:rgba(245,158,11,0.1); color:var(--text-primary); cursor:pointer;';
       btn.textContent = `${isAssigned ? '✓ ' : '★ '}${label}`;
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
-        onSelect(fullTag);
+        handleToggleQuickTag(fullTag, isAssigned);
       });
       pinBar.appendChild(btn);
     });
@@ -2210,17 +2435,65 @@ function renderInspectorColorPalette(container, photo = null, isBatch = false) {
 /**
  * 単一写真にタグを追加 (即時DOM反映 ＆ キャッシュ即時同期)
  */
+/**
+ * 対象写真と同一スタック（親カード・メンバー・ライトボックス展開参照）の全インスタンスを収集する
+ */
+function collectPhotoAndStackInstances(photoId, photoObj = null) {
+  const numId = Number(photoId);
+  const seen = new Set();
+  const instances = [];
+  const cardPhotoIds = new Set();
+  if (numId) cardPhotoIds.add(numId);
+
+  const pushInst = (obj) => {
+    if (obj && !seen.has(obj)) {
+      seen.add(obj);
+      instances.push(obj);
+      if (obj.id) cardPhotoIds.add(Number(obj.id));
+    }
+  };
+
+  const basePhoto = photoObj || (typeof findPhotoByIdAnywhere === 'function' ? findPhotoByIdAnywhere(numId) : state.photos.find(p => p.id === numId));
+  if (basePhoto) pushInst(basePhoto);
+
+  if (typeof findAllPhotoInstancesById === 'function') {
+    findAllPhotoInstancesById(numId).forEach(pushInst);
+  }
+  if (_inspectorCurrentPhoto && _inspectorCurrentPhoto.id === numId) {
+    pushInst(_inspectorCurrentPhoto);
+  }
+
+  const stackGroupId = basePhoto && basePhoto.stack_group_id ? basePhoto.stack_group_id : null;
+  if (Array.isArray(state.photos)) {
+    for (const top of state.photos) {
+      if (!top) continue;
+      const topHasMember = Array.isArray(top.stack_photos) && top.stack_photos.some(sp => sp && sp.id === numId);
+      const sameStackGroup = Boolean(stackGroupId && top.stack_group_id === stackGroupId);
+      if (top.id === numId || topHasMember || sameStackGroup) {
+        pushInst(top);
+        if (Array.isArray(top.stack_photos)) {
+          top.stack_photos.forEach(pushInst);
+        }
+      }
+    }
+  }
+  if (Array.isArray(state.currentLightboxStackPhotos)) {
+    state.currentLightboxStackPhotos.forEach(sp => {
+      if (sp && (sp.id === numId || (stackGroupId && sp.stack_group_id === stackGroupId))) {
+        pushInst(sp);
+      }
+    });
+  }
+  return { photo: basePhoto, instances, cardPhotoIds: Array.from(cardPhotoIds) };
+}
+
 async function addTagToPhoto(photoId, tag, photoObj = null) {
   if (!tag || !tag.trim()) return;
   const tagName = tag.trim();
   const parts = tagName.split('/').map(p => p.trim()).filter(Boolean);
   const allExpandedTags = parts.map((_, idx) => parts.slice(0, idx + 1).join('/'));
 
-  const photo = photoObj || (typeof findPhotoByIdAnywhere === 'function' ? findPhotoByIdAnywhere(photoId) : state.photos.find(p => p.id === photoId));
-  const instances = typeof findAllPhotoInstancesById === 'function'
-    ? findAllPhotoInstancesById(photoId)
-    : (photo ? [photo] : []);
-  if (photo && !instances.includes(photo)) instances.push(photo);
+  const { photo, instances, cardPhotoIds } = collectPhotoAndStackInstances(photoId, photoObj);
 
   instances.forEach(inst => {
     if (!inst.tags) inst.tags = [];
@@ -2259,10 +2532,12 @@ async function addTagToPhoto(photoId, tag, photoObj = null) {
 
   // ライトボックス側も同期（スタック展開メンバーも考慮）
   const curLight = typeof getCurrentLightboxPhoto === 'function' ? getCurrentLightboxPhoto() : state.photos[state.currentPhotoIndex];
-  if (curLight && curLight.id === photoId) {
+  if (curLight && (curLight.id === photoId || instances.includes(curLight))) {
     renderLightboxTags(curLight);
   }
-  renderPhotoGrid();
+  if (typeof updateCardTagsDirectly === 'function') {
+    cardPhotoIds.forEach(cid => updateCardTagsDirectly(cid));
+  }
 
   try {
     const res = await fetch(`/api/photo/${photoId}/tags`, {
@@ -2272,15 +2547,16 @@ async function addTagToPhoto(photoId, tag, photoObj = null) {
     });
     if (!res.ok) throw new Error('タグの追加に失敗しました');
 
-    if (state.currentPhotoIndex < 0 && state.selectedPhotoIds.size > 0 && typeof clearSelection === 'function') {
-      state.activeInspectorPhotoId = photoId;
+    state.activeInspectorPhotoId = photoId;
+    const isSingleSelectedTarget = state.selectedPhotoIds.size === 1 && state.selectedPhotoIds.has(photoId);
+    if (state.currentPhotoIndex < 0 && state.selectedPhotoIds.size > 0 && !isSingleSelectedTarget && typeof clearSelection === 'function') {
       clearSelection();
     }
     await fetchTags();
-    if (state.untaggedOnly || (state.tagFilters && state.tagFilters.size > 0)) {
+    if (typeof syncGridCardAfterSingleTagChange === 'function') {
+      await syncGridCardAfterSingleTagChange(photoId);
+    } else if (state.untaggedOnly || (state.tagFilters && state.tagFilters.size > 0)) {
       await fetchPhotos();
-    } else {
-      renderPhotoGrid();
     }
   } catch (err) {
     console.error('タグ追加エラー:', err);
@@ -2317,10 +2593,14 @@ async function batchToggleTag(tagName, shouldAdd, options = {}) {
         });
       } else {
         if (photo.tags) {
-          photo.tags = photo.tags.filter(t => t !== normalizedTag && !t.startsWith(normalizedTag + '/'));
+          photo.tags = typeof pruneRemovedTagFromArray === 'function'
+            ? pruneRemovedTagFromArray(photo.tags, normalizedTag)
+            : photo.tags.filter(t => t !== normalizedTag && !t.startsWith(normalizedTag + '/'));
         }
         if (photo.tag_details) {
-          photo.tag_details = photo.tag_details.filter(d => d.tag !== normalizedTag && !d.tag.startsWith(normalizedTag + '/'));
+          photo.tag_details = typeof pruneRemovedTagDetailsFromArray === 'function'
+            ? pruneRemovedTagDetailsFromArray(photo.tag_details, normalizedTag)
+            : photo.tag_details.filter(d => d.tag !== normalizedTag && !d.tag.startsWith(normalizedTag + '/'));
         }
       }
       // スタックメンバーのキャッシュも同期
@@ -2332,7 +2612,9 @@ async function batchToggleTag(tagName, shouldAdd, options = {}) {
               if (!sp.tags.includes(tPath)) sp.tags.push(tPath);
             });
           } else if (sp.tags) {
-            sp.tags = sp.tags.filter(t => t !== normalizedTag && !t.startsWith(normalizedTag + '/'));
+            sp.tags = typeof pruneRemovedTagFromArray === 'function'
+              ? pruneRemovedTagFromArray(sp.tags, normalizedTag)
+              : sp.tags.filter(t => t !== normalizedTag && !t.startsWith(normalizedTag + '/'));
           }
         });
       }
@@ -2353,6 +2635,7 @@ async function batchToggleTag(tagName, shouldAdd, options = {}) {
 
     if (keepSelection) {
       await Promise.all([fetchPhotos(), fetchTags()]);
+      // フィルタ再適用後も表示一覧に残っている選択IDを維持して連続削除を可能にする
       const visibleIds = new Set((state.photos || []).map(p => p.id));
       Array.from(state.selectedPhotoIds).forEach(id => {
         if (!visibleIds.has(id) && !(typeof findPhotoByIdAnywhere === 'function' && findPhotoByIdAnywhere(id))) {
@@ -2395,19 +2678,19 @@ async function removeTagFromPhoto(photoId, tag, chipEl = null, photoObj = null) 
     chipEl.remove();
   }
 
-  // 2. メモリ上キャッシュの即時同期（該当IDのインスタンスのみ正確に更新）
-  const photo = photoObj || (typeof findPhotoByIdAnywhere === 'function' ? findPhotoByIdAnywhere(photoId) : state.photos.find(p => p.id === photoId));
-  const instances = typeof findAllPhotoInstancesById === 'function'
-    ? findAllPhotoInstancesById(photoId)
-    : (photo ? [photo] : []);
-  if (photo && !instances.includes(photo)) instances.push(photo);
+  // 2. メモリ上キャッシュの即時同期（スタック親・メンバー含む関連インスタンスを正確に更新）
+  const { photo, instances, cardPhotoIds } = collectPhotoAndStackInstances(photoId, photoObj);
 
   instances.forEach(inst => {
     if (inst.tags) {
-      inst.tags = inst.tags.filter(t => t !== tag && !t.startsWith(tag + '/'));
+      inst.tags = typeof pruneRemovedTagFromArray === 'function'
+        ? pruneRemovedTagFromArray(inst.tags, tag)
+        : inst.tags.filter(t => t !== tag && !t.startsWith(tag + '/'));
     }
     if (inst.tag_details) {
-      inst.tag_details = inst.tag_details.filter(d => d.tag !== tag && !d.tag.startsWith(tag + '/'));
+      inst.tag_details = typeof pruneRemovedTagDetailsFromArray === 'function'
+        ? pruneRemovedTagDetailsFromArray(inst.tag_details, tag)
+        : inst.tag_details.filter(d => d.tag !== tag && !d.tag.startsWith(tag + '/'));
     }
   });
 
@@ -2426,10 +2709,12 @@ async function removeTagFromPhoto(photoId, tag, chipEl = null, photoObj = null) 
 
   // ライトボックスが開いている場合はライトボックス側も同期（スタック展開メンバーも考慮）
   const curLight = typeof getCurrentLightboxPhoto === 'function' ? getCurrentLightboxPhoto() : state.photos[state.currentPhotoIndex];
-  if (curLight && curLight.id === photoId) {
+  if (curLight && (curLight.id === photoId || instances.includes(curLight))) {
     renderLightboxTags(curLight);
   }
-  renderPhotoGrid();
+  if (typeof updateCardTagsDirectly === 'function') {
+    cardPhotoIds.forEach(cid => updateCardTagsDirectly(cid));
+  }
 
   // 3. バックエンドAPI呼び出し
   try {
@@ -2450,19 +2735,20 @@ async function removeTagFromPhoto(photoId, tag, chipEl = null, photoObj = null) 
       if (!fallbackRes.ok) throw new Error('タグ削除に失敗しました');
     }
 
-    if (state.currentPhotoIndex < 0 && state.selectedPhotoIds.size > 0 && typeof clearSelection === 'function') {
-      state.activeInspectorPhotoId = photoId;
+    state.activeInspectorPhotoId = photoId;
+    const isSingleSelectedTarget = state.selectedPhotoIds.size === 1 && state.selectedPhotoIds.has(photoId);
+    if (state.currentPhotoIndex < 0 && state.selectedPhotoIds.size > 0 && !isSingleSelectedTarget && typeof clearSelection === 'function') {
       clearSelection();
     }
 
     // サイドバー・設定画面・クイックツリーのタグ件数を更新
     await fetchTags();
 
-    // もし現在そのタグまたは未分類でフィルタリング中ならグリッドを再取得
-    if (state.untaggedOnly || (state.tagFilters && state.tagFilters.size > 0)) {
+    // 現在のタグフィルタに不一致となった場合のみ一覧から除外（未フィルタ時は再描画不要）
+    if (typeof syncGridCardAfterSingleTagChange === 'function') {
+      await syncGridCardAfterSingleTagChange(photoId);
+    } else if (state.untaggedOnly || (state.tagFilters && state.tagFilters.size > 0)) {
       await fetchPhotos();
-    } else {
-      renderPhotoGrid();
     }
   } catch (err) {
     console.error('タグ削除エラー:', err);
@@ -2751,7 +3037,8 @@ function initInspectorEvents() {
         });
 
         state.activeInspectorPhotoId = photo.id;
-        if (state.currentPhotoIndex < 0 && state.selectedPhotoIds.size > 0 && typeof clearSelection === 'function') {
+        const isSingleSelectedTarget = state.selectedPhotoIds.size === 1 && state.selectedPhotoIds.has(photo.id);
+        if (state.currentPhotoIndex < 0 && state.selectedPhotoIds.size > 0 && !isSingleSelectedTarget && typeof clearSelection === 'function') {
           clearSelection();
         }
         showSingleInspector(photo);
@@ -2760,7 +3047,7 @@ function initInspectorEvents() {
         }
         if (window.loadLocationTree) window.loadLocationTree();
         if (state.activeLocation && typeof fetchPhotos === 'function') {
-          fetchPhotos();
+          await fetchPhotos();
         }
       } catch (err) {
         console.error('ジオタグ削除エラー:', err);

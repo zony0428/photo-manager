@@ -314,11 +314,28 @@ def load_photo_pil_image(photo: dict) -> Tuple[Optional[Image.Image], Optional[b
         return None, None
 
 
+def _resolve_raw_original_path(photo: dict) -> Optional[Path]:
+    """写真に紐づく無加工RAW原本ファイル（単体RAWまたはペアRAW）の実在パスを返す"""
+    vol_serial = photo.get("volume_serial")
+    main_fp = photo.get("file_path")
+    if main_fp and (photo.get("is_raw") or is_raw_file(Path(main_fp))):
+        real_main, ok_main = resolve_portable_path(main_fp, expected_serial=vol_serial)
+        if ok_main and real_main.exists():
+            return real_main
+    paired_fp = photo.get("paired_raw_path")
+    if paired_fp:
+        real_pair, ok_pair = resolve_portable_path(paired_fp, expected_serial=vol_serial)
+        if ok_pair and real_pair.exists() and is_raw_file(real_pair):
+            return real_pair
+    return None
+
+
 def export_single_photo(
     photo: dict,
     opts: dict,
     index: int,
     dest_dir: Path,
+    copied_raw_names: Optional[List[str]] = None,
 ) -> Tuple[bool, Optional[str], Optional[str]]:
     """
     1枚の写真を指定されたパラメータで処理し、出力フォルダへ保存する。
@@ -435,10 +452,14 @@ def export_single_photo(
         if not sanitized_base:
             sanitized_base = f"photo_{seq_num:03d}"
 
-        # 同名衝突回避のためのナンバリング
+        export_raw_orig = bool(opts.get("export_raw_original", False))
+        raw_orig_src = _resolve_raw_original_path(photo) if export_raw_orig else None
+        raw_orig_ext = raw_orig_src.suffix if raw_orig_src else ""
+
+        # 同名衝突回避のためのナンバリング（RAW抱き合わせ時はRAW側の同名衝突も同時に回避しベース名を一致させる）
         target_path = dest_dir / f"{sanitized_base}{ext}"
         dup_count = 1
-        while target_path.exists():
+        while target_path.exists() or (raw_orig_ext and target_path.with_suffix(raw_orig_ext).exists()):
             target_path = dest_dir / f"{sanitized_base}_{dup_count}{ext}"
             dup_count += 1
 
@@ -461,6 +482,13 @@ def export_single_photo(
                 optimize=True,
                 **save_kwargs,
             )
+
+        if raw_orig_src and raw_orig_ext:
+            from .security import copy_file_unsealed
+            raw_target_path = target_path.with_suffix(raw_orig_ext)
+            copy_file_unsealed(raw_orig_src, raw_target_path)
+            if copied_raw_names is not None:
+                copied_raw_names.append(raw_target_path.name)
 
         if opts.get("export_xmp_sidecar", False):
             remove_gps_flag = bool(opts.get("exif_remove_gps") or opts.get("exif_remove_all"))
@@ -502,6 +530,7 @@ def run_smart_export(req: dict) -> dict:
         return {"status": "error", "message": f"出力先フォルダの作成に失敗しました: {e}"}
 
     success_list = []
+    raw_copied_list: List[str] = []
     failed_list = []
 
     # 撮影日時順などの整合性を保つため、DB情報から写真オブジェクトを取得
@@ -523,7 +552,7 @@ def run_smart_export(req: dict) -> dict:
 
     total = len(photos_to_process)
     for idx, photo in enumerate(photos_to_process):
-        ok, out_name, err = export_single_photo(photo, req, idx, dest_dir)
+        ok, out_name, err = export_single_photo(photo, req, idx, dest_dir, copied_raw_names=raw_copied_list)
         if ok:
             success_list.append(out_name)
         else:
@@ -533,9 +562,11 @@ def run_smart_export(req: dict) -> dict:
         "status": "ok",
         "total": total,
         "success_count": len(success_list),
+        "raw_copied_count": len(raw_copied_list),
         "failed_count": len(failed_list),
         "destination": str(dest_dir),
         "exported_files": success_list,
+        "raw_copied_files": raw_copied_list,
         "failed_files": failed_list,
     }
 

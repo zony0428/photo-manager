@@ -1,31 +1,17 @@
 # Tetheract Photo Manager - 技術ナレッジ集 (Knowledge Base)
 
-本ディレクトリは、Photo Manager の開発において得られた設計判断、パフォーマンス改善、障害対策、トラブルシューティングのノウハウを蓄積したアーカイブである。
-別の開発PCや異なるAIエージェント環境でも、過去の知見をそのまま参照・活用できるように自己完結型で管理されている。
+本ディレクトリには、Tetheract Photo Manager の現行アーキテクチャ・設計不変条件・UI/セキュリティ規約を凝縮した **コア設計書6本** を収録している。
+過去の移行記録や旧バージョン時点の検討資料は [`docs/archive/knowledge/`](../archive/knowledge/) にアーカイブ保管している。
 
 ---
 
-## 収録ナレッジ一覧
+## コア設計書一覧（全6本）
 
-| ドキュメント | 概要 |
-|---|---|
-| [design-philosophy-four-pillars.md](design-philosophy-four-pillars.md) | **【4つの設計原則（4本の柱）と機能体系】** Photo Manager の根幹をなす4原則（保存先に縛られない分類・検索／元データを汚さず見るだけで終わらない／作業を邪魔しないLook&Feel／クラウドに頼らずポータブル）と実現機能・編集原則の定義 |
-| [feature-code-map.md](feature-code-map.md) | **【機能別コードマップ】** ユーザー機能（グリッド・ライトボックス・タグ・スタック・スキャン・storage・XMP等）と対応するフロントエンドJS・API・DBモジュールの完全対応表 |
-| [portable-storage-patterns.md](portable-storage-patterns.md) | USBポータブル運用、ドライブレター変動への動的追跡、VSN照合、ユニーク画像エンティティ (`photos` / `content_key`) と複数メディア所在リンク (`photo_links`) の分離・スマートライフサイクル |
-| [sqlite-blob-thumbnails.md](sqlite-blob-thumbnails.md) | サムネイル管理の変遷（ファイル方式からSQLite BLOB方式への移行、`photo_id INTEGER PRIMARY KEY` ROWID直結化、`photo_tags` の `WITHOUT ROWID` クラスタ化、安全なテーブル再構築マイグレーション） |
-| [powershell-no-mojibake.md](powershell-no-mojibake.md) | Windows PowerShell 環境における文字化け・BOM破損の事故パターンと完全防止ガイド |
-| [performance-optimization-patterns.md](performance-optimization-patterns.md) | v1.36 パフォーマンス監査で確立したパターン（範囲比較フォルダ絞込・差分スキャン・高速JSON・サムネ並列生成・差分DOM更新）、回帰検証手法、Agent 委譲の教訓 |
-| [tag-trees-and-batch-actions.md](tag-trees-and-batch-actions.md) | **【タグツリー並び順制御・2ペイン「タグツリーエディタ」＆一括操作設計 (v2.11〜v2.43)】** `📊 枚数順` トグル・名前順4ルール（辞書順/自然順）、D&D階層移動・祖先タグ安全同期 (`rename_tag`)、3ペイン責務分離の設計仕様 |
-| [architecture-scalability-and-side-effects.md](architecture-scalability-and-side-effects.md) | **【大規模化・高速化の相互影響検証 & 安全設計計画 (v2.20+)】** グリッド描画・DBインデックス・I/O・キャッシュ・テスト導入時に他部位を壊さないための「7つの禁止アンチパターン」と Phase 1〜4 実装仕様 |
-| [v1-v2-branch-and-dist-workflow.md](v1-v2-branch-and-dist-workflow.md) | **【v1.8系 / v2.0系 ブランチ・dist分離規約】** `main`（v1.8系 PC単体安定版 → `dist/`）と `v2`（v2.0系 Android連携版 → `dist_v2/`）のソース・配布物の完全分離と並行開発手順 |
-| [mobile-hybrid-architecture.md](mobile-hybrid-architecture.md) | **【Android / スマホ専用UI & ハイブリッドDB連携 (v2.30)】** Wi-Fi直結モード（`/m`）と WebAssembly SQLite (`sql.js`) によるUSB内 `library.db` 直接読込（ファイルロックエラー完全回避・BLOBサムネイル展開・3段階フォールバック差分同期）の設計と実装仕様 |
-| [storage-and-xmp-sidecar-architecture.md](storage-and-xmp-sidecar-architecture.md) | **【専用保管庫 `Loome` (`Loome/`・`storage/`・外付け `<Drive>:\Loome`) 完結管理 ＆ XMPサイドカー非破壊連携 (v2.42+ / v1.4.0+)】** `Loome` サブフォルダ管理・D&D移動・単一/一括連番リネーム、付随サイドカー/ペアRAW自動追従、`[👁️ XMPプレビュー]` ホールド比較・`XMP/...` 隔離取込の設計仕様 |
-| [ui-design-system-and-tiat-guidelines.md](ui-design-system-and-tiat-guidelines.md) | **【UI/UX デザインシステム ＆ Tiat志向設計仕様 (v3.00+ / v1.4.0+)】** 下部フッター既定の1段メインツールバー（中央3大基本フィルタ）、2段階左サイドバー（`Binder / Folder / Tag / Place / Historia / Gear / Lab / Search`）、4:3インスペクタ、脱カラー絵文字（単色細線SVG）、4カラーテーマ、カスタム確認モーダル（`#commonConfirmModal`）統一仕様 |
-| [security-architecture.md](security-architecture.md) | **【セキュリティアーキテクチャ ＆ 3段階エシカル保護設計書 (v3.0.1+ / v1.7.0+)】** 4層ネットワーク防御（Hostヘッダ検証、Origin検証、LANトークン認証、APIホワイトリスト）、3段階エシカル保護（Lv.0 他人のLoome完全拒否＆DB単体引き抜き検知・3大救済手段／Lv.1 起動ロック＆サムネイルAEAD暗号化／Lv.2 Loome先頭64KBカプセル化 `TETHVLT1`）、および `Loome/.loome_seal` からの鍵自動サルベージ・セルフブリック防止仕様 |
-| [ui-ux-diagnosis-and-roadmap.md](ui-ux-diagnosis-and-roadmap.md) | **【UI/UX 総合診断・機能配置整理 ＆ ステップ1〜3完全実装記録 (v2.44〜v3.00過渡記録)】** v2.44時点のUI交通整理（ステップ1）・ビューア強化（ステップ2）およびv3.00で完結したステップ3の歴史的設計記録（現行仕様は `ui-design-system-and-tiat-guidelines.md` 参照） |
-
----
-
-## ナレッジの追加ルール
-
-今後新たな大規模機能の追加、重篤なバグの解決、パフォーマンスチューニングを行った場合は、本ディレクトリに Markdown ファイルとして知見を記録し、本 `README.md` の一覧に追加すること。
+| ドキュメント | 対象領域・要点 |
+| :--- | :--- |
+| [design-philosophy-four-pillars.md](design-philosophy-four-pillars.md) | **4つの設計原則（4本の柱）と対外文体規約**<br>保存先に縛られない分類・検索／元データを汚さず見るだけで終わらない／作業を邪魔しないLook&Feel／クラウドに頼らずポータブル、および `README.md`・`note` の編集原則 |
+| [portable-storage-patterns.md](portable-storage-patterns.md) | **ポータブルパス解決・所在リンク・保管庫 `Loome`・XMP連携**<br>VSN個体識別、`resolve_portable_path`、`photos` / `photo_links` と `content_key`、SQLite BLOBサムネイル、`Loome` ファイル管理、`server/sidecar.py` によるサイドカー追従とXMP非破壊連携（評価 `2/1/0/-1`・`XMP/` 隔離） |
+| [security-architecture.md](security-architecture.md) | **ネットワーク防御 ＆ 3段階エシカル保護（Lv.0 / Lv.1 / Lv.2）**<br>Host/Origin検証、LANトークン＆APIホワイトリスト、`lan_bridge.py`、他人の `Loome` 保護、2段階鍵階層（DEK/KEK）、`TETHVLT1` カプセル化、`Loome/.loome_seal` 自動鍵サルベージ |
+| [ui-design-system-and-tiat-guidelines.md](ui-design-system-and-tiat-guidelines.md) | **UIデザインシステム・2階建てテーマ・タグツリー3ペイン設計**<br>単色細線SVG（カラー絵文字禁止）、`data-scheme`（4種）× `data-theme`（2種）、1段メインツールバー、`#viewHeaderChipBar`、`showConfirmModal`、タグ並び順4ルールと `rename_tag` 祖先安全同期 |
+| [architecture-scalability-and-side-effects.md](architecture-scalability-and-side-effects.md) | **大規模化・パフォーマンス設計原則 ＆ 禁止アンチパターン**<br>SQLite（変数上限・`idx_thumbnails_dims`・`photo_links` インデックス・安全な親テーブル再構築）、キャッシュ世代・スレッドプール原則、部分DOM更新、および `unittest` 本番DB完全隔離プロトコル |
+| [android-app-and-touch-architecture.md](android-app-and-touch-architecture.md) | **Androidアプリ（`TETHERACT ld`）・Touch UI・PhoneCase・FieldLog**<br>実動 `mobile.js` と未配線モジュールの境界、Kotlin ネイティブシェル、Wi-Fiロッカー双方向同期、手許写真 PhoneCase / Uplink、Read-Only USB `Loome` 復号、GPSフィールドログ採取・照合、APKビルド同期仕様 |

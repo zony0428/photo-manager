@@ -11,7 +11,7 @@
   'use strict';
 
   // ==================== 定数 & 状態管理 ====================
-  const GRID_CHUNK_SIZE = 120;
+  const GRID_CHUNK_SIZE = 72;
   const PENDING_STORAGE_KEY = 'pm_mobile_pending_changes_v1';
   const MOBILE_COLOR_TAGS = [
     '赤', '青', '緑', '黄色', '黒', '白',
@@ -37,30 +37,43 @@
     // フィルタ条件 (-1:棄, 0:可, 1:良, 2:優)
     ratingFilter: 'default', // 'default'(0,1,2) | 'all'(-1,0,1,2) | -1 | 0 | 1 | 2
     stacked: true,
-    gridCols: 3, // 2 | 3 | 4
+    gridCols: 3, // 2..6
+    gridLayout: 'grid', // 'grid' | 'masonry' | 'mount'
     searchQuery: '',
     sortBy: 'date_taken DESC',
     includeTags: [],
     excludeTags: [],
     untaggedOnly: false,
     yearMonth: '',
+    dateDay: '',
     cameraModel: '',
+    lensModel: '',
+    folderPath: '',
     country: '',
     stateName: '',
     city: '',
     noLocationOnly: false,
 
-    // フィルタ候補一覧
+    // フィルタ候補一覧 & 階層ツリー開閉状態
     availableTags: [],
+    tagSourceFilter: _safeGetStorage('pm_mobile_tag_source', 'manual'),
     untaggedCount: 0,
     timelineList: [],
     cameraList: [],
+    gearList: [],
+    folderList: [],
     locationTree: [],
     noLocationCount: 0,
+    expandedFilterNodes: new Set(),
+    monthDayCountsCache: new Map(),
 
-    // 複数選択モード
+    // 複数選択モード & タブレットインスペクタ選択状態
     selectMode: false,
     selectedIds: new Set(),
+    inspectedIndex: -1,
+    inspectedPhotoId: null,
+    lastCardTapId: null,
+    lastCardTapTime: 0,
 
     // フルスクリーンビューア状態
     viewerOpen: false,
@@ -76,6 +89,10 @@
     lastServerUrl: '',
     serverCandidates: [],
     tagTreeExpandedPaths: new Set(),
+    hasPhotoLinksTable: false,
+    hasPhotoLinksDirCol: false,
+    nativeLinkState: { isPcLinked: false, usbConnected: false, usbVsn: '' },
+    pcConnectionSnapshot: null,
   };
 
   // ==================== ユーティリティ関数 ====================
@@ -130,6 +147,54 @@
   }
 
   /**
+   * モバイル・タッチUI用の確認モーダル（window.confirm 禁止規約対応）
+   */
+  function confirmTouchAction(options = {}) {
+    const title = options.title || '確認';
+    const message = options.message || 'この操作を実行しますか？';
+    const confirmText = options.confirmText || '実行する';
+    const cancelText = options.cancelText || 'キャンセル';
+    const isDanger = Boolean(options.danger);
+
+    return new Promise((resolve) => {
+      const old = document.getElementById('mTouchConfirmModalOverlay');
+      if (old) old.remove();
+
+      const overlay = document.createElement('div');
+      overlay.id = 'mTouchConfirmModalOverlay';
+      overlay.style.cssText = 'position:fixed; inset:0; z-index:12000; background:rgba(0,0,0,0.62); display:flex; align-items:center; justify-content:center; padding:18px; backdrop-filter:blur(4px);';
+      overlay.innerHTML = `
+        <div style="width:100%; max-width:340px; background:var(--bg-secondary, #1e1e1e); color:var(--text-primary, #f5f5f5); border:1px solid var(--border-color, rgba(255,255,255,0.14)); border-radius:14px; padding:18px 16px 14px; box-shadow:0 16px 40px rgba(0,0,0,0.5);">
+          <div style="font-size:15px; font-weight:700; margin-bottom:8px;">${_escHtml(title)}</div>
+          <div style="font-size:13px; color:var(--text-secondary, #cbd5e1); line-height:1.55; white-space:pre-line; margin-bottom:16px;">${_escHtml(message)}</div>
+          <div style="display:flex; gap:8px; justify-content:flex-end;">
+            <button type="button" data-confirm-act="cancel" style="flex:1; height:38px; border-radius:8px; border:1px solid var(--border-color, rgba(255,255,255,0.16)); background:transparent; color:var(--text-primary, #f5f5f5); font-size:13px; font-weight:600; cursor:pointer;">${_escHtml(cancelText)}</button>
+            <button type="button" data-confirm-act="ok" style="flex:1; height:38px; border-radius:8px; border:none; background:${isDanger ? '#ef4444' : 'var(--accent-primary, #e14d2a)'}; color:#fff; font-size:13px; font-weight:700; cursor:pointer;">${_escHtml(confirmText)}</button>
+          </div>
+        </div>
+      `;
+
+      const finish = (val) => {
+        overlay.remove();
+        resolve(val);
+      };
+      overlay.querySelector('[data-confirm-act="cancel"]')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        finish(false);
+      });
+      overlay.querySelector('[data-confirm-act="ok"]')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        finish(true);
+      });
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) finish(false);
+      });
+      document.body.appendChild(overlay);
+    });
+  }
+  window.__confirmTouchAction = confirmTouchAction;
+
+  /**
    * 階層タグ（例: "A/B/C"）から親階層を含む全タグリストを展開する
    */
   function expandTagAncestors(tagStr) {
@@ -177,6 +242,8 @@
       port !== '8088';
     return Boolean(
       window.__PM_STANDALONE_HTML__ ||
+        window.TetheractNative ||
+        h === 'appassets.tetheract.local' ||
         (p !== 'http:' && p !== 'https:') ||
         isAndroidLocalFileServer ||
         mState.mode === 'localdb'
@@ -219,14 +286,79 @@
     return (found && found.tag_key) ? String(found.tag_key) : '';
   }
 
-  function recordPendingChange(photo, changeType, value) {
+  function _hasNativeJournal() {
+    return Boolean(window.TetheractNative && typeof window.TetheractNative.savePhotoChangeJson === 'function');
+  }
+
+  /**
+   * Android ネイティブ版では変更1件分の差分だけをネイティブジャーナルへ渡す（ロッカーDBへの反映もネイティブ側が行う）
+   */
+  function _recordNativePendingChange(photo, changeType, value) {
+    const payload = {
+      photo_id: photo.id,
+      content_key: photo.content_key || '',
+      file_path: photo.file_path || '',
+      file_name: photo.file_name || '',
+      file_size: photo.file_size || 0,
+      date_taken: photo.date_taken || '',
+    };
+    if (changeType === 'rating') {
+      payload.rating = Number(value);
+    } else if (changeType === 'stack_primary') {
+      payload.set_stack_primary = Boolean(value);
+    } else if (changeType === 'adjustments' && value && typeof value === 'object') {
+      if (value.rotation !== undefined) payload.rotation = Math.round(Number(value.rotation || 0));
+      if (value.brightness !== undefined) payload.brightness = Math.round(Number(value.brightness || 0));
+      if (value.contrast !== undefined) payload.contrast = Math.round(Number(value.contrast || 0));
+      if (value.saturation !== undefined) payload.saturation = Math.round(Number(value.saturation || 0));
+      if (value.fine_angle !== undefined) payload.fine_angle = Number(Number(value.fine_angle || 0).toFixed(2));
+    } else if (changeType === 'add_tag' || changeType === 'remove_tag') {
+      const tag = String(value).trim();
+      if (!tag) return;
+      const tKey = _findTagKey(tag);
+      const isAdd = changeType === 'add_tag';
+      payload[isAdd ? 'add_tags' : 'remove_tags'] = [tag];
+      if (tKey) payload[isAdd ? 'add_tag_keys' : 'remove_tag_keys'] = { [tKey]: tag };
+    } else {
+      return;
+    }
+    try {
+      const res = JSON.parse(window.TetheractNative.savePhotoChangeJson(JSON.stringify(payload)) || '{}');
+      if (!res.ok) {
+        console.warn('Android Native ジャーナル保存失敗:', res.error);
+        showToast('! 変更の保存に失敗しました');
+      }
+    } catch (e) {
+      console.warn('Android Native ジャーナル保存警告:', e);
+    }
+  }
+
+  /**
+   * 旧版で localStorage に二重記録していた未同期変更を破棄する（ネイティブジャーナルが常に正本のため）
+   */
+  function _discardLegacyJsJournalOnNative() {
+    const cnt = Object.keys((mState.pendingChanges && mState.pendingChanges.items) || {}).length;
+    if (cnt === 0) return;
+    console.info(`Android Native: localStorage 側の旧ジャーナル ${cnt}件を破棄しました（ネイティブジャーナルを正本として使用）`);
+    mState.pendingChanges.items = {};
+    savePendingChangesToStorage();
+  }
+
+  function recordPendingChange(photo, changeType, value, options = {}) {
     if (!photo || !photo.id) return;
+    if (_hasNativeJournal()) {
+      _recordNativePendingChange(photo, changeType, value);
+      if (!options.deferSave) updatePendingBadgeUI();
+      return;
+    }
     const key = String(photo.id);
     if (!mState.pendingChanges.items[key]) {
       mState.pendingChanges.items[key] = {
         photo_id: photo.id,
+        content_key: photo.content_key || '',
         file_path: photo.file_path || '',
         file_name: photo.file_name || '',
+        file_size: photo.file_size || 0,
         date_taken: photo.date_taken || '',
         rating: undefined,
         add_tags: [],
@@ -241,6 +373,13 @@
 
     if (changeType === 'rating') {
       item.rating = Number(value);
+    } else if (changeType === 'stack_primary') {
+      item.set_stack_primary = Boolean(value);
+    } else if (changeType === 'adjustments' && value && typeof value === 'object') {
+      if (value.brightness !== undefined) item.brightness = Math.round(Number(value.brightness || 0));
+      if (value.contrast !== undefined) item.contrast = Math.round(Number(value.contrast || 0));
+      if (value.saturation !== undefined) item.saturation = Math.round(Number(value.saturation || 0));
+      if (value.fine_angle !== undefined) item.fine_angle = Number(Number(value.fine_angle || 0).toFixed(2));
     } else if (changeType === 'add_tag') {
       const tag = String(value).trim();
       const tKey = _findTagKey(tag);
@@ -264,10 +403,53 @@
         item.remove_tag_keys[tKey] = tag;
       }
     }
-    savePendingChangesToStorage();
+    if (!options.deferSave) savePendingChangesToStorage();
+  }
+
+  /**
+   * 複数写真の評価・タグ変更を Android Native 一括JNI (savePhotoChangesBatch) または localStorage 1回保存で記録する
+   */
+  async function _saveNativeBatchChanges(ids, changePatch) {
+    const targetPhotos = ids.map((pid) => mState.photos.find((p) => p.id === pid) || { id: pid });
+    if (window.TetheractAdapter && typeof window.TetheractAdapter.savePhotoChangesBatch === 'function') {
+      const res = await window.TetheractAdapter.savePhotoChangesBatch(targetPhotos, changePatch);
+      updatePendingBadgeUI();
+      return Boolean(res && res.ok);
+    }
+    if (window.TetheractNative && typeof window.TetheractNative.savePhotoChangesBatchJson === 'function') {
+      const payload = {
+        items: targetPhotos.map((p) => ({
+          photo_id: p.id,
+          content_key: p.content_key || '',
+          file_path: p.file_path || '',
+          file_name: p.file_name || '',
+          file_size: p.file_size || 0,
+          date_taken: p.date_taken || '',
+        })),
+        ...changePatch,
+      };
+      const res = JSON.parse(window.TetheractNative.savePhotoChangesBatchJson(JSON.stringify(payload)) || '{}');
+      updatePendingBadgeUI();
+      return Boolean(res && res.ok);
+    }
+    return false;
   }
 
   function getPendingChangesCount() {
+    if (_hasNativeJournal()) {
+      try {
+        if (typeof window.TetheractNative.getPendingChangeCount === 'function') {
+          return Number(window.TetheractNative.getPendingChangeCount() || 0);
+        }
+        if (typeof window.TetheractNative.getLockerStatusJson === 'function') {
+          const st = JSON.parse(window.TetheractNative.getLockerStatusJson() || '{}');
+          return Number(st.pendingChangeCount || 0);
+        }
+      } catch (e) {
+        console.warn('Android Native 未同期件数の取得失敗:', e);
+      }
+      return 0;
+    }
     return Object.keys((mState.pendingChanges && mState.pendingChanges.items) || {}).length;
   }
 
@@ -282,15 +464,30 @@
         badge.style.display = 'none';
       }
     }
+    const bnavBadge = document.getElementById('tBnavPendingBadge');
+    if (bnavBadge) {
+      if (cnt > 0) {
+        bnavBadge.textContent = String(cnt);
+        bnavBadge.style.display = 'inline-flex';
+      } else {
+        bnavBadge.style.display = 'none';
+      }
+    }
     const box = document.getElementById('mPendingSummaryBox');
     if (box) {
       box.innerHTML = `未反映の変更: <strong>${cnt}件の写真</strong>`;
+    }
+    if (window.TetheractTouchUI && typeof window.TetheractTouchUI.updateLockerStatus === 'function') {
+      window.TetheractTouchUI.updateLockerStatus({ pendingCount: cnt });
     }
   }
 
   // ==================== 初期化 & モード判定 ====================
 
   async function initMobileApp() {
+    if (window.TetheractNative) {
+      document.documentElement.classList.add('is-native-app');
+    }
     initTheme();
     initSavedPrefs();
     bindAllEvents();
@@ -314,9 +511,348 @@
       });
     }
 
+    if (!document._pmConnVisibilityBound) {
+      document._pmConnVisibilityBound = true;
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && mState.mode === 'server') {
+          _refreshServerConnectionStatus();
+        }
+      });
+    }
+
     // PC上でのプレビュー表示 (/m) の場合のみ同一オリジンサーバー接続を試行
+    if (window.TetheractNative) {
+      await _initAndroidNativeLockerMode();
+      return;
+    }
     const connected = await tryConnectServer();
     if (!connected) {
+      setAppMode('offline');
+    }
+  }
+
+  function _createAndroidNativeSqlProxy() {
+    return {
+      isAndroidNative: true,
+      // 書き込みは recordPendingChange 経由の savePhotoChangeJson に一本化しているため、ここでは何もしない
+      run() {},
+      exec(sql) {
+        if (window.TetheractNative && typeof window.TetheractNative.rawQueryJson === 'function') {
+          const rows = JSON.parse(window.TetheractNative.rawQueryJson(sql, '[]') || '[]');
+          return rows.length > 0 ? [{ values: rows }] : [];
+        }
+        return [];
+      },
+      close() {},
+    };
+  }
+
+  function _refreshLocalDbSchemaFlags() {
+    if (!mState.localDb) {
+      mState.hasPhotoLinksTable = false;
+      mState.hasPhotoLinksDirCol = false;
+      return;
+    }
+    try {
+      const plCols = queryLocalDbObjects('PRAGMA table_info(photo_links)');
+      mState.hasPhotoLinksTable = plCols.length > 0;
+      mState.hasPhotoLinksDirCol = plCols.some((c) => c && c.name === 'directory_path');
+    } catch (e) {
+      mState.hasPhotoLinksTable = false;
+      mState.hasPhotoLinksDirCol = false;
+    }
+  }
+
+  async function _syncLinkedPhoneFoldersToLockerDb(targetFolderId = 'all') {
+    if (!window.TetheractNative || typeof window.TetheractNative.phoneCaseListFoldersJson !== 'function') {
+      return false;
+    }
+    try {
+      const fRes = JSON.parse(window.TetheractNative.phoneCaseListFoldersJson() || '{}');
+      if (!Array.isArray(fRes.folders) || fRes.folders.length === 0) return false;
+      if (window.TetheractPhoneCaseAdapter && typeof window.TetheractPhoneCaseAdapter.scanPhotos === 'function') {
+        const scanRes = await window.TetheractPhoneCaseAdapter.scanPhotos(String(targetFolderId || 'all'), { includeItems: false });
+        return Boolean(scanRes && (scanRes.catalogChanged || scanRes.ok));
+      }
+      if (typeof window.TetheractNative.phoneCaseScanPhotosJson === 'function') {
+        const scanRes = JSON.parse(window.TetheractNative.phoneCaseScanPhotosJson(String(targetFolderId || 'all')) || '{}');
+        return Boolean(scanRes && scanRes.ok);
+      }
+    } catch (e) {
+      console.warn('スマホ管理下フォルダの自動スキャン警告:', e);
+    }
+    return false;
+  }
+
+  async function _activateAndroidNativeLockerDb() {
+    try {
+      const st = JSON.parse(window.TetheractNative.getLockerStatusJson() || '{}');
+      mState.nativeLinkState = {
+        isPcLinked: Boolean(st.pcOnline),
+        usbConnected: Boolean(st.usbConnected),
+        usbVsn: String(st.usbVsn || '').toUpperCase(),
+      };
+      _syncPcConnectionSnapshotFromNative();
+      if (window.TetheractTouchUI && typeof window.TetheractTouchUI.updateLockerStatus === 'function') {
+        window.TetheractTouchUI.updateLockerStatus({
+          usbConnected: Boolean(st.usbConnected),
+          cachedCount: Number(st.dbPhotoCount || 0),
+          pendingCount: Number(st.pendingChangeCount || 0),
+        });
+      }
+      if (!st.hasLockerDb) {
+        setAppMode('offline');
+        return false;
+      }
+      mState.localDb = _createAndroidNativeSqlProxy();
+      _refreshLocalDbSchemaFlags();
+      mState.stackCountsMap = null;
+      mState.monthDayCountsCache = new Map();
+      mState.localDbFileName = st.usbFolderName ? `${st.usbFolderName} (Locker)` : 'library.db (Locker)';
+      setAppMode('localdb');
+      await refreshAllData();
+      _refreshWifiStatusBox(st);
+      const statusBox = document.getElementById('mLoadedDbStatus');
+      if (statusBox) {
+        statusBox.innerHTML = `✓ <strong>専用ロッカーDB</strong> (${Number(st.dbPhotoCount || 0).toLocaleString()}枚) を高速オープン完了`;
+      }
+      return true;
+    } catch (e) {
+      console.error('Android Locker 起動エラー:', e);
+      setAppMode('offline');
+      return false;
+    }
+  }
+
+  function _refreshWifiStatusBox(stObj) {
+    let st = stObj;
+    if (!st && window.TetheractNative && typeof window.TetheractNative.getLockerStatusJson === 'function') {
+      try {
+        st = JSON.parse(window.TetheractNative.getLockerStatusJson() || '{}');
+      } catch (e) {
+        st = {};
+      }
+    }
+    if (st && st.appVersion) {
+      const verText = st.appVersion.startsWith('v') ? st.appVersion : `v${st.appVersion}`;
+      const badgeEl = document.getElementById('mAppBuildBadge');
+      if (badgeEl) badgeEl.textContent = verText;
+      const modalVerEl = document.getElementById('mModalAppBuildInfo');
+      if (modalVerEl) modalVerEl.textContent = `TETHERACT pm · ${verText}`;
+    }
+    const wifiBox = document.getElementById('mWifiPairStatusBox');
+    const wifiInput = document.getElementById('mWifiUrlInput');
+    if (wifiBox && st) {
+      if (st.wifiConfigured && st.wifiServerUrl) {
+        const lastSync = st.lastWifiSyncAt ? ` (最終同期: ${_escHtml(st.lastWifiSyncAt)})` : '';
+        wifiBox.innerHTML = `✓ 接続先PC: <strong>${_escHtml(st.wifiServerUrl)}</strong>${lastSync}`;
+        if (wifiInput && !wifiInput.value) {
+          wifiInput.value = st.wifiServerUrl;
+        }
+      } else {
+        wifiBox.innerHTML = '「今すぐWi-Fi同期」を押すと同一Wi-Fi内のPC母艦を自動検出して接続します（PC側で「許可する」を押すかQRコード読み取りでも接続できます）。';
+      }
+    }
+  }
+
+  async function _triggerAndroidWifiLockerSync(rawUrlInput = '') {
+    if (!window.TetheractNative || typeof window.TetheractNative.triggerWifiSyncAsyncJson !== 'function') {
+      showToast('Wi-Fiロッカー同期はAndroid専用アプリで利用できます');
+      return;
+    }
+    if (rawUrlInput && typeof window.TetheractNative.saveWifiPairingJson === 'function') {
+      const saveRes = JSON.parse(window.TetheractNative.saveWifiPairingJson(rawUrlInput) || '{}');
+      if (!saveRes.ok) {
+        showToast(saveRes.error || '接続URLの形式が正しくありません', 4000);
+        return;
+      }
+      _refreshWifiStatusBox();
+    }
+    const st = JSON.parse(window.TetheractNative.getLockerStatusJson() || '{}');
+    const dbOverlay = document.getElementById('mDbSyncOverlay');
+    if (dbOverlay) dbOverlay.style.display = 'none';
+    const hasLocker = Boolean(st.hasLockerDb);
+    const configured = Boolean(st.wifiConfigured);
+    setLoading(
+      true,
+      configured ? 'PC母艦とWi-Fiで双方向ロッカー同期中...' : '同一Wi-Fi内のPC母艦を自動検出中...',
+      configured
+        ? (hasLocker
+          ? '選別データの送信と最新差分の取得を行っています（約1〜2秒）'
+          : '初回ロッカーDBをWi-Fi経由で転送しています（しばらくお待ちください）')
+        : 'PC画面に確認ダイアログが表示されたら「許可する」をクリックしてください'
+    );
+    window.TetheractNative.triggerWifiSyncAsyncJson(false);
+  }
+
+  let _nativeUsbSyncEventBound = false;
+
+  async function _handleNativeUsbSyncCompleted(res) {
+    if (res && (res.syncMode === 'loome_detached' || res.usbDetached)) {
+      setLoading(false);
+      if (mState.nativeLinkState) mState.nativeLinkState.usbConnected = false;
+      return;
+    }
+    setLoading(false);
+    if (res && res.ok) {
+      updatePendingBadgeUI();
+      const skipped = Number(res.skippedCount || 0);
+      if (skipped > 0) {
+        setTimeout(() => {
+          showToast(`! ${skipped}件の変更はPC側で該当写真が見つからず反映できませんでした`, 5000);
+        }, 4200);
+      }
+      if (res.syncMode === 'wifi_noop' && mState.localDb && mState.photos.length > 0) {
+        _refreshWifiStatusBox();
+        const pushed = Number(res.pushedCount || 0);
+        const msg = pushed > 0
+          ? `✓ Wi-Fi同期完了！選別 ${pushed}件をPCへ即時反映しました`
+          : '✓ Wi-Fi同期完了（変更なし・最新状態です）';
+        showToast(msg, 3500);
+        return;
+      }
+      if (res.syncMode === 'loome_mount' && mState.localDb && mState.photos.length > 0) {
+        if (mState.nativeLinkState) mState.nativeLinkState.usbConnected = true;
+        return;
+      }
+      await new Promise((r) => requestAnimationFrame(r));
+      await _syncLinkedPhoneFoldersToLockerDb('all');
+      const opened = await _activateAndroidNativeLockerDb();
+      if (opened) {
+        if (res.syncMode === 'wifi_delta' || res.syncMode === 'wifi_full' || res.syncMode === 'wifi_noop') {
+          const pushed = Number(res.pushedCount || 0);
+          const msg = pushed > 0
+            ? `✓ Wi-Fi同期完了！選別 ${pushed}件をPCへ送信し、最新DBを反映しました`
+            : '✓ PCからWi-Fiで最新ロッカーへ高速同期しました';
+          showToast(msg, 4000);
+        } else if (res.syncMode !== 'loome_mount') {
+          showToast('✓ USBから専用ロッカーへ高速同期しました', 3500);
+        }
+      }
+    } else if (res && !res.cancelled) {
+      const errMsg = res.error || (res.reason === 'library_db_not_found'
+        ? '選択したフォルダ内に library.db が見つかりません'
+        : 'ロッカー同期に失敗しました');
+      showToast(errMsg, 4500);
+    }
+  }
+
+  async function _initAndroidNativeLockerMode() {
+    window.__onTetheractWifiSyncStarted = (serverUrl, customTitle, customSub) => {
+      const dbOverlay = document.getElementById('mDbSyncOverlay');
+      if (dbOverlay) dbOverlay.style.display = 'none';
+      const titleText = customTitle || `PC (${serverUrl || 'Wi-Fi'}) と双方向同期中...`;
+      const subText = customSub || '選別データの送信と最新差分の取得を行っています';
+      setLoading(true, titleText, subText);
+    };
+    window.__onTetheractPcDiscovered = (disc) => {
+      if (!disc || !disc.found) return;
+      _refreshWifiStatusBox();
+      const hostLabel = disc.hostname ? `${disc.hostname} (${disc.serverUrl || ''})` : (disc.serverUrl || 'PC');
+      const wifiBox = document.getElementById('mWifiPairStatusBox');
+      if (wifiBox) {
+        wifiBox.innerHTML = `<span style="color:#34d399;font-weight:700;">● 同一Wi-Fi上にPC母艦を検出:</span> <strong>${_escHtml(hostLabel)}</strong>`;
+      }
+      const welcomeBtnSpan = document.querySelector('#mWelcomeWifiSyncBtn span');
+      if (welcomeBtnSpan && disc.hostname) {
+        welcomeBtnSpan.textContent = `検出したPC (${disc.hostname}) とWi-Fiで同期`;
+      }
+      showToast(`● 同一Wi-Fi上にPC母艦「${disc.hostname || disc.serverUrl}」を検出しました`, 3000);
+    };
+    if (!_nativeUsbSyncEventBound) {
+      _nativeUsbSyncEventBound = true;
+      window.addEventListener('tetheract:usb-sync-completed', (ev) => {
+        _handleNativeUsbSyncCompleted((ev && ev.detail) || {});
+      });
+    }
+    window.__onTetheractPhoneCatalogSynced = async () => {
+      if (!mState.localDb || mState.mode === 'offline') {
+        await _activateAndroidNativeLockerDb();
+        return;
+      }
+      _refreshLocalDbSchemaFlags();
+      mState.stackCountsMap = null;
+      mState.monthDayCountsCache = new Map();
+      await refreshAllData();
+    };
+    window.__getActiveMobileFolderPath = () => mState.folderPath || '';
+    window.__getMobileFolderPhotoCount = (folderPath) => {
+      const fp = String(folderPath || '').trim().replace(/[\\/]+$/, '');
+      if (!fp) return 0;
+      let sum = 0;
+      for (const r of mState.folderList || []) {
+        const dp = String((r && r.directory_path) || '').trim().replace(/[\\/]+$/, '');
+        if (dp === fp || dp.startsWith(`${fp}/`) || dp.startsWith(`${fp}\\`)) {
+          sum += Number(r.count || 0);
+        }
+      }
+      if (sum > 0 || !mState.localDb) return sum;
+      try {
+        const qParams = [];
+        const dirCond = _buildFolderFilterClause(fp, qParams);
+        const cntRows = queryLocalDbObjects(
+          `SELECT COUNT(*) AS cnt FROM photos p WHERE IFNULL(p.is_unlinked, 0) = 0 AND ${SQL_NOT_PAIRED_RAW_P} AND ${dirCond}`,
+          qParams
+        );
+        return cntRows[0] ? Number(cntRows[0].cnt || 0) : 0;
+      } catch (e) {
+        return 0;
+      }
+    };
+    window.__filterMobileGalleryByFolder = async (folderPath, options = {}) => {
+      const target = String(folderPath || '').trim();
+      const folderId = String((options && options.folderId) || 'all').trim() || 'all';
+      const forceSelect = Boolean(options && options.forceSelect);
+      if (window.TetheractNative && (!mState.localDb || mState.mode === 'offline')) {
+        let opened = await _activateAndroidNativeLockerDb();
+        if (!opened) {
+          await _syncLinkedPhoneFoldersToLockerDb(folderId);
+          opened = await _activateAndroidNativeLockerDb();
+        }
+      }
+      mState.folderPath = forceSelect ? target : (mState.folderPath === target ? '' : target);
+      if (window.TetheractTouchUI && typeof window.TetheractTouchUI.closePerspectiveSheet === 'function') {
+        window.TetheractTouchUI.closePerspectiveSheet();
+      }
+      await fetchPhotosData();
+      if (
+        mState.folderPath &&
+        mState.folderPath.startsWith('📱 ') &&
+        mState.photos.length === 0 &&
+        window.TetheractNative
+      ) {
+        const synced = await _syncLinkedPhoneFoldersToLockerDb(folderId);
+        if (synced) {
+          await _activateAndroidNativeLockerDb();
+        }
+        if (mState.photos.length === 0 && mState.ratingFilter === 'default') {
+          const qParams = [];
+          const dirCond = _buildFolderFilterClause(mState.folderPath, qParams);
+          const anyRows = queryLocalDbObjects(
+            `SELECT COUNT(*) AS cnt FROM photos p WHERE IFNULL(p.is_unlinked, 0) = 0 AND ${SQL_NOT_PAIRED_RAW_P} AND ${dirCond}`,
+            qParams
+          );
+          if (anyRows[0] && Number(anyRows[0].cnt || 0) > 0) {
+            mState.ratingFilter = 'all';
+            document.querySelectorAll('.m-quick-scroll [data-rating]').forEach((btn) => {
+              btn.classList.toggle('active', btn.dataset.rating === 'all');
+            });
+            await fetchPhotosData();
+          }
+        }
+      }
+      renderDrawerFilters();
+    };
+    _discardLegacyJsJournalOnNative();
+    _refreshWifiStatusBox();
+    let opened = await _activateAndroidNativeLockerDb();
+    if (!opened) {
+      const synced = await _syncLinkedPhoneFoldersToLockerDb('all');
+      if (synced) {
+        opened = await _activateAndroidNativeLockerDb();
+      }
+    }
+    if (!opened) {
       setAppMode('offline');
     }
   }
@@ -343,16 +879,23 @@
 
   function initSavedPrefs() {
     const cols = Number(_safeGetStorage('pm_mobile_cols', '3'));
-    if ([2, 3, 4].includes(cols)) {
+    if ([2, 3, 4, 5, 6].includes(cols)) {
       mState.gridCols = cols;
       updateGridColsUI();
     }
+    const savedLayout = _safeGetStorage('pm_mobile_layout', 'grid');
+    if (['grid', 'masonry', 'mount'].includes(savedLayout)) {
+      mState.gridLayout = savedLayout;
+    }
+    updateGridLayoutUI();
     const savedAuto = _safeGetStorage('pm_mobile_auto_advance', null);
     if (savedAuto !== null) {
       mState.autoAdvance = savedAuto === '1';
       const chk = document.getElementById('mAutoAdvanceCheck');
       if (chk) chk.checked = mState.autoAdvance;
     }
+    const autoBtn = document.getElementById('mViewerAutoAdvanceBtn');
+    if (autoBtn) autoBtn.classList.toggle('active', Boolean(mState.autoAdvance));
   }
 
   function setAppMode(mode) {
@@ -418,7 +961,9 @@
       if (!res.ok) return false;
 
       setAppMode('server');
+      _setupBrowserToNativeAppBanner();
       await refreshAllData();
+      _refreshServerConnectionStatus();
       return true;
     } catch (e) {
       return false;
@@ -497,6 +1042,9 @@
       }
 
       mState.localDb = db;
+      _refreshLocalDbSchemaFlags();
+      mState.stackCountsMap = null;
+      mState.monthDayCountsCache = new Map();
       mState.localDbFileName = file.name;
       mState.pendingChanges.db_name = file.name;
 
@@ -513,7 +1061,7 @@
       showToast(`${file.name} を読み込みました`);
     } catch (err) {
       console.error('DBファイル読込エラー:', err);
-      alert('DBの読み込みに失敗しました: ' + (err.message || err));
+      showToast('! DBの読み込みに失敗しました: ' + (err.message || err), 4500);
       if (mState.mode === 'checking') {
         setAppMode('offline');
       }
@@ -538,6 +1086,33 @@
         if (!pid) continue;
         if (item.rating !== undefined && item.rating !== null) {
           db.run('UPDATE photos SET rating = ? WHERE id = ?', [Number(item.rating), pid]);
+        }
+        if (item.set_stack_primary) {
+          const stRows = queryLocalDbObjects('SELECT stack_id FROM photos WHERE id = ? LIMIT 1', [pid]);
+          const oldStackId = stRows.length > 0 ? Number(stRows[0].stack_id || 0) : 0;
+          if (oldStackId > 0) {
+            db.run(
+              'UPDATE photos SET stack_id = ?, is_stack_primary = CASE WHEN id = ? THEN 1 ELSE 0 END WHERE stack_id = ?',
+              [pid, pid, oldStackId]
+            );
+          }
+        }
+        if (
+          item.brightness !== undefined ||
+          item.contrast !== undefined ||
+          item.saturation !== undefined ||
+          item.fine_angle !== undefined
+        ) {
+          db.run(
+            'UPDATE photos SET brightness = COALESCE(?, brightness), contrast = COALESCE(?, contrast), saturation = COALESCE(?, saturation), fine_angle = COALESCE(?, fine_angle) WHERE id = ?',
+            [
+              item.brightness !== undefined ? Number(item.brightness) : null,
+              item.contrast !== undefined ? Number(item.contrast) : null,
+              item.saturation !== undefined ? Number(item.saturation) : null,
+              item.fine_angle !== undefined ? Number(item.fine_angle) : null,
+              pid,
+            ]
+          );
         }
         if (Array.isArray(item.remove_tags)) {
           for (const t of item.remove_tags) {
@@ -582,6 +1157,14 @@
    */
   function queryLocalDbObjects(sql, params = []) {
     if (!mState.localDb) return [];
+    if (mState.localDb.isAndroidNative && window.TetheractNative && typeof window.TetheractNative.rawQueryJson === 'function') {
+      try {
+        return JSON.parse(window.TetheractNative.rawQueryJson(sql, JSON.stringify(params || [])) || '[]');
+      } catch (e) {
+        console.warn('Android Native SQL Query Error:', e);
+        return [];
+      }
+    }
     const stmt = mState.localDb.prepare(sql);
     const results = [];
     try {
@@ -614,6 +1197,9 @@
 
     // localdb モード: thumbnails テーブルの BLOB (WebP) から ObjectURL を生成してキャッシュ
     const pid = Number(photo.id);
+    if (mState.localDb && mState.localDb.isAndroidNative) {
+      return `https://appassets.tetheract.local/thumb/${pid}`;
+    }
     if (mState.thumbUrlCache.has(pid)) {
       return mState.thumbUrlCache.get(pid);
     }
@@ -643,11 +1229,47 @@
     return '';
   }
 
+  /**
+   * 拡大ビューア・Duel比較用の実ファイル（フル解像度JPEG・RAW埋込プレビュー）URLを取得する
+   * Androidネイティブ時は USB SAF 直結 → Wi-Fi LAN 経由の PC (/api/photo/{id}/view) の順で解決し、
+   * どちらもオフラインの場合は 404 (only_hd=1) となって即座に既存のWebPサムネイルを維持する
+   */
+  function getMobileFullPhotoUrl(photo) {
+    if (!photo || !photo.id) return '';
+    const pid = Number(photo.id);
+    if (mState.mode === 'server') {
+      return `/api/photo/${pid}/view`;
+    }
+    if (window.TetheractNative || (mState.localDb && mState.localDb.isAndroidNative)) {
+      return `https://appassets.tetheract.local/usb_photo/${pid}?only_hd=1`;
+    }
+    return '';
+  }
+
   // ==================== データ取得（Server / LocalDB 統一レイヤー） ====================
+
+  let _refreshInFlightPromise = null;
+  let _refreshQueuedAgain = false;
 
   async function refreshAllData() {
     if (mState.mode === 'offline') return;
-    await Promise.all([fetchPhotosData(), fetchFilterSummaries()]);
+    if (_refreshInFlightPromise) {
+      _refreshQueuedAgain = true;
+      return _refreshInFlightPromise;
+    }
+    _refreshInFlightPromise = (async () => {
+      try {
+        do {
+          _refreshQueuedAgain = false;
+          if (mState.mode === 'offline') break;
+          await Promise.all([fetchPhotosData(), fetchFilterSummaries()]);
+        } while (_refreshQueuedAgain);
+      } finally {
+        _refreshInFlightPromise = null;
+        _refreshQueuedAgain = false;
+      }
+    })();
+    return _refreshInFlightPromise;
   }
 
   /**
@@ -681,8 +1303,11 @@
         if (mState.includeTags.length > 0) params.set('include_tags', mState.includeTags.join(','));
         if (mState.excludeTags.length > 0) params.set('exclude_tags', mState.excludeTags.join(','));
       }
-      if (mState.yearMonth) params.set('year_month', mState.yearMonth);
+      if (mState.dateDay) params.set('dates', mState.dateDay);
+      else if (mState.yearMonth) params.set('year_month', mState.yearMonth);
       if (mState.cameraModel) params.set('cameras', mState.cameraModel);
+      if (mState.lensModel) params.set('lenses', mState.lensModel);
+      if (mState.folderPath) params.set('folder', mState.folderPath);
       if (mState.noLocationOnly) {
         params.set('no_location', 'true');
       } else {
@@ -705,53 +1330,113 @@
   }
 
   /**
+   * フォルダ階層フィルタ用のSQL条件式を構築する（photos.directory_path と photo_links の双方を照合）
+   */
+  function _buildFolderFilterClause(folderPath, params) {
+    const fp = String(folderPath || '').trim().replace(/[\\/]+$/, '');
+    if (!fp) return '1 = 1';
+    params.push(fp, `${fp}/%`, `${fp}\\%`);
+    if (!mState.hasPhotoLinksTable) {
+      return '(p.directory_path = ? OR p.directory_path LIKE ? OR p.directory_path LIKE ?)';
+    }
+    const linkConds = [];
+    if (mState.hasPhotoLinksDirCol) {
+      linkConds.push('pl.directory_path = ? OR pl.directory_path LIKE ? OR pl.directory_path LIKE ?');
+      params.push(fp, `${fp}/%`, `${fp}\\%`);
+    }
+    if (fp.startsWith('📱 ')) {
+      const relFolder = fp.slice('📱 '.length).trim().replace(/[\\/]+$/, '');
+      if (relFolder) {
+        linkConds.push("(pl.volume_serial = 'ANDROID_LOCAL' AND (pl.rel_path LIKE ? OR pl.rel_path LIKE ?))");
+        params.push(`${relFolder}/%`, `${relFolder}\\%`);
+      }
+    }
+    if (linkConds.length === 0) {
+      return '(p.directory_path = ? OR p.directory_path LIKE ? OR p.directory_path LIKE ?)';
+    }
+    return `(p.directory_path = ? OR p.directory_path LIKE ? OR p.directory_path LIKE ? OR EXISTS (SELECT 1 FROM photo_links pl WHERE pl.photo_id = p.id AND (${linkConds.join(' OR ')})))`;
+  }
+
+  /**
    * オフライン localdb (sql.js) から写真一覧をSQL検索する
    */
   function fetchPhotosFromLocalDb() {
     if (!mState.localDb) return;
 
+    if (!mState.stackCountsMap) {
+      const stackRows = queryLocalDbObjects(
+        `SELECT stack_id, COUNT(*) AS cnt FROM photos WHERE stack_id IS NOT NULL AND IFNULL(is_unlinked, 0) = 0 AND ${SQL_NOT_PAIRED_RAW} GROUP BY stack_id HAVING COUNT(*) > 1`
+      );
+      mState.stackCountsMap = new Map(stackRows.map((r) => [r.stack_id, Number(r.cnt || 1)]));
+    }
+
+    const phoneLocalExpr = mState.hasPhotoLinksTable
+      ? "CASE WHEN p.volume_serial = 'ANDROID_LOCAL' OR p.id >= 900000000 OR EXISTS (SELECT 1 FROM photo_links pl WHERE pl.photo_id = p.id AND pl.volume_serial = 'ANDROID_LOCAL') THEN 1 ELSE 0 END AS is_phone_local"
+      : "CASE WHEN p.volume_serial = 'ANDROID_LOCAL' OR p.id >= 900000000 THEN 1 ELSE 0 END AS is_phone_local";
+
     let sql = `
-      SELECT p.*, COALESCE(sc.cnt, 1) AS stack_count
+      SELECT p.id, p.file_name, p.rating, p.width, p.height, p.rotation, p.crop_w, p.crop_h,
+             CASE WHEN p.is_raw = 1 OR (p.paired_raw_path IS NOT NULL AND p.paired_raw_path != '') THEN 1 ELSE 0 END AS is_raw,
+             p.stack_id, COALESCE(p.volume_serial, '') AS volume_serial,
+             COALESCE(p.directory_path, '') AS directory_path, ${phoneLocalExpr}
       FROM photos p
-      LEFT JOIN (
-        SELECT stack_id, COUNT(*) AS cnt
-        FROM photos
-        WHERE stack_id IS NOT NULL AND IFNULL(is_unlinked, 0) = 0 AND ${SQL_NOT_PAIRED_RAW}
-        GROUP BY stack_id
-      ) sc ON sc.stack_id = p.stack_id
       WHERE IFNULL(p.is_unlinked, 0) = 0 AND ${SQL_NOT_PAIRED_RAW_P}
     `;
     const params = [];
 
     // 評価フィルタ (-1:棄, 0:可, 1:良, 2:優)
     if (mState.ratingFilter === 'default') {
-      sql += ' AND p.rating IN (0, 1, 2)';
+      sql += ' AND IFNULL(p.rating, 0) IN (0, 1, 2)';
     } else if (mState.ratingFilter !== 'all') {
-      sql += ' AND p.rating = ?';
+      sql += ' AND IFNULL(p.rating, 0) = ?';
       params.push(Number(mState.ratingFilter));
     }
 
-    // スタック集約
-    if (mState.stacked) {
-      sql += ' AND (p.stack_id IS NULL OR p.is_stack_primary = 1)';
+    // スタック集約（スマホ管理下フォルダ選択時は母艦側でサブコマ扱いになっていた写真も非表示にしない）
+    const isPhoneFolderSelected = Boolean(mState.folderPath && mState.folderPath.startsWith('📱 '));
+    if (mState.stacked && !isPhoneFolderSelected) {
+      sql += ' AND (p.stack_id IS NULL OR IFNULL(p.is_stack_primary, 1) = 1)';
     }
 
-    // ファイル名検索
+    // ファイル名・フォルダ名検索
     if (mState.searchQuery) {
-      sql += ' AND p.file_name LIKE ?';
-      params.push(`%${mState.searchQuery}%`);
+      if (mState.hasPhotoLinksTable && mState.hasPhotoLinksDirCol) {
+        sql += ' AND (p.file_name LIKE ? OR p.directory_path LIKE ? OR EXISTS (SELECT 1 FROM photo_links pl WHERE pl.photo_id = p.id AND (pl.file_name LIKE ? OR pl.directory_path LIKE ?)))';
+        params.push(`%${mState.searchQuery}%`, `%${mState.searchQuery}%`, `%${mState.searchQuery}%`, `%${mState.searchQuery}%`);
+      } else {
+        sql += ' AND (p.file_name LIKE ? OR p.directory_path LIKE ?)';
+        params.push(`%${mState.searchQuery}%`, `%${mState.searchQuery}%`);
+      }
     }
 
-    // 年月フィルタ
-    if (mState.yearMonth) {
-      sql += ' AND p.year_month = ?';
-      params.push(mState.yearMonth);
+    // 年・年月・日付(カレンダー)フィルタ
+    if (mState.dateDay) {
+      const colonDay = mState.dateDay.replace(/-/g, ':');
+      sql += ' AND (p.date_taken LIKE ? OR p.date_taken LIKE ?)';
+      params.push(`${mState.dateDay}%`, `${colonDay}%`);
+    } else if (mState.yearMonth) {
+      if (mState.yearMonth.length === 4) {
+        sql += ' AND p.year_month LIKE ?';
+        params.push(`${mState.yearMonth}-%`);
+      } else {
+        sql += ' AND p.year_month = ?';
+        params.push(mState.yearMonth);
+      }
     }
 
-    // カメラ機種フィルタ
+    // カメラ機種 & レンズフィルタ
     if (mState.cameraModel) {
       sql += ' AND p.camera_model = ?';
       params.push(mState.cameraModel);
+    }
+    if (mState.lensModel) {
+      sql += ' AND p.lens_model = ?';
+      params.push(mState.lensModel);
+    }
+
+    // フォルダ階層フィルタ
+    if (mState.folderPath) {
+      sql += ` AND ${_buildFolderFilterClause(mState.folderPath, params)}`;
     }
 
     // 撮影地フィルタ
@@ -819,10 +1504,11 @@
 
     const rows = queryLocalDbObjects(sql, params);
 
-    // 一覧グリッド描画を高速化するため、初期状態では stack_count のみ保持し、tags / stack_photos は選択・閲覧時にオンデマンド取得する
+    // 一覧グリッド描画を高速化するため、初期状態では8カラム＋stack_countのみ保持し、Exif・tags・stack_photosは選択時にオンデマンド取得する
+    const scMap = mState.stackCountsMap;
     for (const r of rows) {
       r.tags = [];
-      r.stack_count = mState.stacked ? Number(r.stack_count || 1) : 1;
+      r.stack_count = mState.stacked && r.stack_id && scMap ? (scMap.get(r.stack_id) || 1) : 1;
       r.stack_photos = [];
       r._detailsLoaded = false;
     }
@@ -834,18 +1520,33 @@
   }
 
   /**
-   * 単一写真（およびスタック内メンバー）のタグ一覧・スタック内訳をオンデマンドでロードする
+   * 単一写真（およびスタック内メンバー）の全メタデータ・タグ一覧・スタック内訳をオンデマンドでロードする
    */
   function ensureLocalPhotoDetails(photo) {
     if (!photo || mState.mode !== 'localdb' || !mState.localDb || photo._detailsLoaded) {
       return photo;
     }
     photo._detailsLoaded = true;
+    const prevRate = photo.rating;
+    const prevBaked = photo._bakedAdjust || null;
+    const fullRows = queryLocalDbObjects('SELECT * FROM photos WHERE id = ? LIMIT 1', [photo.id]);
+    if (fullRows && fullRows.length > 0) {
+      Object.assign(photo, fullRows[0]);
+      if (prevRate !== undefined) photo.rating = prevRate;
+    }
+    photo._bakedAdjust = prevBaked || {
+      brightness: Number(photo.brightness || 0),
+      contrast: Number(photo.contrast || 0),
+      saturation: Number(photo.saturation || 0),
+      fine_angle: Number(photo.fine_angle || 0),
+      rotation: Number(photo.rotation || 0),
+    };
     const tagRows = queryLocalDbObjects(
       'SELECT tag FROM photo_tags WHERE photo_id = ? ORDER BY tag',
       [photo.id]
     );
     photo.tags = tagRows.map((r) => r.tag);
+    photo._tagsLoaded = true;
 
     if (photo.stack_id != null && Number(photo.stack_count || 1) > 1) {
       const memberRows = queryLocalDbObjects(
@@ -855,19 +1556,72 @@
       for (const mr of memberRows) {
         if (mr.id === photo.id) {
           mr.tags = photo.tags;
+          mr._bakedAdjust = photo._bakedAdjust;
         } else {
           const mTags = queryLocalDbObjects(
             'SELECT tag FROM photo_tags WHERE photo_id = ? ORDER BY tag',
             [mr.id]
           );
           mr.tags = mTags.map((r) => r.tag);
+          mr._bakedAdjust = {
+            brightness: Number(mr.brightness || 0),
+            contrast: Number(mr.contrast || 0),
+            saturation: Number(mr.saturation || 0),
+            fine_angle: Number(mr.fine_angle || 0),
+            rotation: Number(mr.rotation || 0),
+          };
         }
         mr._detailsLoaded = true;
       }
       photo.stack_photos = memberRows;
       photo.stack_count = memberRows.length;
+    } else {
+      photo.stack_photos = [];
+      photo.stack_count = Number(photo.stack_count || 1);
     }
     return photo;
+  }
+
+  /**
+   * photos.directory_path と photo_links (ANDROID_LOCAL 等) の双方からフォルダ集計を取得する
+   */
+  function _queryLocalFolderSummaries() {
+    if (!mState.localDb) return [];
+    if (!mState.hasPhotoLinksTable) {
+      return queryLocalDbObjects(`
+        SELECT directory_path, COUNT(*) AS count
+        FROM photos
+        WHERE IFNULL(is_unlinked, 0) = 0 AND ${SQL_NOT_PAIRED_RAW} AND directory_path IS NOT NULL AND directory_path != ''
+        GROUP BY directory_path
+        ORDER BY directory_path ASC
+      `);
+    }
+    const linkDirExpr = mState.hasPhotoLinksDirCol
+      ? `CASE
+           WHEN pl.directory_path IS NOT NULL AND pl.directory_path != '' THEN pl.directory_path
+           WHEN pl.volume_serial = 'ANDROID_LOCAL' AND instr(pl.rel_path, '/') > 0 THEN '📱 ' || substr(pl.rel_path, 1, instr(pl.rel_path, '/') - 1)
+           ELSE ''
+         END`
+      : `CASE
+           WHEN pl.volume_serial = 'ANDROID_LOCAL' AND instr(pl.rel_path, '/') > 0 THEN '📱 ' || substr(pl.rel_path, 1, instr(pl.rel_path, '/') - 1)
+           ELSE ''
+         END`;
+    return queryLocalDbObjects(`
+      SELECT directory_path, COUNT(DISTINCT photo_id) AS count
+      FROM (
+        SELECT id AS photo_id, directory_path
+        FROM photos
+        WHERE IFNULL(is_unlinked, 0) = 0 AND ${SQL_NOT_PAIRED_RAW} AND directory_path IS NOT NULL AND directory_path != ''
+        UNION ALL
+        SELECT pl.photo_id AS photo_id, ${linkDirExpr} AS directory_path
+        FROM photo_links pl
+        INNER JOIN photos p ON p.id = pl.photo_id
+        WHERE IFNULL(p.is_unlinked, 0) = 0 AND ${SQL_NOT_PAIRED_RAW_P}
+      )
+      WHERE directory_path IS NOT NULL AND directory_path != ''
+      GROUP BY directory_path
+      ORDER BY directory_path ASC
+    `);
   }
 
   /**
@@ -876,37 +1630,64 @@
   async function fetchFilterSummaries() {
     if (mState.mode === 'server') {
       try {
-        const [tagsRes, tlRes, camRes, locRes] = await Promise.all([
+        const [tagsRes, tlRes, camRes, locRes, fldRes, preRes] = await Promise.all([
           fetch('/api/tags'),
           fetch('/api/timeline'),
           fetch('/api/cameras'),
           fetch('/api/locations/tree'),
+          fetch('/api/folders?fast=1').catch(() => null),
+          fetch('/api/filter-presets').catch(() => null),
         ]);
-        if (tagsRes.ok) {
+        if (tagsRes && tagsRes.ok) {
           const d = await tagsRes.json();
           mState.availableTags = d.tags || [];
           mState.untaggedCount = d.untagged_count || 0;
         }
-        if (tlRes.ok) {
+        if (tlRes && tlRes.ok) {
           const d = await tlRes.json();
           mState.timelineList = d.timeline || [];
         }
-        if (camRes.ok) {
+        if (camRes && camRes.ok) {
           const d = await camRes.json();
           mState.cameraList = d.cameras || [];
+          mState.gearList = (mState.cameraList || []).map((c) => ({
+            camera_model: c.camera_model,
+            lens_model: '',
+            count: Number(c.count || 0),
+          }));
         }
-        if (locRes.ok) {
+        if (locRes && locRes.ok) {
           const d = await locRes.json();
           mState.locationTree = d.tree || d.locations || [];
           mState.noLocationCount = d.no_location_count || 0;
+        }
+        if (fldRes && fldRes.ok) {
+          const d = await fldRes.json();
+          mState.folderList = (d.folders || []).map((f) => ({
+            directory_path: f.path || f.directory_path || '',
+            count: Number(f.count || 0),
+          }));
+        }
+        if (preRes && preRes.ok) {
+          const d = await preRes.json();
+          mState.savedBinders = d.presets || [];
         }
       } catch (e) {
         console.warn('フィルタ集計の取得エラー:', e);
       }
     } else if (mState.mode === 'localdb' && mState.localDb) {
-      // タグ集計 (tag_definitions の tag_key / short_name / is_pinned メタデータも統合)
+      // タグ集計 (tag_definitions の tag_key / short_name / is_pinned メタデータ・手動/AI種別も統合)
       const ptRows = queryLocalDbObjects(`
-        SELECT pt.tag, COUNT(DISTINCT pt.photo_id) AS count
+        SELECT pt.tag,
+               COUNT(DISTINCT pt.photo_id) AS count,
+               SUM(CASE WHEN pt.source = 'ai' THEN 1 ELSE 0 END) AS ai_count,
+               SUM(CASE WHEN pt.source = 'manual' OR pt.source IS NULL THEN 1 ELSE 0 END) AS manual_count,
+               CASE
+                 WHEN SUM(CASE WHEN pt.source = 'manual' OR pt.source IS NULL THEN 1 ELSE 0 END) > 0
+                  AND SUM(CASE WHEN pt.source = 'ai' THEN 1 ELSE 0 END) > 0 THEN 'both'
+                 WHEN SUM(CASE WHEN pt.source = 'ai' THEN 1 ELSE 0 END) > 0 THEN 'ai'
+                 ELSE 'manual'
+               END AS source
         FROM photo_tags pt
         INNER JOIN photos p ON p.id = pt.photo_id
         WHERE IFNULL(p.is_unlinked, 0) = 0
@@ -945,6 +1726,9 @@
         mergedTagsMap.set(r.tag, {
           tag: r.tag,
           count: r.count || 0,
+          ai_count: r.ai_count || 0,
+          manual_count: r.manual_count || 0,
+          source: r.source || 'manual',
           tag_key: meta.tag_key || '',
           short_name: meta.short_name || '',
           is_pinned: Boolean(meta.is_pinned),
@@ -955,6 +1739,9 @@
           mergedTagsMap.set(defTag, {
             tag: defTag,
             count: 0,
+            ai_count: 0,
+            manual_count: 0,
+            source: 'manual',
             tag_key: meta.tag_key || '',
             short_name: meta.short_name || '',
             is_pinned: Boolean(meta.is_pinned),
@@ -984,7 +1771,7 @@
         ORDER BY year_month DESC
       `);
 
-      // カメラ機種集計
+      // カメラ機種 & レンズ2階層集計
       mState.cameraList = queryLocalDbObjects(`
         SELECT camera_model, COUNT(*) AS count
         FROM photos
@@ -992,6 +1779,14 @@
         GROUP BY camera_model
         ORDER BY count DESC
       `);
+      mState.gearList = queryLocalDbObjects(`
+        SELECT camera_model, COALESCE(lens_model, '') AS lens_model, COUNT(*) AS count
+        FROM photos
+        WHERE IFNULL(is_unlinked, 0) = 0 AND ${SQL_NOT_PAIRED_RAW} AND camera_model IS NOT NULL AND camera_model != ''
+        GROUP BY camera_model, lens_model
+        ORDER BY count DESC
+      `);
+      mState.folderList = _queryLocalFolderSummaries();
 
       // ジオタグ集計
       const locRows = queryLocalDbObjects(`
@@ -1030,12 +1825,185 @@
           AND (latitude IS NULL OR country IS NULL OR country = '' OR (ABS(latitude) < 0.0001 AND ABS(longitude) < 0.0001))
       `);
       mState.noLocationCount = noLocRow[0] ? noLocRow[0].cnt : 0;
+
+      // 保存済みバインダー (filter_presets) の取得
+      try {
+        const hasPresets = queryLocalDbObjects(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='filter_presets'"
+        );
+        if (hasPresets.length > 0) {
+          mState.savedBinders = queryLocalDbObjects(
+            'SELECT id, name, description, filters FROM filter_presets ORDER BY updated_at DESC, name ASC'
+          );
+        } else {
+          mState.savedBinders = [];
+        }
+      } catch (e) {
+        mState.savedBinders = [];
+      }
     }
 
     renderDrawerFilters();
   }
 
   // ==================== グリッド描画（スクロール連動チャンク追加） ====================
+
+  function isTabletMode() {
+    return document.documentElement.getAttribute('data-device-mode') === 'tablet';
+  }
+
+  /**
+   * 選択中の複数写真に対して未読込のタグだけを単一 IN (...) クエリで一括プリロードする
+   */
+  function _batchEnsureSelectedTagsLoaded(photosList) {
+    if (mState.mode !== 'localdb' || !mState.localDb || !Array.isArray(photosList) || photosList.length === 0) {
+      return;
+    }
+    const missing = photosList.filter((p) => p && p.id && !p._detailsLoaded && !p._tagsLoaded);
+    if (missing.length === 0) return;
+
+    const byId = new Map();
+    for (const p of missing) {
+      p.tags = [];
+      p._tagsLoaded = true;
+      byId.set(Number(p.id), p);
+    }
+    const allIds = Array.from(byId.keys());
+    for (let offset = 0; offset < allIds.length; offset += 500) {
+      const chunk = allIds.slice(offset, offset + 500);
+      const ph = chunk.map(() => '?').join(',');
+      const rows = queryLocalDbObjects(
+        `SELECT photo_id, tag FROM photo_tags WHERE photo_id IN (${ph}) ORDER BY tag`,
+        chunk
+      );
+      for (const r of rows) {
+        const target = byId.get(Number(r.photo_id));
+        if (target && r.tag) target.tags.push(r.tag);
+      }
+    }
+  }
+
+  function _computeSelectedBatchTagSummary() {
+    const selPhotos = Array.from(mState.selectedIds)
+      .map((pid) => mState.photos.find((p) => p.id === pid))
+      .filter(Boolean);
+    const total = selPhotos.length;
+    if (total === 0) return { count: 0, commonTags: [], partialTags: [], commonRating: null, previewPhoto: null };
+
+    _batchEnsureSelectedTagsLoaded(selPhotos);
+
+    const fullCounts = new Map();
+    const leafUnion = new Set();
+    let firstRate = null;
+    let sameRate = true;
+
+    selPhotos.forEach((p, idx) => {
+      const r = Number(p.rating || 0);
+      if (idx === 0) firstRate = r;
+      else if (r !== firstRate) sameRate = false;
+
+      const tags = Array.isArray(p.tags) ? p.tags : [];
+      const uniq = new Set(tags);
+      uniq.forEach((t) => fullCounts.set(t, (fullCounts.get(t) || 0) + 1));
+      const leaves = tags.filter((t) => !tags.some((o) => o !== t && o.startsWith(`${t}/`)));
+      leaves.forEach((t) => leafUnion.add(t));
+    });
+
+    const allTags = Array.from(fullCounts.keys());
+    const displaySet = new Set(leafUnion);
+    allTags.forEach((t) => {
+      if (fullCounts.get(t) === total) {
+        const hasCommonDesc = allTags.some((d) => d !== t && d.startsWith(`${t}/`) && fullCounts.get(d) === total);
+        if (!hasCommonDesc) displaySet.add(t);
+        else displaySet.delete(t);
+      }
+    });
+
+    const commonTags = [];
+    const partialTags = [];
+    Array.from(displaySet)
+      .sort((a, b) => String(a).localeCompare(String(b), 'ja', { numeric: true }))
+      .forEach((t) => {
+        const cnt = fullCounts.get(t) || 0;
+        if (cnt === total) commonTags.push(t);
+        else if (cnt > 0) partialTags.push({ tag: t, cnt });
+      });
+    partialTags.sort((a, b) => b.cnt - a.cnt || String(a.tag).localeCompare(String(b.tag), 'ja', { numeric: true }));
+
+    return {
+      count: total,
+      commonTags,
+      partialTags,
+      commonRating: sameRate ? firstRate : null,
+      previewPhoto: selPhotos[selPhotos.length - 1] || selPhotos[0],
+    };
+  }
+
+  function syncTabletInspectorCurrentPhoto() {
+    if (!window.TetheractTouchUI || typeof window.TetheractTouchUI.updateTabletInspector !== 'function') {
+      return;
+    }
+    if (mState.selectMode && mState.selectedIds.size > 1) {
+      const batchInfo = _computeSelectedBatchTagSummary();
+      const pv = batchInfo.previewPhoto ? ensureLocalPhotoDetails(batchInfo.previewPhoto) : null;
+      window.TetheractTouchUI.updateTabletInspector(
+        pv ? { ...pv, thumbUrl: getMobileThumbnailUrl(pv) } : null,
+        batchInfo
+      );
+      return;
+    }
+    const idx = mState.inspectedIndex >= 0 ? mState.inspectedIndex : mState.viewerIndex;
+    const photo = idx >= 0 && idx < mState.photos.length ? mState.photos[idx] : null;
+    if (!photo) {
+      window.TetheractTouchUI.updateTabletInspector(null);
+      return;
+    }
+    ensureLocalPhotoDetails(photo);
+    window.TetheractTouchUI.updateTabletInspector({
+      ...photo,
+      thumbUrl: getMobileThumbnailUrl(photo),
+    });
+  }
+
+  function clearSingleSelection() {
+    mState.inspectedIndex = -1;
+    mState.inspectedPhotoId = null;
+    document.querySelectorAll('.m-card.is-inspected').forEach((el) => el.classList.remove('is-inspected'));
+    if (window.TetheractTouchUI && typeof window.TetheractTouchUI.setTargetPhotoState === 'function') {
+      window.TetheractTouchUI.setTargetPhotoState({
+        hasTarget: false,
+        rating: null,
+        canDuel: false,
+      });
+    }
+    syncTabletInspectorCurrentPhoto();
+  }
+
+  function inspectPhotoAt(index) {
+    if (index < 0 || index >= mState.photos.length) return;
+    const photo = mState.photos[index];
+    mState.inspectedIndex = index;
+    mState.inspectedPhotoId = photo ? photo.id : null;
+    mState.viewerIndex = index;
+    mState.viewerStackMember = null;
+
+    document.querySelectorAll('.m-card.is-inspected').forEach((el) => el.classList.remove('is-inspected'));
+    if (photo) {
+      const cardEl = document.querySelector(`.m-card[data-id="${photo.id}"]`);
+      if (cardEl) cardEl.classList.add('is-inspected');
+      const isStackPhoto = Number(photo.stack_count || 1) > 1;
+      if (window.TetheractTouchUI && typeof window.TetheractTouchUI.setTargetPhotoState === 'function') {
+        window.TetheractTouchUI.setTargetPhotoState({
+          hasTarget: true,
+          rating: Number(photo.rating || 0),
+          canDuel: isStackPhoto,
+        });
+      } else if (window.TetheractTouchUI && typeof window.TetheractTouchUI.setActiveRating === 'function') {
+        window.TetheractTouchUI.setActiveRating(Number(photo.rating || 0));
+      }
+    }
+    syncTabletInspectorCurrentPhoto();
+  }
 
   function renderPhotoGrid() {
     const grid = document.getElementById('mPhotoGrid');
@@ -1046,6 +2014,7 @@
     mState.renderedCount = 0;
 
     if (mState.photos.length === 0) {
+      clearSingleSelection();
       if (mState.mode !== 'offline') {
         if (empty) empty.style.display = 'flex';
       }
@@ -1053,7 +2022,19 @@
     }
     if (empty) empty.style.display = 'none';
 
+    updateMasonryRowHeight();
     appendNextGridChunk();
+
+    // 以前ユーザーが明示的に選択していた写真があれば引き継ぐ（初期状態では自動選択せずフッターバーを隠す）
+    let targetIdx = -1;
+    if (mState.inspectedPhotoId != null) {
+      targetIdx = mState.photos.findIndex((p) => p.id === mState.inspectedPhotoId);
+    }
+    if (targetIdx >= 0) {
+      inspectPhotoAt(targetIdx);
+    } else {
+      clearSingleSelection();
+    }
   }
 
   function appendNextGridChunk() {
@@ -1072,18 +2053,197 @@
     mState.renderedCount = end;
   }
 
+  function _parsePcConnectionSnapshot(rawJson) {
+    if (!rawJson) return null;
+    try {
+      const data = typeof rawJson === 'string' ? JSON.parse(rawJson) : rawJson;
+      if (!data || !data.ok) return null;
+      const mode = data.mode === 'online_ids' ? 'online_ids' : 'offline_ids';
+      const idSet = new Set(Array.isArray(data.ids) ? data.ids.map((v) => Number(v)) : []);
+      const onlineVolumes = new Set(
+        Array.isArray(data.online_volumes)
+          ? data.online_volumes.map((v) => String(v || '').toUpperCase()).filter(Boolean)
+          : []
+      );
+      return {
+        revision: String(data.revision || ''),
+        mode,
+        idSet,
+        onlineVolumes,
+        totalCount: Number(data.total_count || 0),
+        onlineCount: Number(data.online_count || 0),
+        offlineCount: Number(data.offline_count || 0),
+      };
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function _syncPcConnectionSnapshotFromNative() {
+    if (!window.TetheractNative || typeof window.TetheractNative.getPcConnectionStatusJson !== 'function') {
+      return false;
+    }
+    const parsed = _parsePcConnectionSnapshot(window.TetheractNative.getPcConnectionStatusJson());
+    const prevRev = mState.pcConnectionSnapshot ? mState.pcConnectionSnapshot.revision : '';
+    const nextRev = parsed ? parsed.revision : '';
+    mState.pcConnectionSnapshot = parsed;
+    return prevRev !== nextRev;
+  }
+
+  async function _refreshServerConnectionStatus() {
+    if (mState.mode !== 'server') return false;
+    try {
+      const res = await fetch('/api/mobile/connection-status', { cache: 'no-store' });
+      if (!res.ok) return false;
+      const data = await res.json();
+      const parsed = _parsePcConnectionSnapshot(data);
+      if (!parsed) return false;
+      const prevRev = mState.pcConnectionSnapshot ? mState.pcConnectionSnapshot.revision : '';
+      mState.pcConnectionSnapshot = parsed;
+      if (prevRev !== parsed.revision && window.__refreshMobileOfflineGridState) {
+        window.__refreshMobileOfflineGridState();
+      }
+      return prevRev !== parsed.revision;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function _isPhotoOnlineInPcSnapshot(photo, snap) {
+    if (!photo || !snap) return null;
+    const pid = Number(photo.id || 0);
+    if (pid <= 0) return null;
+    if (snap.mode === 'offline_ids') return !snap.idSet.has(pid);
+    if (snap.mode === 'online_ids') return snap.idSet.has(pid);
+    return null;
+  }
+
+  function isMobilePhotoOriginalOnline(photo) {
+    if (!photo) return false;
+    const isPhoneLocal =
+      Boolean(photo.is_phone_local) ||
+      Number(photo.id) >= 900000000 ||
+      photo.volume_serial === 'ANDROID_LOCAL';
+    if (isPhoneLocal) return true;
+    if (mState.mode === 'server') {
+      const snapOnline = _isPhotoOnlineInPcSnapshot(photo, mState.pcConnectionSnapshot);
+      if (snapOnline !== null) return snapOnline;
+      return !Boolean(photo.is_offline);
+    }
+    if (mState.mode === 'localdb') {
+      if (mState.nativeLinkState.usbConnected) {
+        const usbVsn = String(mState.nativeLinkState.usbVsn || '').trim().toUpperCase();
+        const photoVsn = String(photo.volume_serial || '').trim().toUpperCase();
+        if (!usbVsn || !photoVsn || usbVsn === photoVsn) {
+          return true;
+        }
+      }
+      if (mState.nativeLinkState.isPcLinked) {
+        const snapOnline = _isPhotoOnlineInPcSnapshot(photo, mState.pcConnectionSnapshot);
+        if (snapOnline !== null) return snapOnline;
+        return true;
+      }
+      return false;
+    }
+    return false;
+  }
+
+  window.__refreshMobileOfflineGridState = function (linkState) {
+    if (linkState && typeof linkState === 'object') {
+      mState.nativeLinkState = {
+        isPcLinked: Boolean(linkState.isPcLinked),
+        usbConnected: Boolean(linkState.usbConnected),
+        usbVsn: String(linkState.usbVsn || '').toUpperCase(),
+      };
+      if (!mState.nativeLinkState.isPcLinked) {
+        mState.pcConnectionSnapshot = null;
+      } else {
+        const curRev = mState.pcConnectionSnapshot ? mState.pcConnectionSnapshot.revision : '';
+        if (!curRev || (typeof linkState.pcConnRevision === 'string' && linkState.pcConnRevision !== curRev)) {
+          _syncPcConnectionSnapshotFromNative();
+        }
+      }
+    }
+    const grid = document.getElementById('mPhotoGrid');
+    if (grid) {
+      const photoById = new Map(mState.photos.map((p) => [String(p.id), p]));
+      const fallbackOnline = Boolean(mState.nativeLinkState.isPcLinked || mState.nativeLinkState.usbConnected);
+      grid.querySelectorAll('.m-card').forEach((card) => {
+        const photo = photoById.get(String(card.dataset.id || ''));
+        if (photo) {
+          card.classList.toggle('is-offline-cache', !isMobilePhotoOriginalOnline(photo));
+        } else if (card.classList.contains('is-phone-local')) {
+          card.classList.remove('is-offline-cache');
+        } else if (mState.mode === 'localdb') {
+          card.classList.toggle('is-offline-cache', !fallbackOnline);
+        }
+      });
+    }
+    if (mState.viewerOpen) {
+      const activePhoto = getActiveViewerPhoto();
+      const imgEl = document.getElementById('mViewerImg');
+      const srcBadge = document.getElementById('mViewerSourceBadge');
+      if (activePhoto) {
+        const online = isMobilePhotoOriginalOnline(activePhoto);
+        if (online && imgEl && imgEl.dataset.hdLoaded !== '1') {
+          renderViewerCurrentPhoto();
+        } else if (!online && srcBadge && !srcBadge.classList.contains('is-hd')) {
+          srcBadge.textContent =
+            mState.mode === 'server' || mState.nativeLinkState.isPcLinked || mState.nativeLinkState.usbConnected
+              ? 'サムネイル (母艦未接続)'
+              : 'サムネイル';
+        }
+      }
+    }
+  };
+
   function createMobilePhotoCard(photo, index) {
     const card = document.createElement('div');
     card.className = 'm-card';
+    const isPhoneLocal =
+      Boolean(photo.is_phone_local) ||
+      Number(photo.id) >= 900000000 ||
+      photo.volume_serial === 'ANDROID_LOCAL';
+    const isOnline = isMobilePhotoOriginalOnline(photo);
+    if (isPhoneLocal) card.classList.add('is-phone-local');
+    if (!isOnline) card.classList.add('is-offline-cache');
     if (photo.rating === -1) card.classList.add('is-discarded');
     if (mState.selectedIds.has(photo.id)) card.classList.add('selected');
+    if (mState.inspectedPhotoId === photo.id) card.classList.add('is-inspected');
     card.dataset.id = String(photo.id);
     card.dataset.index = String(index);
 
     const thumbUrl = getMobileThumbnailUrl(photo);
     const rateBadgeHtml = getRateBadgeHtml(photo.rating);
 
+    let ratio = 1.333;
+    if (photo._realAspect > 0) {
+      ratio = photo._realAspect;
+    } else if (Number(photo.thumb_width) > 0 && Number(photo.thumb_height) > 0) {
+      ratio = Number(photo.thumb_width) / Number(photo.thumb_height);
+    } else {
+      const rawW = Number(photo.width || 0);
+      const rawH = Number(photo.height || 0);
+      const rot = ((Number(photo.rotation || 0) % 360) + 360) % 360;
+      let effW = rot === 90 || rot === 270 ? rawH : rawW;
+      let effH = rot === 90 || rot === 270 ? rawW : rawH;
+      if (effW > 0 && effH > 0 && Number(photo.crop_w) > 0 && Number(photo.crop_h) > 0) {
+        effW *= Number(photo.crop_w);
+        effH *= Number(photo.crop_h);
+      }
+      if (effW > 0 && effH > 0) {
+        ratio = effW / effH;
+      }
+    }
+    ratio = Math.max(0.35, Math.min(3.2, ratio));
+    const ratioStr = ratio.toFixed(4);
+    card.style.setProperty('--card-aspect', ratioStr);
+    card.style.setProperty('--card-grow', ratioStr);
+
     const topBadges = [];
+    if (isPhoneLocal) {
+      topBadges.push(`<span class="m-mini-badge phone-badge" title="スマホ機内の原本写真">📱</span>`);
+    }
     if (photo.stack_count && photo.stack_count > 1) {
       topBadges.push(`<span class="m-mini-badge stack-badge"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px;margin-right:2px;"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 12 12 17 22 12"/></svg>${photo.stack_count}</span>`);
     }
@@ -1092,15 +2252,64 @@
     }
 
     card.innerHTML = `
-      <img src="${_escAttr(thumbUrl)}" alt="${_escAttr(photo.file_name)}" loading="lazy">
+      <img src="${_escAttr(thumbUrl)}" alt="${_escAttr(photo.file_name)}" loading="lazy" decoding="async">
       <div class="m-card-check">✓</div>
       <div class="m-card-top-badges">${topBadges.join('')}</div>
+      <span class="m-card-offline-dot" title="DBサムネイルのみ（未接続）"></span>
       ${rateBadgeHtml}
+      <div class="m-card-mount-caption">${_escHtml(photo.file_name || '')}</div>
     `;
 
+    // 実デコード済みサムネイル寸法 (Exif回転・クロップ反映済み) から正確な縦横比を自動補正
+    const imgEl = card.querySelector('img');
+    if (imgEl) {
+      window.TetheractTouchUI?.applyPhotoCssAdjustmentsToElement?.(imgEl, photo);
+      const syncNaturalAspect = () => {
+        if (!imgEl.naturalWidth || !imgEl.naturalHeight) return;
+        const realRatio = Math.max(0.35, Math.min(3.2, imgEl.naturalWidth / imgEl.naturalHeight));
+        photo._realAspect = realRatio;
+        const rStr = realRatio.toFixed(4);
+        card.style.setProperty('--card-aspect', rStr);
+        card.style.setProperty('--card-grow', rStr);
+      };
+      if (imgEl.complete && imgEl.naturalWidth > 0) {
+        syncNaturalAspect();
+      } else {
+        imgEl.addEventListener('load', syncNaturalAspect, { once: true });
+      }
+    }
+
     card.addEventListener('click', () => {
-      if (mState.selectMode) {
+      if (window.__tetheractJustPinchedUntil && Date.now() < window.__tetheractJustPinchedUntil) {
+        return;
+      }
+      if (window.__tetheractJustDragSelectedUntil && Date.now() < window.__tetheractJustDragSelectedUntil) {
+        return;
+      }
+      if (mState.selectMode || document.body.classList.contains('m-select-mode')) {
+        if (!mState.selectMode) {
+          mState.selectMode = true;
+          document.body.classList.add('m-select-mode');
+          document.getElementById('mSelectModeBtn')?.classList.add('active');
+        }
         toggleSelectPhoto(photo.id, card);
+        if (isTabletMode() && mState.selectMode) {
+          inspectPhotoAt(index);
+        }
+        return;
+      }
+      if (isTabletMode()) {
+        // タブレットモード: シングルタップで右インスペクタ選択、ダブルタップ(320ms以内)で拡大ビューアを開く
+        const now = Date.now();
+        if (mState.lastCardTapId === photo.id && now - mState.lastCardTapTime < 320) {
+          mState.lastCardTapId = null;
+          mState.lastCardTapTime = 0;
+          openViewerAt(index);
+          return;
+        }
+        mState.lastCardTapId = photo.id;
+        mState.lastCardTapTime = now;
+        inspectPhotoAt(index);
       } else {
         openViewerAt(index);
       }
@@ -1111,9 +2320,9 @@
 
   function getRateBadgeHtml(rating) {
     const r = Number(rating || 0);
-    if (r === 2) return '<span class="m-card-badge-rate rate-2">★ 優</span>';
-    if (r === 1) return '<span class="m-card-badge-rate rate-1">● 良</span>';
-    if (r === -1) return '<span class="m-card-badge-rate rate-neg1">✕ 棄</span>';
+    if (r === 2) return '<span class="m-card-badge-rate rate-2">優</span>';
+    if (r === 1) return '<span class="m-card-badge-rate rate-1">良</span>';
+    if (r === -1) return '<span class="m-card-badge-rate rate-neg1">棄</span>';
     return '';
   }
 
@@ -1136,188 +2345,626 @@
     }
   }
 
+  function updateMasonryRowHeight() {
+    const grid = document.getElementById('mPhotoGrid');
+    if (!grid) return;
+    const scrollEl = document.getElementById('mScrollContainer');
+    const availW =
+      (grid.clientWidth > 40
+        ? grid.clientWidth
+        : scrollEl && scrollEl.clientWidth > 40
+        ? scrollEl.clientWidth - 8
+        : window.innerWidth) || 360;
+    const scrollH = (scrollEl && scrollEl.clientHeight > 80 ? scrollEl.clientHeight : window.innerHeight) || 640;
+    const cols = Math.max(1, Number(mState.gridCols || 3));
+    const maxRowH = Math.max(96, Math.round(scrollH * 0.68));
+    const rowH = Math.max(64, Math.min(maxRowH, Math.round(availW / (cols * 1.25))));
+    grid.style.setProperty('--masonry-row-height', `${rowH}px`);
+  }
+
   function updateGridColsUI() {
     const grid = document.getElementById('mPhotoGrid');
     const btn = document.getElementById('mGridColsBtn');
     if (grid) {
-      grid.classList.remove('cols-2', 'cols-3', 'cols-4');
+      grid.classList.remove('cols-1', 'cols-2', 'cols-3', 'cols-4', 'cols-5', 'cols-6');
       grid.classList.add(`cols-${mState.gridCols}`);
     }
     if (btn) {
       btn.textContent = `⊞ ${mState.gridCols}列`;
     }
+    updateMasonryRowHeight();
+  }
+
+  function updateGridLayoutUI() {
+    const grid = document.getElementById('mPhotoGrid');
+    const btn = document.getElementById('mGridLayoutBtn');
+    const layout = mState.gridLayout || 'grid';
+    if (grid) {
+      grid.classList.remove('layout-grid', 'layout-masonry', 'layout-mount');
+      grid.classList.add(`layout-${layout}`);
+    }
+    if (btn) {
+      const labels = {
+        grid: '⊞ 標準',
+        masonry: '▤ びっしり',
+        mount: '▣ マウント',
+      };
+      btn.textContent = labels[layout] || '⊞ 標準';
+      btn.classList.toggle('active', layout !== 'grid');
+    }
+    updateMasonryRowHeight();
+  }
+
+  function stepMobileGridCols(deltaCols, midX, midY) {
+    const minCols = 2;
+    const maxCols = isTabletMode() ? 6 : 5;
+    const nextCols = Math.max(minCols, Math.min(maxCols, Number(mState.gridCols || 3) + Number(deltaCols || 0)));
+    if (nextCols === mState.gridCols) return;
+
+    const scrollContainer = document.getElementById('mScrollContainer');
+    let anchorCard = null;
+    let prevTop = 0;
+    if (scrollContainer && typeof midX === 'number' && typeof midY === 'number') {
+      const hit = document.elementFromPoint(midX, midY);
+      anchorCard = hit ? hit.closest('.m-card') : null;
+      if (anchorCard) {
+        prevTop = anchorCard.getBoundingClientRect().top;
+      }
+    }
+
+    mState.gridCols = nextCols;
+    _safeSetStorage('pm_mobile_cols', String(mState.gridCols));
+    updateGridColsUI();
+
+    if (scrollContainer && anchorCard) {
+      const newTop = anchorCard.getBoundingClientRect().top;
+      scrollContainer.scrollTop += newTop - prevTop;
+    }
+    if (
+      scrollContainer &&
+      scrollContainer.scrollTop + scrollContainer.clientHeight >= scrollContainer.scrollHeight - 900
+    ) {
+      appendNextGridChunk();
+    }
+    if (navigator.vibrate) {
+      try {
+        navigator.vibrate(8);
+      } catch (e) {}
+    }
+    showToast(`グリッド: ${nextCols}列`, 1000);
   }
 
   // ==================== フィルタドロワー & アクティブチップ描画 ====================
 
-  function renderDrawerFilters() {
-    // 1. タグリスト
-    const tagContainer = document.getElementById('mTagFilterList');
-    if (tagContainer) {
-      let html = `
-        <div class="m-filter-item ${mState.untaggedOnly ? 'active-include' : ''}" data-untagged="1">
-          <span>未分類の写真</span>
-          <span class="m-filter-count">${mState.untaggedCount}</span>
-        </div>
-      `;
-      for (const item of mState.availableTags) {
-        const t = item.tag;
-        const depth = t.split('/').length - 1;
-        const indentPx = depth * 12;
-        const isInc = mState.includeTags.includes(t);
-        const isExc = mState.excludeTags.includes(t);
-        const cls = isInc ? 'active-include' : isExc ? 'active-exclude' : '';
-        const prefix = isInc ? '✓ ' : isExc ? '− ' : '';
-        html += `
-          <div class="m-filter-item ${cls}" style="padding-left:${10 + indentPx}px;" data-tag="${_escAttr(t)}">
-            <span>${prefix}${_escHtml(t)}</span>
-            <span class="m-filter-count">${item.count}</span>
+  /**
+   * フィルタ項目リスト（ドロワー内およびタブレット/スマホのPerspectiveステージへ複製されたDOM）にタップイベントをバインドする
+   */
+  /**
+   * 指定した年月 (YYYY-MM) の日別写真枚数マップ (dayInt -> count) を取得する（キャッシュ付き）
+   */
+  function getMonthDayCountsMap(ym) {
+    if (!ym || ym.length < 7) return new Map();
+    if (mState.monthDayCountsCache.has(ym)) {
+      return mState.monthDayCountsCache.get(ym);
+    }
+    const dayMap = new Map();
+    if (mState.mode === 'localdb' && mState.localDb) {
+      const rows = queryLocalDbObjects(
+        `SELECT SUBSTR(REPLACE(date_taken, ':', '-'), 1, 10) AS ymd, COUNT(*) AS cnt FROM photos WHERE IFNULL(is_unlinked, 0) = 0 AND ${SQL_NOT_PAIRED_RAW} AND year_month = ? GROUP BY ymd`,
+        [ym]
+      );
+      for (const r of rows) {
+        const ymd = String(r.ymd || '');
+        const dNum = Number(ymd.slice(8, 10));
+        if (dNum >= 1 && dNum <= 31) {
+          dayMap.set(dNum, (dayMap.get(dNum) || 0) + Number(r.cnt || 0));
+        }
+      }
+    } else {
+      for (const p of mState.photos) {
+        const dt = String(p.date_taken || '').replace(/:/g, '-');
+        if (dt.startsWith(ym)) {
+          const dNum = Number(dt.slice(8, 10));
+          if (dNum >= 1 && dNum <= 31) {
+            dayMap.set(dNum, (dayMap.get(dNum) || 0) + 1);
+          }
+        }
+      }
+    }
+    mState.monthDayCountsCache.set(ym, dayMap);
+    return dayMap;
+  }
+
+  /**
+   * 指定した年月 (YYYY-MM) の7列ミニカレンダーHTMLを生成する
+   */
+  function buildMiniCalendarHtml(ym) {
+    const parts = String(ym || '').split('-');
+    const year = Number(parts[0]);
+    const month = Number(parts[1]);
+    if (!year || !month || month < 1 || month > 12) return '';
+
+    const dayCounts = getMonthDayCountsMap(ym);
+    const firstWeekday = new Date(year, month - 1, 1).getDay();
+    const daysInMonth = new Date(year, month, 0).getDate();
+
+    let cellsHtml = '';
+    for (let i = 0; i < firstWeekday; i++) {
+      cellsHtml += '<div class="m-mini-cal-cell"></div>';
+    }
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dd = String(d).padStart(2, '0');
+      const fullDate = `${ym}-${dd}`;
+      const cnt = dayCounts.get(d) || 0;
+      const isAct = mState.dateDay === fullDate;
+      if (cnt > 0) {
+        cellsHtml += `
+          <div class="m-mini-cal-cell has-photos ${isAct ? 'active-day' : ''}" data-cal-day="${_escAttr(fullDate)}" data-cal-ym="${_escAttr(ym)}">
+            <span>${d}</span>
+            <span class="m-mini-cal-cnt">${cnt}</span>
           </div>
         `;
+      } else {
+        cellsHtml += `<div class="m-mini-cal-cell"><span>${d}</span></div>`;
       }
-      tagContainer.innerHTML = html;
+    }
 
-      tagContainer.querySelectorAll('.m-filter-item').forEach((el) => {
-        el.addEventListener('click', () => {
-          if (el.dataset.untagged === '1') {
-            mState.untaggedOnly = !mState.untaggedOnly;
-            if (mState.untaggedOnly) {
-              mState.includeTags = [];
-              mState.excludeTags = [];
+    const clearDayBtn = mState.dateDay && mState.dateDay.startsWith(ym)
+      ? `<button type="button" class="m-tree-tool-btn" data-clear-cal-day="${_escAttr(ym)}">日指定解除</button>`
+      : '';
+
+    return `
+      <div class="m-mini-cal-wrap">
+        <div class="m-mini-cal-title">
+          <span>📅 ${year}年${month}月 カレンダー</span>
+          ${clearDayBtn}
+        </div>
+        <div class="m-mini-cal-weekdays">
+          <span>日</span><span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span>
+        </div>
+        <div class="m-mini-cal-grid">${cellsHtml}</div>
+      </div>
+    `;
+  }
+
+  /**
+   * フィルタ項目リスト（ドロワー内およびタブレット/スマホのPerspectiveステージへ複製されたDOM）にタップ＆ツリー開閉イベントをバインドする
+   */
+  function bindFilterListEvents(rootEl) {
+    if (!rootEl) return;
+
+    // 1. ツリー展開/折りたたみボタン (▶ / ▼)
+    rootEl.querySelectorAll('[data-tree-toggle]').forEach((btn) => {
+      if (btn._toggleBound) return;
+      btn._toggleBound = true;
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const key = btn.getAttribute('data-tree-toggle') || '';
+        if (!key) return;
+        if (mState.expandedFilterNodes.has(key)) {
+          mState.expandedFilterNodes.delete(key);
+        } else {
+          mState.expandedFilterNodes.add(key);
+        }
+        renderDrawerFilters();
+      });
+    });
+
+    // 2. タグ種別切替 (手動 / AI / すべて) ＆ タグツリー全展開 / 全折りたたみツールボタン
+    rootEl.querySelectorAll('[data-tag-source]').forEach((btn) => {
+      if (btn._srcBound) return;
+      btn._srcBound = true;
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        mState.tagSourceFilter = btn.getAttribute('data-tag-source') || 'manual';
+        _safeSetStorage('pm_mobile_tag_source', mState.tagSourceFilter);
+        renderDrawerFilters();
+      });
+    });
+
+    rootEl.querySelectorAll('[data-tree-action]').forEach((btn) => {
+      if (btn._actionBound) return;
+      btn._actionBound = true;
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const act = btn.getAttribute('data-tree-action');
+        if (act === 'expand-all-tags') {
+          for (const item of mState.availableTags) {
+            const parts = String(item.tag || '').split('/').filter(Boolean);
+            let cur = '';
+            for (let i = 0; i < parts.length - 1; i++) {
+              cur = cur ? `${cur}/${parts[i]}` : parts[i];
+              mState.expandedFilterNodes.add(`tag:${cur}`);
             }
+          }
+        } else if (act === 'collapse-all-tags') {
+          for (const k of Array.from(mState.expandedFilterNodes)) {
+            if (k.startsWith('tag:')) mState.expandedFilterNodes.delete(k);
+          }
+        }
+        renderDrawerFilters();
+      });
+    });
+
+    // 3. ミニカレンダーの日付セルタップ
+    rootEl.querySelectorAll('[data-cal-day]').forEach((cell) => {
+      if (cell._calBound) return;
+      cell._calBound = true;
+      cell.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const fullDate = cell.getAttribute('data-cal-day') || '';
+        const ym = cell.getAttribute('data-cal-ym') || '';
+        if (mState.dateDay === fullDate) {
+          mState.dateDay = '';
+        } else {
+          mState.dateDay = fullDate;
+          if (ym) mState.yearMonth = ym;
+        }
+        renderDrawerFilters();
+        fetchPhotosData();
+      });
+    });
+
+    rootEl.querySelectorAll('[data-clear-cal-day]').forEach((btn) => {
+      if (btn._clearCalBound) return;
+      btn._clearCalBound = true;
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        mState.dateDay = '';
+        renderDrawerFilters();
+        fetchPhotosData();
+      });
+    });
+
+    // 4. 各フィルタ行 (.m-filter-item) のタップ
+    rootEl.querySelectorAll('.m-filter-item').forEach((el) => {
+      if (el._filterBound) return;
+      el._filterBound = true;
+      el.addEventListener('click', () => {
+        if (el.dataset.justSwiped === '1') return;
+        if (el.dataset.untagged === '1') {
+          mState.untaggedOnly = !mState.untaggedOnly;
+          if (mState.untaggedOnly) {
+            mState.includeTags = [];
+            mState.excludeTags = [];
+          }
+          renderDrawerFilters();
+          fetchPhotosData();
+          return;
+        }
+        if (el.dataset.tag != null) {
+          const tag = el.dataset.tag;
+          mState.untaggedOnly = false;
+          if (mState.includeTags.includes(tag)) {
+            mState.includeTags = mState.includeTags.filter((x) => x !== tag);
+            mState.excludeTags.push(tag);
+          } else if (mState.excludeTags.includes(tag)) {
+            mState.excludeTags = mState.excludeTags.filter((x) => x !== tag);
           } else {
-            const tag = el.dataset.tag;
-            mState.untaggedOnly = false;
-            if (mState.includeTags.includes(tag)) {
-              // 含む -> 除外へ遷移
-              mState.includeTags = mState.includeTags.filter((x) => x !== tag);
-              mState.excludeTags.push(tag);
-            } else if (mState.excludeTags.includes(tag)) {
-              // 除外 -> 解除へ遷移
-              mState.excludeTags = mState.excludeTags.filter((x) => x !== tag);
-            } else {
-              // 未選択 -> 含むへ遷移
-              mState.includeTags.push(tag);
+            mState.includeTags.push(tag);
+            mState.expandedFilterNodes.add(`tag:${tag}`);
+          }
+          renderDrawerFilters();
+          fetchPhotosData();
+          return;
+        }
+        if (el.dataset.ym != null) {
+          const ym = el.dataset.ym;
+          mState.dateDay = '';
+          if (mState.yearMonth === ym) {
+            mState.yearMonth = '';
+          } else {
+            mState.yearMonth = ym;
+            if (ym.length === 4) {
+              mState.expandedFilterNodes.add(`ym:${ym}`);
+            } else if (ym.length >= 7) {
+              mState.expandedFilterNodes.add(`ym:${ym.slice(0, 4)}`);
+              mState.expandedFilterNodes.add(`cal:${ym}`);
             }
           }
           renderDrawerFilters();
           fetchPhotosData();
-        });
-      });
-    }
-
-    // 2. タイムライン
-    const tlContainer = document.getElementById('mTimelineFilterList');
-    if (tlContainer) {
-      let html = '';
-      for (const item of mState.timelineList) {
-        const ym = item.year_month;
-        const active = mState.yearMonth === ym ? 'active-include' : '';
-        html += `
-          <div class="m-filter-item ${active}" data-ym="${_escAttr(ym)}">
-            <span>${_escHtml(ym)}</span>
-            <span class="m-filter-count">${item.count}</span>
-          </div>
-        `;
-      }
-      tlContainer.innerHTML = html || '<div class="m-center-sub">データなし</div>';
-      tlContainer.querySelectorAll('.m-filter-item').forEach((el) => {
-        el.addEventListener('click', () => {
-          const ym = el.dataset.ym;
-          mState.yearMonth = mState.yearMonth === ym ? '' : ym;
+          return;
+        }
+        if (el.dataset.noloc === '1') {
+          mState.noLocationOnly = !mState.noLocationOnly;
+          mState.country = '';
+          mState.stateName = '';
+          mState.city = '';
           renderDrawerFilters();
           fetchPhotosData();
-        });
-      });
-    }
-
-    // 3. ジオタグ（撮影地）
-    const locContainer = document.getElementById('mLocationFilterList');
-    if (locContainer) {
-      let html = `
-        <div class="m-filter-item ${mState.noLocationOnly ? 'active-include' : ''}" data-noloc="1">
-          <span>ジオタグなし</span>
-          <span class="m-filter-count">${mState.noLocationCount}</span>
-        </div>
-      `;
-      for (const c of mState.locationTree) {
-        const cActive =
-          !mState.noLocationOnly && mState.country === c.country && !mState.stateName
-            ? 'active-include'
-            : '';
-        html += `
-          <div class="m-filter-item ${cActive}" data-country="${_escAttr(c.country)}">
-            <span>${_escHtml(c.country)}</span>
-            <span class="m-filter-count">${c.count}</span>
-          </div>
-        `;
-        for (const s of c.states || []) {
-          const sActive =
-            !mState.noLocationOnly &&
-            mState.country === c.country &&
-            mState.stateName === s.state &&
-            !mState.city
-              ? 'active-include'
-              : '';
-          html += `
-            <div class="m-filter-item ${sActive}" style="padding-left:22px;" data-country="${_escAttr(c.country)}" data-state="${_escAttr(s.state)}">
-              <span>└ ${_escHtml(s.state)}</span>
-              <span class="m-filter-count">${s.count}</span>
-            </div>
-          `;
+          return;
         }
-      }
-      locContainer.innerHTML = html;
-      locContainer.querySelectorAll('.m-filter-item').forEach((el) => {
-        el.addEventListener('click', () => {
-          if (el.dataset.noloc === '1') {
-            mState.noLocationOnly = !mState.noLocationOnly;
+        if (el.dataset.country != null) {
+          mState.noLocationOnly = false;
+          const c = el.dataset.country || '';
+          const s = el.dataset.state || '';
+          const city = el.dataset.city || '';
+          if (mState.country === c && mState.stateName === s && mState.city === city) {
             mState.country = '';
             mState.stateName = '';
             mState.city = '';
           } else {
-            mState.noLocationOnly = false;
-            const c = el.dataset.country || '';
-            const s = el.dataset.state || '';
-            if (mState.country === c && mState.stateName === s) {
-              mState.country = '';
-              mState.stateName = '';
-              mState.city = '';
-            } else {
-              mState.country = c;
-              mState.stateName = s;
-              mState.city = '';
-            }
+            mState.country = c;
+            mState.stateName = s;
+            mState.city = city;
+            if (c && !s) mState.expandedFilterNodes.add(`loc:${c}`);
+            if (c && s && !city) mState.expandedFilterNodes.add(`loc:${c}/${s}`);
           }
           renderDrawerFilters();
           fetchPhotosData();
-        });
-      });
-    }
-
-    // 4. カメラ機種
-    const camContainer = document.getElementById('mCameraFilterList');
-    if (camContainer) {
-      let html = '';
-      for (const item of mState.cameraList) {
-        const cm = item.camera_model;
-        const active = mState.cameraModel === cm ? 'active-include' : '';
-        html += `
-          <div class="m-filter-item ${active}" data-cam="${_escAttr(cm)}">
-            <span>${_escHtml(cm)}</span>
-            <span class="m-filter-count">${item.count}</span>
-          </div>
-        `;
-      }
-      camContainer.innerHTML = html || '<div class="m-center-sub">データなし</div>';
-      camContainer.querySelectorAll('.m-filter-item').forEach((el) => {
-        el.addEventListener('click', () => {
-          const cm = el.dataset.cam;
-          mState.cameraModel = mState.cameraModel === cm ? '' : cm;
+          return;
+        }
+        if (el.dataset.cam != null) {
+          const cm = el.dataset.cam || '';
+          const lm = el.dataset.lens || '';
+          if (mState.cameraModel === cm && mState.lensModel === lm) {
+            mState.cameraModel = '';
+            mState.lensModel = '';
+          } else {
+            mState.cameraModel = cm;
+            mState.lensModel = lm;
+            if (cm && !lm) mState.expandedFilterNodes.add(`cam:${cm}`);
+          }
           renderDrawerFilters();
           fetchPhotosData();
-        });
+        }
       });
+    });
+  }
+  window.__bindClonedFilterEvents = bindFilterListEvents;
+
+  function renderDrawerFilters() {
+    const TB = window.TetheractCore && window.TetheractCore.TreeBuilder;
+
+    // 1. タグ階層ツリー（手動 / AI / すべて 切替式）
+    const tagContainer = document.getElementById('mTagFilterList');
+    if (tagContainer) {
+      const srcMode = mState.tagSourceFilter || 'manual';
+      const filteredTags = TB && typeof TB.filterTagsBySource === 'function'
+        ? TB.filterTagsBySource(mState.availableTags, srcMode)
+        : mState.availableTags;
+      let html = `
+        <div class="m-tree-toolbar" style="justify-content:space-between;gap:6px;flex-wrap:wrap;">
+          <div class="t-mode-switch-group" role="group" aria-label="タグ種別切替">
+            <button type="button" class="t-mode-switch-btn ${srcMode === 'manual' ? 'is-active' : ''}" data-tag-source="manual" data-no-dismiss="1">手動</button>
+            <button type="button" class="t-mode-switch-btn ${srcMode === 'ai' ? 'is-active' : ''}" data-tag-source="ai" data-no-dismiss="1">AI</button>
+            <button type="button" class="t-mode-switch-btn ${srcMode === 'all' ? 'is-active' : ''}" data-tag-source="all" data-no-dismiss="1">すべて</button>
+          </div>
+          <div style="display:inline-flex;gap:4px;">
+            <button type="button" class="m-tree-tool-btn" data-tree-action="expand-all-tags" data-no-dismiss="1">すべて展開</button>
+            <button type="button" class="m-tree-tool-btn" data-tree-action="collapse-all-tags" data-no-dismiss="1">折りたたむ</button>
+          </div>
+        </div>
+        <div class="m-filter-item ${mState.untaggedOnly ? 'active-include' : ''}" data-untagged="1">
+          <span class="m-filter-item-left"><span class="m-tree-toggle-spacer"></span><span class="m-filter-item-label">未分類の写真</span></span>
+          <span class="m-filter-count">${mState.untaggedCount}</span>
+        </div>
+      `;
+      const tagTree = TB && typeof TB.buildTagHierarchy === 'function'
+        ? TB.buildTagHierarchy(filteredTags, { preAggregated: true })
+        : [];
+
+      const renderTagNodes = (nodes, depth) => {
+        for (const node of nodes) {
+          const t = node.fullPath;
+          const hasChildren = Array.isArray(node.children) && node.children.length > 0;
+          const toggleKey = `tag:${t}`;
+          const isOpen = mState.expandedFilterNodes.has(toggleKey);
+          const isInc = mState.includeTags.includes(t);
+          const isExc = mState.excludeTags.includes(t);
+          const cls = isInc ? 'active-include' : isExc ? 'active-exclude' : '';
+          const prefix = isInc ? '✓ ' : isExc ? '− ' : '';
+          const toggleHtml = hasChildren
+            ? `<button type="button" class="m-tree-toggle-btn" data-tree-toggle="${_escAttr(toggleKey)}">${isOpen ? '▼' : '▶'}</button>`
+            : '<span class="m-tree-toggle-spacer"></span>';
+          const shortDisp = node.short_name ? `${_escHtml(node.short_name)} (${_escHtml(node.name)})` : _escHtml(node.name);
+          html += `
+            <div class="m-filter-item ${cls}" data-tag="${_escAttr(t)}">
+              <span class="m-filter-item-left">
+                ${toggleHtml}
+                <span class="m-filter-item-label">${prefix}${shortDisp}</span>
+              </span>
+              <span class="m-filter-count">${node.count}</span>
+            </div>
+          `;
+          if (hasChildren && isOpen) {
+            html += '<div class="m-tree-sublist">';
+            renderTagNodes(node.children, depth + 1);
+            html += '</div>';
+          }
+        }
+      };
+      renderTagNodes(tagTree, 0);
+      tagContainer.innerHTML = html;
+      bindFilterListEvents(tagContainer);
+    }
+
+    // 2. タイムライン (年 > 月 > 7列ミニカレンダー)
+    const tlContainer = document.getElementById('mTimelineFilterList');
+    if (tlContainer) {
+      const yearTree = TB && typeof TB.buildTimelineTree === 'function'
+        ? TB.buildTimelineTree(mState.timelineList)
+        : [];
+
+      let html = '';
+      for (const yNode of yearTree) {
+        const yKey = `ym:${yNode.year}`;
+        const isYOpen = mState.expandedFilterNodes.has(yKey);
+        const isYAct = !mState.dateDay && mState.yearMonth === yNode.year ? 'active-include' : '';
+        html += `
+          <div class="m-filter-item ${isYAct}" data-ym="${_escAttr(yNode.year)}">
+            <span class="m-filter-item-left">
+              <button type="button" class="m-tree-toggle-btn" data-tree-toggle="${_escAttr(yKey)}">${isYOpen ? '▼' : '▶'}</button>
+              <span class="m-filter-item-label">📅 ${_escHtml(yNode.year)}年</span>
+            </span>
+            <span class="m-filter-count">${yNode.count}</span>
+          </div>
+        `;
+        if (isYOpen) {
+          html += '<div class="m-tree-sublist">';
+          for (const mNode of yNode.months || []) {
+            const ym = mNode.ym;
+            const calKey = `cal:${ym}`;
+            const isCalOpen = mState.expandedFilterNodes.has(calKey);
+            const isMAct = !mState.dateDay && mState.yearMonth === ym ? 'active-include' : '';
+            html += `
+              <div class="m-filter-item ${isMAct}" data-ym="${_escAttr(ym)}">
+                <span class="m-filter-item-left">
+                  <button type="button" class="m-tree-toggle-btn" data-tree-toggle="${_escAttr(calKey)}">${isCalOpen ? '▼' : '▶'}</button>
+                  <span class="m-filter-item-label">${_escHtml( Number(mNode.month) + '月' )} (${_escHtml(ym)})</span>
+                </span>
+                <span class="m-filter-count">${mNode.count}</span>
+              </div>
+            `;
+            if (isCalOpen) {
+              html += buildMiniCalendarHtml(ym);
+            }
+          }
+          html += '</div>';
+        }
+      }
+      tlContainer.innerHTML = html || '<div class="m-center-sub">データなし</div>';
+      bindFilterListEvents(tlContainer);
+    }
+
+    // 3. ジオタグ（国 > 都道府県 > 市区町村 3階層開閉ツリー）
+    const locContainer = document.getElementById('mLocationFilterList');
+    if (locContainer) {
+      let html = `
+        <div class="m-filter-item ${mState.noLocationOnly ? 'active-include' : ''}" data-noloc="1">
+          <span class="m-filter-item-left"><span class="m-tree-toggle-spacer"></span><span class="m-filter-item-label">ジオタグなし</span></span>
+          <span class="m-filter-count">${mState.noLocationCount}</span>
+        </div>
+      `;
+      for (const c of mState.locationTree) {
+        const states = c.states || [];
+        const hasStates = states.length > 0;
+        const cKey = `loc:${c.country}`;
+        const isCOpen = mState.expandedFilterNodes.has(cKey);
+        const cActive =
+          !mState.noLocationOnly && mState.country === c.country && !mState.stateName && !mState.city
+            ? 'active-include'
+            : '';
+        const cToggle = hasStates
+          ? `<button type="button" class="m-tree-toggle-btn" data-tree-toggle="${_escAttr(cKey)}">${isCOpen ? '▼' : '▶'}</button>`
+          : '<span class="m-tree-toggle-spacer"></span>';
+        html += `
+          <div class="m-filter-item ${cActive}" data-country="${_escAttr(c.country)}">
+            <span class="m-filter-item-left">
+              ${cToggle}
+              <span class="m-filter-item-label">🌏 ${_escHtml(c.country)}</span>
+            </span>
+            <span class="m-filter-count">${c.count}</span>
+          </div>
+        `;
+        if (hasStates && isCOpen) {
+          html += '<div class="m-tree-sublist">';
+          for (const s of states) {
+            const cities = s.cities || [];
+            const hasCities = cities.length > 0;
+            const sKey = `loc:${c.country}/${s.state}`;
+            const isSOpen = mState.expandedFilterNodes.has(sKey);
+            const sActive =
+              !mState.noLocationOnly &&
+              mState.country === c.country &&
+              mState.stateName === s.state &&
+              !mState.city
+                ? 'active-include'
+                : '';
+            const sToggle = hasCities
+              ? `<button type="button" class="m-tree-toggle-btn" data-tree-toggle="${_escAttr(sKey)}">${isSOpen ? '▼' : '▶'}</button>`
+              : '<span class="m-tree-toggle-spacer"></span>';
+            html += `
+              <div class="m-filter-item ${sActive}" data-country="${_escAttr(c.country)}" data-state="${_escAttr(s.state)}">
+                <span class="m-filter-item-left">
+                  ${sToggle}
+                  <span class="m-filter-item-label">${_escHtml(s.state)}</span>
+                </span>
+                <span class="m-filter-count">${s.count}</span>
+              </div>
+            `;
+            if (hasCities && isSOpen) {
+              html += '<div class="m-tree-sublist">';
+              for (const cityObj of cities) {
+                const cityActive =
+                  !mState.noLocationOnly &&
+                  mState.country === c.country &&
+                  mState.stateName === s.state &&
+                  mState.city === cityObj.city
+                    ? 'active-include'
+                    : '';
+                html += `
+                  <div class="m-filter-item ${cityActive}" data-country="${_escAttr(c.country)}" data-state="${_escAttr(s.state)}" data-city="${_escAttr(cityObj.city)}">
+                    <span class="m-filter-item-left">
+                      <span class="m-tree-toggle-spacer"></span>
+                      <span class="m-filter-item-label">📍 ${_escHtml(cityObj.city)}</span>
+                    </span>
+                    <span class="m-filter-count">${cityObj.count}</span>
+                  </div>
+                `;
+              }
+              html += '</div>';
+            }
+          }
+          html += '</div>';
+        }
+      }
+      locContainer.innerHTML = html;
+      bindFilterListEvents(locContainer);
+    }
+
+    // 4. カメラ機種 > レンズ 2階層ツリー
+    const camContainer = document.getElementById('mCameraFilterList');
+    if (camContainer) {
+      const gearSource = Array.isArray(mState.gearList) && mState.gearList.length > 0 ? mState.gearList : mState.cameraList;
+      const gearTree = TB && typeof TB.buildGearTree === 'function'
+        ? TB.buildGearTree(gearSource, { sortByCount: true })
+        : mState.cameraList.map((c) => ({ camera: c.camera_model, count: c.count, lenses: [] }));
+      let html = '';
+      for (const gNode of gearTree) {
+        const cm = gNode.camera;
+        const lenses = gNode.lenses || [];
+        const hasLenses = lenses.length > 0;
+        const camKey = `cam:${cm}`;
+        const isCOpen = mState.expandedFilterNodes.has(camKey);
+        const active = mState.cameraModel === cm && !mState.lensModel ? 'active-include' : '';
+        const cToggle = hasLenses
+          ? `<button type="button" class="m-tree-toggle-btn" data-tree-toggle="${_escAttr(camKey)}">${isCOpen ? '▼' : '▶'}</button>`
+          : '<span class="m-tree-toggle-spacer"></span>';
+        html += `
+          <div class="m-filter-item ${active}" data-cam="${_escAttr(cm)}">
+            <span class="m-filter-item-left">
+              ${cToggle}
+              <span class="m-filter-item-label">📷 ${_escHtml(cm)}</span>
+            </span>
+            <span class="m-filter-count">${gNode.count}</span>
+          </div>
+        `;
+        if (hasLenses && isCOpen) {
+          html += '<div class="m-tree-sublist">';
+          for (const lObj of lenses) {
+            const lAct = mState.cameraModel === cm && mState.lensModel === lObj.lens ? 'active-include' : '';
+            html += `
+              <div class="m-filter-item ${lAct}" data-cam="${_escAttr(cm)}" data-lens="${_escAttr(lObj.lens)}">
+                <span class="m-filter-item-left">
+                  <span class="m-tree-toggle-spacer"></span>
+                  <span class="m-filter-item-label">◎ ${_escHtml(lObj.lens)}</span>
+                </span>
+                <span class="m-filter-count">${lObj.count}</span>
+              </div>
+            `;
+          }
+          html += '</div>';
+        }
+      }
+      camContainer.innerHTML = html || '<div class="m-center-sub">データなし</div>';
+      bindFilterListEvents(camContainer);
+    }
+
+    // タブレット左ステージ / スマホボトムシートが開いている場合は最新状態のリスト＆イベントへ再同期
+    if (window.TetheractTouchUI && typeof window.TetheractTouchUI.refreshActivePerspective === 'function') {
+      window.TetheractTouchUI.refreshActivePerspective();
     }
   }
 
@@ -1361,9 +3008,16 @@
         },
       });
     }
-    if (mState.yearMonth) {
+    if (mState.dateDay) {
       chips.push({
-        label: `${mState.yearMonth}`,
+        label: `📅 ${mState.dateDay}`,
+        clear: () => {
+          mState.dateDay = '';
+        },
+      });
+    } else if (mState.yearMonth) {
+      chips.push({
+        label: `📅 ${mState.yearMonth}`,
         clear: () => {
           mState.yearMonth = '';
         },
@@ -1388,16 +3042,31 @@
       });
     }
     if (mState.cameraModel) {
+      const gearLabel = mState.lensModel ? `${mState.cameraModel} / ${mState.lensModel}` : mState.cameraModel;
       chips.push({
-        label: `${mState.cameraModel}`,
+        label: gearLabel,
         clear: () => {
           mState.cameraModel = '';
+          mState.lensModel = '';
+        },
+      });
+    }
+    if (mState.folderPath) {
+      const fShort = mState.folderPath.replace(/\\/g, '/').split('/').filter(Boolean).pop() || mState.folderPath;
+      chips.push({
+        label: `📁 ${fShort}`,
+        clear: () => {
+          mState.folderPath = '';
         },
       });
     }
 
     if (dot) {
       dot.style.display = chips.length > 0 ? 'block' : 'none';
+    }
+    const bnavDot = document.getElementById('tBnavFilterDot');
+    if (bnavDot) {
+      bnavDot.style.display = chips.length > 0 ? 'block' : 'none';
     }
 
     if (chips.length === 0) {
@@ -1433,7 +3102,10 @@
     mState.excludeTags = [];
     mState.untaggedOnly = false;
     mState.yearMonth = '';
+    mState.dateDay = '';
     mState.cameraModel = '';
+    mState.lensModel = '';
+    mState.folderPath = '';
     mState.country = '';
     mState.stateName = '';
     mState.city = '';
@@ -1454,24 +3126,38 @@
   function setSelectMode(enabled) {
     mState.selectMode = enabled;
     document.body.classList.toggle('m-select-mode', enabled);
-    document.getElementById('mSelectModeBtn').classList.toggle('active', enabled);
-    document.getElementById('mBatchBar').style.display = enabled ? 'block' : 'none';
+    document.getElementById('mSelectModeBtn')?.classList.toggle('active', enabled);
+    const batchBar = document.getElementById('mBatchBar');
+    if (batchBar) batchBar.style.display = 'none';
     if (!enabled) {
       mState.selectedIds.clear();
       document.querySelectorAll('.m-card.selected').forEach((el) => el.classList.remove('selected'));
     }
     updateBatchCountLabel();
+    if (window.TetheractTouchUI && typeof window.TetheractTouchUI.updateSelectionCount === 'function') {
+      window.TetheractTouchUI.updateSelectionCount(mState.selectedIds.size);
+    }
+    syncTabletInspectorCurrentPhoto();
   }
 
   function toggleSelectPhoto(photoId, cardEl) {
-    if (mState.selectedIds.has(photoId)) {
-      mState.selectedIds.delete(photoId);
+    const numId = Number(photoId);
+    if (mState.selectedIds.has(numId)) {
+      mState.selectedIds.delete(numId);
       if (cardEl) cardEl.classList.remove('selected');
     } else {
-      mState.selectedIds.add(photoId);
+      mState.selectedIds.add(numId);
       if (cardEl) cardEl.classList.add('selected');
     }
     updateBatchCountLabel();
+    if (mState.selectedIds.size === 0) {
+      setSelectMode(false);
+      return;
+    }
+    if (window.TetheractTouchUI && typeof window.TetheractTouchUI.updateSelectionCount === 'function') {
+      window.TetheractTouchUI.updateSelectionCount(mState.selectedIds.size);
+    }
+    syncTabletInspectorCurrentPhoto();
   }
 
   function updateBatchCountLabel() {
@@ -1500,24 +3186,32 @@
         return;
       }
     } else if (mState.mode === 'localdb' && mState.localDb) {
-      mState.localDb.run('BEGIN TRANSACTION');
-      try {
-        for (const pid of ids) {
-          mState.localDb.run('UPDATE photos SET rating = ? WHERE id = ?', [r, pid]);
-          const pObj = mState.photos.find((p) => p.id === pid);
-          if (pObj) {
-            ensureLocalPhotoDetails(pObj);
-            recordPendingChange(pObj, 'rating', r);
-          }
+      if (_hasNativeJournal()) {
+        const ok = await _saveNativeBatchChanges(ids, { rating: r });
+        if (!ok) {
+          showToast('! ロッカーDBの一括評価更新に失敗しました');
+          return;
         }
-        mState.localDb.run('COMMIT');
-      } catch (e) {
-        console.error('[MobileDB] 一括評価更新エラー:', e);
+      } else {
+        mState.localDb.run('BEGIN TRANSACTION');
         try {
-          mState.localDb.run('ROLLBACK');
-        } catch (re) {}
-        showToast('! ローカルDBの更新に失敗しました');
-        return;
+          for (const pid of ids) {
+            mState.localDb.run('UPDATE photos SET rating = ? WHERE id = ?', [r, pid]);
+            const pObj = mState.photos.find((p) => p.id === pid);
+            if (pObj) {
+              recordPendingChange(pObj, 'rating', r, { deferSave: true });
+            }
+          }
+          mState.localDb.run('COMMIT');
+          savePendingChangesToStorage();
+        } catch (e) {
+          console.error('[MobileDB] 一括評価更新エラー:', e);
+          try {
+            mState.localDb.run('ROLLBACK');
+          } catch (re) {}
+          showToast('! ローカルDBの更新に失敗しました');
+          return;
+        }
       }
     }
 
@@ -1528,7 +3222,7 @@
       updateCardRateBadgeInDom(pid, r);
     }
 
-    const rateNames = { 2: '★ 優', 1: '● 良', 0: '○ 可', '-1': '✕ 棄' };
+    const rateNames = { 2: '優', 1: '良', 0: '可', '-1': '棄' };
     showToast(`${ids.length}枚を「${rateNames[r]}」に設定しました`);
   }
 
@@ -1539,26 +3233,116 @@
     if (mState.viewerIndex >= 0 && mState.viewerIndex < mState.photos.length) {
       return ensureLocalPhotoDetails(mState.photos[mState.viewerIndex]);
     }
+    if (mState.inspectedIndex >= 0 && mState.inspectedIndex < mState.photos.length) {
+      return ensureLocalPhotoDetails(mState.photos[mState.inspectedIndex]);
+    }
     return null;
+  }
+
+  function _getCardTransformRelativeToStage(photoId) {
+    if (photoId == null) return null;
+    const card = document.querySelector(`.m-card[data-id="${photoId}"]`);
+    const stage = document.getElementById('mViewerStage');
+    if (!card || !stage) return null;
+    const cRect = card.getBoundingClientRect();
+    const sRect = stage.getBoundingClientRect();
+    if (!cRect.width || !sRect.width) return null;
+    if (cRect.bottom < 0 || cRect.top > window.innerHeight) return null;
+    const cCx = cRect.left + cRect.width / 2;
+    const cCy = cRect.top + cRect.height / 2;
+    const sCx = sRect.left + sRect.width / 2;
+    const sCy = sRect.top + sRect.height / 2;
+    const scale = Math.max(0.18, Math.min(0.85, cRect.width / sRect.width));
+    return {
+      dx: Math.round(cCx - sCx),
+      dy: Math.round(cCy - sCy),
+      scale,
+    };
   }
 
   function openViewerAt(index) {
     if (index < 0 || index >= mState.photos.length) return;
+    const photo = mState.photos[index];
     mState.viewerIndex = index;
+    mState.inspectedIndex = index;
+    mState.inspectedPhotoId = photo ? photo.id : null;
     mState.viewerStackMember = null;
     mState.viewerOpen = true;
-    resetViewerZoom();
 
     const modal = document.getElementById('mViewerModal');
-    if (modal) modal.style.display = 'flex';
+    const wrap = document.getElementById('mViewerImgWrapper');
+    if (modal) {
+      modal.classList.remove('is-dragging-dismiss');
+      modal.style.backgroundColor = 'rgba(13, 15, 18, 1)';
+      modal.style.display = 'flex';
+    }
     renderViewerCurrentPhoto();
+    syncTabletInspectorCurrentPhoto();
+
+    const rel = photo ? _getCardTransformRelativeToStage(photo.id) : null;
+    mState.zoomScale = 1;
+    mState.panX = 0;
+    mState.panY = 0;
+    _updateViewerZoomHint();
+
+    if (wrap && rel) {
+      wrap.classList.remove('is-animating');
+      wrap.style.opacity = '0.65';
+      wrap.style.transform = `translate3d(${rel.dx}px, ${rel.dy}px, 0) scale(${rel.scale})`;
+      requestAnimationFrame(() => {
+        wrap.classList.add('is-animating');
+        wrap.style.opacity = '1';
+        wrap.style.transform = 'translate3d(0px, 0px, 0) scale(1)';
+      });
+    } else {
+      resetViewerZoom(false);
+    }
   }
 
-  function closeViewer() {
+  function closeViewer(animateToGrid = true) {
+    if (!mState.viewerOpen) return;
     mState.viewerOpen = false;
+    const closingPhoto = mState.photos[mState.viewerIndex];
     mState.viewerStackMember = null;
+    document.body.classList.remove('is-viewer-adjust-mode');
+    if (window.TetheractTouchUI && typeof window.TetheractTouchUI.getThumbBarMode === 'function' && window.TetheractTouchUI.getThumbBarMode() === 'adjust') {
+      window.TetheractTouchUI.setThumbBarMode('cull');
+    }
+    if (!isTabletMode()) {
+      clearSingleSelection();
+    }
     const modal = document.getElementById('mViewerModal');
-    if (modal) modal.style.display = 'none';
+    const wrap = document.getElementById('mViewerImgWrapper');
+    if (!modal) return;
+    modal.classList.remove('is-immersive');
+
+    const rel = animateToGrid && closingPhoto ? _getCardTransformRelativeToStage(closingPhoto.id) : null;
+    if (wrap && rel) {
+      modal.classList.add('is-dragging-dismiss');
+      modal.style.backgroundColor = 'rgba(13, 15, 18, 0)';
+      wrap.classList.add('is-animating');
+      wrap.style.opacity = '0.2';
+      wrap.style.transform = `translate3d(${rel.dx}px, ${rel.dy}px, 0) scale(${rel.scale})`;
+      setTimeout(() => {
+        if (!mState.viewerOpen) {
+          modal.style.display = 'none';
+          modal.classList.remove('is-dragging-dismiss');
+          modal.style.backgroundColor = 'rgba(13, 15, 18, 1)';
+          wrap.classList.remove('is-animating');
+          wrap.style.opacity = '1';
+          wrap.style.transform = 'translate3d(0px, 0px, 0) scale(1)';
+        }
+      }, 200);
+    } else {
+      modal.style.display = 'none';
+      modal.classList.remove('is-dragging-dismiss');
+      modal.style.backgroundColor = 'rgba(13, 15, 18, 1)';
+      if (wrap) {
+        wrap.classList.remove('is-animating');
+        wrap.style.opacity = '1';
+        wrap.style.transform = 'translate3d(0px, 0px, 0) scale(1)';
+      }
+    }
   }
 
   function stepViewer(delta) {
@@ -1568,14 +3352,33 @@
       return;
     }
     mState.viewerIndex = nextIdx;
+    mState.inspectedIndex = nextIdx;
+    mState.inspectedPhotoId = mState.photos[nextIdx] ? mState.photos[nextIdx].id : null;
     mState.viewerStackMember = null;
-    resetViewerZoom();
+    mState.zoomScale = 1;
+    mState.panX = 0;
+    mState.panY = 0;
+    _updateViewerZoomHint();
 
     // グリッド側も未描画領域に入ったらチャンクを追加しておく
     if (nextIdx >= mState.renderedCount - 15) {
       appendNextGridChunk();
     }
     renderViewerCurrentPhoto();
+    inspectPhotoAt(nextIdx);
+
+    const wrap = document.getElementById('mViewerImgWrapper');
+    if (wrap) {
+      const startOffset = delta > 0 ? 40 : -40;
+      wrap.classList.remove('is-animating');
+      wrap.style.opacity = '0.78';
+      wrap.style.transform = `translate3d(${startOffset}px, 0px, 0) scale(1)`;
+      requestAnimationFrame(() => {
+        wrap.classList.add('is-animating');
+        wrap.style.opacity = '1';
+        wrap.style.transform = 'translate3d(0px, 0px, 0) scale(1)';
+      });
+    }
   }
 
   function renderViewerCurrentPhoto() {
@@ -1587,29 +3390,57 @@
     document.getElementById('mViewerCounter').textContent = `${mState.viewerIndex + 1} / ${mState.photos.length}`;
 
     const imgEl = document.getElementById('mViewerImg');
+    const srcBadge = document.getElementById('mViewerSourceBadge');
+    const thumbUrl = getMobileThumbnailUrl(activePhoto);
+    const isPhotoOnline = isMobilePhotoOriginalOnline(activePhoto);
     activePhoto._loadedNaturalW = 0;
     activePhoto._loadedNaturalH = 0;
     if (imgEl) {
-      const targetId = String(activePhoto.id);
-      imgEl.dataset.photoId = targetId;
-      imgEl.onload = () => { if (mState.viewerOpen) applyViewerTransform(); };
-      imgEl.src = getMobileThumbnailUrl(activePhoto);
-      if (mState.mode === 'server') {
-        const hdUrl = `/api/photo/${activePhoto.id}/view`;
-        const preloadImg = new Image();
-        preloadImg.onload = () => {
-          if (!mState.viewerOpen || imgEl.dataset.photoId !== targetId) return;
-          if (preloadImg.naturalWidth > 420 || preloadImg.naturalHeight > 420) {
-            activePhoto._loadedNaturalW = preloadImg.naturalWidth;
-            activePhoto._loadedNaturalH = preloadImg.naturalHeight;
-            imgEl.src = hdUrl;
-            applyViewerTransform();
-          }
-        };
-        preloadImg.src = hdUrl;
-      }
+      imgEl.dataset.photoId = String(activePhoto.id);
+      imgEl.dataset.unbakedSource = '0';
+      imgEl.dataset.hdLoaded = '0';
+      imgEl.src = thumbUrl;
     }
-    applyViewerTransform();
+    if (srcBadge) {
+      if (!isPhotoOnline && (mState.mode === 'server' || mState.nativeLinkState.isPcLinked || mState.nativeLinkState.usbConnected)) {
+        srcBadge.textContent = 'サムネイル (母艦未接続)';
+      } else {
+        srcBadge.textContent = 'サムネイル';
+      }
+      srcBadge.classList.remove('is-hd');
+      srcBadge.style.display = 'inline-block';
+    }
+    if (window.TetheractTouchUI && typeof window.TetheractTouchUI.loadPhotoAdjustValues === 'function') {
+      window.TetheractTouchUI.loadPhotoAdjustValues(activePhoto);
+    }
+    _updateViewerZoomHint();
+    applyViewerTransform(false);
+    const hdUrl = isPhotoOnline ? getMobileFullPhotoUrl(activePhoto) : '';
+    if (hdUrl && imgEl) {
+      const targetId = String(activePhoto.id);
+      const preloadImg = new Image();
+      preloadImg.onload = () => {
+        if (!mState.viewerOpen || imgEl.dataset.photoId !== targetId) return;
+        if (preloadImg.naturalWidth > 420 || preloadImg.naturalHeight > 420) {
+          activePhoto._loadedNaturalW = preloadImg.naturalWidth;
+          activePhoto._loadedNaturalH = preloadImg.naturalHeight;
+          const srcKind = window.TetheractNative?.getLastPhotoSource
+            ? window.TetheractNative.getLastPhotoSource(Number(activePhoto.id))
+            : '';
+          imgEl.dataset.unbakedSource = srcKind === 'usb' ? '1' : '0';
+          imgEl.dataset.hdLoaded = '1';
+          imgEl.src = hdUrl;
+          if (srcBadge) {
+            srcBadge.textContent = srcKind === 'phone' ? '📱 スマホ原本' : 'HD 実ファイル';
+            srcBadge.classList.add('is-hd');
+          }
+          window.TetheractTouchUI?.loadPhotoAdjustValues?.(activePhoto);
+          _updateViewerZoomHint();
+          applyViewerTransform(false);
+        }
+      };
+      preloadImg.src = hdUrl;
+    }
 
     // 評価ボタンのアクティブ状態更新
     const currentRate = Number(activePhoto.rating || 0);
@@ -1652,21 +3483,28 @@
     if (stackBar && stackList) {
       if (members.length > 1) {
         stackBar.style.display = 'block';
-        stackList.innerHTML = members
-          .map((m, idx) => {
-            const isAct = m.id === activePhoto.id ? 'active' : '';
-            const rIcon =
-              m.rating === 2 ? '★' : m.rating === 1 ? '●' : m.rating === -1 ? '✕' : '';
-            let label = `#${idx + 1}`;
-            if (primaryPhoto.stack_type === 'bracket' && m.exposure_bias != null) {
-              const ev = Number(m.exposure_bias);
-              label = `${ev > 0 ? '+' : ''}${ev.toFixed(1)}EV`;
-            } else if (m.is_raw) {
-              label += ' RAW';
-            }
-            return `<button class="m-stack-pill ${isAct}" data-member-idx="${idx}">${_escHtml(label)} ${rIcon}</button>`;
-          })
-          .join('');
+        const isCurrentPrimary = activePhoto.id === primaryPhoto.id;
+        const primaryActionHtml = isCurrentPrimary
+          ? '<button type="button" class="m-stack-primary-btn is-current-primary" disabled>★ 表紙コマ</button>'
+          : '<button type="button" class="m-stack-primary-btn" id="mSetStackPrimaryBtn">★ 表紙に設定</button>';
+
+        stackList.innerHTML =
+          members
+            .map((m, idx) => {
+              const isAct = m.id === activePhoto.id ? 'active' : '';
+              const rIcon =
+                m.rating === 2 ? '優' : m.rating === 1 ? '良' : m.rating === -1 ? '棄' : '';
+              const pMark = m.id === primaryPhoto.id ? '★' : '';
+              let label = `${pMark}#${idx + 1}`;
+              if (primaryPhoto.stack_type === 'bracket' && m.exposure_bias != null) {
+                const ev = Number(m.exposure_bias);
+                label = `${pMark}${ev > 0 ? '+' : ''}${ev.toFixed(1)}EV`;
+              } else if (m.is_raw) {
+                label += ' RAW';
+              }
+              return `<button class="m-stack-pill ${isAct}" data-member-idx="${idx}">${_escHtml(label)} ${rIcon}</button>`;
+            })
+            .join('') + primaryActionHtml;
 
         stackList.querySelectorAll('.m-stack-pill').forEach((btn) => {
           btn.addEventListener('click', () => {
@@ -1678,11 +3516,80 @@
             }
           });
         });
+
+        stackList.querySelector('#mSetStackPrimaryBtn')?.addEventListener('click', () => {
+          setStackPrimaryPhoto(activePhoto);
+        });
       } else {
         stackBar.style.display = 'none';
         stackList.innerHTML = '';
       }
     }
+  }
+
+  /**
+   * スタック内の現在表示中コマを代表（表紙コマ）に設定し、一覧グリッドとDB/同期ジャーナルへ即時反映する
+   */
+  async function setStackPrimaryPhoto(memberPhoto) {
+    const primaryPhoto = mState.photos[mState.viewerIndex];
+    if (!primaryPhoto || !memberPhoto || memberPhoto.id === primaryPhoto.id) return;
+
+    const oldPrimaryId = primaryPhoto.id;
+    const newPrimaryId = memberPhoto.id;
+    const oldStackId = Number(primaryPhoto.stack_id || oldPrimaryId);
+
+    if (mState.mode === 'server') {
+      try {
+        const res = await fetch(`/api/photo/${newPrimaryId}/set-primary`, { method: 'POST' });
+        if (!res.ok) throw new Error('スタック代表変更失敗');
+      } catch (e) {
+        showToast('! スタック代表の変更に失敗しました');
+        return;
+      }
+    } else if (mState.mode === 'localdb' && mState.localDb) {
+      try {
+        mState.localDb.run(
+          'UPDATE photos SET stack_id = ?, is_stack_primary = CASE WHEN id = ? THEN 1 ELSE 0 END WHERE stack_id = ?',
+          [newPrimaryId, newPrimaryId, oldStackId]
+        );
+        recordPendingChange(memberPhoto, 'stack_primary', true);
+      } catch (e) {
+        console.error('ローカルDBスタック代表更新エラー:', e);
+      }
+    }
+
+    const members = (primaryPhoto.stack_photos || []).map((m) => ({
+      ...m,
+      stack_id: newPrimaryId,
+      is_stack_primary: m.id === newPrimaryId ? 1 : 0,
+    }));
+    const updatedPrimary = {
+      ...memberPhoto,
+      stack_id: newPrimaryId,
+      is_stack_primary: 1,
+      stack_count: members.length,
+      stack_type: primaryPhoto.stack_type,
+      stack_photos: members,
+    };
+
+    if (mState.stackCountsMap) {
+      if (oldStackId !== newPrimaryId) mState.stackCountsMap.delete(oldStackId);
+      mState.stackCountsMap.set(newPrimaryId, members.length);
+    }
+
+    mState.photos[mState.viewerIndex] = updatedPrimary;
+    mState.inspectedPhotoId = newPrimaryId;
+    mState.viewerStackMember = null;
+
+    const oldCard = document.querySelector(`.m-card[data-id="${oldPrimaryId}"]`);
+    if (oldCard) {
+      const newCard = createMobilePhotoCard(updatedPrimary, mState.viewerIndex);
+      oldCard.replaceWith(newCard);
+    }
+
+    renderViewerCurrentPhoto();
+    syncTabletInspectorCurrentPhoto();
+    showToast(`★ 「${memberPhoto.file_name || '#' + newPrimaryId}」をスタックの表紙に設定しました`);
   }
 
   /**
@@ -1717,16 +3624,20 @@
     photo.rating = r;
     updateCardRateBadgeInDom(photo.id, r);
     renderViewerCurrentPhoto();
+    if (window.TetheractTouchUI && typeof window.TetheractTouchUI.setActiveRating === 'function') {
+      window.TetheractTouchUI.setActiveRating(r);
+    }
+    syncTabletInspectorCurrentPhoto();
 
-    // ⚡ 自動送りONかつスタック個別コマ選択中でなければ次の写真へ自動進行
-    if (mState.autoAdvance && mState.viewerIndex < mState.photos.length - 1) {
+    // ⚡ ビューア表示中かつ自動送りONの場合のみ次の写真へ自動進行
+    if (mState.viewerOpen && mState.autoAdvance && mState.viewerIndex < mState.photos.length - 1) {
       setTimeout(() => {
         if (mState.viewerOpen) stepViewer(1);
       }, 160);
     }
   }
 
-  // ==================== ビューアのタッチスワイプ & ダブルタップズーム ====================
+  // ==================== ビューアの2本指ピンチズーム・下スワイプクローズ・ダブルタップ拡大 ====================
 
   function _getViewerPhotoMetrics(stageEl) {
     const stage = stageEl || document.getElementById('mViewerStage');
@@ -1737,35 +3648,62 @@
     let origW = Number(photo?._loadedNaturalW) || (imgEl && imgEl.naturalWidth > 420 ? imgEl.naturalWidth : 0);
     let origH = Number(photo?._loadedNaturalH) || (imgEl && imgEl.naturalHeight > 420 ? imgEl.naturalHeight : 0);
     if (origW <= 0 || origH <= 0) {
-      origW = Number(photo?.width) || (imgEl && imgEl.naturalWidth) || 1600;
-      origH = Number(photo?.height) || (imgEl && imgEl.naturalHeight) || 1200;
+      let pw = Number(photo?.width) || (imgEl && imgEl.naturalWidth) || 1600;
+      let ph = Number(photo?.height) || (imgEl && imgEl.naturalHeight) || 1200;
+      if (Math.abs(Number(photo?.rotation || 0)) % 180 === 90) { const t = pw; pw = ph; ph = t; }
       const cw = Number(photo?.crop_w ?? 1), ch = Number(photo?.crop_h ?? 1);
-      if (cw > 0 && cw < 1) origW = Math.max(1, Math.round(origW * cw));
-      if (ch > 0 && ch < 1) origH = Math.max(1, Math.round(origH * ch));
-      const rot = ((Number(photo?.rotation) || 0) % 360 + 360) % 360;
-      if (rot === 90 || rot === 270) {
-        const tmp = origW;
-        origW = origH;
-        origH = tmp;
-      }
+      origW = Math.max(1, Math.round(pw * (cw > 0 && cw < 1 ? cw : 1)));
+      origH = Math.max(1, Math.round(ph * (ch > 0 && ch < 1 ? ch : 1)));
     }
-    const fitScale = Math.min(sw / origW, sh / origH);
+    const isCssRot90 = Boolean(imgEl && imgEl.dataset.unbakedSource === '1' && Math.abs(Number(photo?.rotation || 0)) % 180 === 90);
+    const fitScale = isCssRot90 ? Math.min(sw / origH, sh / origW) : Math.min(sw / origW, sh / origH);
     const fitW = Math.max(1, origW * fitScale);
     const fitH = Math.max(1, origH * fitScale);
+    const visW = isCssRot90 ? fitH : fitW;
+    const visH = isCssRot90 ? fitW : fitH;
     const dpr = Math.max(1, window.devicePixelRatio || 1);
-    const fitRatio = Math.max(0.02, fitScale * dpr);
+    const fitRatio = Math.max(0.02, (fitScale * dpr));
     const oneToOneScale = fitRatio < 0.92 ? (1.0 / fitRatio) : (2.0 / fitRatio);
-    return { sw, sh, fitW, fitH, fitRatio, oneToOneScale };
+    const maxScale = Math.max(6, 3.0 / fitRatio);
+    return { sw, sh, origW, origH, fitW, fitH, visW, visH, fitRatio, oneToOneScale, maxScale };
   }
 
-  function resetViewerZoom() {
+  function _updateViewerZoomHint() {
+    const m = _getViewerPhotoMetrics();
+    const pct = Math.max(1, Math.round(m.fitRatio * (mState.zoomScale || 1) * 100));
+    const isOneToOne = Math.abs(pct - 100) <= 2;
+    const hint = document.getElementById('mViewerZoomHint');
+    if (hint) {
+      hint.textContent = mState.zoomScale > 1.03
+        ? `${pct}% ${isOneToOne ? '(等倍 1:1)' : '拡大中'}`
+        : `${pct}% (縮小フィット) · ダブルタップで等倍`;
+    }
+    const zoomBadge = document.getElementById('mViewerZoomBadge');
+    if (zoomBadge) {
+      zoomBadge.textContent = mState.zoomScale > 1.03
+        ? `${pct}%${isOneToOne ? ' (等倍)' : ''} · タップで全体`
+        : `${pct}% (FIT)`;
+      zoomBadge.style.display = 'inline-flex';
+    }
+  }
+
+  function _clampViewerPan(stageEl, scale, panX, panY) {
+    if (scale <= 1.01) return { x: 0, y: 0 };
+    const m = _getViewerPhotoMetrics(stageEl);
+    const maxX = Math.max(0, (m.visW * scale - m.sw) / 2);
+    const maxY = Math.max(0, (m.visH * scale - m.sh) / 2);
+    return { x: Math.max(-maxX, Math.min(maxX, panX)), y: Math.max(-maxY, Math.min(maxY, panY)) };
+  }
+
+  function resetViewerZoom(animate = true) {
     mState.zoomScale = 1;
     mState.panX = 0;
     mState.panY = 0;
-    applyViewerTransform();
+    _updateViewerZoomHint();
+    applyViewerTransform(animate);
   }
 
-  function applyViewerTransform() {
+  function applyViewerTransform(animate = false) {
     const wrap = document.getElementById('mViewerImgWrapper');
     const imgEl = document.getElementById('mViewerImg');
     if (!wrap) return;
@@ -1775,25 +3713,73 @@
       imgEl.style.width = `${Math.round(m.fitW * z)}px`;
       imgEl.style.height = `${Math.round(m.fitH * z)}px`;
     }
+    wrap.classList.toggle('is-animating', Boolean(animate));
+    wrap.style.opacity = '1';
     wrap.style.transform = `translate3d(${Math.round(mState.panX)}px, ${Math.round(mState.panY)}px, 0)`;
   }
 
   function setupViewerTouchGestures() {
     const stage = document.getElementById('mViewerStage');
+    const modal = document.getElementById('mViewerModal');
+    const wrap = document.getElementById('mViewerImgWrapper');
     if (!stage) return;
 
     let startX = 0;
     let startY = 0;
+    let lastTouchX = 0;
+    let lastTouchY = 0;
     let lastTapTime = 0;
+    let singleTapTimer = null;
     let isDragging = false;
+    let isPinching = false;
+    let isDismissDragging = false;
+    let pinchStartDist = 0;
+    let pinchStartScale = 1;
+    let pinchStartMidX = 0;
+    let pinchStartMidY = 0;
+    let pinchStartPanX = 0;
+    let pinchStartPanY = 0;
+
+    function _getDist(t0, t1) {
+      return Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+    }
 
     stage.addEventListener(
       'touchstart',
       (e) => {
+        if (e.touches.length === 2) {
+          isPinching = true;
+          isDragging = false;
+          isDismissDragging = false;
+          const t0 = e.touches[0];
+          const t1 = e.touches[1];
+          pinchStartDist = Math.max(20, _getDist(t0, t1));
+          pinchStartScale = mState.zoomScale || 1;
+          const sRect = stage.getBoundingClientRect();
+          pinchStartMidX = (t0.clientX + t1.clientX) / 2 - (sRect.left + sRect.width / 2);
+          pinchStartMidY = (t0.clientY + t1.clientY) / 2 - (sRect.top + sRect.height / 2);
+          pinchStartPanX = mState.panX || 0;
+          pinchStartPanY = mState.panY || 0;
+          if (wrap) wrap.classList.remove('is-animating');
+          return;
+        }
         if (e.touches.length !== 1) return;
+        if (
+          window.TetheractTouchUI &&
+          typeof window.TetheractTouchUI.getThumbBarMode === 'function' &&
+          window.TetheractTouchUI.getThumbBarMode() === 'adjust'
+        ) {
+          isDragging = false;
+          isDismissDragging = false;
+          return;
+        }
         startX = e.touches[0].clientX;
         startY = e.touches[0].clientY;
+        lastTouchX = startX;
+        lastTouchY = startY;
         isDragging = true;
+        isDismissDragging = false;
+        if (wrap) wrap.classList.remove('is-animating');
       },
       { passive: true }
     );
@@ -1801,22 +3787,71 @@
     stage.addEventListener(
       'touchmove',
       (e) => {
-        if (!isDragging || e.touches.length !== 1) return;
-        const dx = e.touches[0].clientX - startX;
-        const dy = e.touches[0].clientY - startY;
+        if (isPinching && e.touches.length === 2) {
+          const t0 = e.touches[0];
+          const t1 = e.touches[1];
+          const dist = _getDist(t0, t1);
+          const m = _getViewerPhotoMetrics(stage);
+          const nextScale = Math.max(1, Math.min(m.maxScale, pinchStartScale * (dist / pinchStartDist)));
+          const sRect = stage.getBoundingClientRect();
+          const curMidX = (t0.clientX + t1.clientX) / 2 - (sRect.left + sRect.width / 2);
+          const curMidY = (t0.clientY + t1.clientY) / 2 - (sRect.top + sRect.height / 2);
+          const scaleRatio = nextScale / pinchStartScale;
+          const rawPanX = curMidX - (pinchStartMidX - pinchStartPanX) * scaleRatio;
+          const rawPanY = curMidY - (pinchStartMidY - pinchStartPanY) * scaleRatio;
+          const clamped = _clampViewerPan(stage, nextScale, rawPanX, rawPanY);
+          mState.zoomScale = nextScale;
+          mState.panX = clamped.x;
+          mState.panY = clamped.y;
+          _updateViewerZoomHint();
+          applyViewerTransform(false);
+          return;
+        }
 
-        if (mState.zoomScale > 1) {
-          mState.panX += dx;
-          mState.panY += dy;
-          startX = e.touches[0].clientX;
-          startY = e.touches[0].clientY;
-          applyViewerTransform();
+        if (!isDragging || isPinching || e.touches.length !== 1) return;
+        const curX = e.touches[0].clientX;
+        const curY = e.touches[0].clientY;
+        const totalDx = curX - startX;
+        const totalDy = curY - startY;
+
+        if (mState.zoomScale > 1.01) {
+          const stepDx = curX - lastTouchX;
+          const stepDy = curY - lastTouchY;
+          lastTouchX = curX;
+          lastTouchY = curY;
+          const clamped = _clampViewerPan(stage, mState.zoomScale, mState.panX + stepDx, mState.panY + stepDy);
+          mState.panX = clamped.x;
+          mState.panY = clamped.y;
+          applyViewerTransform(false);
+          return;
+        }
+
+        // 等倍時に下方向へドラッグした際は「下スワイプで一覧へ戻る」物理追従モードを起動
+        if (!isDismissDragging && totalDy > 14 && Math.abs(totalDy) > Math.abs(totalDx) * 1.2) {
+          isDismissDragging = true;
+          if (modal) modal.classList.add('is-dragging-dismiss');
+        }
+        if (isDismissDragging && wrap) {
+          const dampY = Math.max(0, totalDy);
+          const scale = Math.max(0.66, 1 - dampY / 680);
+          const bgAlpha = Math.max(0.18, 1 - dampY / 340);
+          if (modal) modal.style.backgroundColor = `rgba(13, 15, 18, ${bgAlpha.toFixed(2)})`;
+          wrap.style.transform = `translate3d(${Math.round(totalDx * 0.35)}px, ${Math.round(dampY)}px, 0) scale(${scale.toFixed(3)})`;
         }
       },
       { passive: true }
     );
 
     stage.addEventListener('touchend', (e) => {
+      if (isPinching) {
+        if (e.touches.length === 0) {
+          isPinching = false;
+          if (mState.zoomScale < 1.06) {
+            resetViewerZoom(true);
+          }
+        }
+        return;
+      }
       if (!isDragging) return;
       isDragging = false;
 
@@ -1825,26 +3860,61 @@
       const dx = endTouch ? endTouch.clientX - startX : 0;
       const dy = endTouch ? endTouch.clientY - startY : 0;
 
-      // ダブルタップ判定（移動量が小さい場合: 全体フィット ⇄ 原本100%等倍）
+      if (isDismissDragging) {
+        isDismissDragging = false;
+        if (dy > 88) {
+          closeViewer(true);
+        } else {
+          if (modal) {
+            modal.classList.remove('is-dragging-dismiss');
+            modal.style.backgroundColor = 'rgba(13, 15, 18, 1)';
+          }
+          resetViewerZoom(true);
+        }
+        return;
+      }
+
+      // ダブルタップ判定（全体フィット ⇄ 原本100%等倍）＆シングルタップで上下バー表示/非表示（没入モード）トグル
       if (Math.abs(dx) < 15 && Math.abs(dy) < 15) {
-        if (now - lastTapTime < 280) {
+        if (now - lastTapTime < 260) {
+          if (singleTapTimer) { clearTimeout(singleTapTimer); singleTapTimer = null; }
           if (mState.zoomScale > 1.05) {
-            resetViewerZoom();
+            resetViewerZoom(true);
           } else {
+            const sRect = stage.getBoundingClientRect();
+            const tapOffsetX = endTouch ? endTouch.clientX - (sRect.left + sRect.width / 2) : 0;
+            const tapOffsetY = endTouch ? endTouch.clientY - (sRect.top + sRect.height / 2) : 0;
             const m = _getViewerPhotoMetrics(stage);
-            mState.zoomScale = m.oneToOneScale;
-            mState.panX = 0;
-            mState.panY = 0;
-            applyViewerTransform();
+            const targetScale = m.oneToOneScale;
+            const clamped = _clampViewerPan(stage, targetScale, -tapOffsetX * (targetScale - 1), -tapOffsetY * (targetScale - 1));
+            mState.zoomScale = targetScale;
+            mState.panX = clamped.x;
+            mState.panY = clamped.y;
+            _updateViewerZoomHint();
+            applyViewerTransform(false);
           }
           lastTapTime = 0;
           return;
         }
         lastTapTime = now;
+        if (singleTapTimer) clearTimeout(singleTapTimer);
+        singleTapTimer = setTimeout(() => {
+          singleTapTimer = null;
+          if (modal && mState.viewerOpen) {
+            modal.classList.toggle('is-immersive');
+          }
+        }, 260);
+        return;
+      }
+
+      // 等倍時の上スワイプでタグ・Exif詳細シートを開く
+      if (mState.zoomScale <= 1.02 && dy < -72 && Math.abs(dy) > Math.abs(dx) * 1.25) {
+        openInfoSheet(false);
+        return;
       }
 
       // 等倍時の左右スワイプで前後の写真へ移動
-      if (mState.zoomScale === 1 && Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.3) {
+      if (mState.zoomScale <= 1.02 && Math.abs(dx) > 46 && Math.abs(dx) > Math.abs(dy) * 1.25) {
         if (dx < 0) {
           stepViewer(1);
         } else {
@@ -1949,7 +4019,10 @@
       mState.tagTreeExpandedPaths = new Set();
     }
 
-    const treeRoot = buildMobileTagTree(mState.availableTags || []);
+    const manualTagsForAssign = window.TetheractCore?.TreeBuilder?.filterTagsBySource
+      ? window.TetheractCore.TreeBuilder.filterTagsBySource(mState.availableTags || [], 'manual')
+      : (mState.availableTags || []);
+    const treeRoot = buildMobileTagTree(manualTagsForAssign);
 
     function appendInlineAddRow(targetEl, parentFullPath, parentDisplayName, indent) {
       const formRow = document.createElement('div');
@@ -2190,47 +4263,6 @@
     }
   }
 
-  function _computeSelectedBatchTagSummary() {
-    const selPhotos = Array.from(mState.selectedIds)
-      .map((pid) => mState.photos.find((p) => p.id === pid))
-      .filter(Boolean);
-    const total = selPhotos.length;
-    if (total === 0) return { count: 0, commonTags: [], partialTags: [] };
-
-    const fullCounts = new Map();
-    const leafUnion = new Set();
-    selPhotos.forEach((p) => {
-      ensureLocalPhotoDetails(p);
-      const tags = Array.isArray(p.tags) ? p.tags : [];
-      const uniq = new Set(tags);
-      uniq.forEach((t) => fullCounts.set(t, (fullCounts.get(t) || 0) + 1));
-      const leaves = tags.filter((t) => !tags.some((o) => o !== t && o.startsWith(`${t}/`)));
-      leaves.forEach((t) => leafUnion.add(t));
-    });
-
-    const allTags = Array.from(fullCounts.keys());
-    const displaySet = new Set(leafUnion);
-    allTags.forEach((t) => {
-      if (fullCounts.get(t) === total) {
-        const hasCommonDesc = allTags.some((d) => d !== t && d.startsWith(`${t}/`) && fullCounts.get(d) === total);
-        if (!hasCommonDesc) displaySet.add(t);
-        else displaySet.delete(t);
-      }
-    });
-
-    const commonTags = [];
-    const partialTags = [];
-    Array.from(displaySet)
-      .sort((a, b) => String(a).localeCompare(String(b), 'ja', { numeric: true }))
-      .forEach((t) => {
-        const cnt = fullCounts.get(t) || 0;
-        if (cnt === total) commonTags.push(t);
-        else if (cnt > 0) partialTags.push({ tag: t, cnt });
-      });
-    partialTags.sort((a, b) => b.cnt - a.cnt || String(a.tag).localeCompare(String(b.tag), 'ja', { numeric: true }));
-    return { count: total, commonTags, partialTags };
-  }
-
   function renderBatchTagSheet() {
     const currentTagsEl = document.getElementById('mCurrentPhotoTags');
     const quickTagsEl = document.getElementById('mQuickTagSelector');
@@ -2299,9 +4331,42 @@
 
     renderSinglePhotoInfoSheet(photo);
     renderViewerCurrentPhoto();
+    syncTabletInspectorCurrentPhoto();
     await fetchFilterSummaries();
     renderSinglePhotoInfoSheet(photo);
+    syncTabletInspectorCurrentPhoto();
     showToast(`#${tag} を追加しました`);
+  }
+
+  function _pruneRemovedTagAndOrphanAncestors(tags, removedTag) {
+    if (!Array.isArray(tags)) return [];
+    const clean = String(removedTag || '').trim().replace(/^\/+|\/+$/g, '');
+    if (!clean) return tags;
+    let next = tags.filter((t) => t !== clean && !t.startsWith(`${clean}/`));
+    const parts = clean.split('/').map((p) => p.trim()).filter(Boolean);
+    for (let i = parts.length - 1; i >= 1; i--) {
+      const anc = parts.slice(0, i).join('/');
+      if (!next.some((t) => t.startsWith(`${anc}/`))) {
+        next = next.filter((t) => t !== anc);
+      }
+    }
+    return next;
+  }
+
+  function _deleteTagAndOrphanAncestorsFromLocalDb(pid, tag) {
+    if (!mState.localDb) return;
+    mState.localDb.run('DELETE FROM photo_tags WHERE photo_id = ? AND (tag = ? OR tag LIKE ?)', [
+      pid,
+      tag,
+      `${tag}/%`,
+    ]);
+    const ancList = expandTagAncestors(tag).slice(0, -1).reverse();
+    for (const anc of ancList) {
+      mState.localDb.run(
+        'DELETE FROM photo_tags WHERE photo_id = ? AND tag = ? AND NOT EXISTS (SELECT 1 FROM photo_tags pt2 WHERE pt2.photo_id = ? AND pt2.tag LIKE ?)',
+        [pid, anc, pid, `${anc}/%`]
+      );
+    }
   }
 
   async function removeTagFromPhotoAction(photo, rawTag) {
@@ -2315,26 +4380,23 @@
         });
         if (!res.ok) throw new Error('タグ削除失敗');
         const data = await res.json();
-        photo.tags =
-          data.tags || (photo.tags || []).filter((t) => t !== tag && !t.startsWith(`${tag}/`));
+        photo.tags = data.tags || _pruneRemovedTagAndOrphanAncestors(photo.tags || [], tag);
       } catch (e) {
         showToast('! タグ削除エラー');
         return;
       }
     } else if (mState.mode === 'localdb' && mState.localDb) {
-      mState.localDb.run('DELETE FROM photo_tags WHERE photo_id = ? AND (tag = ? OR tag LIKE ?)', [
-        photo.id,
-        tag,
-        `${tag}/%`,
-      ]);
-      photo.tags = (photo.tags || []).filter((t) => t !== tag && !t.startsWith(`${tag}/`));
+      _deleteTagAndOrphanAncestorsFromLocalDb(photo.id, tag);
+      photo.tags = _pruneRemovedTagAndOrphanAncestors(photo.tags || [], tag);
       recordPendingChange(photo, 'remove_tag', tag);
     }
 
     renderSinglePhotoInfoSheet(photo);
     renderViewerCurrentPhoto();
+    syncTabletInspectorCurrentPhoto();
     await fetchFilterSummaries();
     renderSinglePhotoInfoSheet(photo);
+    syncTabletInspectorCurrentPhoto();
     showToast(`#${tag} を解除しました`);
   }
 
@@ -2359,40 +4421,52 @@
         return;
       }
     } else if (mState.mode === 'localdb' && mState.localDb) {
-      mState.localDb.run('BEGIN TRANSACTION');
-      try {
-        for (const pid of ids) {
-          for (const anc of expanded) {
-            mState.localDb.run(
-              "INSERT OR IGNORE INTO photo_tags (photo_id, tag, source, confidence) VALUES (?, ?, 'manual', 1.0)",
-              [pid, anc]
-            );
-          }
-          const pObj = mState.photos.find((p) => p.id === pid);
-          if (pObj) {
-            ensureLocalPhotoDetails(pObj);
-            recordPendingChange(pObj, 'add_tag', tag);
-          }
+      const tKey = _findTagKey(tag);
+      if (_hasNativeJournal()) {
+        const patch = { add_tags: [tag] };
+        if (tKey) patch.add_tag_keys = { [tKey]: tag };
+        const ok = await _saveNativeBatchChanges(ids, patch);
+        if (!ok) {
+          showToast('! ロッカーDBの一括タグ追加に失敗しました');
+          return;
         }
-        mState.localDb.run('COMMIT');
-      } catch (e) {
-        console.error('[MobileDB] 一括タグ追加エラー:', e);
+      } else {
+        mState.localDb.run('BEGIN TRANSACTION');
         try {
-          mState.localDb.run('ROLLBACK');
-        } catch (re) {}
-        showToast('! ローカルDBのタグ更新に失敗しました');
-        return;
+          for (const pid of ids) {
+            for (const anc of expanded) {
+              mState.localDb.run(
+                "INSERT OR IGNORE INTO photo_tags (photo_id, tag, source, confidence) VALUES (?, ?, 'manual', 1.0)",
+                [pid, anc]
+              );
+            }
+            const pObj = mState.photos.find((p) => p.id === pid);
+            if (pObj) {
+              recordPendingChange(pObj, 'add_tag', tag, { deferSave: true });
+            }
+          }
+          mState.localDb.run('COMMIT');
+          savePendingChangesToStorage();
+        } catch (e) {
+          console.error('[MobileDB] 一括タグ追加エラー:', e);
+          try {
+            mState.localDb.run('ROLLBACK');
+          } catch (re) {}
+          showToast('! ローカルDBのタグ更新に失敗しました');
+          return;
+        }
       }
     }
 
-    for (const pid of ids) {
-      const pObj = mState.photos.find((p) => p.id === pid);
-      if (pObj) {
-        pObj.tags = [...new Set([...(pObj.tags || []), ...expanded])].sort();
-      }
+    const selObjs = ids.map((pid) => mState.photos.find((p) => p.id === pid)).filter(Boolean);
+    _batchEnsureSelectedTagsLoaded(selObjs);
+    for (const pObj of selObjs) {
+      pObj.tags = [...new Set([...(pObj.tags || []), ...expanded])].sort();
+      pObj._tagsLoaded = true;
     }
     await fetchFilterSummaries();
     renderBatchTagSheet();
+    syncTabletInspectorCurrentPhoto();
     showToast(`${ids.length}枚に #${tag} を追加しました`);
   }
 
@@ -2414,38 +4488,49 @@
         return;
       }
     } else if (mState.mode === 'localdb' && mState.localDb) {
-      mState.localDb.run('BEGIN TRANSACTION');
-      try {
-        for (const pid of ids) {
-          mState.localDb.run(
-            'DELETE FROM photo_tags WHERE photo_id = ? AND (tag = ? OR tag LIKE ?)',
-            [pid, tag, `${tag}/%`]
-          );
-          const pObj = mState.photos.find((p) => p.id === pid);
-          if (pObj) {
-            ensureLocalPhotoDetails(pObj);
-            recordPendingChange(pObj, 'remove_tag', tag);
-          }
+      const tKey = _findTagKey(tag);
+      if (_hasNativeJournal()) {
+        const patch = { remove_tags: [tag] };
+        if (tKey) patch.remove_tag_keys = { [tKey]: tag };
+        const ok = await _saveNativeBatchChanges(ids, patch);
+        if (!ok) {
+          showToast('! ロッカーDBの一括タグ削除に失敗しました');
+          return;
         }
-        mState.localDb.run('COMMIT');
-      } catch (e) {
-        console.error('[MobileDB] 一括タグ削除エラー:', e);
+      } else {
+        mState.localDb.run('BEGIN TRANSACTION');
         try {
-          mState.localDb.run('ROLLBACK');
-        } catch (re) {}
-        showToast('! ローカルDBのタグ削除に失敗しました');
-        return;
+          for (const pid of ids) {
+            _deleteTagAndOrphanAncestorsFromLocalDb(pid, tag);
+            const pObj = mState.photos.find((p) => p.id === pid);
+            if (pObj) {
+              recordPendingChange(pObj, 'remove_tag', tag, { deferSave: true });
+            }
+          }
+          mState.localDb.run('COMMIT');
+          savePendingChangesToStorage();
+        } catch (e) {
+          console.error('[MobileDB] 一括タグ削除エラー:', e);
+          try {
+            mState.localDb.run('ROLLBACK');
+          } catch (re) {}
+          showToast('! ローカルDBのタグ削除に失敗しました');
+          return;
+        }
       }
     }
 
-    for (const pid of ids) {
-      const pObj = mState.photos.find((p) => p.id === pid);
-      if (pObj && Array.isArray(pObj.tags)) {
-        pObj.tags = pObj.tags.filter((t) => t !== tag && !t.startsWith(`${tag}/`));
+    const selObjs = ids.map((pid) => mState.photos.find((p) => p.id === pid)).filter(Boolean);
+    _batchEnsureSelectedTagsLoaded(selObjs);
+    for (const pObj of selObjs) {
+      if (Array.isArray(pObj.tags)) {
+        pObj.tags = _pruneRemovedTagAndOrphanAncestors(pObj.tags, tag);
       }
+      pObj._tagsLoaded = true;
     }
     await fetchFilterSummaries();
     renderBatchTagSheet();
+    syncTabletInspectorCurrentPhoto();
     showToast(`${ids.length}枚から #${tag} を一括解除しました`);
   }
 
@@ -2479,6 +4564,9 @@
    * 選別差分ペイロードのJSON文字列を構築する（末尾改行付き）
    */
   function _buildSyncJsonString() {
+    if (_hasNativeJournal() && typeof window.TetheractNative.getPendingChangesJson === 'function') {
+      return window.TetheractNative.getPendingChangesJson();
+    }
     const payload = {
       format: 'photo-manager-mobile-sync-v1',
       exported_at: _formatLocalTimestamp(new Date()),
@@ -2500,6 +4588,27 @@
 
     const jsonStr = _buildSyncJsonString();
     const utf8Bytes = new TextEncoder().encode(jsonStr);
+
+    // 0. Android ネイティブアプリ（専用ロッカー）の場合は SAF 経由で USB 内の cache/mobile_sync.json へ直接書き出し
+    if (window.TetheractNative && typeof window.TetheractNative.exportSyncJsonToUsb === 'function') {
+      try {
+        const res = JSON.parse(window.TetheractNative.exportSyncJsonToUsb() || '{}');
+        if (res && res.ok) {
+          updatePendingBadgeUI();
+          _showExportCompleteNotice(
+            `✓ USB内の ${res.fileName || 'cache/mobile_sync.json'} (${cnt}件) へ直接書き込み・フラッシュが完了しました！`,
+            '<strong>【重要】スマホからUSBを抜く前に：</strong><br>スマホ画面の上から通知バーを下ろし、<strong>「USBドライブを取り外す（マウント解除）」</strong>をタップしてからUSBを抜き、PCの母艦へ挿してください。'
+          );
+          showToast(`✓ USB内の cache/mobile_sync.json へ同期完了 (${cnt}件)`, 3500);
+          return;
+        } else {
+          showToast(res.error || 'USBメモリを接続してから再度お試しください', 3500);
+          return;
+        }
+      } catch (e) {
+        console.error('Android Native USB書き出しエラー:', e);
+      }
+    }
 
     // 1. 保存先フォルダ（USBメモリ等）を直接選べる場合はネイティブ保存ダイアログを開く
     if (typeof window.showSaveFilePicker === 'function') {
@@ -2563,9 +4672,10 @@
         } catch (writeErr) {
           setLoading(false);
           console.error('showSaveFilePicker 書き込みエラー:', writeErr);
-          alert(
-            'USBへの直接書き込み完了確認に失敗したため、通常のファイルダウンロードに切り替えます。\n詳細: ' +
-              (writeErr.message || writeErr)
+          showToast(
+            '! 直接書き込みを確認できないため通常ダウンロードに切り替えます: ' +
+              (writeErr.message || writeErr),
+            4500
           );
           // 失敗時は下の標準ダウンロードへ自動フォールバック
         }
@@ -2660,7 +4770,7 @@
       document.execCommand('copy');
       showToast(`✓ 選別データ (${cnt}件) をコピーしました`);
     } catch (e) {
-      alert('コピーに失敗しました。ファイル保存をご利用ください。');
+      showToast('! コピーに失敗しました。ファイル保存をご利用ください', 3500);
     } finally {
       ta.remove();
     }
@@ -2687,7 +4797,7 @@
       a.remove();
       showToast('✓ 更新済み library.db を書き出しました');
     } catch (e) {
-      alert('DB書き出しエラー: ' + e.message);
+      showToast('! DB書き出しエラー: ' + (e.message || e), 4500);
     }
   }
 
@@ -2711,7 +4821,26 @@
         document.getElementById('mDrawerOverlay').style.display = 'none';
       }, 220);
     };
-    document.getElementById('mOpenDrawerBtn')?.addEventListener('click', openDrawer);
+    document.getElementById('mOpenDrawerBtn')?.addEventListener('click', () => {
+      if (!isTabletMode() && window.TetheractTouchUI && typeof window.TetheractTouchUI.openPerspectiveSheet === 'function') {
+        window.TetheractTouchUI.openPerspectiveSheet();
+        return;
+      }
+      openDrawer();
+    });
+    document.getElementById('mHeaderSearchBtn')?.addEventListener('click', () => {
+      if (window.TetheractTouchUI && typeof window.TetheractTouchUI.openPerspectiveSheet === 'function') {
+        window.TetheractTouchUI.openPerspectiveSheet('search');
+        setTimeout(() => {
+          document.getElementById('tPerspectiveSearchInput')?.focus();
+        }, 120);
+        return;
+      }
+      openDrawer();
+      setTimeout(() => {
+        document.getElementById('mSearchInput')?.focus();
+      }, 150);
+    });
     document.getElementById('mCloseDrawerBtn')?.addEventListener('click', closeDrawer);
     document.getElementById('mDrawerOverlay')?.addEventListener('click', closeDrawer);
     document.getElementById('mDrawerApplyCloseBtn')?.addEventListener('click', closeDrawer);
@@ -2741,11 +4870,17 @@
       fetchPhotosData();
     });
 
-    // ソート順
-    document.getElementById('mSortSelect')?.addEventListener('change', (e) => {
-      mState.sortBy = e.target.value;
+    // ソート順（ヘッダーのクイックセレクトとドロワー内セレクトを双方向同期）
+    const syncSortChange = (val) => {
+      mState.sortBy = val;
+      const s1 = document.getElementById('mSortSelect');
+      const s2 = document.getElementById('mQuickSortSelect');
+      if (s1 && s1.value !== val) s1.value = val;
+      if (s2 && s2.value !== val) s2.value = val;
       fetchPhotosData();
-    });
+    };
+    document.getElementById('mSortSelect')?.addEventListener('change', (e) => syncSortChange(e.target.value));
+    document.getElementById('mQuickSortSelect')?.addEventListener('change', (e) => syncSortChange(e.target.value));
 
     // クイック評価フィルタピル
     document.querySelectorAll('.m-quick-scroll [data-rating]').forEach((btn) => {
@@ -2764,6 +4899,21 @@
       mState.stacked = !mState.stacked;
       e.currentTarget.classList.toggle('active', mState.stacked);
       fetchPhotosData();
+    });
+
+    // 一覧レイアウト切替 (標準グリッド -> びっしり表示 -> マウント表示)
+    document.getElementById('mGridLayoutBtn')?.addEventListener('click', () => {
+      const order = ['grid', 'masonry', 'mount'];
+      const curIdx = order.indexOf(mState.gridLayout || 'grid');
+      mState.gridLayout = order[(curIdx + 1) % order.length];
+      _safeSetStorage('pm_mobile_layout', mState.gridLayout);
+      updateGridLayoutUI();
+      const names = {
+        grid: '標準グリッド表示',
+        masonry: 'びっしり表示（アスペクト比維持）',
+        mount: 'マウント表示（スライドフィルム枠）',
+      };
+      showToast(names[mState.gridLayout] || '標準グリッド表示');
     });
 
     // グリッド列数切替 (2 -> 3 -> 4 -> 2)
@@ -2789,6 +4939,29 @@
     });
     document.getElementById('mBatchExitBtn')?.addEventListener('click', () => setSelectMode(false));
 
+    // 長押し開始・ドラッグ選択時に mState.selectMode と mState.selectedIds を同期し、2枚目以降をワンタップ選択可能にする
+    window.addEventListener('tetheract:grid-drag-select', (e) => {
+      const numId = Number(e?.detail?.photoId);
+      const selected = Boolean(e?.detail?.selected);
+      if (!numId) return;
+      if (!mState.selectMode) {
+        mState.selectMode = true;
+        document.body.classList.add('m-select-mode');
+        document.getElementById('mSelectModeBtn')?.classList.add('active');
+      }
+      if (selected) {
+        mState.selectedIds.add(numId);
+      } else {
+        mState.selectedIds.delete(numId);
+      }
+      updateBatchCountLabel();
+      if (mState.selectedIds.size === 0) {
+        setSelectMode(false);
+      } else if (window.TetheractTouchUI && typeof window.TetheractTouchUI.updateSelectionCount === 'function') {
+        window.TetheractTouchUI.updateSelectionCount(mState.selectedIds.size);
+      }
+    });
+
     document.querySelectorAll('[data-batch-rate]').forEach((btn) => {
       btn.addEventListener('click', () => applyBatchRating(btn.dataset.batchRate));
     });
@@ -2800,32 +4973,503 @@
       openInfoSheet(true);
     });
 
-    // スクロール連動チャンク描画
+    // スクロール連動チャンク描画 ＆ 画面回転・ペイン開閉連動のびっしり行高さ自動再計算
     const scrollContainer = document.getElementById('mScrollContainer');
+    let scrollTicking = false;
     scrollContainer?.addEventListener(
       'scroll',
       () => {
-        if (
-          scrollContainer.scrollTop + scrollContainer.clientHeight >=
-          scrollContainer.scrollHeight - 600
-        ) {
-          appendNextGridChunk();
-        }
+        if (scrollTicking) return;
+        scrollTicking = true;
+        requestAnimationFrame(() => {
+          scrollTicking = false;
+          if (
+            scrollContainer.scrollTop + scrollContainer.clientHeight >=
+            scrollContainer.scrollHeight - 900
+          ) {
+            appendNextGridChunk();
+          }
+        });
       },
       { passive: true }
     );
+
+    let resizeRaf = null;
+    const scheduleMasonryRecalc = () => {
+      if (resizeRaf) return;
+      resizeRaf = requestAnimationFrame(() => {
+        resizeRaf = null;
+        updateMasonryRowHeight();
+        if (
+          scrollContainer &&
+          scrollContainer.scrollTop + scrollContainer.clientHeight >=
+            scrollContainer.scrollHeight - 900
+        ) {
+          appendNextGridChunk();
+        }
+      });
+    };
+    if (typeof ResizeObserver === 'function' && scrollContainer) {
+      const ro = new ResizeObserver(scheduleMasonryRecalc);
+      ro.observe(scrollContainer);
+    }
+    window.addEventListener('resize', scheduleMasonryRecalc, { passive: true });
+    window.addEventListener('orientationchange', () => {
+      setTimeout(scheduleMasonryRecalc, 120);
+    });
+
+    // 2本指ピンチイン・ピンチアウトによる列数変更フック & タブレット操作フック
+    window.__stepMobileGridCols = stepMobileGridCols;
+    window.__onClearSingleSelection = () => {
+      clearSingleSelection();
+    };
+    window.__onStartContextualDuel = () => {
+      if (!window.TetheractTouchUI || !window.TetheractTouchUI.duel) return;
+      let rawCandidates = [];
+      if (mState.selectedIds.size >= 2) {
+        const selIds = Array.from(mState.selectedIds);
+        rawCandidates = selIds
+          .map((id) => mState.photos.find((p) => p.id === id))
+          .filter(Boolean)
+          .slice(0, 12);
+      } else {
+        const basePhoto = mState.viewerOpen
+          ? mState.photos[mState.viewerIndex]
+          : (mState.inspectedIndex >= 0 ? mState.photos[mState.inspectedIndex] : mState.photos[0]);
+        if (basePhoto) ensureLocalPhotoDetails(basePhoto);
+        const currentPhoto = getActiveViewerPhoto() || basePhoto;
+        if (basePhoto && Array.isArray(basePhoto.stack_photos) && basePhoto.stack_photos.length >= 2) {
+          rawCandidates = basePhoto.stack_photos.slice(0, 12);
+        } else if (currentPhoto && Array.isArray(currentPhoto.stack_photos) && currentPhoto.stack_photos.length >= 2) {
+          rawCandidates = currentPhoto.stack_photos.slice(0, 12);
+        } else if (mState.photos.length >= 2) {
+          const baseIdx = mState.inspectedIndex >= 0 && mState.inspectedIndex < mState.photos.length - 1
+            ? mState.inspectedIndex
+            : 0;
+          rawCandidates = mState.photos.slice(baseIdx, baseIdx + 2);
+        }
+      }
+      if (rawCandidates.length < 2) {
+        showToast('比較する写真が2枚以上ありません');
+        return;
+      }
+      const candidates = rawCandidates.map((rawP) => {
+        const p = ensureLocalPhotoDetails(rawP) || rawP;
+        const exifParts = [
+          p.camera_model || '',
+          p.focal_length ? `${Math.round(Number(p.focal_length))}mm` : '',
+          p.f_number ? `F${p.f_number}` : '',
+          p.shutter_speed ? `${p.shutter_speed}s` : '',
+          p.iso ? `ISO${p.iso}` : '',
+        ].filter(Boolean);
+        return {
+          ...p,
+          thumbUrl: getMobileThumbnailUrl(p),
+          hdUrl: getMobileFullPhotoUrl(p),
+          exifSummary: exifParts.join(' · '),
+        };
+      });
+      window.TetheractTouchUI.duel.openDuel(candidates);
+      if (typeof window.TetheractTouchUI.setThumbBarMode === 'function') {
+        window.TetheractTouchUI.setThumbBarMode('duel');
+      }
+    };
+    window.addEventListener('tetheract:filter-row-exclude', (e) => {
+      const value = e?.detail?.value;
+      if (!value) return;
+      mState.untaggedOnly = false;
+      mState.includeTags = mState.includeTags.filter((x) => x !== value);
+      if (mState.excludeTags.includes(value)) {
+        mState.excludeTags = mState.excludeTags.filter((x) => x !== value);
+      } else {
+        mState.excludeTags.push(value);
+      }
+      renderDrawerFilters();
+      fetchPhotosData();
+    });
+
+    window.__renderTabletPerspectivePanel = (perspectiveId, container) => {
+      if (!container) return false;
+      if (perspectiveId === 'search') {
+        container.innerHTML = `
+          <div style="display:flex;flex-direction:column;gap:8px;padding:6px 4px;">
+            <input type="search" id="tPerspectiveSearchInput" class="m-input" placeholder="ファイル名・フォルダ名で検索..." value="${_escAttr(mState.searchQuery || '')}" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-secondary);color:var(--text-primary);font-size:13px;">
+            <button type="button" class="m-btn" id="tPerspectiveSearchClearBtn" style="width:100%;">検索クリア</button>
+          </div>
+        `;
+        const inp = container.querySelector('#tPerspectiveSearchInput');
+        let timer = null;
+        inp?.addEventListener('input', () => {
+          const v = inp.value.trim();
+          const mainInp = document.getElementById('mSearchInput');
+          if (mainInp) mainInp.value = v;
+          if (timer) clearTimeout(timer);
+          timer = setTimeout(() => {
+            mState.searchQuery = v;
+            fetchPhotosData();
+          }, 250);
+        });
+        container.querySelector('#tPerspectiveSearchClearBtn')?.addEventListener('click', () => {
+          if (inp) inp.value = '';
+          const mainInp = document.getElementById('mSearchInput');
+          if (mainInp) mainInp.value = '';
+          mState.searchQuery = '';
+          fetchPhotosData();
+        });
+        return true;
+      }
+      if (perspectiveId === 'folder') {
+        const TB = window.TetheractCore && window.TetheractCore.TreeBuilder;
+        const rawFolderSource = Array.isArray(mState.folderList) && mState.folderList.length > 0
+          ? mState.folderList
+          : _queryLocalFolderSummaries();
+        // M-2: 上部カード（touch_phone_case.js）にスマホ管理下フォルダが表示されている場合は、下部ツリーとの二重表示を防ぐ
+        const hasTopPhoneCard = Boolean(window.TetheractTouchUI && typeof window.TetheractTouchUI.openPhoneCaseModal === 'function' && window.TetheractNative);
+        const folderSource = hasTopPhoneCard
+          ? rawFolderSource.filter((f) => !String(f.directory_path || f.path || f.name || '').startsWith('📱'))
+          : rawFolderSource;
+        let fTree = TB && typeof TB.buildFolderTree === 'function' ? TB.buildFolderTree(folderSource) : [];
+        // ルートから単一子フォルダが続く場合（例: P: -> Loome）は自動展開しておく
+        const autoExpandSingleChain = (nodes) => {
+          for (const n of nodes) {
+            if (Array.isArray(n.children) && n.children.length > 0 && !mState._folderInitialExpanded) {
+              mState.expandedFilterNodes.add(`dir:${n.fullPath}`);
+              if (n.children.length === 1) autoExpandSingleChain(n.children);
+            }
+          }
+        };
+        if (!mState._folderInitialExpanded && fTree.length > 0) {
+          autoExpandSingleChain(fTree);
+          mState._folderInitialExpanded = true;
+        }
+        let html = `
+          <div class="m-filter-item ${!mState.folderPath ? 'active-include' : ''}" data-folder-path="">
+            <span class="m-filter-item-left"><span class="m-tree-toggle-spacer"></span><span class="m-filter-item-label">すべてのフォルダ</span></span>
+          </div>
+        `;
+        const renderFolderNodes = (nodes, depth) => {
+          for (const node of nodes) {
+            const hasChildren = Array.isArray(node.children) && node.children.length > 0;
+            const dirKey = `dir:${node.fullPath}`;
+            const isOpen = mState.expandedFilterNodes.has(dirKey);
+            const act = mState.folderPath === node.fullPath ? 'active-include' : '';
+            const toggleHtml = hasChildren
+              ? `<button type="button" class="m-tree-toggle-btn" data-folder-toggle="${_escAttr(dirKey)}">${isOpen ? '▼' : '▶'}</button>`
+              : '<span class="m-tree-toggle-spacer"></span>';
+            const iconPrefix = String(node.name || '').startsWith('📱') ? '' : '📁 ';
+            html += `
+              <div class="m-filter-item ${act}" data-folder-path="${_escAttr(node.fullPath)}">
+                <span class="m-filter-item-left">
+                  ${toggleHtml}
+                  <span class="m-filter-item-label">${iconPrefix}${_escHtml(node.name)}</span>
+                </span>
+                <span class="m-filter-count">${node.count}</span>
+              </div>
+            `;
+            if (hasChildren && isOpen) {
+              html += '<div class="m-tree-sublist">';
+              renderFolderNodes(node.children, depth + 1);
+              html += '</div>';
+            }
+          }
+        };
+        renderFolderNodes(fTree, 0);
+        container.innerHTML = `<div class="m-filter-list">${html}</div>`;
+        container.querySelectorAll('[data-folder-toggle]').forEach((btn) => {
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const k = btn.getAttribute('data-folder-toggle') || '';
+            if (mState.expandedFilterNodes.has(k)) mState.expandedFilterNodes.delete(k);
+            else mState.expandedFilterNodes.add(k);
+            window.TetheractTouchUI?.refreshActivePerspective?.();
+          });
+        });
+        container.querySelectorAll('[data-folder-path]').forEach((el) => {
+          el.addEventListener('click', async () => {
+            const fp = el.getAttribute('data-folder-path') || '';
+            if (fp && fp.startsWith('📱 ') && typeof window.__filterMobileGalleryByFolder === 'function') {
+              await window.__filterMobileGalleryByFolder(fp);
+              return;
+            }
+            if (mState.folderPath === fp) {
+              mState.folderPath = '';
+            } else {
+              mState.folderPath = fp;
+              if (fp) mState.expandedFilterNodes.add(`dir:${fp}`);
+            }
+            fetchPhotosData();
+            window.TetheractTouchUI?.refreshActivePerspective?.();
+          });
+        });
+        return true;
+      } else if (perspectiveId === 'binder') {
+        const saved = Array.isArray(mState.savedBinders) ? mState.savedBinders : [];
+        let savedHtml = '';
+        if (saved.length > 0) {
+          savedHtml =
+            '<div style="font-size:11px;font-weight:700;color:var(--text-muted);padding:4px 8px 2px;">保存済みバインダー (PC同期)</div>' +
+            saved
+              .map(
+                (b, idx) =>
+                  `<div class="m-filter-item" data-saved-binder-idx="${idx}"><span>🔖 ${_escHtml(b.name || 'Binder')}</span></div>`
+              )
+              .join('') +
+            '<div style="height:1px;background:var(--border-color);margin:6px 4px;"></div>';
+        }
+        container.innerHTML = `
+          <div class="m-filter-list">
+            ${savedHtml}
+            <div style="font-size:11px;font-weight:700;color:var(--text-muted);padding:4px 8px 2px;">スマートバインダー</div>
+            <div class="m-filter-item ${mState.ratingFilter === 'default' && !mState.untaggedOnly ? 'active-include' : ''}" data-smart-binder="default"><span>すべて（棄以外）</span></div>
+            <div class="m-filter-item ${String(mState.ratingFilter) === '2' ? 'active-include' : ''}" data-smart-binder="rate2"><span>優 コレクション</span></div>
+            <div class="m-filter-item ${String(mState.ratingFilter) === '1' ? 'active-include' : ''}" data-smart-binder="rate1"><span>良 セレクト</span></div>
+            <div class="m-filter-item ${mState.untaggedOnly ? 'active-include' : ''}" data-smart-binder="untagged"><span>未分類（タグなし）</span><span class="m-filter-count">${mState.untaggedCount}</span></div>
+            <div class="m-filter-item ${mState.noLocationOnly ? 'active-include' : ''}" data-smart-binder="noloc"><span>ジオタグなし</span><span class="m-filter-count">${mState.noLocationCount}</span></div>
+          </div>
+        `;
+        container.querySelectorAll('[data-saved-binder-idx]').forEach((el) => {
+          el.addEventListener('click', () => {
+            const b = saved[Number(el.getAttribute('data-saved-binder-idx'))];
+            if (!b) return;
+            let fObj = b.filters;
+            if (typeof fObj === 'string') {
+              try { fObj = JSON.parse(fObj); } catch (e) { fObj = {}; }
+            }
+            fObj = fObj || {};
+            resetAllFilters();
+            if (fObj.tagFilters && typeof fObj.tagFilters === 'object') {
+              for (const [tName, mode] of Object.entries(fObj.tagFilters)) {
+                if (mode === 'exclude') mState.excludeTags.push(tName);
+                else mState.includeTags.push(tName);
+              }
+            }
+            if (fObj.searchQuery) mState.searchQuery = String(fObj.searchQuery);
+            renderDrawerFilters();
+            fetchPhotosData();
+            showToast(`バインダー「${b.name}」を適用しました`);
+          });
+        });
+        container.querySelectorAll('[data-smart-binder]').forEach((el) => {
+          el.addEventListener('click', () => {
+            const kind = el.getAttribute('data-smart-binder');
+            mState.untaggedOnly = false;
+            mState.noLocationOnly = false;
+            if (kind === 'rate2') mState.ratingFilter = '2';
+            else if (kind === 'rate1') mState.ratingFilter = '1';
+            else if (kind === 'untagged') { mState.ratingFilter = 'default'; mState.untaggedOnly = true; }
+            else if (kind === 'noloc') { mState.ratingFilter = 'default'; mState.noLocationOnly = true; }
+            else mState.ratingFilter = 'default';
+            document.querySelectorAll('.m-quick-scroll [data-rating]').forEach((btn) => {
+              btn.classList.toggle('active', btn.dataset.rating === String(mState.ratingFilter));
+            });
+            renderDrawerFilters();
+            fetchPhotosData();
+          });
+        });
+        return true;
+      } else if (perspectiveId === 'lab') {
+        container.innerHTML = `
+          <div style="display:flex;flex-direction:column;gap:10px;padding:6px 4px;">
+            <div style="font-size:12px;color:var(--text-muted);line-height:1.5;">専用ロッカー（library.db）のWi-Fi / USB同期や差分エクスポートを行えます。</div>
+            <button type="button" class="m-btn m-btn-primary" id="tStageOpenDbSyncBtn" style="width:100%;">DB読込・Wi-Fi/USB同期を開く</button>
+          </div>
+        `;
+        container.querySelector('#tStageOpenDbSyncBtn')?.addEventListener('click', () => {
+          document.getElementById('mOpenDbModalBtn')?.click();
+        });
+        return true;
+      }
+      return false;
+    };
+    window.__onTabletInspectorOpenViewer = () => {
+      const idx = mState.inspectedIndex >= 0 ? mState.inspectedIndex : 0;
+      if (idx < mState.photos.length) openViewerAt(idx);
+    };
+    window.__onTabletInspectorRate = async (rate) => {
+      if (mState.selectMode && mState.selectedIds.size > 1) {
+        await applyBatchRating(rate);
+        syncTabletInspectorCurrentPhoto();
+        return;
+      }
+      rateCurrentViewerPhoto(rate);
+    };
+    window.__onTabletInspectorOpenTagSheet = () => {
+      if (mState.selectMode && mState.selectedIds.size > 1) {
+        openInfoSheet(true);
+        return;
+      }
+      if (getActiveViewerPhoto()) openInfoSheet(false);
+    };
+    window.__onTabletInspectorAddTag = (tag) => {
+      if (mState.selectMode && mState.selectedIds.size > 1) {
+        addTagBatchAction(tag);
+        return;
+      }
+      const photo = getActiveViewerPhoto();
+      if (photo) addTagToPhotoAction(photo, tag);
+    };
+    window.__onTabletInspectorRemoveTag = (tag) => {
+      if (mState.selectMode && mState.selectedIds.size > 1) {
+        removeTagBatchAction(tag);
+        return;
+      }
+      const photo = getActiveViewerPhoto();
+      if (photo) removeTagFromPhotoAction(photo, tag);
+    };
+    window.addEventListener('tetheract:device-mode-change', () => {
+      updateMasonryRowHeight();
+      if (mState.inspectedIndex >= 0 && mState.inspectedIndex < mState.photos.length) {
+        inspectPhotoAt(mState.inspectedIndex);
+      } else {
+        clearSingleSelection();
+      }
+    });
+
+    let adjustSaveTimer = null;
+    window.addEventListener('tetheract:canvas-scrub-change', (e) => {
+      const photo = getActiveViewerPhoto();
+      if (!photo || !e || !e.detail || !e.detail.values) return;
+      const vals = e.detail.values;
+      const nextBrightness = Math.max(-100, Math.min(100, Math.round(Number(vals.exposure || 0) * 10)));
+      const nextContrast = Math.max(-100, Math.min(100, Math.round(Number(vals.contrast || 0))));
+      const nextSaturation = Math.max(-100, Math.min(100, Math.round(Number(vals.saturation || 0))));
+      const nextFineAngle = Number(Math.max(-45, Math.min(45, Number(vals.tilt || 0))).toFixed(2));
+      photo.brightness = nextBrightness;
+      photo.contrast = nextContrast;
+      photo.saturation = nextSaturation;
+      photo.fine_angle = nextFineAngle;
+
+      const cardImg = document.querySelector(`.m-card[data-id="${photo.id}"] img`);
+      if (cardImg) {
+        window.TetheractTouchUI?.applyPhotoCssAdjustmentsToElement?.(cardImg, photo);
+      }
+      syncTabletInspectorCurrentPhoto();
+
+      if (adjustSaveTimer) clearTimeout(adjustSaveTimer);
+      adjustSaveTimer = setTimeout(async () => {
+        if (mState.mode === 'server') {
+          try {
+            const res = await fetch(`/api/photo/${photo.id}/adjustments`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                rotation: Number(photo.rotation || 0),
+                fine_angle: nextFineAngle,
+                brightness: nextBrightness,
+                contrast: nextContrast,
+                saturation: nextSaturation,
+              }),
+            });
+            if (res.ok) {
+              photo._bakedAdjust = {
+                brightness: nextBrightness,
+                contrast: nextContrast,
+                saturation: nextSaturation,
+                fine_angle: nextFineAngle,
+                rotation: Number(photo.rotation || 0),
+              };
+              if (cardImg) {
+                cardImg.src = getMobileThumbnailUrl(photo);
+                window.TetheractTouchUI?.applyPhotoCssAdjustmentsToElement?.(cardImg, photo);
+              }
+            }
+          } catch (err) {
+            console.warn('サーバー調整値保存エラー:', err);
+          }
+        } else if (mState.mode === 'localdb' && mState.localDb) {
+          try {
+            ensureLocalPhotoDetails(photo);
+            mState.localDb.run(
+              'UPDATE photos SET brightness = ?, contrast = ?, saturation = ?, fine_angle = ? WHERE id = ?',
+              [nextBrightness, nextContrast, nextSaturation, nextFineAngle, photo.id]
+            );
+            recordPendingChange(photo, 'adjustments', {
+              brightness: nextBrightness,
+              contrast: nextContrast,
+              saturation: nextSaturation,
+              fine_angle: nextFineAngle,
+            });
+          } catch (err) {
+            console.warn('ローカルDB調整値保存エラー:', err);
+          }
+        }
+      }, 180);
+    });
+
+    window.addEventListener('tetheract:duel-keep', async (e) => {
+      const winner = e && e.detail ? e.detail.winner : null;
+      if (!winner || !winner.id) return;
+      let idx = mState.photos.findIndex((p) => String(p.id) === String(winner.id));
+      if (idx < 0) {
+        const parentIdx = mState.photos.findIndex(
+          (p) => Array.isArray(p.stack_photos) && p.stack_photos.some((sp) => String(sp.id) === String(winner.id))
+        );
+        if (parentIdx >= 0) {
+          mState.viewerIndex = parentIdx;
+          const memberObj = mState.photos[parentIdx].stack_photos.find((sp) => String(sp.id) === String(winner.id)) || winner;
+          await setStackPrimaryPhoto(memberObj);
+          idx = parentIdx;
+        }
+      }
+      if (idx >= 0) {
+        inspectPhotoAt(idx);
+        const targetPhoto = mState.photos[idx];
+        if (Number(targetPhoto.rating || 0) <= 0) {
+          rateCurrentViewerPhoto(1);
+          showToast(`「${targetPhoto.file_name}」を良に選別しました`);
+        } else {
+          showToast(`「${targetPhoto.file_name}」を残しました`);
+        }
+      }
+    });
 
     // ビューア操作
     document.getElementById('mViewerCloseBtn')?.addEventListener('click', closeViewer);
     document.getElementById('mViewerPrevBtn')?.addEventListener('click', () => stepViewer(-1));
     document.getElementById('mViewerNextBtn')?.addEventListener('click', () => stepViewer(1));
+    document.getElementById('mViewerAdjustBtn')?.addEventListener('click', () => {
+      if (!window.TetheractTouchUI || typeof window.TetheractTouchUI.setThumbBarMode !== 'function') return;
+      const curMode = typeof window.TetheractTouchUI.getThumbBarMode === 'function'
+        ? window.TetheractTouchUI.getThumbBarMode()
+        : 'cull';
+      window.TetheractTouchUI.setThumbBarMode(curMode === 'adjust' ? 'cull' : 'adjust');
+    });
     document
       .getElementById('mViewerOpenInfoBtn')
       ?.addEventListener('click', () => openInfoSheet(false));
 
-    document.getElementById('mAutoAdvanceCheck')?.addEventListener('change', (e) => {
-      mState.autoAdvance = e.target.checked;
+    document.getElementById('mViewerZoomBadge')?.addEventListener('click', () => {
+      if (mState.zoomScale > 1.05) {
+        resetViewerZoom(true);
+      } else {
+        const m = _getViewerPhotoMetrics();
+        mState.zoomScale = m.oneToOneScale;
+        mState.panX = 0;
+        mState.panY = 0;
+        _updateViewerZoomHint();
+        applyViewerTransform(false);
+      }
+    });
+    document.getElementById('mViewerImg')?.addEventListener('load', () => {
+      if (mState.viewerOpen) { _updateViewerZoomHint(); applyViewerTransform(false); }
+    });
+
+    const setAutoAdvanceState = (enabled, notify = false) => {
+      mState.autoAdvance = Boolean(enabled);
       _safeSetStorage('pm_mobile_auto_advance', mState.autoAdvance ? '1' : '0');
+      const chk = document.getElementById('mAutoAdvanceCheck');
+      if (chk) chk.checked = mState.autoAdvance;
+      const btn = document.getElementById('mViewerAutoAdvanceBtn');
+      if (btn) btn.classList.toggle('active', mState.autoAdvance);
+      if (notify) {
+        showToast(mState.autoAdvance ? '⚡ 評価後の自動次送りをONにしました' : '評価後の自動次送りをOFFにしました', 1800);
+      }
+    };
+    document.getElementById('mAutoAdvanceCheck')?.addEventListener('change', (e) => {
+      setAutoAdvanceState(e.target.checked, false);
+    });
+    document.getElementById('mViewerAutoAdvanceBtn')?.addEventListener('click', () => {
+      setAutoAdvanceState(!mState.autoAdvance, true);
     });
 
     document.querySelectorAll('[data-viewer-rate]').forEach((btn) => {
@@ -2858,6 +5502,7 @@
     const dbOverlay = document.getElementById('mDbSyncOverlay');
     const openDbModal = () => {
       updatePendingBadgeUI();
+      if (typeof _refreshWifiStatusBox === 'function') _refreshWifiStatusBox();
       if (dbOverlay) dbOverlay.style.display = 'flex';
     };
     const closeDbModal = () => {
@@ -2871,9 +5516,39 @@
 
     const dbFileInput = document.getElementById('mDbFileInput');
     document.getElementById('mSelectDbFileBtn')?.addEventListener('click', () => {
+      if (window.TetheractNative && typeof window.TetheractNative.selectUsbFolderAndSync === 'function') {
+        closeDbModal();
+        setLoading(true, 'USBフォルダを選択してください...', 'Tetheract フォルダ（または cache の親フォルダ）を選択すると専用ロッカーへ高速コピーします');
+        window.TetheractNative.selectUsbFolderAndSync();
+        return;
+      }
       dbFileInput?.click();
     });
+    document.getElementById('mWelcomeWifiSyncBtn')?.addEventListener('click', () => {
+      _triggerAndroidWifiLockerSync('');
+    });
+    document.getElementById('mRunWifiSyncBtn')?.addEventListener('click', () => {
+      const inp = document.getElementById('mWifiUrlInput');
+      const val = inp ? inp.value.trim() : '';
+      _triggerAndroidWifiLockerSync(val);
+    });
+    document.getElementById('mSaveWifiUrlBtn')?.addEventListener('click', () => {
+      const inp = document.getElementById('mWifiUrlInput');
+      const val = inp ? inp.value.trim() : '';
+      if (!val) {
+        showToast('PCの接続URL（http://192.168.x.x:8088/m?t=...）を入力してください');
+        inp?.focus();
+        return;
+      }
+      _triggerAndroidWifiLockerSync(val);
+    });
     document.getElementById('mWelcomeLoadDbBtn')?.addEventListener('click', () => {
+      if (window.TetheractNative && typeof window.TetheractNative.selectUsbFolderAndSync === 'function') {
+        closeDbModal();
+        setLoading(true, 'USBフォルダを選択してください...', 'Tetheract フォルダ（または cache の親フォルダ）を選択すると専用ロッカーへ高速コピーします');
+        window.TetheractNative.selectUsbFolderAndSync();
+        return;
+      }
       dbFileInput?.click();
     });
     dbFileInput?.addEventListener('change', (e) => {
@@ -2890,16 +5565,117 @@
     document.getElementById('mCopySyncJsonBtn')?.addEventListener('click', copySyncJsonToClipboard);
     document.getElementById('mExportFullDbBtn')?.addEventListener('click', exportFullSqliteDbFile);
 
+    let clearConfirmUntil = 0;
     document.getElementById('mClearPendingBtn')?.addEventListener('click', () => {
       if (getPendingChangesCount() === 0) return;
-      if (confirm('端末内に記録されている未反映の変更履歴をリセットしますか？')) {
-        mState.pendingChanges.items = {};
-        savePendingChangesToStorage();
-        const completeBox = document.getElementById('mExportCompleteBox');
-        if (completeBox) completeBox.style.display = 'none';
-        showToast('変更履歴をリセットしました');
+      const now = Date.now();
+      if (now > clearConfirmUntil) {
+        clearConfirmUntil = now + 3500;
+        showToast('もう一度タップすると未反映の変更履歴をリセットします', 3200);
+        return;
       }
+      clearConfirmUntil = 0;
+      if (_hasNativeJournal() && typeof window.TetheractNative.clearPendingChangesJson === 'function') {
+        window.TetheractNative.clearPendingChangesJson();
+      }
+      mState.pendingChanges.items = {};
+      savePendingChangesToStorage();
+      const completeBox = document.getElementById('mExportCompleteBox');
+      if (completeBox) completeBox.style.display = 'none';
+      showToast('変更履歴をリセットしました');
     });
+
+    // Android ジェスチャーナビゲーション（戻る操作）の階層ハンドラ
+    window.__handleAndroidBack = function () {
+      if (Array.isArray(window.__extraBackHandlers)) {
+        for (const fn of [...window.__extraBackHandlers].reverse()) { if (fn() === 'handled') return 'handled'; }
+      }
+      const infoOverlay = document.getElementById('mInfoSheetOverlay');
+      if (infoOverlay && infoOverlay.style.display !== 'none') {
+        closeInfoSheet();
+        return 'handled';
+      }
+      if (dbOverlay && dbOverlay.style.display !== 'none') {
+        closeDbModal();
+        return 'handled';
+      }
+      const duelModal = document.getElementById('tTouchDuelModal') || document.querySelector('.t-duel-modal');
+      if (duelModal && duelModal.style.display !== 'none') {
+        if (window.TetheractTouchUI && window.TetheractTouchUI.duel && typeof window.TetheractTouchUI.duel.closeDuel === 'function') {
+          window.TetheractTouchUI.duel.closeDuel();
+        } else {
+          duelModal.style.display = 'none';
+        }
+        if (window.TetheractTouchUI && typeof window.TetheractTouchUI.setThumbBarMode === 'function') {
+          window.TetheractTouchUI.setThumbBarMode('cull');
+        }
+        return 'handled';
+      }
+      if (window.TetheractTouchUI && typeof window.TetheractTouchUI.getThumbBarMode === 'function' && window.TetheractTouchUI.getThumbBarMode() === 'adjust') {
+        window.TetheractTouchUI.setThumbBarMode('cull');
+        return 'handled';
+      }
+      const viewerModal = document.getElementById('mViewerModal');
+      if (mState.viewerOpen || (viewerModal && viewerModal.style.display !== 'none')) {
+        closeViewer();
+        return 'handled';
+      }
+      const navSheetOverlay = document.getElementById('tTouchNavSheetOverlay');
+      if (navSheetOverlay && navSheetOverlay.style.display !== 'none') {
+        if (window.TetheractTouchUI && typeof window.TetheractTouchUI.closePerspectiveSheet === 'function') {
+          window.TetheractTouchUI.closePerspectiveSheet();
+        } else {
+          navSheetOverlay.style.display = 'none';
+        }
+        return 'handled';
+      }
+      const tabletStage = document.getElementById('tTabletStage');
+      if (tabletStage && tabletStage.classList.contains('is-open')) {
+        document.getElementById('tTabletStageCloseBtn')?.click();
+        return 'handled';
+      }
+      const drawer = document.getElementById('mDrawer');
+      if (drawer && drawer.classList.contains('open')) {
+        closeDrawer();
+        return 'handled';
+      }
+      if (mState.selectMode) {
+        setSelectMode(false);
+        if (window.TetheractTouchUI && typeof window.TetheractTouchUI.updateSelectionCount === 'function') {
+          window.TetheractTouchUI.updateSelectionCount(0);
+        }
+        return 'handled';
+      }
+      return 'root';
+    };
+
+    window.__showAndroidExitHint = function () {
+      showToast('もう一度戻る操作をするとアプリを終了します');
+    };
+    window.__exportSyncToAndroidUsb = exportSyncJsonFile;
+    window.__syncLockerOverWifi = () => _triggerAndroidWifiLockerSync('');
+  }
+
+  async function _setupBrowserToNativeAppBanner() {
+    if (window.TetheractNative) return;
+    const banner = document.getElementById('mOpenInNativeAppBanner');
+    const btn = document.getElementById('mOpenInNativeAppBtn');
+    if (!banner || !btn) return;
+    try {
+      const u = new URL(window.location.href);
+      const qToken = u.searchParams.get('t') || '';
+      const serverOrigin = `${u.protocol}//${u.host}`;
+      let deepLink = `tetheract://pair?server=${encodeURIComponent(serverOrigin)}&token=${encodeURIComponent(qToken)}`;
+      try {
+        const res = await fetch('/api/mobile/pair-info');
+        if (res.ok) {
+          const info = await res.json();
+          if (info && info.deep_link) deepLink = info.deep_link;
+        }
+      } catch (e) {}
+      btn.setAttribute('href', deepLink);
+      banner.style.display = 'flex';
+    } catch (e) {}
   }
 
   // DOMContentLoaded で起動

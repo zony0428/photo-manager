@@ -270,6 +270,25 @@ def get_all_volumes() -> List[Dict[str, Any]]:
     return results
 
 
+def _expand_vsn_variants(volume_serial: str) -> List[str]:
+    """VSN のハイフン有無・大文字小文字の表記揺れ候補リストを返す"""
+    raw = (volume_serial or "").strip()
+    if not raw:
+        return []
+    no_dash = raw.replace("-", "").upper()
+    with_dash = f"{no_dash[:4]}-{no_dash[4:]}" if len(no_dash) == 8 else raw.upper()
+    candidates = [
+        raw,
+        raw.upper(),
+        raw.lower(),
+        no_dash,
+        no_dash.lower(),
+        with_dash,
+        with_dash.lower(),
+    ]
+    return list(dict.fromkeys(c for c in candidates if c))
+
+
 def remove_volume_by_serial(volume_serial: str) -> Dict[str, Any]:
     """
     指定VSNのメディアに属するリンク登録をDBから一括解除し、volumes テーブルからも削除する（実ファイルは削除しない）。
@@ -277,18 +296,24 @@ def remove_volume_by_serial(volume_serial: str) -> Dict[str, Any]:
     """
     from .photos import _sync_photo_links_state, invalidate_fast_cache
 
-    serial_clean = (volume_serial or "").strip().upper()
-    if not serial_clean:
+    variants = _expand_vsn_variants(volume_serial)
+    serial_clean = (volume_serial or "").strip().replace("-", "").upper()
+    if not serial_clean or not variants:
         return {"deleted_photos": 0, "volume_serial": ""}
+
+    vsn_ph = ",".join(["?"] * len(variants))
 
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT DISTINCT photo_id FROM photo_links WHERE UPPER(volume_serial) = ?",
-            (serial_clean,),
+            f"SELECT DISTINCT photo_id, directory_path FROM photo_links WHERE volume_serial IN ({vsn_ph})",
+            variants,
         )
-        affected_photo_ids = [row["photo_id"] for row in cursor.fetchall()]
-        cursor.execute("DELETE FROM photo_links WHERE UPPER(volume_serial) = ?", (serial_clean,))
+        rows = cursor.fetchall()
+        affected_photo_ids = list(dict.fromkeys(row["photo_id"] for row in rows))
+        affected_dirs = list({row["directory_path"] for row in rows if row["directory_path"]})
+
+        cursor.execute(f"DELETE FROM photo_links WHERE volume_serial IN ({vsn_ph})", variants)
 
         zero_link_ids: List[int] = []
         for pid in affected_photo_ids:
@@ -298,8 +323,8 @@ def remove_volume_by_serial(volume_serial: str) -> Dict[str, Any]:
 
         # リンク未経由の旧レコードがあれば合わせて回収
         cursor.execute(
-            "SELECT id FROM photos WHERE UPPER(volume_serial) = ? AND id NOT IN (SELECT photo_id FROM photo_links)",
-            (serial_clean,),
+            f"SELECT id FROM photos WHERE volume_serial IN ({vsn_ph}) AND id NOT IN (SELECT photo_id FROM photo_links)",
+            variants,
         )
         for r in cursor.fetchall():
             if r["id"] not in zero_link_ids:
@@ -314,7 +339,16 @@ def remove_volume_by_serial(volume_serial: str) -> Dict[str, Any]:
                 cursor.execute(f"DELETE FROM thumbnails WHERE photo_id IN ({ph})", chunk)
                 cursor.execute(f"DELETE FROM photos WHERE id IN ({ph})", chunk)
 
-        cursor.execute("DELETE FROM volumes WHERE UPPER(volume_serial) = ?", (serial_clean,))
+        # 対象メディアのフォルダで他メディアのリンクも残っていないものは scan_roots からも削除
+        for dpath in affected_dirs:
+            rem_frag, rem_params = _directory_filter_sql(dpath, recursive=True, column_name="directory_path")
+            cursor.execute(f"SELECT 1 FROM photo_links WHERE {rem_frag} LIMIT 1", rem_params)
+            if cursor.fetchone() is None:
+                root_frag, root_params = _directory_filter_sql(dpath, recursive=True, column_name="folder_path")
+                cursor.execute(f"DELETE FROM scan_roots WHERE {root_frag}", root_params)
+
+        cursor.execute(f"DELETE FROM volumes WHERE volume_serial IN ({vsn_ph})", variants)
+        cursor.execute("DELETE FROM thumbnails WHERE photo_id NOT IN (SELECT id FROM photos)")
         conn.commit()
 
     removed_cnt = len(affected_photo_ids) or len(zero_link_ids)
@@ -703,8 +737,6 @@ def clear_folders_fs_cache() -> None:
         _scandir_cache.clear()
         _PHOTO_DIR_SCAN_CACHE.clear()
         _folders_summary_cache = None
-    from .connection import bump_db_commit_seq
-    bump_db_commit_seq()
 
 
 def _cached_isdir(path: str) -> bool:
@@ -763,10 +795,9 @@ def get_folders_summary(include_unmanaged: bool = True) -> List[Dict[str, Any]]:
     登録ルートフォルダ配下の実ディレクトリも走査し、未管理フォルダや除外フォルダもツリーに含めて返却する。
     """
     global _folders_summary_cache
-    from .connection import get_db_commit_seq
-    cur_seq = get_db_commit_seq()
+    from .connection import get_links_seq, get_thumbnails_seq
     now_ts = time.time()
-    cache_mode_key = (cur_seq, bool(include_unmanaged))
+    cache_mode_key = (get_links_seq(), get_thumbnails_seq(), bool(include_unmanaged))
     with _fs_cache_lock:
         if _folders_summary_cache is not None:
             c_key, c_exp, c_res = _folders_summary_cache
@@ -1051,13 +1082,16 @@ def remove_folder_photos(
             sql_params.extend(v_params)
 
         cursor.execute(
-            f"SELECT id, photo_id, directory_path FROM photo_links WHERE {sql_frag}",
+            f"SELECT id, photo_id, directory_path, volume_serial FROM photo_links WHERE {sql_frag}",
             sql_params,
         )
         link_rows = cursor.fetchall()
         deleted_link_count = len(link_rows)
         affected_subfolders = list({r["directory_path"] for r in link_rows if r["directory_path"]})
         affected_photo_ids = list(dict.fromkeys(r["photo_id"] for r in link_rows))
+        affected_vsns = list({(r["volume_serial"] or "").strip() for r in link_rows if (r["volume_serial"] or "").strip()})
+        if volume_serial and volume_serial.strip() and volume_serial.strip() not in affected_vsns:
+            affected_vsns.append(volume_serial.strip())
 
         if link_rows:
             link_ids = [r["id"] for r in link_rows]
@@ -1087,6 +1121,23 @@ def remove_folder_photos(
         if not has_remaining_photos:
             root_frag, root_params = _directory_filter_sql(norm_path, recursive=recursive, column_name="folder_path")
             cursor.execute(f"DELETE FROM scan_roots WHERE {root_frag}", root_params)
+
+        # 該当ボリュームに写真リンクが1枚も残っていない場合は volumes テーブルからも登録を解除してゴースト残存を防ぐ
+        is_drive_root = len(norm_path.rstrip("\\/")) <= 2 and norm_path.rstrip("\\/").endswith(":")
+        for vsn_item in affected_vsns:
+            vsn_vars = _expand_vsn_variants(vsn_item)
+            if not vsn_vars:
+                continue
+            v_ph = ",".join(["?"] * len(vsn_vars))
+            cursor.execute(f"SELECT 1 FROM photo_links WHERE volume_serial IN ({v_ph}) LIMIT 1", vsn_vars)
+            if cursor.fetchone() is None:
+                if is_drive_root:
+                    cursor.execute(f"DELETE FROM volumes WHERE volume_serial IN ({v_ph})", vsn_vars)
+                else:
+                    cursor.execute(
+                        f"DELETE FROM volumes WHERE volume_serial IN ({v_ph}) AND COALESCE(loome_enabled, 0) = 0",
+                        vsn_vars,
+                    )
 
         cursor.execute("DELETE FROM thumbnails WHERE photo_id NOT IN (SELECT id FROM photos)")
         conn.commit()

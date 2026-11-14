@@ -329,7 +329,7 @@ def main() -> None:
                 return
 
     launcher_thread = threading.Thread(target=_delayed_launch, daemon=True, name="WindowLauncher")
-    launcher_thread.start()
+    if "--no-browser" not in sys.argv: launcher_thread.start()
 
     # 2. Uvicorn サーバーインスタンスの生成（既定は安全なローカル 127.0.0.1 待受、スマホ連携モーダル表示時にオンデマンドでLAN待受を開始）
     from server.app import app

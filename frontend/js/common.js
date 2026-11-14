@@ -52,6 +52,8 @@ const COLOR_TAG_MAP = {
 // アプリケーション全体の状態管理
 const state = {
   photos: [],
+  photoById: new Map(),
+  stackPhotoById: new Map(),
   filteredPhotos: [],
   currentFilter: { type: 'all', value: null },
   ratingFilter: new Set([0, 1, 2]),  // デフォルト: 棄(-1)を除く全て (優・良・可: [0, 1, 2])
@@ -490,25 +492,141 @@ const elements = {
   dateShiftSubmitBtn: document.getElementById('dateShiftSubmitBtn'),
   attrSubFilterSelect: document.getElementById('attrSubFilterSelect'),
   settingToolbarPositionSelect: document.getElementById('settingToolbarPositionSelect'),
+  settingSidebarTreeStyleSelect: document.getElementById('settingSidebarTreeStyleSelect'),
+  sidebarTreeStyleToggleBtn: document.getElementById('sidebarTreeStyleToggleBtn'),
+  sidebarTreeStyleToggleLabel: document.getElementById('sidebarTreeStyleToggleLabel'),
+  settingMotionSweepSlider: document.getElementById('settingMotionSweepSlider'),
+  settingMotionSweepVal: document.getElementById('settingMotionSweepVal'),
+  settingMotionSlapBtn: document.getElementById('settingMotionSlapBtn'),
+  settingMotionSweepBtn: document.getElementById('settingMotionSweepBtn'),
 };
+
+let _indexedPhotosRef = null;
+let _indexedPhotosLen = -1;
+const _stackPhotoAllById = new Map();
+
+/**
+ * state.photos と各カードの stack_photos から ID 逆引き Map インデックスを再構築する
+ */
+function rebuildPhotoByIdIndex() {
+  state.photoById.clear();
+  state.stackPhotoById.clear();
+  _stackPhotoAllById.clear();
+  if (!Array.isArray(state.photos)) {
+    _indexedPhotosRef = null;
+    _indexedPhotosLen = -1;
+    return;
+  }
+  for (const p of state.photos) {
+    if (!p) continue;
+    const pid = Number(p.id);
+    if (pid) {
+      state.photoById.set(pid, p);
+    }
+    if (Array.isArray(p.stack_photos)) {
+      for (const sp of p.stack_photos) {
+        if (!sp) continue;
+        // スリム化メンバーにタグ配列が未設定の場合、スタック共通の親タグ配列を継承させる
+        if (sp.tags === undefined && Array.isArray(p.tags)) {
+          sp.tags = [...p.tags];
+        }
+        if (sp.tag_details === undefined && Array.isArray(p.tag_details)) {
+          sp.tag_details = p.tag_details.map(d => ({ ...d }));
+        }
+        const spId = Number(sp.id);
+        if (!spId) continue;
+        if (!state.stackPhotoById.has(spId)) {
+          state.stackPhotoById.set(spId, sp);
+        }
+        let bucket = _stackPhotoAllById.get(spId);
+        if (!bucket) {
+          bucket = [];
+          _stackPhotoAllById.set(spId, bucket);
+        }
+        bucket.push(sp);
+      }
+    }
+  }
+  _indexedPhotosRef = state.photos;
+  _indexedPhotosLen = state.photos.length;
+}
+window.rebuildPhotoByIdIndex = rebuildPhotoByIdIndex;
+
+/**
+ * state.photos から単一写真が splice 削除された際に O(1) で ID インデックスからエントリを除去する
+ */
+function removePhotoFromByIdIndex(removedPhoto) {
+  if (!removedPhoto) return;
+  if (
+    !Array.isArray(state.photos) ||
+    state.photos !== _indexedPhotosRef ||
+    state.photos.length + 1 !== _indexedPhotosLen
+  ) {
+    rebuildPhotoByIdIndex();
+    return;
+  }
+  const pid = Number(removedPhoto.id);
+  if (pid && state.photoById.get(pid) === removedPhoto) {
+    state.photoById.delete(pid);
+  }
+  if (Array.isArray(removedPhoto.stack_photos)) {
+    for (const sp of removedPhoto.stack_photos) {
+      if (!sp) continue;
+      const spId = Number(sp.id);
+      if (!spId) continue;
+      const bucket = _stackPhotoAllById.get(spId);
+      if (bucket) {
+        const nextBucket = bucket.filter(item => item !== sp);
+        if (nextBucket.length === 0) {
+          _stackPhotoAllById.delete(spId);
+          state.stackPhotoById.delete(spId);
+        } else {
+          _stackPhotoAllById.set(spId, nextBucket);
+          if (state.stackPhotoById.get(spId) === sp) {
+            state.stackPhotoById.set(spId, nextBucket[0]);
+          }
+        }
+      }
+    }
+  }
+  _indexedPhotosLen = state.photos.length;
+}
+window.removePhotoFromByIdIndex = removePhotoFromByIdIndex;
+
+function _ensurePhotoByIdIndex() {
+  if (!Array.isArray(state.photos)) return;
+  if (
+    state.photos !== _indexedPhotosRef ||
+    state.photos.length !== _indexedPhotosLen ||
+    (state.photos.length > 0 && state.photoById.size === 0)
+  ) {
+    rebuildPhotoByIdIndex();
+  }
+}
+
+/**
+ * state.photos トップレベルから O(1) で指定IDの写真オブジェクトを取得する
+ */
+function getPhotoById(photoId) {
+  const numId = Number(photoId);
+  if (!numId) return null;
+  _ensurePhotoByIdIndex();
+  return state.photoById.get(numId) || null;
+}
+window.getPhotoById = getPhotoById;
 
 /**
  * state.photos トップレベル・各カードの stack_photos・ライトボックス展開スタック (state.currentLightboxStackPhotos) の
- * 全箇所から指定IDの写真オブジェクトを検索して返す共通ヘルパー
+ * 全箇所から指定IDの写真オブジェクトを O(1) で検索して返す共通ヘルパー
  */
 function findPhotoByIdAnywhere(photoId) {
   const numId = Number(photoId);
   if (!numId) return null;
-  if (Array.isArray(state.photos)) {
-    const top = state.photos.find(p => p.id === numId);
-    if (top) return top;
-    for (const p of state.photos) {
-      if (Array.isArray(p.stack_photos)) {
-        const sub = p.stack_photos.find(sp => sp.id === numId);
-        if (sub) return sub;
-      }
-    }
-  }
+  _ensurePhotoByIdIndex();
+  const top = state.photoById.get(numId);
+  if (top) return top;
+  const sub = state.stackPhotoById.get(numId);
+  if (sub) return sub;
   if (Array.isArray(state.currentLightboxStackPhotos)) {
     const lb = state.currentLightboxStackPhotos.find(sp => sp.id === numId);
     if (lb) return lb;
@@ -519,11 +637,12 @@ window.findPhotoByIdAnywhere = findPhotoByIdAnywhere;
 
 /**
  * 指定IDに一致するすべての写真オブジェクト参照（トップ・stack_photos内・currentLightboxStackPhotos内）を配列で返す
- * （ミューテーション時に全参照を漏れなく同期するため）
+ * （ミューテーション時に全参照を漏れなく O(1) 同期するため）
  */
 function findAllPhotoInstancesById(photoId) {
   const numId = Number(photoId);
   const results = [];
+  if (!numId) return results;
   const seen = new Set();
   const pushUnique = (obj) => {
     if (obj && !seen.has(obj)) {
@@ -531,20 +650,18 @@ function findAllPhotoInstancesById(photoId) {
       results.push(obj);
     }
   };
-  if (!numId) return results;
-  if (Array.isArray(state.photos)) {
-    for (const p of state.photos) {
-      if (p.id === numId) pushUnique(p);
-      if (Array.isArray(p.stack_photos)) {
-        for (const sp of p.stack_photos) {
-          if (sp.id === numId) pushUnique(sp);
-        }
-      }
+  _ensurePhotoByIdIndex();
+  const top = state.photoById.get(numId);
+  if (top) pushUnique(top);
+  const stackMatches = _stackPhotoAllById.get(numId);
+  if (stackMatches) {
+    for (const sp of stackMatches) {
+      pushUnique(sp);
     }
   }
   if (Array.isArray(state.currentLightboxStackPhotos)) {
     for (const sp of state.currentLightboxStackPhotos) {
-      if (sp.id === numId) pushUnique(sp);
+      if (sp && sp.id === numId) pushUnique(sp);
     }
   }
   return results;
@@ -767,6 +884,56 @@ function initTheme() {
   // ツールバー配置（フッター / ヘッダー）の復元・同期
   const savedTbPos = localStorage.getItem('pm_toolbar_position') || 'bottom';
   applyToolbarPosition(savedTbPos);
+
+  // 左ペイン・フィルタツリー表示スタイル（ボックス枠 / フラット）の復元・同期
+  const savedTreeStyle = localStorage.getItem('pm_sidebar_tree_style') || 'boxed';
+  applySidebarTreeStyle(savedTreeStyle);
+
+  // モーション演出（Slap & Sweep）の復元・同期＆設定モーダルUIバインド
+  const rawSweep = localStorage.getItem('pm_motion_sweep');
+  applyMotionSweepSetting(rawSweep !== null ? rawSweep : 60, { persist: false });
+  const motionSlider = document.getElementById('settingMotionSweepSlider');
+  if (motionSlider && !motionSlider.dataset.boundMotion) {
+    motionSlider.dataset.boundMotion = 'true';
+    motionSlider.addEventListener('input', () => {
+      applyMotionSweepSetting(motionSlider.value, { persist: true });
+    });
+    motionSlider.addEventListener('change', () => {
+      applyMotionSweepSetting(motionSlider.value, { persist: true });
+    });
+  }
+  const slapBtn = document.getElementById('settingMotionSlapBtn');
+  if (slapBtn && !slapBtn.dataset.boundMotion) {
+    slapBtn.dataset.boundMotion = 'true';
+    slapBtn.addEventListener('click', () => {
+      applyMotionSweepSetting(0, { persist: true });
+    });
+  }
+  const sweepBtn = document.getElementById('settingMotionSweepBtn');
+  if (sweepBtn && !sweepBtn.dataset.boundMotion) {
+    sweepBtn.dataset.boundMotion = 'true';
+    sweepBtn.addEventListener('click', () => {
+      applyMotionSweepSetting(100, { persist: true });
+    });
+  }
+  const treeStyleToggleBtn = document.getElementById('sidebarTreeStyleToggleBtn');
+  if (treeStyleToggleBtn && !treeStyleToggleBtn.dataset.boundTreeStyle) {
+    treeStyleToggleBtn.dataset.boundTreeStyle = 'true';
+    treeStyleToggleBtn.addEventListener('click', () => {
+      const cur = document.documentElement.getAttribute('data-tree-style') || 'boxed';
+      const next = (cur === 'flat') ? 'boxed' : 'flat';
+      applySidebarTreeStyle(next);
+      if (typeof showToast === 'function') {
+        showToast(
+          next === 'boxed'
+            ? '左ペインを「ボックス枠（NeXTSTEP風カード）」に統一しました'
+            : '左ペインを「フラット（シンプル行）」に統一しました',
+          'info',
+          2000
+        );
+      }
+    });
+  }
 }
 
 function applyToolbarPosition(pos) {
@@ -781,6 +948,28 @@ function applyToolbarPosition(pos) {
   }
 }
 window.applyToolbarPosition = applyToolbarPosition;
+
+function applySidebarTreeStyle(style) {
+  const normalized = (style === 'flat') ? 'flat' : 'boxed';
+  document.documentElement.setAttribute('data-tree-style', normalized);
+  try {
+    localStorage.setItem('pm_sidebar_tree_style', normalized);
+  } catch (e) {}
+  const sel = document.getElementById('settingSidebarTreeStyleSelect');
+  if (sel && sel.value !== normalized) {
+    sel.value = normalized;
+  }
+  const btn = document.getElementById('sidebarTreeStyleToggleBtn');
+  const lbl = document.getElementById('sidebarTreeStyleToggleLabel');
+  if (btn) {
+    btn.classList.toggle('is-boxed', normalized === 'boxed');
+    btn.classList.toggle('is-flat', normalized === 'flat');
+  }
+  if (lbl) {
+    lbl.textContent = normalized === 'boxed' ? '枠表示' : 'フラット';
+  }
+}
+window.applySidebarTreeStyle = applySidebarTreeStyle;
 
 function applyTheme(schemeOrTheme) {
   const validSchemes = new Set(['tetheract-d', 'tetheract-l', 'sumi', 'paper']);
@@ -811,6 +1000,63 @@ function toggleTheme() {
 }
 
 /**
+ * 現在の Slap & Sweep モーション余韻度合い (0〜100) を返す
+ */
+function getMotionSweepDegree() {
+  try {
+    const raw = localStorage.getItem('pm_motion_sweep');
+    if (raw === null || raw === '') return 60;
+    const parsed = parseInt(raw, 10);
+    return Number.isFinite(parsed) ? Math.max(0, Math.min(100, parsed)) : 60;
+  } catch (e) {
+    return 60;
+  }
+}
+window.getMotionSweepDegree = getMotionSweepDegree;
+
+/**
+ * モーションアジャスタ（Slap & Sweep）の度合いを適用し、CSS変数・属性・設定UIを同期する
+ */
+function applyMotionSweepSetting(rawValue, options = {}) {
+  const persist = options.persist !== false;
+  const parsed = parseInt(rawValue, 10);
+  const deg = Number.isFinite(parsed) ? Math.max(0, Math.min(100, parsed)) : 60;
+  const ratio = deg / 100;
+  const root = document.documentElement;
+
+  root.setAttribute('data-motion-mode', deg === 0 ? 'slap' : 'sweep');
+  root.style.setProperty('--motion-sweep-ratio', String(ratio));
+  root.style.setProperty('--transition-fast', deg === 0 ? '0s' : `${Math.round(60 + 140 * ratio)}ms cubic-bezier(0.22, 1, 0.36, 1)`);
+  root.style.setProperty('--transition-normal', deg === 0 ? '0s' : `${Math.round(120 + 260 * ratio)}ms cubic-bezier(0.16, 1, 0.3, 1)`);
+  root.style.setProperty('--motion-grid-fade', deg === 0 ? '0s' : `${Math.round(110 + 270 * ratio)}ms`);
+  root.style.setProperty('--motion-lightbox-fade', deg === 0 ? '0s' : `${Math.round(120 + 300 * ratio)}ms`);
+  root.style.setProperty('--motion-modal-fade', deg === 0 ? '0s' : `${Math.round(90 + 230 * ratio)}ms`);
+  root.style.setProperty('--motion-cascade-fade', deg === 0 ? '0s' : `${Math.round(45 + 115 * ratio)}ms`);
+
+  if (persist) {
+    try {
+      localStorage.setItem('pm_motion_sweep', String(deg));
+    } catch (e) {}
+  }
+
+  const slider = document.getElementById('settingMotionSweepSlider');
+  if (slider && String(slider.value) !== String(deg)) {
+    slider.value = String(deg);
+  }
+  const badge = document.getElementById('settingMotionSweepVal');
+  if (badge) {
+    if (deg === 0) badge.textContent = '0% (Slap)';
+    else if (deg === 100) badge.textContent = '100% (Full Sweep)';
+    else badge.textContent = `${deg}% (Sweep)`;
+  }
+  const slapBtn = document.getElementById('settingMotionSlapBtn');
+  if (slapBtn) slapBtn.classList.toggle('active', deg === 0);
+  const sweepBtn = document.getElementById('settingMotionSweepBtn');
+  if (sweepBtn) sweepBtn.classList.toggle('active', deg > 0);
+}
+window.applyMotionSweepSetting = applyMotionSweepSetting;
+
+/**
  * 定期ハートビート（生存信号）の送信
  * ブラウザが開いている間、3秒間隔でサーバーへ生存を通知。
  * すべてのタブ/ウィンドウが閉じられると通信が途絶え、サーバー側で自動停止する。
@@ -819,6 +1065,9 @@ let _lastSeenMobileSyncSeq = null;
 let _lastSeenMediaEventSeq = null;
 let _mediaEventSource = null;
 let _mediaSyncRunning = false;
+let _caseImportDebounceTimer = null;
+let _pendingCaseImportCount = 0;
+let _pendingCaseAppliedCount = 0;
 
 /**
  * メディア（SDカード・USBメモリ・外付けSSD）の抜き挿し検知イベントを受け取り、
@@ -990,6 +1239,61 @@ function initMediaWatcher() {
             if (typeof refreshAll === 'function') {
               refreshAll();
             }
+          } else if (payload.type === 'mobile_case_imported') {
+            if (payload.photo_id && payload.imported_count !== 0) {
+              _pendingCaseImportCount += 1;
+            }
+            if (typeof payload.applied_count === 'number' && payload.applied_count > 0) {
+              _pendingCaseAppliedCount += payload.applied_count;
+            }
+            if (_caseImportDebounceTimer) {
+              clearTimeout(_caseImportDebounceTimer);
+            }
+            _caseImportDebounceTimer = setTimeout(async () => {
+              _caseImportDebounceTimer = null;
+              const impCount = _pendingCaseImportCount;
+              const appCount = _pendingCaseAppliedCount;
+              _pendingCaseImportCount = 0;
+              _pendingCaseAppliedCount = 0;
+              if (typeof refreshAll === 'function') {
+                await refreshAll();
+              }
+              if (typeof updateInspectorView === 'function') {
+                updateInspectorView();
+              }
+              if (typeof showToast === 'function') {
+                if (impCount > 0) {
+                  showToast(`スマホから ${impCount} 枚の写真が母艦 (Loome\\case) に転送されました`, 'success', 4500);
+                } else if (appCount > 0) {
+                  showToast(`スマホから ${appCount} 件の評価・タグ・位置情報が母艦に反映されました`, 'success', 4000);
+                }
+              }
+            }, 1200);
+          } else if (payload.type === 'mobile_pair_requested') {
+            const devName = (payload.data && payload.data.device) || 'Android端末';
+            const clientIp = (payload.data && payload.data.client_ip) || '';
+            if (typeof showConfirmModal === 'function') {
+              showConfirmModal({
+                title: 'スマホ・タブレットからのWi-Fi同期要求',
+                message: `同一Wi-Fi上の端末「${devName}${clientIp ? ` (${clientIp})` : ''}」からWi-Fi同期の接続要求が届きました。\nペアリングと同期を許可しますか？（一度許可すると次回以降は自動接続されます）`,
+                confirmText: '許可する',
+                cancelText: '拒否',
+              }).then(async (ok) => {
+                if (!ok) return;
+                try {
+                  const res = await fetch('/api/mobile/approve-pair', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ client_ip: clientIp }),
+                  });
+                  if (res.ok && typeof showToast === 'function') {
+                    showToast(`✓ 端末「${devName}」のWi-Fi同期を許可しました`, 'success', 4000);
+                  }
+                } catch (err) {
+                  console.warn('ペアリング承認エラー:', err);
+                }
+              });
+            }
           }
         } catch (err) {
           console.debug('[MediaWatcher] イベント解析スキップ:', err);
@@ -1033,6 +1337,7 @@ function initMediaWatcher() {
           body: JSON.stringify({ photo_ids: idsToCheck }),
         });
         if (res.ok) {
+          idsToCheck.forEach(id => _pendingExternalPhotoIds.delete(id));
           const data = await res.json();
           const updatedIds = Array.isArray(data.updated_photo_ids) ? data.updated_photo_ids : [];
           const checkedPhotos = Array.isArray(data.photos) ? data.photos : [];
@@ -2272,6 +2577,27 @@ function initCommonModals() {
       window.open('/m', 'PhotoManagerMobilePreview', 'width=412,height=880,menubar=no,toolbar=no,location=no,status=no');
     });
   }
+  const resetPairBtn = document.getElementById('resetMobilePairingBtn');
+  if (resetPairBtn) {
+    resetPairBtn.addEventListener('click', async () => {
+      const ok = await showConfirmModal({
+        title: 'スマホのペアリング鍵を再発行',
+        message: '接続トークン（Cookie・ペアリング鍵）を新しく作り直しますか？\n再発行すると、現在ペアリング済みのスマホからは再度QRコードを読み取るまで接続できなくなります。',
+        confirmText: '再発行する',
+        cancelText: 'キャンセル',
+      });
+      if (!ok) return;
+      try {
+        const res = await fetch('/api/mobile/reset-pairing', { method: 'POST' });
+        if (res.ok) {
+          await loadMobileConnectionInfo(false);
+          showToast('新しいペアリング鍵を発行し、QRコードを更新しました', 'success', 3500);
+        }
+      } catch (e) {
+        showToast('ペアリング鍵の再発行に失敗しました', 'error');
+      }
+    });
+  }
   if (elements.applyDetectedMobileSyncBtn) {
     elements.applyDetectedMobileSyncBtn.addEventListener('click', () => applyDetectedMobileSync(false));
   }
@@ -2475,39 +2801,25 @@ function drawTetheractIconFrame(ctx, S, cycleProgress = 0.0, glowBoost = 1.0) {
     ctx.closePath();
   };
 
-  // 1. 外周ダークリム (#141414)
-  rrect(S * 0.015, S * 0.015, S * 0.97, S * 0.97, S * 0.155);
-  ctx.fillStyle = '#141414';
-  ctx.fill();
-
-  // 2. シャンパンゴールド外枠 (#e8caa4)
-  rrect(S * 0.032, S * 0.032, S * 0.936, S * 0.936, S * 0.14);
-  const frameGrad = ctx.createLinearGradient(0, 0, S, S);
-  frameGrad.addColorStop(0, '#f0d7b6');
-  frameGrad.addColorStop(0.5, '#e6c7a0');
-  frameGrad.addColorStop(1, '#d5b288');
-  ctx.fillStyle = frameGrad;
-  ctx.fill();
-
-  // 3. 内部ダークチャンバー領域のクリップ (τ = 2.0 の外枠内縁)
-  const ox0 = S * 0.104;
-  const oy0 = S * 0.104;
-  const ox1 = S * 0.896;
-  const oy1 = S * 0.896;
+  // 1. 枠線なしの角丸シルエット領域クリップ (案C-2: 光と影のシルエット構造)
+  const ox0 = S * 0.032;
+  const oy0 = S * 0.032;
+  const ox1 = S * 0.968;
+  const oy1 = S * 0.968;
   const ow = ox1 - ox0;
   const oh = oy1 - oy0;
 
   ctx.save();
-  rrect(ox0, oy0, ow, oh, S * 0.068);
-  ctx.fillStyle = '#080808';
+  rrect(ox0, oy0, ow, oh, S * 0.092);
+  ctx.fillStyle = '#07080a';
   ctx.fill();
   ctx.clip();
 
   // 1点透視図法の不動消失点 V と基準スケール比 r の算出
-  // 定位置 (τ = 1.0) の内枠は中心 (0.565, 0.565), サイズ 0.365 (外枠内縁 0.792 に対する比率 r ≈ 0.46086)
-  const r = 0.365 / 0.792;
-  const vx = ((0.565 - 0.50 * r) / (1 - r)) * S;
-  const vy = ((0.565 - 0.50 * r) / (1 - r)) * S;
+  // 定位置 (τ = 1.0) の内枠は中心 (0.568, 0.568), サイズ 0.395
+  const r = 0.395 / 0.936;
+  const vx = ((0.568 - 0.50 * r) / (1 - r)) * S;
+  const vy = ((0.568 - 0.50 * r) / (1 - r)) * S;
 
   // 深さレベル τ ∈ [0, 2] における正方形座標を返す（全頂点が外枠四隅→消失点Vの直線レール上に厳密に乗る）
   const getSquareAtTau = (tau) => {
@@ -2598,6 +2910,22 @@ function drawTetheractIconFrame(ctx, S, cycleProgress = 0.0, glowBoost = 1.0) {
   const wA = Math.pow(Math.sin((Math.PI * 0.5) * tauA), 2);
   if (wB > 0.005) drawWallBloomForSquare(sqB, wB);
   if (wA > 0.005) drawWallBloomForSquare(sqA, wA);
+
+  // 4b. 外側角丸四角の4辺内壁エッジ高輝度リフレクション（案C-2: 枠線ではなく内壁の光で外形を浮かび上がらせる）
+  const rimDepth = S * 0.072;
+  const drawOuterWallEdgeGlow = (x0, y0, x1, y1, gx0, gy0, gx1, gy1, peakAlpha) => {
+    const g = ctx.createLinearGradient(gx0, gy0, gx1, gy1);
+    g.addColorStop(0, `rgba(255, 248, 234, ${Math.min(0.96, peakAlpha * glowBoost)})`);
+    g.addColorStop(0.22, `rgba(242, 210, 168, ${Math.min(0.78, peakAlpha * 0.68 * glowBoost)})`);
+    g.addColorStop(0.58, `rgba(184, 148, 108, ${Math.min(0.42, peakAlpha * 0.24 * glowBoost)})`);
+    g.addColorStop(1, 'rgba(8, 8, 10, 0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+  };
+  drawOuterWallEdgeGlow(ox0, oy0, ox1, oy0 + rimDepth, 0, oy0, 0, oy0 + rimDepth, 0.76);
+  drawOuterWallEdgeGlow(ox0, oy1 - rimDepth, ox1, oy1, 0, oy1, 0, oy1 - rimDepth, 0.90);
+  drawOuterWallEdgeGlow(ox0, oy0, ox0 + rimDepth, oy1, ox0, 0, ox0 + rimDepth, 0, 0.74);
+  drawOuterWallEdgeGlow(ox1 - rimDepth, oy0, ox1, oy1, ox1, 0, ox1 - rimDepth, 0, 0.90);
 
   // 5. 外枠四隅から奥のコア四隅へ貫く4本のテーパー付きテザービーム（4D視点レール）
   const deepRailSq = getSquareAtTau(0.0);

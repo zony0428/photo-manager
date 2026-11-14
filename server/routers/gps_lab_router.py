@@ -22,7 +22,7 @@ from ..database import (
     get_random_unrated_folder,
     update_photo_gps,
 )
-from .common import _fast_json
+from .common import _fast_json, clear_api_photos_cache
 
 router = APIRouter()
 
@@ -72,6 +72,7 @@ def api_delete_photo_gps(photo_id: int):
     cleared = clear_photo_gps(photo_ids=[photo_id])
     if cleared == 0:
         raise HTTPException(status_code=404, detail="写真が見つかりません")
+    clear_api_photos_cache()
     return {"status": "ok", "photo_id": photo_id}
 
 
@@ -84,6 +85,7 @@ def api_copy_gps(photo_id: int, req: CopyGpsRequest):
     success = update_photo_gps(photo_id, source["latitude"], source["longitude"], "copied")
     if not success:
         raise HTTPException(status_code=404, detail="写真が見つかりません")
+    clear_api_photos_cache()
     return {"status": "ok", "photo_id": photo_id, "latitude": source["latitude"], "longitude": source["longitude"]}
 
 
@@ -91,6 +93,8 @@ def api_copy_gps(photo_id: int, req: CopyGpsRequest):
 def api_batch_copy_gps(req: BatchCopyGpsRequest):
     """指定写真のGPSを複数の写真に一括コピーする"""
     count = batch_copy_gps(req.source_photo_id, req.target_ids)
+    if count > 0:
+        clear_api_photos_cache()
     return {"status": "ok", "updated_count": count}
 
 
@@ -98,6 +102,7 @@ def api_batch_copy_gps(req: BatchCopyGpsRequest):
 def api_batch_infer_gps(req: BatchInferGpsRequest):
     """GPS情報のない写真に対して、撮影時刻が近いスマホ写真のGPSを一括準用する"""
     res = batch_infer_gps(photo_ids=req.photo_ids, folder=req.folder, max_minutes=req.max_minutes)
+    clear_api_photos_cache()
     return {"status": "ok", **res}
 
 
@@ -105,6 +110,8 @@ def api_batch_infer_gps(req: BatchInferGpsRequest):
 def api_clear_inferred_gps(req: ClearInferredGpsRequest):
     """準用されたGPS情報をクリアして元に戻す"""
     cleared = clear_inferred_gps(photo_ids=req.photo_ids, folder=req.folder)
+    if cleared > 0:
+        clear_api_photos_cache()
     return {"status": "ok", "cleared_count": cleared}
 
 
@@ -112,6 +119,8 @@ def api_clear_inferred_gps(req: ClearInferredGpsRequest):
 def api_clear_gps(req: ClearGpsRequest):
     """指定写真（またはフォルダ内写真）のSQLite上のジオタグ情報（緯度・経度・地名）を一括削除する"""
     cleared = clear_photo_gps(photo_ids=req.photo_ids, folder=req.folder)
+    if cleared > 0:
+        clear_api_photos_cache()
     return {"status": "ok", "cleared_count": cleared}
 
 
@@ -119,6 +128,8 @@ def api_clear_gps(req: ClearGpsRequest):
 def api_cleanup_zero_gps():
     """無効な(0, 0)のGPSエラーデータをSQLite上でクリーンアップする"""
     cleared = cleanup_invalid_zero_gps()
+    if cleared > 0:
+        clear_api_photos_cache()
     return {"status": "ok", "cleared_count": cleared}
 
 
@@ -126,6 +137,8 @@ def api_cleanup_zero_gps():
 def api_backfill_locations(limit: int = Query(default=5000, ge=1, le=50000)):
     """既存のGPS付き写真（地名未設定）に対してローカル逆ジオコーディングを一括実行する"""
     count = backfill_photo_locations(limit=limit)
+    if count > 0:
+        clear_api_photos_cache()
     return {"status": "ok", "updated_count": count}
 
 

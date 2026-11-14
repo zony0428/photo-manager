@@ -315,6 +315,7 @@ function renderTimeline(timelineItems) {
     const headerEl = document.createElement('div');
     headerEl.className = `timeline-year-header ${allMonthsSelected ? 'active-all' : (hasPartialSelected ? 'has-active-child' : '')}`.trim();
     headerEl.dataset.year = year;
+    headerEl._yearGroup = group;
 
     let partialBadgeHtml = '';
     if (hasPartialSelected) {
@@ -327,7 +328,7 @@ function renderTimeline(timelineItems) {
 
     headerEl.innerHTML = `
       <span class="tree-toggle-btn ${isCollapsed ? 'collapsed' : ''}" title="展開/折りたたみ">▼</span>
-      <span class="timeline-year-title" title="クリックで ${escapeHtml(year)}年 全体をOR選択/解除">${escapeHtml(year)}年</span>
+      <span class="timeline-year-title">${escapeHtml(year)}年</span>
       ${partialBadgeHtml}
       <span class="nav-count">${group.totalCount}</span>
     `;
@@ -379,6 +380,7 @@ function renderTimeline(timelineItems) {
       }
       monthLi.dataset.filterType = 'year_month';
       monthLi.dataset.filterValue = m.year_month;
+      monthLi._monthItem = m;
 
       const displayMonth = m.month ? `${parseInt(m.month, 10)}月` : m.year_month;
       const dayBadgeHtml = (!isMonthActive && datesInThisMonth > 0)
@@ -1533,13 +1535,14 @@ function renderCameras(cameraItems) {
     rowDiv.dataset.filterType = 'camera';
     rowDiv.dataset.filterValue = camModel;
     rowDiv.dataset.camera = camModel;
+    rowDiv._cameraItem = { camModel, count: item.count, lenses };
 
     const badgeText = camMode === 'include' ? '[+]' : (camMode === 'exclude' ? '[-]' : '');
     const expanderChar = hasLenses ? (isExpanded ? '▼' : '▶') : '•';
 
     rowDiv.innerHTML = `
       <span class="camera-tree-expander ${hasLenses ? '' : 'empty'}" data-camera="${escapeHtml(camModel)}" title="${hasLenses ? 'レンズ一覧を展開/折りたたみ' : ''}">${expanderChar}</span>
-      <span class="nav-text" title="${escapeHtml(camModel)}">${escapeHtml(camModel)}</span>
+      <span class="nav-text">${escapeHtml(camModel)}</span>
       <span class="camera-state-badge">${badgeText}</span>
       <span class="nav-count">${item.count}</span>
     `;
@@ -1592,9 +1595,10 @@ function renderCameras(cameraItems) {
         lensLi.dataset.camera = camModel;
         lensLi.dataset.lens = lensModel;
         lensLi.dataset.lensLabel = lensLabel;
+        lensLi._lensItem = { camModel, lensModel, lensLabel, lensKey, count: lens.count };
 
         lensLi.innerHTML = `
-          <span class="nav-text lens-nav-text" title="${escapeHtml(camModel)} / ${escapeHtml(lensModel)}">${escapeHtml(lensLabel)}</span>
+          <span class="nav-text lens-nav-text">${escapeHtml(lensLabel)}</span>
           <span class="camera-state-badge">${lensBadge}</span>
           <span class="nav-count">${lens.count}</span>
         `;
@@ -1813,41 +1817,9 @@ function updateCameraActiveClasses() {
 window.updateCameraActiveClasses = updateCameraActiveClasses;
 
 /**
- * スラッシュ区切りのタグ一覧から階層ツリー構造を構築する
- * 各階層の子ノードは自然順（数字なら小さい方が上・昇順）にソートされる (v2.11)
+ * スラッシュ区切りのタグ一覧から階層ツリー構造を構築する（TetheractCore.TreeBuilder 共通処理へ委譲）
  */
 function buildTagTree(tagItems, options = {}) {
-  const root = { children: new Map(), count: 0 };
-
-  tagItems.forEach(item => {
-    const parts = item.tag.split('/').map(p => p.trim()).filter(Boolean);
-    let current = root;
-    let currentPath = '';
-
-    parts.forEach((part, idx) => {
-      currentPath = currentPath ? `${currentPath}/${part}` : part;
-      if (!current.children.has(part)) {
-        current.children.set(part, {
-          name: part,
-          fullPath: currentPath,
-          count: 0,
-          children: new Map(),
-        });
-      }
-      const childNode = current.children.get(part);
-      // 祖先ノード独立保存: 各ノードはDB上の自身の件数・メタデータのみを表示（累計しない）
-      if (idx === parts.length - 1) {
-        childNode.count = item.count;
-        childNode.source = item.source || 'manual';
-        childNode.tag_key = item.tag_key || '';
-        childNode.short_name = item.short_name || '';
-        childNode.is_pinned = Boolean(item.is_pinned);
-      }
-      current = childNode;
-    });
-  });
-
-  // 各階層の子ノードを設定されたソート順（枚数順トグルON時は枚数順優先、OFF時は設定画面の名前順ルール）で再帰的に整列
   const sortMode = (typeof state !== 'undefined' && state.tagSortMode && state.tagSortMode !== 'count_desc')
     ? state.tagSortMode
     : (localStorage.getItem('pm_tag_sort_mode_v2') && localStorage.getItem('pm_tag_sort_mode_v2') !== 'count_desc'
@@ -1859,41 +1831,16 @@ function buildTagTree(tagItems, options = {}) {
       ? Boolean(state.tagSortByCount)
       : (localStorage.getItem('pm_tag_sort_by_count_v2') === 'true'));
 
-  function compareTagNames(nameA, nameB) {
-    if (sortMode === 'lexical_desc') {
-      return nameB.localeCompare(nameA, undefined, { numeric: false, sensitivity: 'base' });
-    }
-    if (sortMode === 'natural') {
-      return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
-    }
-    if (sortMode === 'natural_desc') {
-      return nameB.localeCompare(nameA, undefined, { numeric: true, sensitivity: 'base' });
-    }
-    // デフォルト ('lexical'): 文字コード・辞書順（24-xxx → 2410-xxx → 25-xxx）
-    return nameA.localeCompare(nameB, undefined, { numeric: false, sensitivity: 'base' });
+  const tb = window.TetheractCore && window.TetheractCore.TreeBuilder;
+  if (tb && typeof tb.buildTagTreeMap === 'function') {
+    return tb.buildTagTreeMap(tagItems, { sortMode, sortByCount });
   }
-
-  function sortTreeNodes(node) {
-    if (!node.children || node.children.size === 0) return;
-    const sortedEntries = Array.from(node.children.entries()).sort((a, b) => {
-      if (sortByCount) {
-        const diff = (b[1].count || 0) - (a[1].count || 0);
-        if (diff !== 0) return diff;
-      }
-      return compareTagNames(a[0], b[0]);
-    });
-    node.children = new Map(sortedEntries);
-    node.children.forEach(child => sortTreeNodes(child));
-  }
-  sortTreeNodes(root);
-
-  return root;
+  return { children: new Map(), count: 0 };
 }
+window.buildTagTree = buildTagTree;
 
 /**
  * 写真に付いているタグ一覧から、リーフタグ（子孫タグを持たない最深のタグ）のみを抽出する。
- * 祖先ノード独立保存方式のため、表示時は末端のタグだけをチップ表示し、
- * 中間ノードは省略する（削除操作で親ノードが自然に現れる）。
  */
 function getLeafTags(tags) {
   if (!tags || tags.length === 0) return [];
@@ -1901,6 +1848,44 @@ function getLeafTags(tags) {
     !tags.some(other => other !== tag && other.startsWith(tag + '/'))
   );
 }
+
+/**
+ * タグ配列から指定タグとその子孫を除去し、他の子タグが残っていない孤立した親・祖先タグも連動除去する
+ */
+function pruneRemovedTagFromArray(tags, removedTag) {
+  if (!Array.isArray(tags)) return [];
+  const clean = String(removedTag || '').trim().replace(/^\/+|\/+$/g, '');
+  if (!clean) return tags;
+  let next = tags.filter(t => t !== clean && !t.startsWith(clean + '/'));
+  const parts = clean.split('/').map(p => p.trim()).filter(Boolean);
+  for (let i = parts.length - 1; i >= 1; i--) {
+    const anc = parts.slice(0, i).join('/');
+    if (!next.some(t => t.startsWith(anc + '/'))) {
+      next = next.filter(t => t !== anc);
+    }
+  }
+  return next;
+}
+
+/**
+ * tag_details 配列から指定タグとその子孫、および孤立した親・祖先タグを連動除去する
+ */
+function pruneRemovedTagDetailsFromArray(details, removedTag) {
+  if (!Array.isArray(details)) return [];
+  const clean = String(removedTag || '').trim().replace(/^\/+|\/+$/g, '');
+  if (!clean) return details;
+  let next = details.filter(d => d && d.tag !== clean && !String(d.tag || '').startsWith(clean + '/'));
+  const parts = clean.split('/').map(p => p.trim()).filter(Boolean);
+  for (let i = parts.length - 1; i >= 1; i--) {
+    const anc = parts.slice(0, i).join('/');
+    if (!next.some(d => d && String(d.tag || '').startsWith(anc + '/'))) {
+      next = next.filter(d => d && d.tag !== anc);
+    }
+  }
+  return next;
+}
+window.pruneRemovedTagFromArray = pruneRemovedTagFromArray;
+window.pruneRemovedTagDetailsFromArray = pruneRemovedTagDetailsFromArray;
 
 /**
  * 指定したタグパスのすべての祖先階層を展開状態（expandedTagPaths）にする
@@ -1917,9 +1902,10 @@ function expandTagAncestors(fullPath) {
 }
 
 /**
- * カラーパレット専用 左クリック操作 (単一選択制御)
- * - 既にその色が 'include' ➜ 解除 (OFF)
- * - 別の色または未選択 ➜ 他のカラータグを解除した上で、この色を 'include' にセット
+ * カラーパレット専用 左クリック操作 (3ステート・サイクリック切替)
+ * - 未選択 ➜ [+] 含む (include)
+ * - 既に 'include' ➜ [−] 除外 (exclude)
+ * - 既に 'exclude' ➜ 解除 (OFF)
  * ※ 被写体タグ等の通常タグフィルタは維持されます
  */
 function handleColorFilterLeftClick(colorName) {
@@ -1927,14 +1913,16 @@ function handleColorFilterLeftClick(colorName) {
   elements.untaggedNavItem.classList.remove('active');
 
   const current = state.tagFilters.get(colorName);
-  
+
   // 他のカラータグのフィルタをすべて解除（単一選択）
   Object.keys(COLOR_TAG_MAP).forEach(cName => {
     state.tagFilters.delete(cName);
   });
 
-  if (current !== 'include') {
+  if (!current) {
     state.tagFilters.set(colorName, 'include');
+  } else if (current === 'include') {
+    state.tagFilters.set(colorName, 'exclude');
   }
 
   renderTagList();
@@ -2061,7 +2049,7 @@ function renderColorPalette() {
       <span class="color-swatch-count">${count}</span>
     `;
 
-    chip.setAttribute('title', `${colorName} (${count}枚)\nクリック: この色で絞り込み ｜ 右クリック: 除外`);
+    chip.setAttribute('title', `${colorName} (${count}枚)\nクリック: [+]含む → [−]除外 → 解除 ｜ 右クリック: 除外`);
 
     // 左クリック: 単一選択で含む/解除
     chip.addEventListener('click', (e) => {
@@ -2159,26 +2147,30 @@ function renderTagList() {
     });
   }
 
-  let tagsToDisplay = state.availableTags || [];
-  if (state.tagSourceFilter === 'manual') {
-    tagsToDisplay = tagsToDisplay.filter(t => t.source === 'manual' || t.source === 'both');
-  } else if (state.tagSourceFilter === 'ai') {
-    tagsToDisplay = tagsToDisplay.filter(t => t.source === 'ai' || t.source === 'both');
-  }
-
-  // カラータグは上部パレットに集約されているため、下部の通常ツリー一覧からは除外
-  tagsToDisplay = tagsToDisplay.filter(t => !((t.tag || t.name) in COLOR_TAG_MAP));
-
-  // テキスト絞り込み (Enter確定クエリによる部分一致フィルタ)
-  if (state.tagSearchQuery && state.tagSearchQuery.trim()) {
-    const q = state.tagSearchQuery.trim().toLowerCase();
-    tagsToDisplay = tagsToDisplay.filter(t => {
-      const name = (t.tag || t.name || '').toLowerCase();
-      return name.includes(q);
-    });
-  }
+  const tb = window.TetheractCore && window.TetheractCore.TreeBuilder;
+  const tagsToDisplay = (tb && typeof tb.filterTagsForPcTree === 'function')
+    ? tb.filterTagsForPcTree(state.availableTags || [], {
+        sourceFilter: state.tagSourceFilter || 'manual',
+        colorTagMap: typeof COLOR_TAG_MAP !== 'undefined' ? COLOR_TAG_MAP : null,
+        searchQuery: state.tagSearchQuery || '',
+      })
+    : (() => {
+        let fallback = state.availableTags || [];
+        if (state.tagSourceFilter === 'manual') {
+          fallback = fallback.filter(t => t.source === 'manual' || t.source === 'both');
+        } else if (state.tagSourceFilter === 'ai') {
+          fallback = fallback.filter(t => t.source === 'ai' || t.source === 'both');
+        }
+        fallback = fallback.filter(t => !((t.tag || t.name) in COLOR_TAG_MAP));
+        if (state.tagSearchQuery && state.tagSearchQuery.trim()) {
+          const q = state.tagSearchQuery.trim().toLowerCase();
+          fallback = fallback.filter(t => (t.tag || t.name || '').toLowerCase().includes(q));
+        }
+        return fallback;
+      })();
 
   if (tagsToDisplay.length === 0) {
+    state._lastSidebarTagTreeRoot = null;
     let emptyMsg = '';
     if (state.tagSearchQuery && state.tagSearchQuery.trim()) {
       emptyMsg = `「${escapeHtml(state.tagSearchQuery.trim())}」に一致するタグはありません`;
@@ -2193,6 +2185,7 @@ function renderTagList() {
 
   elements.tagList.innerHTML = '';
   const treeRoot = buildTagTree(tagsToDisplay, { sortByCount: Boolean(state.tagSortByCount) });
+  state._lastSidebarTagTreeRoot = treeRoot;
 
   // 選択中フィルタがある場合、そのタグの祖先を展開
   if (state.tagFilters && state.tagFilters.size > 0) {
@@ -2210,6 +2203,9 @@ function renderTagList() {
 
   // 子孫ノードに適用中のフィルタ件数（include / exclude）を再帰集計するヘルパー
   function countDescendantTagFilters(node) {
+    if (tb && typeof tb.countDescendantTagFilters === 'function') {
+      return tb.countDescendantTagFilters(node, state.tagFilters);
+    }
     let inc = 0;
     let exc = 0;
     node.children.forEach(child => {
@@ -2237,6 +2233,7 @@ function renderTagList() {
       const pillItem = document.createElement('div');
       pillItem.className = 'tag-pill-item';
       pillItem.dataset.tagPath = node.fullPath;
+      pillItem._tagNode = node;
       if (node.source === 'ai') {
         pillItem.classList.add('is-ai-tag');
       }
@@ -2282,7 +2279,7 @@ function renderTagList() {
           ${arrowHtml}
           <span class="tag-state-icon">${stateIcon}</span>
           ${aiIconHtml}
-          <span class="tag-name-text" title="${escapeHtml(node.fullPath)}">${escapeHtml(node.name)}</span>
+          <span class="tag-name-text">${escapeHtml(node.name)}</span>
         </div>
         <div class="tag-pill-right">
           ${childBadgeHtml}
@@ -2308,20 +2305,20 @@ function renderTagList() {
         });
       }
 
-      pillItem.setAttribute('title', `${node.fullPath}\n左クリック: 含む/解除 ｜ 右クリック: 除外`);
 
-      // 左クリック: フィルタOFF ➜ 含む(+) / フィルタON(除外含む) ➜ OFF(解除)
+
+      // 左クリック: 未選択 ➜ [+]含む ➜ [−]除外 ➜ 解除（3ステート・サイクリック）
       pillItem.addEventListener('click', (e) => {
         if (e.target.closest('.tree-toggle-btn')) return;
         handleTagLeftClick(node.fullPath);
       });
 
-      // 右クリック: 除外(-)のトグル（OFFまたは含む ➜ 除外 / 既に除外 ➜ OFF）
+      // 右クリック: タグフィルタ操作＆タグツリーエディタ起動メニュー
       pillItem.addEventListener('contextmenu', (e) => {
         if (e.target.closest('.tree-toggle-btn')) return;
         e.preventDefault();
         e.stopPropagation();
-        handleTagRightClick(node.fullPath);
+        handleTagRightClick(node.fullPath, e);
       });
 
       nodeEl.appendChild(pillItem);
@@ -2343,24 +2340,28 @@ function renderTagList() {
 }
 
 /**
- * タグツリー 左クリック操作
- * - フィルタOFF ➜ 含む (include [+])
- * - フィルタON (含む[+] または 除外[-]) ➜ 解除 (OFF)
+ * タグツリー 左クリック操作 (3ステート・サイクリック切替)
+ * - 未選択 ➜ [+] 含む (include)
+ * - 含む (include) ➜ [−] 除外 (exclude)
+ * - 除外 (exclude) ➜ 解除 (OFF)
  */
 function handleTagLeftClick(tag) {
   state.untaggedOnly = false;
   elements.untaggedNavItem.classList.remove('active');
 
   const current = state.tagFilters.get(tag);
-  if (current) {
+  if (!current) {
+    state.tagFilters.set(tag, 'include');
+    expandTagAncestors(tag);
+  } else if (current === 'include') {
+    state.tagFilters.set(tag, 'exclude');
+    expandTagAncestors(tag);
+  } else {
     state.tagFilters.delete(tag);
     if (state.tagFilters.size === 0) {
       if (state.tagAndRoots) state.tagAndRoots.clear();
       state.tagInterGroupMode = 'and';
     }
-  } else {
-    state.tagFilters.set(tag, 'include');
-    expandTagAncestors(tag);
   }
 
   renderTagList();
@@ -2369,10 +2370,14 @@ function handleTagLeftClick(tag) {
 
 /**
  * タグツリー 右クリック操作
- * - フィルタOFF または 含む[+] ➜ 除外 (exclude [-])
- * - 既に除外[-] ➜ 解除 (OFF)
+ * - マウスイベントが渡された場合は、誤操作でDBを壊さない安全なフィルタ専用コンテキストメニューを表示
+ * - イベントなしで呼ばれた場合は従来通り除外トグル
  */
-function handleTagRightClick(tag) {
+function handleTagRightClick(tag, event = null) {
+  if (event && typeof event.clientX === 'number') {
+    openTagFilterContextMenu(tag, event);
+    return;
+  }
   state.untaggedOnly = false;
   elements.untaggedNavItem.classList.remove('active');
 
@@ -2390,6 +2395,122 @@ function handleTagRightClick(tag) {
 
   renderTagList();
   fetchPhotos();
+}
+
+/**
+ * 左ペイン「タグフィルタ」用の安全な右クリックメニューを開く
+ * （直接DBを書換えず、絞り込み操作または専用モーダル「タグツリーエディタ」への遷移を提供）
+ */
+function openTagFilterContextMenu(tag, event) {
+  const oldMenu = document.getElementById('tagFilterContextMenu');
+  if (oldMenu) oldMenu.remove();
+
+  const current = state.tagFilters.get(tag);
+  const menu = document.createElement('div');
+  menu.id = 'tagFilterContextMenu';
+  menu.className = 'context-menu';
+  menu.style.cssText = 'display:block; position:fixed; z-index:9999; min-width:210px;';
+
+  const items = [
+    {
+      label: `${current === 'include' ? '✓ ' : ''}[+] 含むで絞り込み`,
+      action: () => {
+        state.untaggedOnly = false;
+        elements.untaggedNavItem.classList.remove('active');
+        state.tagFilters.set(tag, 'include');
+        expandTagAncestors(tag);
+        renderTagList();
+        fetchPhotos();
+      },
+    },
+    {
+      label: `${current === 'exclude' ? '✓ ' : ''}[−] 除外して絞り込み`,
+      action: () => {
+        state.untaggedOnly = false;
+        elements.untaggedNavItem.classList.remove('active');
+        state.tagFilters.set(tag, 'exclude');
+        expandTagAncestors(tag);
+        renderTagList();
+        fetchPhotos();
+      },
+    },
+    {
+      label: 'このタグのみ表示（他を解除）',
+      action: () => {
+        state.untaggedOnly = false;
+        elements.untaggedNavItem.classList.remove('active');
+        state.tagFilters.clear();
+        state.tagFilters.set(tag, 'include');
+        expandTagAncestors(tag);
+        renderTagList();
+        fetchPhotos();
+      },
+    },
+  ];
+
+  if (current) {
+    items.push({
+      label: 'このタグのフィルタを解除',
+      action: () => removeTagFilter(tag),
+    });
+  }
+
+  items.push({ divider: true });
+  items.push({
+    label: 'タグツリーエディタを開く...',
+    action: () => {
+      if (!state.settingsTagTreeExpandedPaths) state.settingsTagTreeExpandedPaths = new Set();
+      const parts = String(tag || '').split('/').filter(Boolean);
+      let acc = '';
+      for (let i = 0; i < parts.length - 1; i++) {
+        acc = acc ? `${acc}/${parts[i]}` : parts[i];
+        state.settingsTagTreeExpandedPaths.add(acc);
+      }
+      if (typeof window.openSettingsModal === 'function') {
+        window.openSettingsModal('tags');
+      } else {
+        const openEditorBtn = document.querySelector('.inspector-open-tag-editor-btn') || document.getElementById('folderDbMaintenanceBtn');
+        if (openEditorBtn) openEditorBtn.click();
+      }
+    },
+  });
+
+  items.forEach(it => {
+    if (it.divider) {
+      const div = document.createElement('div');
+      div.className = 'context-menu-divider';
+      menu.appendChild(div);
+      return;
+    }
+    const row = document.createElement('div');
+    row.className = 'context-menu-item';
+    row.innerHTML = `<div class="menu-item-content"><span>${escapeHtml(it.label)}</span></div>`;
+    row.addEventListener('click', (e) => {
+      e.stopPropagation();
+      menu.remove();
+      it.action();
+    });
+    menu.appendChild(row);
+  });
+
+  document.body.appendChild(menu);
+  const rect = menu.getBoundingClientRect();
+  const x = Math.min(event.clientX, window.innerWidth - rect.width - 8);
+  const y = Math.min(event.clientY, window.innerHeight - rect.height - 8);
+  menu.style.left = `${Math.max(8, x)}px`;
+  menu.style.top = `${Math.max(8, y)}px`;
+
+  const closeHandler = (ev) => {
+    if (!menu.contains(ev.target)) {
+      menu.remove();
+      document.removeEventListener('mousedown', closeHandler, true);
+      document.removeEventListener('contextmenu', closeHandler, true);
+    }
+  };
+  setTimeout(() => {
+    document.addEventListener('mousedown', closeHandler, true);
+    document.addEventListener('contextmenu', closeHandler, true);
+  }, 0);
 }
 
 /**

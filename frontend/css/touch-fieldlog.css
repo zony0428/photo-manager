@@ -1,0 +1,672 @@
+/* ==========================================================================
+   Tetheract Touch Field Log UI Stylesheet (Layer 3)
+   採取（GPSフィールドログ）：Labパネル内カード・フルスクリーン管理画面・確認モーダル
+   テーマ対応: data-theme (sumi / paper) & data-scheme (tetheract-d / tetheract-l)
+   ========================================================================== */
+
+:root,
+[data-theme="paper"] {
+  --fl-rec-fg: #0f766e;
+  --fl-rec-bg: rgba(13, 148, 136, 0.14);
+  --fl-rec-border: rgba(13, 148, 136, 0.42);
+  --fl-warn-fg: #9a5b06;
+  --fl-warn-bg: rgba(217, 119, 6, 0.13);
+  --fl-warn-border: rgba(217, 119, 6, 0.42);
+  --fl-danger-fg: #b91c1c;
+  --fl-danger-bg: rgba(220, 38, 38, 0.12);
+  --fl-danger-border: rgba(220, 38, 38, 0.42);
+  --fl-ok-fg: #15803d;
+  --fl-ok-bg: rgba(22, 163, 74, 0.13);
+  --fl-ok-border: rgba(22, 163, 74, 0.38);
+}
+
+[data-theme="sumi"] {
+  --fl-rec-fg: #2dd4bf;
+  --fl-rec-bg: rgba(20, 184, 166, 0.16);
+  --fl-rec-border: rgba(45, 212, 191, 0.42);
+  --fl-warn-fg: #fbbf24;
+  --fl-warn-bg: rgba(245, 158, 11, 0.14);
+  --fl-warn-border: rgba(245, 158, 11, 0.44);
+  --fl-danger-fg: #fca5a5;
+  --fl-danger-bg: rgba(239, 68, 68, 0.16);
+  --fl-danger-border: rgba(239, 68, 68, 0.48);
+  --fl-ok-fg: #4ade80;
+  --fl-ok-bg: rgba(34, 197, 94, 0.15);
+  --fl-ok-border: rgba(34, 197, 94, 0.42);
+}
+
+@keyframes tFlPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.42; transform: scale(0.84); }
+}
+
+.t-fl-pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--fl-rec-fg);
+  display: inline-block;
+  flex-shrink: 0;
+  animation: tFlPulse 1.6s ease-in-out infinite;
+}
+
+/* ==================== 1. Lab パネル内「採取」カード ==================== */
+.t-fl-lab-card {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 12px;
+  border-radius: 10px;
+  background-color: var(--bg-tertiary, #262a31);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary, var(--text-main));
+}
+
+.t-fl-lab-card.is-recording {
+  border-color: var(--fl-rec-border);
+  background-image: linear-gradient(180deg, var(--fl-rec-bg), transparent 85%);
+}
+
+.t-fl-lab-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.t-fl-lab-title-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary, var(--text-main));
+}
+
+.t-fl-lab-title-row svg {
+  color: var(--accent-primary);
+  flex-shrink: 0;
+}
+
+.t-fl-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  border: 1px solid var(--border-color);
+  background-color: var(--surface-card, var(--bg-secondary));
+  color: var(--text-muted);
+}
+
+.t-fl-badge.is-recording {
+  background-color: var(--fl-rec-bg);
+  border-color: var(--fl-rec-border);
+  color: var(--fl-rec-fg);
+}
+
+.t-fl-lab-summary {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.t-fl-lab-summary strong {
+  color: var(--text-primary, var(--text-main));
+  font-weight: 700;
+}
+
+.t-fl-lab-interrupt {
+  font-size: 11px;
+  line-height: 1.4;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background-color: var(--fl-warn-bg);
+  border: 1px solid var(--fl-warn-border);
+  color: var(--fl-warn-fg);
+}
+
+.t-fl-lab-browser-note {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-muted);
+  padding: 5px 8px;
+  border-radius: 6px;
+  background-color: var(--surface-card, var(--bg-secondary));
+  border: 1px dashed var(--border-color);
+}
+
+.t-fl-lab-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+/* ==================== 2. 共通ボタン ==================== */
+.t-fl-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 7px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background-color: var(--surface-card, var(--bg-secondary));
+  color: var(--text-primary, var(--text-main));
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.14s ease, transform 0.1s ease;
+}
+
+.t-fl-btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.t-fl-btn:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+.t-fl-btn-primary {
+  background-color: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: #ffffff;
+}
+
+.t-fl-btn-stop {
+  background-color: var(--fl-danger-bg);
+  border-color: var(--fl-danger-border);
+  color: var(--fl-danger-fg);
+}
+
+.t-fl-btn-secondary {
+  background-color: var(--surface-card, var(--bg-secondary));
+  border-color: var(--border-color);
+  color: var(--text-primary, var(--text-main));
+}
+
+.t-fl-btn-danger {
+  background-color: #dc2626;
+  border-color: #dc2626;
+  color: #ffffff;
+}
+
+/* ==================== 3. フルスクリーン管理シート／モーダル ==================== */
+.t-fl-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 160;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--bg-primary);
+  color: var(--text-primary, var(--text-main));
+  overflow: hidden;
+}
+
+.t-fl-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: calc(50px + env(safe-area-inset-top, 0px));
+  padding: env(safe-area-inset-top, 0px) 12px 0;
+  background-color: var(--surface-card, var(--bg-secondary));
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.t-fl-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 36px;
+  padding: 0 10px 0 6px;
+  border-radius: 7px;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-tertiary);
+  color: var(--text-primary, var(--text-main));
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.t-fl-topbar-title {
+  font-size: 14.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.t-fl-icon-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 7px;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-tertiary);
+  color: var(--text-primary, var(--text-main));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.t-fl-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 12px 12px calc(28px + env(safe-area-inset-bottom, 0px));
+}
+
+.t-fl-scroll-inner {
+  width: 100%;
+  max-width: 660px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ==================== 4. 注意・案内バナー ==================== */
+.t-fl-notice-box {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  font-size: 12px;
+  line-height: 1.5;
+  border: 1px solid var(--border-color);
+  background-color: var(--surface-card, var(--bg-secondary));
+}
+
+.t-fl-notice-box svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.t-fl-notice-box.is-warning {
+  background-color: var(--fl-warn-bg);
+  border-color: var(--fl-warn-border);
+  color: var(--fl-warn-fg);
+}
+
+.t-fl-notice-box.is-info {
+  background-color: var(--accent-subtle);
+  border-color: var(--accent-primary);
+  color: var(--text-primary, var(--text-main));
+}
+
+.t-fl-notice-title {
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+
+/* ==================== 5. セクションカード & ① 記録コントロール ==================== */
+.t-fl-card {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  padding: 14px;
+  border-radius: 11px;
+  background-color: var(--surface-card, var(--bg-secondary));
+  border: 1px solid var(--border-color);
+}
+
+.t-fl-card.is-recording-card {
+  border-color: var(--fl-rec-border);
+}
+
+.t-fl-hero-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.t-fl-hero-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.t-fl-hero-state.is-recording {
+  color: var(--fl-rec-fg);
+}
+
+.t-fl-idle-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background-color: var(--text-dim);
+  display: inline-block;
+}
+
+.t-fl-tile-tag {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 2px 8px;
+  border-radius: 6px;
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border-soft);
+}
+
+.t-fl-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.t-fl-stat-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border-soft);
+}
+
+.t-fl-stat-label {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.t-fl-stat-val {
+  font-size: 14.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary, var(--text-main));
+}
+
+.t-fl-hero-toggle-btn {
+  min-height: 48px;
+  font-size: 14px;
+  border-radius: 10px;
+  width: 100%;
+}
+
+.t-fl-sub-hint {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+/* ==================== 6. ② 日別ログ一覧と削除 ==================== */
+.t-fl-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.t-fl-section-title {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.t-fl-count-pill {
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+}
+
+.t-fl-safe-note {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border-soft);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.t-fl-safe-note strong {
+  color: var(--text-primary, var(--text-main));
+}
+
+.t-fl-day-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.t-fl-day-toolbar-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.t-fl-mini-btn {
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-tertiary);
+  color: var(--text-primary, var(--text-main));
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.t-fl-mini-btn:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.t-fl-mini-btn.is-danger {
+  background-color: var(--fl-danger-bg);
+  border-color: var(--fl-danger-border);
+  color: var(--fl-danger-fg);
+}
+
+.t-fl-days-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.t-fl-empty-days {
+  padding: 18px 12px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
+  border-radius: 8px;
+  background-color: var(--bg-tertiary);
+  border: 1px dashed var(--border-color);
+}
+
+.t-fl-day-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 11px;
+  border-radius: 8px;
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  cursor: pointer;
+  transition: border-color 0.12s ease, background-color 0.12s ease;
+}
+
+.t-fl-day-row.is-selected {
+  border-color: var(--accent-primary);
+  background-color: var(--accent-subtle);
+}
+
+.t-fl-day-check {
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  border: 1.5px solid var(--text-muted);
+  background-color: var(--surface-card, var(--bg-secondary));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: transparent;
+}
+
+.t-fl-day-row.is-selected .t-fl-day-check {
+  background-color: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: #ffffff;
+}
+
+.t-fl-day-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.t-fl-day-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.t-fl-day-date {
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.t-fl-upload-badge {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  background-color: var(--surface-card, var(--bg-secondary));
+  flex-shrink: 0;
+}
+
+.t-fl-upload-badge.is-uploaded {
+  background-color: var(--fl-ok-bg);
+  border-color: var(--fl-ok-border);
+  color: var(--fl-ok-fg);
+}
+
+.t-fl-day-meta {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+
+/* ==================== 7. ③ 記録・プライバシー設定 ==================== */
+.t-fl-setting-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.t-fl-setting-item {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.t-fl-setting-label {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-primary, var(--text-main));
+}
+
+.t-fl-select {
+  width: 100%;
+  height: 40px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-tertiary);
+  color: var(--text-primary, var(--text-main));
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.t-fl-setting-desc {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+/* ==================== 8. タッチ専用 削除確認モーダル ==================== */
+.t-fl-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 175;
+  background-color: rgba(10, 12, 15, 0.72);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.t-fl-confirm-dialog {
+  width: 100%;
+  max-width: 360px;
+  padding: 18px 16px 16px;
+  border-radius: 12px;
+  background-color: var(--surface-card, var(--bg-secondary));
+  border: 1px solid var(--border-color);
+  color: var(--text-primary, var(--text-main));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.42);
+}
+
+.t-fl-confirm-title {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.t-fl-confirm-msg {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.t-fl-confirm-sub {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-muted);
+  padding: 7px 9px;
+  border-radius: 7px;
+  background-color: var(--bg-tertiary);
+}
+
+.t-fl-confirm-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 4px;
+}

@@ -1,95 +1,69 @@
-# ポータブルストレージ & パス追跡・マルチメディア所在リンク設計
+# ポータブルストレージ・所在リンク・専用保管庫 `Loome` ＆ XMPサイドカー設計
 
-## 1. 課題と背景
-
-Tetheract Photo Manager をUSBメモリやポータブルSSDに丸ごと保存して複数台のPC（自宅PC、ノートPC、職場PCなど）で持ち運ぶ場合や、複数のSDカード・外付けドライブを差し替えて運用する場合、以下の問題が発生する。
-
-1. **ドライブレターの変動と衝突**:
-   あるPCでは `D:` ドライブとしてマウントされたUSBが、別のPCでは `E:` や `F:` になる。また、同じ `E:` ドライブに別のSDカードが差し替えられることもある。
-2. **データベースに記録されたフルパスの無効化**:
-   スキャン時に `D:\Photos\IMG_0001.JPG` として SQLite に登録された場合、ドライブ文字が変わると `os.path.exists()` が `False` になり写真が開けなくなる。
-3. **複数メディア・バックアップフォルダ間の重複ファイル肥大化**:
-   SDカード・PC内蔵SSD・外付けバックアップHDDに同じ写真が存在するとき、パス単位で別レコードとして登録すると、同じ写真が何枚も並んでサムネイル容量が倍増し、評価やタグも分裂してしまう。
-4. **大容量元写真の分離持ち運び**:
-   サムネイルとタグ付けデータ（数GB）だけを高速なUSBに入れ、重いRAW元画像（数百GB）はPC側の内蔵HDDや別ドライブに置いたまま鑑賞・整理したいというニーズ。
+本ドキュメントは、Tetheract Photo Manager のポータブルパス解決（VSN追跡）、ユニーク画像エンティティ（`photos` / `photo_links`）の正規化設計、SQLite BLOBサムネイル構造、専用保管庫 `Loome` のファイル管理、および `server/sidecar.py` によるサイドカー・XMP非破壊連携仕様を定義する。
 
 ---
 
-## 2. 解決アーキテクチャ
+## 1. ドライブ識別（VSN）と動的パス解決
 
-### (1) Windows API によるボリューム識別 (`server/volume_info.py`)
-ドライブ文字は一時的な割り当てに過ぎないため、物理ドライブの固定識別子として **ボリュームシリアル番号 (VSN: Volume Serial Number)** を利用する。
-Python標準の `ctypes` 経由で Windows API `GetVolumeInformationW` を呼び出し、外部DLL依存なしでVSNとボリュームラベルを取得する。
+### 1.1 ボリュームシリアル番号による個体識別 (`server/volume_info.py`)
+ドライブレター（`D:`, `E:` 等）は接続PCや差し替え順で変動するため、Windows API `GetVolumeInformationW`（`ctypes` 呼び出し）で物理ドライブ固有の **ボリュームシリアル番号（VSN）** とボリュームラベルを取得し、`volumes` および `scan_roots` テーブルに記録する。
+なお、Google Drive 等の全環境共通の仮想VSN（`19831116` 等）は `SHARED_VIRTUAL_VSNS` として物理個体識別対象から除外する。
 
-```python
-# VSNの16進数文字列（例: "A1B2C3D4"）を取得
-volume_info = get_volume_info(path)
-```
+### 1.2 ポータブルパス解決 (`server/scanner.py` — `resolve_portable_path`)
+実写真ファイルへのアクセス時はハードコード絶対パスを直接開かず、必ず `resolve_portable_path(stored_path, expected_serial=volume_serial)` を経由する：
+1. **アプリ内 `Loome/`・`storage/` 配下**: 実行中アプリ自身の相対ディレクトリで解決する。
+2. **VSN指定ありのリムーバブル／ローカルドライブ**: 現在接続中のドライブ群から一致する VSN を探し、同一相対パスで解決する（該当VSNが未接続ならオフラインと判定し、同じドライブレターに挿さった別SDカード等への誤一致を防ぐ）。
+3. **VSN未指定・UNC／ネットワークパス**: 元パス実在確認 → 現在ドライブ上の相対パス → クラウド同期フォルダ → `photos/` 直下の順でフォールバック解決する。
 
-スキャン時に `volumes` テーブルおよび `scan_roots` テーブルに VSN を記録することで、次回接続時にドライブ文字が変わっていても「同じストレージである」と判定・再紐付けが可能。また、同じドライブ文字（例: `E:`）に別のSDカードが挿さった場合も VSN の違いにより厳密に別個体として識別する。
+---
 
-### (2) 動的パス解決 (`server.scanner.resolve_portable_path`)
-実写真ファイルの読み込み時は、`resolve_portable_path(stored_path, expected_serial=photo["volume_serial"])` を経由して以下の優先順位で動的にパスを解決する：
+## 2. ユニーク画像 (`photos`) と複数所在リンク (`photo_links`) の分離
 
-```text
-[1. アプリ内 storage/ 配下のパスか？]
-       ├──(Yes)──> アプリ自身の storage/ ディレクトリで解決
-       ▼ (No)
-[2. VSN 指定があるローカル／リムーバブルドライブのパスか？]
-       ├──(Yes)──> 該当 VSN を持つ接続中ドライブの同一相対パスで解決
-       │           （※該当 VSN ドライブが未接続ならオフライン判定とし、別メディアへは誤一致させない）
-       ▼ (No: VSN未指定、またはネットワークドライブ・UNCパス)
-[3. 従来フォールバック解決]
-       ├── 元パスがそのまま存在する？ ──(Yes)──> 解決成功
-       ├── 現在ドライブ上に同一相対パスがある？ ──(Yes)──> 解決成功
-       ├── クラウド同期フォルダ（OneDrive/Google Drive等）にある？ ──(Yes)──> 解決成功
-       ├── プロジェクト直下の "photos/" 内にある？ ──(Yes)──> 解決成功
-       ▼ (すべてNo)
-[4. 未接続（オフライン）判定]
-```
+複数フォルダや複数メディア（SDカード、内蔵SSD、外付けバックアップ）に同一写真が存在しても、`photos` テーブルにはユニーク画像1行のみを保持し、物理ファイルの所在を `photo_links`（`UNIQUE(volume_serial, rel_path)`）で1対多管理する（`server/database/photos.py`, `server/database/duplicates.py`）。
 
-### (3) ユニーク画像エンティティ (`photos`) と所在リンク (`photo_links`) の分離（v1.2.0+）
-複数のフォルダや複数の外部メディア（SDカードA、SDカードB、ポータブルSSD等）に同一の写真が存在する場合、「全写真枚数 − 重複分」の純粋なユニーク画像のみを `photos` テーブルに1行だけ保持し、実ファイルの物理的な所在を `photo_links` テーブルで1対多管理する正規化アーキテクチャを採用している（`server/database/photos.py`, `server/database/duplicates.py`）。
+- **同一画像識別キー (`content_key`)**:
+  - Exif撮影日時あり：`original_date_taken`（日時シフト後も不変）・`file_size`・`is_raw`・`subsec_time`・`shutter_speed`・`f_number`・`iso`・`exposure_bias` の組み合わせで一意化する。
+  - Exif撮影日時なし（SNS保存画像・スクリーンショット等）：ファイル中間4箇所（20/40/60/80%位置の各4KB）＋末尾4KB＋サイズから算出する **BLAKE2b 64-bit サンプリングハッシュ**（`compute_image_body_sample_hash()` in `server/raw_loader.py`）を用い、`mtime` 変化で別画像に分裂するのを防ぐ。
+- **スマート・リンクライフサイクル**:
+  1. **部分消失**: 複数リンクのうち片方のメディアから削除された場合は該当 `photo_links` 行のみを除去し、残存リンクを `is_primary = 1` に昇格して通常表示を維持する。
+  2. **完全消失 (`is_unlinked = 1`)**: 全リンクが0本になった場合のみ `file_path = 'unlinked://<id>/<file_name>'`, `directory_path = '__unlinked__'`, `volume_serial = NULL`, `is_unlinked = 1` へ移行し、評価・タグ・調整・サムネイルを保護する（明示的な完全消去は `POST /api/photos/purge-unlinked` のみ）。
+  3. **再発見時の自動復帰**: 別メディアや移動先で同一 `content_key` が再スキャンされると、既存の `photo_id` に新リンクが張り直され `is_unlinked = 0` へ自動復帰する。
+- **消失フォルダ検知**: VSN一致ドライブが接続中であるにもかかわらず対象フォルダが存在しない場合は「オフライン」ではなく「消失」と判定し、再スキャン（`cleanup_orphans=True`）または `[リンク消去]`（`POST /api/folders/unlink-missing`）で配下リンクを整理する。
 
-- **不変の同一画像識別キー (`content_key`)**:
-  - 撮影日時（日時シフト補正後も元の `original_date_taken` を保持）・ファイルサイズ・RAW区分に加え、ミリ秒（`subsec_time`）・シャッター速度（`shutter_speed`）・F値（`f_number`）・ISO（`iso`）・露出補正値（`exposure_bias`）を組み合わせた `content_key` をインデックス管理する。
-  - これにより、LUMIX（DC-S1R 等）のように JPEG サイズが 4KB 境界にパディングされるカメラで1秒間に連写・ブラケット撮影された別コマがたまたま同サイズになった場合でも誤統合を防ぎつつ、ファイル名変更や日時シフト後でも1カラムのインデックス照合で即座に同一画像を特定する。
-  - **Exif（撮影日時）欠落画像のサンプリングハッシュ同一認識（v1.6.1+）**:
-    - SNS保存画像やスクリーンショット、書き出し画像など Exif の撮影日時（`date_taken`）が存在しない画像では、ファイルの更新日時（`mtime`）に依存すると別フォルダへのコピーやダウンロードのたびに別画像として分裂してしまう。
-    - そのため、`original_date_taken`（および `date_taken`）が欠落している画像については、ファイルヘッダ（先頭 4KB）を避けた中間4箇所（20%・40%・60%・80% 位置から各 4KB）＋末尾 4KB ＋ ファイルサイズから **BLAKE2b 64-bit サンプリングハッシュ**（[`compute_image_body_sample_hash()`](../../server/raw_loader.py)）を算出し、`hash:<16桁hex>|sz:<file_size>|wh:<width>x<height>|raw:<0|1>` 形式の `content_key` を生成する。
-    - 起動時マイグレーション（`_migrate_exifless_photo_content_keys_v1`）およびフォルダスキャン時（`scan_directory`）には、既存の Exif 欠落レコードのハッシュ再計算と重複レコード統合（タグ・高評価・非破壊調整・`photo_links` の無損失マージ）を自動実行し、処理開始・進捗・完了をスプラッシュ画面やトースト通知へリアルタイム表示する。
-- **所在リンク管理 (`photo_links` テーブル)**:
-  - `UNIQUE(volume_serial, rel_path)` を持ち、各メディアの VSN とドライブ内相対パス（`rel_path`, `rel_dir`）およびフルパス（`file_path`）を保持する。
-  - `photos.link_count` に有効リンク本数をキャッシュしているため、一覧取得（`get_photos()`）時に重い重複集計サブクエリを回すことなく重複バッジ（所在数）を即座に描画できる。
-- **メディア横断のスマート・リンクライフサイクル**:
-  1. **部分消失（残存リンクあり）**: メディアAとメディアBの両方にリンクを持つ写真がメディアBから削除・移動された場合、メディアBの `photo_links` 行のみを削除し、残存するメディアAのリンクを自動的に代表パス（`is_primary = 1`）へ昇格させて通常表示を継続する。
-  2. **完全消失（残りリンク 0本）**: すべての管理下メディア・フォルダから実ファイルが見つからなくなった場合のみ `photos.is_unlinked = 1` となり、「リンク切れの写真」一覧へ移動して評価・タグ・非破壊調整・サムネイルを安全に保護する。
-  3. **再発見時の自動復帰**: リンク切れ状態の写真が後日別メディアや移動先フォルダ（リネーム済み含む）でスキャンされた際、`content_key` 照合により既存の `photo_id` へ新しい `photo_links` が自動で張り直され、`is_unlinked = 0` の通常状態へメタデータごと自動復帰する。
+---
 
-### (4) 消失フォルダ・削除済みファイルの検知とリンク整理（v1.2.2+）
-接続中のメディア（SDカードや外付けドライブ）上でファイル単体またはフォルダごと削除された場合、以下の仕組みで確実かつ非破壊にリンク整理が行われる：
+## 3. SQLite BLOB サムネイル ＆ クラスタ化スキーマ (`server/database/schema.py`)
 
-1. **VSN指定による正確なオンライン判定と消失フォルダ検出**:
-   - `check_folder_diff()` や `scan_directory(cleanup_orphans=True)`、`_ftLoadRoots()` では、パス解決時に必ず対象フォルダの `volume_serial`（VSN）を `resolve_portable_path(..., expected_serial=volume_serial)` / `resolve_drive_online_path(..., expected_serial=volume_serial)` へ渡す。
-   - ドライブ自体（VSN一致）は接続中であるにもかかわらず対象フォルダが存在しない場合は「未接続（オフライン）」ではなく **「接続中メディア上でフォルダごと削除された（消失）」** と正しく判定する。
-   - `scan_directory()` では対象フォルダ自体が削除されていた場合でも早期リターンせず、`cleanup_orphans=True` なら `cleanup_missing_photos_in_folder()` を実行して配下の消失リンクを一括整理し、`scan_roots` からも該当フォルダ登録を解除する。
-2. **「再スキャン」への消失リンク自動整理の統合**:
-   - 従来の「再スキャン」と「リフレッシュ」の分離を廃止し、フォルダ右クリックメニューを **「このフォルダを再スキャン（直下のみ）」** と **「再スキャン（子を含む）」**（子フォルダ数が多い場合の所要時間確認モーダル付き）の2つに統合した（どちらも `cleanup_orphans: true` で実行）。
-   - さらに、`[消失]` 状態のフォルダを右クリックした際は、コンテキストメニュー最上部のフォルダ名ヘッダー右横に **`[リンク消去]` ボタン**（`#folderMenuHeaderUnlinkBtn`）を表示し、ワンクリックで `POST /api/folders/unlink-missing` を呼び出して配下写真のリンク解除を行える。
-3. **リンク消失 (`is_unlinked = 1`) 移行時のボリューム情報クリア**:
-   - `_sync_photo_links_state()` や `unlink_missing_photos_in_folder()` で写真の全リンクが0本になり `is_unlinked = 1` へ移行する際は、`file_path = 'unlinked://<id>/<file_name>'`・`directory_path = '__unlinked__'` とあわせて **`volume_serial = NULL`** にクリアする。
-   - `get_photos()` / `get_photo_by_id()` の `LEFT JOIN volumes` でも `AND COALESCE(p.is_unlinked, 0) = 0` を条件とし、また `/api/photos` 側でも `is_unlinked` 写真に対して `is_offline = False` を明示設定することで、リンク消失写真に過去の「保存ボリューム」が残ったり「未接続の写真」へ誤混入したりするのを完全に防いでいる。
-   - DB起動時マイグレーション（`schema.py`）でも `UPDATE photos SET volume_serial = NULL WHERE is_unlinked = 1 AND volume_serial IS NOT NULL` を実行し、既存のリンク消失レコードを自動修復する。
-4. **メインツールバー表示対象プルダウンとリンク消失バッジ ＆ 選択削除・矛盾操作防止（v1.6.1+）**:
-   - メインツールバー中央の「表示対象プルダウン（`#headerScopeSelect`）」から `すべての写真 / 接続中の写真 / 未接続の写真 / リンク消失の写真 / 未分類の写真 / 重複のある写真` を直接切り替えることができ、`get_connection_counts()` によりペア済みRAW従属コマを除いたユニーク写真全体について **`すべての写真` ＝ `接続中の写真` ＋ `未接続の写真` ＋ `リンク消失の写真`** の枚数が高速集計される。
-   - 「すべての写真」一覧には `include_unlinked=True` によりリンク消失写真も含め、カードサムネイル右下にアンバー色のリンク切れアイコンバッジ（`.unlinked-card-badge`）を表示して一目で判別できるようにしている。
-   - **「リンク情報なし（リンク消失の写真）」の選択・絞り込み完全消去**:
-     - 左サイドバー `Folder` の「リンク情報なし」またはフッター三大フィルタの「リンク消失の写真」で絞り込んでいる間のみ、誤削除防止ガード付きで DB からの完全消去（`POST /api/photos/purge-unlinked`、任意 `photo_ids` 指定対応）が可能。
-     - 写真を選択している場合は「選択したリンク消失写真を完全消去 (N枚)」（下部ボタン・右クリックメニュー・`Delete` キー）、未選択かつ他フィルタ（評価・タグ・形式等）併用時は「表示中のリンク消失写真を完全消去 (N枚)」（非表示のリンク消失写真は保護）、未選択かつ全件表示時は「リンク消失写真をすべて完全消去 (N枚)」として動作する。
-   - **実体ファイル不在写真の矛盾操作排除と混在選択時のスキップ通知**:
-     - リンク消失写真のみを選択している場合、実体ファイルを必要とする操作（`Loome` へのコピー/移動、スマートテイクアウト、ベタ焼き出力、非破壊調整・回転、トーン貼付、クリップボード画像コピー、サムネイル再生成、AIタグ再判定、エクスプローラー起動）はコンテキストメニューおよびインスペクタ上で非表示・無効化される。
-     - リンクあり写真とリンク消失写真を混在して複数選択し、これらの操作を実行した場合は、実体のある写真のみを処理したうえで「（実体のない 〇〇 枚はスキップしました）」とトースト通知する。
+USBメモリ（exFAT等）での微小ファイル大量生成によるI/O劣化とバックアップ遅延を防ぐため、サムネイルWebPバイナリはすべて `cache/library.db` 内に格納する。
 
-### (4) カタログ単体持ち歩き機能（オフライン閲覧）
-- サムネイルはすべて SQLite（`cache/library.db`）に BLOB 格納されているため、元画像ファイルが手元にない状態（SDカード抜去中・外付けHDD未接続時）でも、高速な一覧表示・拡大プレビュー・タグ付け・評価・検索が完全に機能する。
-- オフライン写真は画面上に控えめに「未接続」バッジが表示され、元画像が存在しないことによるエラーやクラッシュを防止している。
+- **`thumbnails` テーブル**: `photo_id INTEGER PRIMARY KEY` による ROWID 直結1発ルックアップ構造。一覧クエリで寸法のみ参照する際は BLOB 本体ページを読まないカバリングインデックス `idx_thumbnails_dims(photo_id, width, height)` を使用する。
+- **`photo_tags` テーブル**: `PRIMARY KEY (photo_id, tag) WITHOUT ROWID` により同一写真のタグ行を物理隣接配置する。
+- **基本PRAGMA (`server/database/connection.py`)**: `journal_mode = WAL`, `cache_size = -16000` (16MB), `mmap_size = 268435456` (256MB), `synchronous = NORMAL`, `temp_store = MEMORY`。
+
+---
+
+## 4. 専用保管庫 `Loome` 完結管理 (`server/storage_manager.py`, `server/storage_folder_import.py`)
+
+一般フォルダの写真には「元ファイル・元フォルダへの書き込みゼロ」を厳守する一方、専用保管庫 **`Loome`**（本体内 `Loome/` または `storage/`、および外付けドライブ直下の `<Drive>:\Loome`）内の写真に限り、アプリUI上から実ファイル整理を完結できる（選択UIは `frontend/js/loome_picker.js` および `frontend/js/storage.js`）。
+
+1. **取り込み (`POST /api/photos/import-to-storage` / フォルダ取込)**: 選択写真やフォルダを `Loome/<サブフォルダ>` へコピー（Windows環境の大容量ファイルは `server/sidecar.py` の `fast_copy_file` による `CopyFileExW` 高速転送）し、評価・非破壊調整・GPS・タグを引き継ぐ。
+2. **サブフォルダ移動 (`POST /api/storage/move-photos`)**: `Loome` 内のサブフォルダ間物理移動（D&D対応）を行い、`photo_id` とサムネイルを維持したままDBパスを更新する。
+3. **単一・一括連番リネーム (`POST /api/storage/rename-photo`, `batch-rename-photos`)**: `Loome` 内写真のみ `F2` キーを有効化し、一時ファイル経由の2パス方式で名前衝突を防ぎながらリネームする。
+4. **外付け `Loome` 作成 (`POST /api/storage/create-external-loome`)**: 接続中ドライブ直下に `<Drive>:\Loome` と電子刻印 `.loome_seal` を作成する。
+
+---
+
+## 5. サイドカー自動追従 ＆ XMP非破壊連携 (`server/sidecar.py`)
+
+### 5.1 付随サイドカーとペアRAWの自動追従
+現像ソフトが出力するサイドカー（`SIDECAR_EXTENSIONS`: `.xmp`, `.pp3`, `.arp`, `.dop`, `.on1`, `.cos`, `.nksc`, `.spd`）を `find_sidecars_for_file()`（`<stem>.<ext>` および `<filename>.<ext>` 両対応）で検出し、`Loome` へのコピー・移動・リネーム・外部エクスポート時にペアRAWともども自動追従させる（リネーム時は `.xmp` 内の `crs:RawFileName` も同期更新する）。
+
+### 5.2 XMP非破壊プレビューと隔離取り込み（「混ぜない・壊さない・比較できる」）
+- **XMPホールド比較 (`parse_xmp_for_photo` + `GET /api/photo/{photo_id}/xmp-preview`)**:
+  - `.xmp` の Camera Raw 系パラメータ（露光量・コントラスト・彩度・クロップ・角度・Orientation）を解析し、右インスペクタの「XMPプレビュー」を押している間だけオンデマンドWebPで比較表示する（DBは無変更）。
+- **評価・階層タグの安全取り込み (`POST /api/photo/{photo_id}/xmp-import`, `POST /api/photos/batch-xmp-import`)**:
+  - **現行4段階評価へのマッピング**: `pm:rating`（`2 / 1 / 0 / -1`）があれば優先採用し、標準 `xmp:Rating` の場合は `4〜5` → `2`（優）、`3` → `1`（良）、`0〜2` → `0`（可）、`-1以下` → `-1`（棄）へ変換する。
+  - **タグの `XMP/` ルート隔離**: `lr:hierarchicalSubject` や `dc:subject` はすべて **`XMP/親/子`** のように `XMP/` プレフィックス配下へ格納し、既存の手動タグツリーと混在させない。
+- **スマート・テイクアウト時の `.xmp` 同時書き出し (`write_xmp_sidecar_for_photo`)**:
+  - 書き出し時にオプションを有効にすると、評価（`pm:rating` ＆ `xmp:Rating`）、`XMP/` プレフィックスを除いた階層タグ、GPS座標、非破壊調整値を Lightroom / Camera Raw 互換 `.xmp` として同時出力する。

@@ -8,33 +8,42 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Body, HTTPException, Query, Request
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
-from ..database import (
-    add_tag_to_photo,
-    remove_tag_from_photo,
-    resolve_tag_by_key_or_name,
-    update_rating,
-)
-from ..database.folders import clear_folders_fs_cache
 from ..lan_access import (
-    LAN_TOKEN,
+    LAN_TOKEN_COOKIE,
     LAN_TOKEN_QUERY,
+    PAIRING_APPROVAL_TTL_SEC,
+    approve_lan_pairing_ip,
+    consume_lan_pairing_approval,
     detect_local_ip_addresses as _detect_local_ip_addresses,
     ensure_lan_listeners,
+    extract_explicit_lan_token,
+    get_lan_token,
+    is_lan_device_paired,
+    is_lan_pairing_approved_for,
+    is_lan_token_valid,
+    is_loopback_client,
+    mark_lan_device_paired,
+    reset_lan_pairing,
+    resolve_request_client_host,
 )
 from ..media_watcher import broadcast_app_event
 from ..mobile_bundle import (
     STANDALONE_HTML_FILENAME,
     ensure_standalone_mobile_html,
 )
+from ..mobile_sync_apply import (
+    _sanitize_mobile_tag,
+    _schedule_thumbnail_refresh,
+    apply_mobile_sync_changes,
+)
 from .common import (
     BASE_DIR,
     FRONTEND_DIR,
-    _mobile_sync_event,
-    clear_api_photos_cache,
+    _require_localhost,
 )
 
 logger = logging.getLogger("photo_manager.app")
@@ -48,14 +57,28 @@ router = APIRouter()
 
 class MobileSyncChangeItem(BaseModel):
     photo_id: Optional[int] = None
+    content_key: Optional[str] = None
     file_path: Optional[str] = None
     file_name: Optional[str] = None
+    file_size: Optional[int] = None
     date_taken: Optional[str] = None
     rating: Optional[int] = None
+    is_favorite: Optional[int] = None
     add_tags: Optional[List[str]] = None
     remove_tags: Optional[List[str]] = None
     add_tag_keys: Optional[Any] = None
     remove_tag_keys: Optional[Any] = None
+    rotation: Optional[int] = None
+    fine_angle: Optional[float] = None
+    brightness: Optional[int] = None
+    contrast: Optional[int] = None
+    saturation: Optional[int] = None
+    crop_x: Optional[float] = None
+    crop_y: Optional[float] = None
+    crop_w: Optional[float] = None
+    crop_h: Optional[float] = None
+    set_stack_primary: Optional[bool] = None
+    adjustments: Optional[Dict[str, Any]] = None
 
 
 class MobileSyncImportRequest(BaseModel):
@@ -106,7 +129,7 @@ def mobile_app_entry():
 @router.get("/api/mobile/standalone", include_in_schema=False)
 def api_mobile_standalone():
     """
-    CSS・JS・sql.js(WASM)を1ファイルに完全内蔵したオフライン用単体HTML (PhotoManager_Mobile.html) を生成・配信する。
+    CSS・JS・sql.js(WASM)を1ファイルに完全内蔵したオフライン用単体HTML (Tetheract_Mobile.html) を生成・配信する。
     スマートフォン本体やUSBメモリに保存しておくことで、PC電源OFF・圏外でもファイルアプリから直接起動できる。
     """
     out_path = ensure_standalone_mobile_html()
@@ -123,9 +146,31 @@ def api_mobile_standalone():
     raise HTTPException(status_code=500, detail="単体モバイルHTMLの生成に失敗しました")
 
 
+@router.get("/api/mobile/apk", include_in_schema=False)
+def api_mobile_apk():
+    """Android専用ネイティブアプリ (Tetheract_Android.apk) をWi-Fi経由で直接配信する"""
+    candidates = [
+        BASE_DIR / "android" / "Tetheract_Android.apk",
+        BASE_DIR / "dist_v2" / "android" / "Tetheract_Android.apk",
+        BASE_DIR / "dist" / "android" / "Tetheract_Android.apk",
+    ]
+    for p in candidates:
+        if p.exists() and p.is_file():
+            return FileResponse(
+                p,
+                media_type="application/vnd.android.package-archive",
+                filename="Tetheract_Android.apk",
+                headers={
+                    "Content-Disposition": 'attachment; filename="Tetheract_Android.apk"',
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                },
+            )
+    raise HTTPException(status_code=404, detail="Tetheract_Android.apk が見つかりません")
+
+
 def _lan_mobile_url(ip: str, port: int) -> str:
     """LAN接続トークン付きのスマホ版URLを生成する（QRコード読み取り時に自動でCookie化される）"""
-    return f"http://{ip}:{port}/m?{LAN_TOKEN_QUERY}={LAN_TOKEN}"
+    return f"http://{ip}:{port}/m?{LAN_TOKEN_QUERY}={get_lan_token()}"
 
 
 @router.get("/api/mobile/qr.svg", include_in_schema=False)
@@ -149,11 +194,13 @@ def api_mobile_qr_svg(request: Request, url: Optional[str] = None):
 
 @router.get("/api/mobile/info")
 def api_mobile_info(request: Request, enable_lan: int = Query(default=0)):
-    """スマホ版 (/m) 接続用URL・QRコード情報、およびUSB内の未反映 mobile_sync.json の有無を返す"""
+    """スマホ版 (/m) 接続用URL・QRコード情報、およびUSB内の未反映 mobile_sync.json の有無を返す（localhost専用）"""
     import datetime
 
+    _require_localhost(request)
     port = request.url.port or 8088
     if enable_lan:
+        mark_lan_device_paired(True)
         ips = ensure_lan_listeners(request.app, port=port)
     else:
         ips = _detect_local_ip_addresses()
@@ -206,17 +253,8 @@ def api_mobile_info(request: Request, enable_lan: int = Query(default=0)):
         "db_size_mb": db_size_mb,
         "detected_sync_file": detected_info,
         "last_applied_sync": last_applied_info,
+        "persistent_pairing_enabled": is_lan_device_paired(),
     }
-
-
-def _sanitize_mobile_tag(raw_tag: Any) -> str:
-    """モバイル同期データに含まれるタグ文字列を検証・無害化する（制御文字・HTMLタグ混入防止）"""
-    if not raw_tag:
-        return ""
-    s = str(raw_tag).strip()
-    # 制御文字やHTMLタグ記号(<, >)を除去し、最大100文字に制限
-    s = re.sub(r"[\x00-\x1f\x7f<>\"'`]", "", s).strip()
-    return s[:100]
 
 
 def _apply_mobile_sync_changes(
@@ -224,220 +262,24 @@ def _apply_mobile_sync_changes(
     used_file: Optional[Path] = None,
 ) -> Dict[str, Any]:
     """モバイル選別差分リストをPC本体の library.db に適用する"""
-    from ..database.connection import get_connection
-
-    if not raw_changes:
-        return {
-            "status": "ok",
-            "applied_count": 0,
-            "skipped_count": 0,
-            "source_file": used_file.name if used_file else None,
-            "applied_items": [],
-        }
-
-    applied_count = 0
-    skipped_count = 0
-    applied_items: List[Dict[str, Any]] = []
-
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        for item in raw_changes:
-            if not isinstance(item, dict):
-                continue
-            target_id: Optional[int] = None
-            matched_file_name: str = ""
-            pid = item.get("photo_id")
-            fpath = item.get("file_path")
-            fname = item.get("file_name")
-            dtaken = item.get("date_taken")
-
-            # 1. photo_id (+ file_name) で照合
-            if pid:
-                if fname:
-                    cursor.execute(
-                        "SELECT id, file_name FROM photos WHERE id = ? AND file_name = ?",
-                        (int(pid), str(fname)),
-                    )
-                else:
-                    cursor.execute("SELECT id, file_name FROM photos WHERE id = ?", (int(pid),))
-                row = cursor.fetchone()
-                if row:
-                    target_id = int(row["id"])
-                    matched_file_name = str(row["file_name"] or "")
-
-            # 2. file_path で照合
-            if target_id is None and fpath:
-                cursor.execute("SELECT id, file_name FROM photos WHERE file_path = ?", (str(fpath),))
-                row = cursor.fetchone()
-                if row:
-                    target_id = int(row["id"])
-                    matched_file_name = str(row["file_name"] or "")
-
-            # 3. file_name + date_taken で照合（ドライブレター変動・再スキャン対策）
-            if target_id is None and fname and dtaken:
-                cursor.execute(
-                    "SELECT id, file_name FROM photos WHERE file_name = ? AND date_taken = ? LIMIT 1",
-                    (str(fname), str(dtaken)),
-                )
-                row = cursor.fetchone()
-                if row:
-                    target_id = int(row["id"])
-                    matched_file_name = str(row["file_name"] or "")
-
-            # 4. file_name 単体で照合（一意に特定できる場合のフォールバック）
-            if target_id is None and fname:
-                cursor.execute(
-                    "SELECT id, file_name FROM photos WHERE file_name = ? LIMIT 2",
-                    (str(fname),),
-                )
-                rows = cursor.fetchall()
-                if len(rows) == 1:
-                    target_id = int(rows[0]["id"])
-                    matched_file_name = str(rows[0]["file_name"] or "")
-
-            if target_id is None:
-                skipped_count += 1
-                continue
-
-            # 評価の更新 (-1: 棄, 0: 可, 1: 良, 2: 優)
-            rating_val = item.get("rating")
-            applied_rating: Optional[int] = None
-            if rating_val is not None:
-                r_int = max(-1, min(2, int(rating_val)))
-                update_rating(target_id, r_int)
-                applied_rating = r_int
-
-            def _resolve_mobile_tags_list(raw_tags_val: Any, raw_keys_val: Any) -> List[str]:
-                resolved_list: List[str] = []
-                seen = set()
-
-                def _push(t_str: str) -> None:
-                    c = _sanitize_mobile_tag(t_str)
-                    if c and c not in seen:
-                        seen.add(c)
-                        resolved_list.append(c)
-
-                raw_tags_seq = list(raw_tags_val)[:50] if isinstance(raw_tags_val, list) else []
-                if isinstance(raw_keys_val, dict):
-                    # {"tk_xxx": "旧タグ名", ...} 形式
-                    covered_fallbacks = set()
-                    for k_str, fb_name in list(raw_keys_val.items())[:50]:
-                        clean_k = _sanitize_mobile_tag(k_str)
-                        clean_fb = _sanitize_mobile_tag(fb_name)
-                        if clean_fb:
-                            covered_fallbacks.add(clean_fb)
-                        resolved_name = resolve_tag_by_key_or_name(cursor, clean_k, clean_fb)
-                        if resolved_name:
-                            _push(resolved_name)
-                    for rt in raw_tags_seq:
-                        clean_rt = _sanitize_mobile_tag(rt)
-                        if clean_rt and clean_rt not in covered_fallbacks:
-                            resolved_name = resolve_tag_by_key_or_name(
-                                cursor,
-                                clean_rt if clean_rt.startswith("tk_") else None,
-                                clean_rt,
-                            )
-                            _push(resolved_name)
-                elif isinstance(raw_keys_val, list) and raw_keys_val:
-                    keys_seq = list(raw_keys_val)[:50]
-                    max_len = max(len(raw_tags_seq), len(keys_seq))
-                    for idx in range(max_len):
-                        k_item = keys_seq[idx] if idx < len(keys_seq) else None
-                        t_item = raw_tags_seq[idx] if idx < len(raw_tags_seq) else None
-                        if isinstance(k_item, dict):
-                            clean_k = _sanitize_mobile_tag(k_item.get("tag_key") or k_item.get("key"))
-                            clean_fb = _sanitize_mobile_tag(k_item.get("tag") or t_item)
-                        else:
-                            clean_k = _sanitize_mobile_tag(k_item)
-                            clean_fb = _sanitize_mobile_tag(t_item)
-                        resolved_name = resolve_tag_by_key_or_name(cursor, clean_k, clean_fb)
-                        if resolved_name:
-                            _push(resolved_name)
-                else:
-                    for rt in raw_tags_seq:
-                        clean_rt = _sanitize_mobile_tag(rt)
-                        if clean_rt:
-                            resolved_name = resolve_tag_by_key_or_name(
-                                cursor,
-                                clean_rt if clean_rt.startswith("tk_") else None,
-                                clean_rt,
-                            )
-                            _push(resolved_name)
-                return resolved_list
-
-            # タグ削除（tag_key があればPC側の最新リネーム後パスへ解決して削除）
-            removed_tags: List[str] = _resolve_mobile_tags_list(
-                item.get("remove_tags"),
-                item.get("remove_tag_keys"),
-            )
-            for clean_r_tag in removed_tags:
-                remove_tag_from_photo(target_id, clean_r_tag)
-
-            # タグ追加（tag_key があればPC側の最新リネーム後パスへ解決して追加）
-            added_tags: List[str] = _resolve_mobile_tags_list(
-                item.get("add_tags"),
-                item.get("add_tag_keys"),
-            )
-            for clean_a_tag in added_tags:
-                add_tag_to_photo(target_id, clean_a_tag)
-
-            applied_count += 1
-            if len(applied_items) < 50:
-                applied_items.append({
-                    "photo_id": target_id,
-                    "file_name": matched_file_name or str(fname or f"ID:{target_id}"),
-                    "rating": applied_rating,
-                    "add_tags": added_tags,
-                    "remove_tags": removed_tags,
-                })
-
-        conn.commit()
-        try:
-            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-        except Exception as e:
-            logger.debug(f"モバイル同期後のWALチェックポイントスキップ: {e}")
-
-    # 自動検知ファイルを使用した場合は cache/mobile_sync.json.applied に退避して二重適用を防ぎ、USBルートを綺麗に保つ
-    if used_file and used_file.exists():
-        try:
-            cache_dir = BASE_DIR / "cache"
-            cache_dir.mkdir(parents=True, exist_ok=True)
-            bak_path = cache_dir / "mobile_sync.json.applied"
-            if bak_path.exists():
-                bak_path.unlink()
-            used_file.replace(bak_path)
-        except Exception as e:
-            logger.warning(f"適用済み mobile_sync.json の退避失敗: {e}")
-
-    if applied_count > 0:
-        _mobile_sync_event["seq"] += 1
-        _mobile_sync_event["applied_count"] = applied_count
-        clear_folders_fs_cache()
-        clear_api_photos_cache()
-        broadcast_app_event(
-            "mobile_synced",
-            {"applied": applied_count, "seq": _mobile_sync_event["seq"]},
-        )
-
-    return {
-        "status": "ok",
-        "applied_count": applied_count,
-        "skipped_count": skipped_count,
-        "source_file": used_file.name if used_file else None,
-        "applied_items": applied_items,
-    }
+    return apply_mobile_sync_changes(
+        raw_changes,
+        used_file=used_file,
+        schedule_thumb_refresh=_schedule_thumbnail_refresh,
+    )
 
 
 @router.post("/api/mobile/sync-import")
-async def api_mobile_sync_import(request: Request):
+def api_mobile_sync_import(
+    request: Request,
+    payload: Optional[Dict[str, Any]] = Body(default=None),
+):
     """
     スマートフォン（オフラインDBモード）で選別した評価・タグ差分 (mobile_sync.json) をPC本体の library.db に一括反映する。
     photo_id -> file_path -> (file_name + date_taken) の4段階フォールバックで確実に写真を特定する。
     """
     try:
-        body_bytes = await request.body()
-        body_data = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
-        req = MobileSyncImportRequest(**(body_data if isinstance(body_data, dict) else {}))
+        req = MobileSyncImportRequest(**(payload if isinstance(payload, dict) else {}))
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"リクエストデータの解析失敗: {e}")
 
@@ -445,6 +287,8 @@ async def api_mobile_sync_import(request: Request):
     used_file: Optional[Path] = None
 
     if req.use_detected_file:
+        if not is_loopback_client(resolve_request_client_host(request)) or request.headers.get("origin") == "null":
+            raise HTTPException(status_code=403, detail="ローカルファイル自動検出はPC本体画面からのみ実行できます")
         used_file = _find_detected_sync_file()
         if not used_file:
             raise HTTPException(status_code=404, detail="mobile_sync.json が見つかりません")
@@ -461,3 +305,344 @@ async def api_mobile_sync_import(request: Request):
         ]
 
     return _apply_mobile_sync_changes(raw_changes, used_file=used_file)
+
+
+@router.get("/api/mobile/pair-info")
+def api_mobile_pair_info(request: Request):
+    """
+    スマートフォンでQRコード（/m?t=...）を開いた際、Androidネイティブアプリ（tetheract://pair）を
+    ワンタップで起動してペアリング＆Wi-Fiロッカー同期するための接続情報を返す。
+    """
+    import urllib.parse
+    from ..security import is_app_locked
+
+    if is_app_locked():
+        raise HTTPException(status_code=423, detail="アプリケーションはロックされています")
+
+    port = request.url.port or 8088
+    host_hdr = (request.headers.get("host") or "").strip()
+    if not host_hdr or host_hdr.startswith("127.0.0.1") or host_hdr.startswith("localhost"):
+        ips = _detect_local_ip_addresses()
+        server_url = f"http://{ips[0]}:{port}" if ips else f"http://127.0.0.1:{port}"
+    else:
+        server_url = f"http://{host_hdr}"
+
+    current_tok = get_lan_token()
+    mark_lan_device_paired(True)
+    deep_link = (
+        f"tetheract://pair?server={urllib.parse.quote(server_url, safe='')}"
+        f"&token={urllib.parse.quote(current_tok, safe='')}"
+    )
+    return {
+        "ok": True,
+        "server_url": server_url,
+        "token": current_tok,
+        "deep_link": deep_link,
+    }
+
+
+@router.get("/api/mobile/discover")
+def api_mobile_discover(
+    request: Request,
+    t: str = Query(default=""),
+    request_pair: int = Query(default=0),
+    device: str = Query(default=""),
+    udp: int = Query(default=0),
+):
+    """
+    同一Wi-Fi内のAndroidアプリがPC母艦を自動検出し、ペアリング状態の確認または接続要求を行うエンドポイント。
+    - 既に有効なトークンを持っているか、承認済み client_ip からのTCP要求であればワンタイム消費で pair_token を返す。
+    - UDP探索中継 (udp=1) では承認状態を消費せず、応答に秘密トークンを一切含めない。
+    - 未ペアリング端末から request_pair=1 が送られた場合、PC画面へリアルタイム承認ダイアログを表示する。
+    """
+    import socket
+    from ..database import get_or_create_library_id
+    from ..security import is_app_locked
+
+    if is_app_locked():
+        raise HTTPException(status_code=423, detail="アプリケーションはロックされています")
+
+    client_host = resolve_request_client_host(request)
+    cookie_tok = request.cookies.get(LAN_TOKEN_COOKIE)
+    explicit_tok = (t or "").strip() or extract_explicit_lan_token(request)
+    matched = is_lan_token_valid(cookie_tok, explicit_tok)
+    is_udp_probe = bool(udp == 1)
+
+    if matched:
+        approved = False
+    elif is_udp_probe:
+        approved = is_lan_pairing_approved_for(client_host)
+    else:
+        approved = consume_lan_pairing_approval(client_host)
+
+    hostname = socket.gethostname()
+    port = request.url.port or 8088
+    host_hdr = (request.headers.get("host") or "").strip()
+    if not host_hdr or host_hdr.startswith("127.0.0.1") or host_hdr.startswith("localhost"):
+        ips = _detect_local_ip_addresses()
+        server_url = f"http://{ips[0]}:{port}" if ips else f"http://127.0.0.1:{port}"
+    else:
+        server_url = f"http://{host_hdr}"
+
+    can_grant = bool(matched or approved)
+    if not can_grant and request_pair == 1 and not is_udp_probe:
+        clean_dev = re.sub(r"[\x00-\x1f\x7f<>\"'`]", "", str(device or "Android"))[:48].strip() or "Android"
+        broadcast_app_event(
+            "mobile_pair_requested",
+            {
+                "client_ip": client_host,
+                "device": clean_dev,
+            },
+        )
+
+    if can_grant and not is_udp_probe:
+        mark_lan_device_paired(True)
+
+    return {
+        "ok": True,
+        "service": "tetheract-pm",
+        "library_id": get_or_create_library_id(),
+        "hostname": hostname,
+        "server_url": server_url,
+        "paired_match": can_grant,
+        "pair_token": get_lan_token() if (can_grant and not is_udp_probe) else "",
+        "pairing_pending": bool(request_pair == 1 and not can_grant),
+    }
+
+
+class MobileApprovePairRequest(BaseModel):
+    client_ip: Optional[str] = None
+
+
+@router.post("/api/mobile/approve-pair")
+def api_mobile_approve_pair(request: Request, req: MobileApprovePairRequest):
+    """PC画面上の承認ダイアログから指定されたLANクライアントIPのみワンタイム許可する（localhost専用）"""
+    _require_localhost(request)
+    approved_ip = approve_lan_pairing_ip(req.client_ip, duration_sec=PAIRING_APPROVAL_TTL_SEC)
+    if not approved_ip:
+        raise HTTPException(status_code=400, detail="承認対象の有効なLANクライアントIPアドレスを指定してください")
+    port = request.url.port or 8088
+    mark_lan_device_paired(True)
+    ensure_lan_listeners(request.app, port=port)
+    return {
+        "ok": True,
+        "approved_ip": approved_ip,
+        "expires_in_sec": PAIRING_APPROVAL_TTL_SEC,
+    }
+
+
+@router.post("/api/mobile/reset-pairing")
+def api_mobile_reset_pairing(request: Request):
+    """
+    PCのスマホ連携ペアリング鍵（永続トークン・Cookie）を再発行し、
+    既存のスマホに保存されているペアリング認証をリセットする（localhost専用）。
+    """
+    _require_localhost(request)
+    new_tok = reset_lan_pairing()
+    port = request.url.port or 8088
+    ips = ensure_lan_listeners(request.app, port=port)
+    urls = [_lan_mobile_url(ip, port) for ip in ips] or [f"http://127.0.0.1:{port}/m"]
+    return {
+        "ok": True,
+        "token_rotated": True,
+        "mobile_urls": urls,
+        "primary_url": urls[0],
+        "token_preview": new_tok[:6] + "...",
+    }
+
+
+@router.get("/api/mobile/locker-sync")
+def api_mobile_locker_sync(
+    mode: str = Query(default="status"),
+    max_photo_id: int = Query(default=0),
+    max_thumb_created_at: str = Query(default=""),
+):
+    """
+    Androidアプリの専用ロッカーとPC母艦をローカルWi-Fi経由で高速同期するエンドポイント。
+    - mode=status: PC側の library.db の更新時刻・サイズ・写真枚数を返す
+    - mode=delta: スマホ側のウォーターマークを更新した上で軽量な mobile_delta.db を生成・配信する
+    - mode=full: 初回ロッカー構築用に library.db 本体を配信する
+    """
+    from ..database import get_or_create_library_id, get_total_photos_count
+    from ..database import connection as _db_conn
+    from ..database.connection import get_connection
+    from ..mobile_delta import LOCKER_STATE_PATH, ensure_mobile_delta_db, read_mobile_locker_state
+    from ..security import get_security_status, is_app_locked
+
+    if is_app_locked():
+        raise HTTPException(status_code=423, detail="アプリケーションはロックされています")
+
+    db_path = _db_conn.DB_PATH
+    if not db_path.exists():
+        raise HTTPException(status_code=404, detail="library.db が見つかりません")
+
+    clean_mode = (mode or "status").strip().lower()
+    if clean_mode == "status":
+        st = db_path.stat()
+        wal_path = db_path.with_name(db_path.name + "-wal")
+        wal_st = wal_path.stat() if wal_path.exists() else None
+        eff_mtime = max(st.st_mtime, wal_st.st_mtime if wal_st else 0.0)
+        eff_size = st.st_size + (wal_st.st_size if wal_st else 0)
+        sec_st = get_security_status()
+        return {
+            "ok": True,
+            "library_id": get_or_create_library_id(),
+            "owner_id": str(sec_st.get("owner_id_full") or ""),
+            "db_mtime": int(eff_mtime * 1000),
+            "db_size": eff_size,
+            "photo_count": get_total_photos_count(),
+        }
+
+    if clean_mode == "delta":
+        cur_state = read_mobile_locker_state()
+        cur_wm_id = int(cur_state.get("max_photo_id") or 0)
+        needs_wm_rebuild = bool(max_photo_id > 0 and (cur_wm_id <= 0 or max_photo_id < cur_wm_id))
+        if max_photo_id > 0 and cur_wm_id != int(max_photo_id):
+            try:
+                LOCKER_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+                state_obj = {
+                    "max_photo_id": int(max_photo_id),
+                    "max_thumb_created_at": str(max_thumb_created_at or "")[:40],
+                    "synced_via": "wifi",
+                }
+                LOCKER_STATE_PATH.write_text(
+                    json.dumps(state_obj, ensure_ascii=False),
+                    encoding="utf-8",
+                )
+            except Exception as e:
+                logger.debug(f"Wi-Fi同期ウォーターマーク保存スキップ: {e}")
+
+        delta_path = ensure_mobile_delta_db(force=needs_wm_rebuild)
+        if not delta_path or not delta_path.exists():
+            raise HTTPException(status_code=500, detail="mobile_delta.db の生成に失敗しました")
+        return FileResponse(
+            delta_path,
+            media_type="application/octet-stream",
+            filename="mobile_delta.db",
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+        )
+
+    if clean_mode == "full":
+        try:
+            with get_connection() as conn:
+                conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
+        except Exception as e:
+            logger.debug(f"フルDB配信前のWALチェックポイントスキップ: {e}")
+        return FileResponse(
+            db_path,
+            media_type="application/octet-stream",
+            filename="library.db",
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+        )
+
+    raise HTTPException(status_code=400, detail="無効な同期モードです")
+
+
+@router.get("/api/mobile/connection-status")
+def api_mobile_connection_status():
+    """
+    PC母艦における現在のボリューム・写真オンライン接続状況を軽量スナップショットとして返す。
+    RAW+JPEGペアは代表JPEGの接続状況で判定し（RAWのみ未接続でもオンライン扱い）、
+    配列サイズを最小化するため online_ids / offline_ids のうち少ない方を返却する。
+    """
+    import hashlib
+    from ..database import get_or_create_library_id
+    from ..database.connection import get_connection
+    from ..scanner import _get_connected_drive_serial_map, resolve_drive_online_path
+    from ..security import is_app_locked
+
+    if is_app_locked():
+        raise HTTPException(status_code=423, detail="アプリケーションはロックされています")
+
+    serial_to_drive, _ = _get_connected_drive_serial_map()
+    online_volumes = sorted(serial_to_drive.keys())
+    library_id = get_or_create_library_id()
+
+    dir_online_memo: Dict[tuple, bool] = {}
+
+    def _is_dir_online(dir_path: Optional[str], vsn: Optional[str]) -> bool:
+        if not dir_path:
+            return False
+        v_clean = (vsn or "").strip() or None
+        key = (dir_path, v_clean or "")
+        cached = dir_online_memo.get(key)
+        if cached is not None:
+            return cached
+        _, is_on = resolve_drive_online_path(dir_path, expected_serial=v_clean)
+        res = bool(is_on)
+        dir_online_memo[key] = res
+        return res
+
+    online_ids: List[int] = []
+    offline_ids: List[int] = []
+    multi_link_online: Dict[int, bool] = {}
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT pl.photo_id, pl.directory_path, pl.volume_serial
+            FROM photo_links pl
+            JOIN photos p ON p.id = pl.photo_id
+            WHERE IFNULL(p.is_unlinked, 0) = 0
+              AND COALESCE(p.link_count, 1) > 1
+              AND NOT (COALESCE(p.is_raw, 0) = 1 AND p.paired_raw_path IS NOT NULL AND p.paired_raw_path != '')
+            """
+        )
+        for lk in cur.fetchall():
+            pid = int(lk[0])
+            if multi_link_online.get(pid):
+                continue
+            if _is_dir_online(lk[1], lk[2]):
+                multi_link_online[pid] = True
+            elif pid not in multi_link_online:
+                multi_link_online[pid] = False
+
+        cur.execute(
+            """
+            SELECT id, directory_path, volume_serial, COALESCE(link_count, 1)
+            FROM photos
+            WHERE IFNULL(is_unlinked, 0) = 0
+              AND NOT (COALESCE(is_raw, 0) = 1 AND paired_raw_path IS NOT NULL AND paired_raw_path != '')
+            """
+        )
+        for row in cur.fetchall():
+            pid = int(row[0])
+            is_on = _is_dir_online(row[1], row[2])
+            if not is_on and int(row[3] or 1) > 1:
+                is_on = bool(multi_link_online.get(pid, False))
+            if is_on:
+                online_ids.append(pid)
+            else:
+                offline_ids.append(pid)
+
+    if len(offline_ids) <= len(online_ids):
+        mode = "offline_ids"
+        ids = sorted(offline_ids)
+    else:
+        mode = "online_ids"
+        ids = sorted(online_ids)
+
+    rev_src = json.dumps(
+        {"lib": library_id, "mode": mode, "ids": ids, "vols": online_volumes},
+        separators=(",", ":"),
+    ).encode("utf-8")
+    revision = hashlib.sha1(rev_src).hexdigest()[:12]
+
+    return {
+        "ok": True,
+        "library_id": library_id,
+        "revision": revision,
+        "mode": mode,
+        "ids": ids,
+        "online_volumes": online_volumes,
+        "total_count": len(online_ids) + len(offline_ids),
+        "online_count": len(online_ids),
+        "offline_count": len(offline_ids),
+    }
+
+
+from .mobile_case_router import router as _mobile_case_router
+
+router.include_router(_mobile_case_router)
+

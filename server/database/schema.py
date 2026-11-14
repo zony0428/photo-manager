@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
 from . import connection as _conn_mod
-from .connection import get_connection
+from .connection import get_connection, get_or_create_library_id
 from .thumbnails import compute_thumbnail_hash
 from .fingerprint import extract_folder_fingerprint
 from .photos import (
@@ -96,6 +96,10 @@ def _create_photos_indexes(cursor) -> None:
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_photos_gps_date ON photos(date_taken) WHERE latitude IS NOT NULL")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_photos_location ON photos(country, state, city)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_photos_is_unlinked ON photos(is_unlinked)")
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_photos_unlinked_date_fname "
+        "ON photos(is_unlinked, date_taken DESC, file_name ASC)"
+    )
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_photos_volume_serial ON photos(volume_serial)")
 
     # photo_links インデックス
@@ -172,6 +176,7 @@ _FAST_BOOT_REQUIRED_MIGRATIONS = frozenset({
     "tag_keys_v1",
     "ideal_photo_links_v1",
     "restore_cascaded_tags_and_thumbs_v1",
+    "cross_volume_raw_jpeg_pair_v1",
     "exifless_content_hash_v1",
     "schema_fast_init_v183",
 })
@@ -192,11 +197,30 @@ def initialize_database(fast_boot: bool = False) -> None:
                     cursor.execute("SELECT name FROM migrations")
                     applied = {r["name"] for r in cursor.fetchall()}
                     if _FAST_BOOT_REQUIRED_MIGRATIONS.issubset(applied):
+                        cursor.execute("PRAGMA table_info(photos)")
+                        fb_cols = {r["name"] for r in cursor.fetchall()}
+                        fb_dirty = False
+                        if "has_xmp" not in fb_cols:
+                            cursor.execute("ALTER TABLE photos ADD COLUMN has_xmp INTEGER DEFAULT 0")
+                            fb_dirty = True
+                        cursor.execute(
+                            "SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_photos_unlinked_date_fname'"
+                        )
+                        if not cursor.fetchone():
+                            cursor.execute("UPDATE photos SET is_unlinked = 0 WHERE is_unlinked IS NULL")
+                            cursor.execute(
+                                "CREATE INDEX IF NOT EXISTS idx_photos_unlinked_date_fname "
+                                "ON photos(is_unlinked, date_taken DESC, file_name ASC)"
+                            )
+                            fb_dirty = True
+                        if fb_dirty:
+                            conn.commit()
                         try:
                             from ..security import initialize_security_state
                             initialize_security_state(force_reload=True)
                         except Exception as sec_err:
                             logger.warning(f"セキュリティ状態の初期化で警告: {sec_err}")
+                        get_or_create_library_id()
                         set_startup_status(is_ready=True, phase="ready", message="準備完了", detail="", percent=100)
                         return
         except Exception as fb_err:
@@ -256,6 +280,7 @@ def initialize_database(fast_boot: bool = False) -> None:
                 original_date_taken TEXT,
                 content_key TEXT,
                 link_count INTEGER DEFAULT 1,
+                has_xmp INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -308,6 +333,7 @@ def initialize_database(fast_boot: bool = False) -> None:
             ("original_date_taken", "TEXT"),
             ("content_key", "TEXT"),
             ("link_count", "INTEGER DEFAULT 1"),
+            ("has_xmp", "INTEGER DEFAULT 0"),
         ]
         for col_name, col_type in new_cols:
             if col_name not in existing_cols:
@@ -541,6 +567,16 @@ def initialize_database(fast_boot: bool = False) -> None:
             cursor.execute("INSERT INTO migrations (name) VALUES ('restore_cascaded_tags_and_thumbs_v1')")
             conn.commit()
 
+        # --- マイグレーション: 別ドライブ・別フォルダに分散している RAW+JPEG ペアの自動結合とタグ・評価同期 ---
+        cursor.execute("SELECT 1 FROM migrations WHERE name = 'cross_volume_raw_jpeg_pair_v1'")
+        if not cursor.fetchone():
+            from .stacks import pair_cross_folder_raw_jpeg
+            paired_cnt = pair_cross_folder_raw_jpeg(cursor)
+            cursor.execute("INSERT INTO migrations (name) VALUES ('cross_volume_raw_jpeg_pair_v1')")
+            conn.commit()
+            if paired_cnt > 0:
+                print(f"[MIGRATE] cross_volume_raw_jpeg_pair_v1: {paired_cnt} 組の別ドライブ/別フォルダ RAW+JPEG ペアを結合・タグ同期しました")
+
         # 起動時の高速整合性チェック: 階層タグの親・祖先レコード欠落があれば自動補完（カバリングインデックス使用）
         repaired_anc_count = repair_missing_ancestor_tags(cursor)
         if repaired_anc_count > 0:
@@ -549,7 +585,8 @@ def initialize_database(fast_boot: bool = False) -> None:
 
         # 起動時の常時安全パージ: photosテーブルに存在しない孤立サムネイルを確実に削除
         cursor.execute("DELETE FROM thumbnails WHERE photo_id NOT IN (SELECT id FROM photos)")
-        # リンク消失写真 (is_unlinked = 1) に残存していた旧 volume_serial をクリア
+        # リンク消失写真 (is_unlinked = 1) に残存していた旧 volume_serial をクリア・NULL を 0 に正規化
+        cursor.execute("UPDATE photos SET is_unlinked = 0 WHERE is_unlinked IS NULL")
         cursor.execute("UPDATE photos SET volume_serial = NULL WHERE is_unlinked = 1 AND volume_serial IS NOT NULL")
         conn.commit()
 
@@ -610,6 +647,7 @@ def initialize_database(fast_boot: bool = False) -> None:
             cursor.execute("PRAGMA optimize")
             conn.commit()
 
+    get_or_create_library_id()
     set_startup_status(is_ready=True, phase="ready", message="準備完了", detail="", percent=100)
 
 
@@ -768,6 +806,7 @@ def _upgrade_legacy_schema_ddl(cursor, conn) -> bool:
                     original_date_taken TEXT,
                     content_key TEXT,
                     link_count INTEGER DEFAULT 1,
+                    has_xmp INTEGER DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )

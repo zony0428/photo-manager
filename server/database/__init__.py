@@ -16,6 +16,7 @@ from .connection import (
     get_connection,
     close_thread_connection,
     close_all_connections,
+    get_or_create_library_id,
     switch_database_path,
     get_db_commit_seq,
     bump_db_commit_seq,
@@ -178,4 +179,13 @@ from .presets import (
     create_filter_preset,
     update_filter_preset,
     delete_filter_preset,
+)
+
+# フィールドログ照合・非破壊GPS付与・Undo管理
+from .field_log_apply import (
+    query_target_photos_for_field_log,
+    preview_field_log_matches,
+    apply_field_log_matches,
+    list_field_log_batches,
+    undo_field_log_batch,
 )

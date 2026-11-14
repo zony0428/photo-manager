@@ -8,12 +8,14 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#16181b" id="mMetaThemeColor">
-  <title>Tetheract Photo Manager Mobile</title>
-  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=1.8.10">
-  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png?v=1.8.10">
-  <link rel="apple-touch-icon" href="/icons/icon-192.png?v=1.8.10">
-  <link rel="manifest" href="/manifest_mobile.json?v=1.8.10">
-  <link rel="stylesheet" href="/css/mobile.css?v=1.8.10">
+  <title>TETHERACT pm</title>
+  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=2.2.1">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png?v=2.2.1">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png?v=2.2.1">
+  <link rel="manifest" href="/manifest_mobile.json?v=2.2.1">
+  <link rel="stylesheet" href="/css/mobile.css?v=2.2.1">
+  <link rel="stylesheet" href="/css/touch-responsive.css?v=2.2.1">
+  <link rel="stylesheet" href="/css/touch-fieldlog.css?v=2.2.1">
   <!-- オフラインUSB library.db 直接読み込み用 WebAssembly SQLite (sql.js) -->
   <script src="/vendor/sqljs/sql-wasm.js"></script>
 </head>
@@ -22,33 +24,61 @@
     <!-- ==================== 1. 上部ヘッダー ==================== -->
     <header class="m-header">
       <div class="m-header-left">
-        <button id="mOpenDrawerBtn" class="m-icon-btn" title="検索・絞り込みドロワーを開く" aria-label="フィルタメニュー">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="3" y1="6" x2="21" y2="6"/>
-            <line x1="3" y1="12" x2="15" y2="12"/>
-            <line x1="3" y1="18" x2="18" y2="18"/>
-          </svg>
-          <span id="mFilterDot" class="m-filter-dot" style="display:none;"></span>
-        </button>
-
-        <div class="m-brand" title="Tetheract Photo Manager Mobile">
-          <img class="m-logo-icon" src="/icons/icon-192.png?v=1.8.10" width="26" height="26" alt="" aria-hidden="true">
+        <div id="mBrandHeaderBtn" class="m-brand" role="button" tabindex="0" title="タップして同期・バージョン・レイアウト設定を開く" aria-label="TETHERACT 設定・同期メニューを開く">
+          <img class="m-logo-icon" src="/icons/icon-192.png?v=2.2.1" width="24" height="24" alt="" aria-hidden="true">
           <div class="m-brand-titles">
             <div class="m-brand-main">
-              <svg class="m-brand-wordmark" viewBox="62 12 246 36" width="102" height="15" fill="none" role="img" aria-label="TETHERACT pm">
+              <svg id="mBrandWordmarkSvg" class="m-brand-wordmark" viewBox="62 12 246 36" width="94" height="14" fill="none" role="img" aria-label="TETHERACT Rg">
                 <text x="0" y="45.41" fill="var(--logo-text)" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif" font-size="44.38" font-weight="700" letter-spacing="2.8" textLength="269.4" lengthAdjust="spacingAndGlyphs" transform="translate(64, 0) scale(0.7071, 1)">TETHERACT</text>
-                <text x="0" y="45.41" fill="var(--logo-pm)" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif" font-size="35.60" font-weight="600" letter-spacing="1.0" transform="translate(263, 0) scale(0.75, 1)">pm</text>
+                <text id="mBrandSuffixText" x="0" y="45.41" fill="var(--logo-pm)" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif" font-size="35.60" font-weight="600" letter-spacing="1.0" transform="translate(263, 0) scale(0.75, 1)">Rg</text>
               </svg>
             </div>
             <div class="m-brand-sub">
-              <span id="mModeBadge" class="m-mode-badge mode-checking">確認中...</span>
+              <span id="mModeBadge" class="m-mode-badge mode-checking">○ UNLINK</span>
               <span id="mPhotoCount" class="m-photo-count">0枚</span>
+              <span id="mPendingBadge" class="m-pending-badge" style="display:none;">0</span>
+              <span id="mAppBuildBadge" class="m-build-badge" style="display:none;">v2.2.1 (11/13 14:40)</span>
             </div>
           </div>
         </div>
       </div>
 
+      <div class="m-header-center">
+        <div class="m-quick-scroll">
+          <button class="m-pill active" data-rating="default" id="mRateDefaultBtn" title="優・良・可を表示（棄を隠す）">すべて(棄以外)</button>
+          <button class="m-pill m-pill-excellent" data-rating="2">優</button>
+          <button class="m-pill m-pill-good" data-rating="1">良</button>
+          <button class="m-pill m-pill-normal" data-rating="0">可</button>
+          <button class="m-pill m-pill-discard" data-rating="-1">棄</button>
+          <button class="m-pill" data-rating="all">全件</button>
+
+          <div class="m-quick-divider"></div>
+
+          <button id="mStackToggleBtn" class="m-pill active" title="連写・ブラケットのスタック集約表示">
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" style="vertical-align:-1px;margin-right:2px;"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 12 12 17 22 12"/><polyline points="2 17 12 22 22 17"/></svg>スタック
+          </button>
+          <button id="mGridLayoutBtn" class="m-pill" title="一覧レイアウト切替 (標準グリッド / びっしり表示 / マウント表示)">
+            ⊞ 標準
+          </button>
+          <button id="mGridColsBtn" class="m-pill" title="タップまたは2本指ピンチで列数を変更">
+            ⊞ 3列
+          </button>
+          <select id="mQuickSortSelect" class="m-pill m-pill-select" title="写真の並び順" aria-label="写真の並び順">
+            <option value="date_taken DESC">新しい順</option>
+            <option value="date_taken ASC">古い順</option>
+            <option value="rating DESC">評価順</option>
+            <option value="file_name ASC">名前順</option>
+          </select>
+        </div>
+      </div>
+
       <div class="m-header-right">
+        <!-- 複数選択トグル -->
+        <button id="mSelectModeBtn" class="m-btn m-btn-select-toggle" title="複数選択して一括評価・タグ付け（写真の長押しでも開始可能）">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          <span>選択</span>
+        </button>
+
         <!-- 和紙 / 夜墨 テーマ切替 -->
         <button id="mThemeBtn" class="m-icon-btn" title="テーマ切替 (和紙 ⇄ 夜墨)" aria-label="テーマ切替">
           <span id="mThemeIcon" style="display:inline-flex;align-items:center;justify-content:center;">
@@ -56,45 +86,31 @@
           </span>
         </button>
 
-        <!-- DB読込 & 差分同期モーダルボタン -->
-        <button id="mOpenDbModalBtn" class="m-btn m-btn-db" title="USBのlibrary.db読込 / 選別データの保存・同期">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-            <ellipse cx="12" cy="5" rx="9" ry="3"/>
-            <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
-            <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
-          </svg>
-          <span>DB/同期</span>
-          <span id="mPendingBadge" class="m-pending-badge" style="display:none;">0</span>
+        <!-- DB読込 & 差分同期モーダル起動トリガー（左上のTETHERACTバナーに統合） -->
+        <button id="mOpenDbModalBtn" class="m-btn m-btn-db" title="Wi-Fi/USB同期・設定" style="display:none;">
+          <span class="m-btn-db-label">同期</span>
         </button>
       </div>
     </header>
 
-    <!-- ==================== 2. クイック評価フィルタ & 表示切替バー ==================== -->
-    <div class="m-quick-bar">
-      <div class="m-quick-scroll">
-        <button class="m-pill active" data-rating="default" id="mRateDefaultBtn" title="優・良・可を表示（棄を隠す）">すべて(棄以外)</button>
-        <button class="m-pill m-pill-excellent" data-rating="2">★ 優</button>
-        <button class="m-pill m-pill-good" data-rating="1">● 良</button>
-        <button class="m-pill m-pill-normal" data-rating="0">○ 可</button>
-        <button class="m-pill m-pill-discard" data-rating="-1">✕ 棄</button>
-        <button class="m-pill" data-rating="all">全件(棄含む)</button>
-
-        <div class="m-quick-divider"></div>
-
-        <button id="mStackToggleBtn" class="m-pill active" title="連写・ブラケットのスタック集約表示">
-          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.75" style="vertical-align:-2px;margin-right:3px;"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 12 12 17 22 12"/><polyline points="2 17 12 22 22 17"/></svg>スタック
-        </button>
-        <button id="mGridColsBtn" class="m-pill" title="グリッドの列数を切り替え (2列 / 3列 / 4列)">
-          ⊞ 3列
-        </button>
-        <button id="mSelectModeBtn" class="m-pill" title="複数選択して一括評価・タグ付け">
-          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.75" style="vertical-align:-2px;margin-right:3px;"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>選択
-        </button>
-      </div>
-    </div>
-
     <!-- ==================== 3. 現在有効な絞り込みチップバー ==================== -->
     <div id="mActiveFiltersBar" class="m-active-filters" style="display:none;"></div>
+
+    <!-- スマホブラウザでQRコード(/m)を開いた際のAndroidネイティブアプリ起動＆Wi-Fi同期バナー -->
+    <div id="mOpenInNativeAppBanner" style="display:none; align-items:center; justify-content:space-between; gap:10px; padding:8px 12px; background:rgba(225, 77, 42, 0.16); border-bottom:1px solid rgba(225, 77, 42, 0.45); font-size:0.76rem; color:var(--text-main, #eceae4);">
+      <div style="flex:1; min-width:0; line-height:1.4;">
+        <strong>TETHERACT pm</strong>の専用ロッカーへWi-Fiで高速同期できます（USB抜き差し不要）
+      </div>
+      <div style="display:flex; gap:6px; flex-shrink:0;">
+        <a id="mDownloadApkBannerBtn" href="/api/mobile/apk" download="Tetheract_Android.apk" class="m-btn m-btn-secondary" style="padding:6px 9px; font-size:0.72rem; white-space:nowrap; text-decoration:none;">
+          <span>APK更新</span>
+        </a>
+        <a id="mOpenInNativeAppBtn" href="tetheract://pair" class="m-btn m-btn-primary" style="padding:6px 11px; font-size:0.75rem; white-space:nowrap; text-decoration:none;">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+          <span>アプリでWi-Fi同期</span>
+        </a>
+      </div>
+    </div>
 
     <!-- ==================== 4. メインスクロール領域 ==================== -->
     <main id="mScrollContainer" class="m-main">
@@ -108,15 +124,26 @@
       <!-- DB未接続時のウェルカムカード（USB library.db 選択ガイド） -->
       <div id="mWelcomeCard" class="m-center-card" style="display:none;">
         <div class="m-welcome-icon"><svg viewBox="0 0 24 24" width="38" height="38" fill="none" stroke="currentColor" stroke-width="1.5"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></div>
-        <h2 class="m-center-title">USBメモリ内の DB を開く</h2>
-        <p class="m-center-sub">
+        <h2 class="m-center-title"><span class="m-native-only">PC母艦とWi-Fiでリンク</span><span class="m-browser-only">USBメモリ内の DB を開く</span></h2>
+        <p class="m-center-sub m-native-only">
+          PCと同じWi-Fi（LAN）につないで下のボタンを押すか、PC画面のQRコードを読み取ると専用ロッカーへ高速同期されます。<br><small>※Loome（USB）を挿すとフル画質の原本データを直接開けます。</small>
+        </p>
+        <p class="m-center-sub m-browser-only">
           USBメモリ内の <code>cache/library.db</code> を選択するだけで、全サムネイルの高速閲覧・検索・評価選別が行えます。<br>
           <small>※メモリ上へ一括ロードするため、読込中はDBを書き換えません。</small>
         </p>
-        <div class="m-welcome-actions">
-          <button id="mWelcomeLoadDbBtn" class="m-btn m-btn-primary m-btn-large">
+        <div class="m-welcome-actions" style="display:flex; flex-direction:column; gap:10px; width:100%; max-width:320px;">
+          <button id="mWelcomeWifiSyncBtn" class="m-btn m-btn-primary m-btn-large" style="width:100%; justify-content:center;">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+            <span>PCとWi-Fi（LAN）で同期して開く</span>
+          </button>
+          <button id="mWelcomeAddPhoneFolderBtn" class="m-btn m-btn-secondary m-btn-large m-native-only" style="width:100%; justify-content:center;">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="6" y="2" width="12" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+            <span>スマホ機内の写真フォルダを管理下に追加</span>
+          </button>
+          <button id="mWelcomeLoadDbBtn" class="m-btn m-btn-secondary m-btn-large m-browser-only" style="width:100%; justify-content:center;">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-            <span>cache/library.db を選択して開く</span>
+            <span>USB内の cache/library.db を開く</span>
           </button>
         </div>
       </div>
@@ -146,10 +173,10 @@
         </div>
       </div>
       <div class="m-batch-buttons">
-        <button class="m-rate-btn rate-discard" data-batch-rate="-1">✕ 棄</button>
-        <button class="m-rate-btn rate-normal" data-batch-rate="0">○ 可</button>
-        <button class="m-rate-btn rate-good" data-batch-rate="1">● 良</button>
-        <button class="m-rate-btn rate-excellent" data-batch-rate="2">★ 優</button>
+        <button class="m-rate-btn rate-excellent" data-batch-rate="2">優</button>
+        <button class="m-rate-btn rate-good" data-batch-rate="1">良</button>
+        <button class="m-rate-btn rate-normal" data-batch-rate="0">可</button>
+        <button class="m-rate-btn rate-discard" data-batch-rate="-1">棄</button>
         <button id="mBatchTagBtn" class="m-rate-btn rate-tag">
           <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.75" style="vertical-align:-2px;margin-right:2px;"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="10" y="10" width="7.5" height="7.5"/><line x1="3.6" y1="3.6" x2="10" y2="10"/><line x1="20.4" y1="3.6" x2="17.5" y2="10"/><line x1="20.4" y1="20.4" x2="17.5" y2="17.5"/><line x1="3.6" y1="20.4" x2="10" y2="17.5"/></svg>タグ
         </button>
@@ -240,29 +267,40 @@
     <div id="mViewerModal" class="m-viewer-modal" style="display:none;">
       <!-- 上部バー -->
       <div class="m-viewer-topbar">
-        <button id="mViewerCloseBtn" class="m-viewer-back-btn">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="15 18 9 12 15 6"/>
-          </svg>
-          <span>一覧</span>
+        <button id="mViewerCloseBtn" class="m-viewer-back-btn" aria-label="一覧へ戻る" title="一覧へ戻る">
+          <span>&lt;&lt;</span>
         </button>
 
         <div class="m-viewer-title-wrap">
           <div id="mViewerFileName" class="m-viewer-filename">IMG_0001.JPG</div>
-          <div id="mViewerCounter" class="m-viewer-counter">1 / 100</div>
+          <div class="m-viewer-counter">
+            <span id="mViewerCounter">1 / 100</span>
+            <span id="mViewerSourceBadge" class="m-viewer-source-badge" style="display:none;">サムネイル</span>
+          </div>
         </div>
 
-        <button id="mViewerOpenInfoBtn" class="m-viewer-info-btn" title="タグ編集・Exif詳細を開く">
-          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.75" style="vertical-align:-2px;margin-right:3px;"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="10" y="10" width="7.5" height="7.5"/><line x1="3.6" y1="3.6" x2="10" y2="10"/><line x1="20.4" y1="3.6" x2="17.5" y2="10"/><line x1="20.4" y1="20.4" x2="17.5" y2="17.5"/><line x1="3.6" y1="20.4" x2="10" y2="17.5"/></svg>タグ・詳細
-        </button>
+        <div class="m-viewer-top-actions">
+          <button id="mViewerAutoAdvanceBtn" class="m-viewer-info-btn active" title="評価した直後に次の写真へ自動進行 (ON/OFF)">
+            <span>⚡次送</span>
+          </button>
+          <button id="mViewerAdjustBtn" class="m-viewer-info-btn" title="非破壊調整 (露出・コントラスト・彩度・傾き)">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.75"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/></svg>
+            <span>調整</span>
+          </button>
+          <button id="mViewerOpenInfoBtn" class="m-viewer-info-btn" title="タグ編集・Exif詳細を開く（上スワイプでも起動）">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+            <span>詳細</span>
+          </button>
+        </div>
       </div>
 
-      <!-- 中央画像ステージ（スワイプ移動 & ダブルタップズーム） -->
+      <!-- 中央画像ステージ（シングルタップで没入表示、左右スワイプ移動、上下スワイプで一覧/詳細、ダブルタップ/ピンチズーム） -->
       <div id="mViewerStage" class="m-viewer-stage">
         <button id="mViewerPrevBtn" class="m-viewer-nav prev" aria-label="前の写真">‹</button>
         <div id="mViewerImgWrapper" class="m-viewer-img-wrapper">
           <img id="mViewerImg" class="m-viewer-img" src="" alt="プレビュー" draggable="false">
         </div>
+        <span id="mViewerZoomBadge" class="m-viewer-zoom-badge" style="display:none;">1.0x</span>
         <button id="mViewerNextBtn" class="m-viewer-nav next" aria-label="次の写真">›</button>
       </div>
 
@@ -277,9 +315,9 @@
         <div id="mViewerTagsBrief" class="m-viewer-tags-brief"></div>
       </div>
 
-      <!-- 親指ドック（4段階評価ボタン + 自動送りスイッチ） -->
-      <div class="m-viewer-dock">
-        <div class="m-viewer-dock-options">
+      <!-- 親指ドック（4段階評価ボタン） -->
+      <div class="m-viewer-dock" id="mViewerDock">
+        <div class="m-viewer-dock-options" style="display:none;">
           <label class="m-auto-advance-label">
             <input type="checkbox" id="mAutoAdvanceCheck" checked>
             <span>評価したら自動で次の写真へ進む</span>
@@ -287,21 +325,17 @@
           <span id="mViewerZoomHint" class="m-zoom-hint">ダブルタップで拡大</span>
         </div>
         <div class="m-viewer-rate-grid">
-          <button class="m-dock-rate-btn rate-discard" data-viewer-rate="-1">
-            <span class="rate-symbol">✕</span>
-            <span class="rate-text">棄</span>
-          </button>
-          <button class="m-dock-rate-btn rate-normal" data-viewer-rate="0">
-            <span class="rate-symbol">○</span>
-            <span class="rate-text">可</span>
+          <button class="m-dock-rate-btn rate-excellent" data-viewer-rate="2">
+            <span class="rate-text">優</span>
           </button>
           <button class="m-dock-rate-btn rate-good" data-viewer-rate="1">
-            <span class="rate-symbol">●</span>
             <span class="rate-text">良</span>
           </button>
-          <button class="m-dock-rate-btn rate-excellent" data-viewer-rate="2">
-            <span class="rate-symbol">★</span>
-            <span class="rate-text">優</span>
+          <button class="m-dock-rate-btn rate-normal" data-viewer-rate="0">
+            <span class="rate-text">可</span>
+          </button>
+          <button class="m-dock-rate-btn rate-discard" data-viewer-rate="-1">
+            <span class="rate-text">棄</span>
           </button>
         </div>
       </div>
@@ -344,13 +378,42 @@
           <div class="m-sheet-handle"></div>
         </div>
         <div class="m-sheet-header">
-          <div class="m-sheet-title">DB読込 &amp; 選別データの保存</div>
+          <div>
+            <div class="m-sheet-title"><span class="m-native-only">Wi-Fi同期 &amp; 設定</span><span class="m-browser-only">DB読込 &amp; 選別データの保存</span></div>
+            <div id="mModalAppBuildInfo" style="font-size:0.70rem; color:var(--text-muted, #9ca6b5); margin-top:2px;">TETHERACT pm · v2.2.0 (Build 2026-11-13 07:12)</div>
+          </div>
           <button id="mCloseDbSyncBtn" class="m-icon-btn">✕</button>
         </div>
 
         <div class="m-sheet-body">
-          <!-- セクション1: USB / ローカル library.db 読み込み -->
-          <div class="m-sync-card">
+          <!-- セクション0: PC母艦とWi-Fi（QRコード）で高速双方向ロッカー同期 -->
+          <div class="m-sync-card" id="mWifiSyncCard" style="border-color:rgba(225, 77, 42, 0.45); background:rgba(225, 77, 42, 0.06);">
+            <div class="m-sync-card-title" style="display:flex; align-items:center; gap:6px;">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--accent-primary, #e14d2a)" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+              <span>Wi-Fi高速ロッカー同期（USB抜き差し不要・推奨）</span>
+            </div>
+            <p class="m-sync-card-desc">
+              <strong>初回のみ</strong>PCのQRコードでペアリングすれば、認証Cookie・ペアリング鍵がスマホ内に永続保存されます。<br>
+              <strong>2回目以降はPC側でQR画面を開かなくても</strong>、PCでTetheractが起動していればワンタップ（約1〜2秒）で「選別結果のPC送信＋最新差分の取得」が同時完了します。
+            </p>
+            <div id="mWifiPairStatusBox" class="m-sync-status-box" style="margin-bottom:8px;">
+              PCのQRコードをスマホカメラで読み取って「アプリでWi-Fi同期」を押すか、下にPCの接続URLを貼り付けてください。
+            </div>
+            <button id="mRunWifiSyncBtn" class="m-btn m-btn-primary" style="width:100%; padding:11px; margin-bottom:8px;">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+              <span>今すぐPCとWi-Fi双方向同期</span>
+            </button>
+            <details style="margin-top:2px;">
+              <summary style="font-size:0.74rem; color:var(--text-muted, #9ca6b5); cursor:pointer; padding:4px 0;">接続先URLを手動で入力する場合</summary>
+              <div style="display:flex; gap:6px; width:100%; margin-top:6px;">
+                <input type="url" id="mWifiUrlInput" placeholder="http://192.168.x.x:8088/m?t=..." autocomplete="off" style="flex:1; min-width:0; padding:8px 10px; border-radius:6px; border:1px solid var(--border-soft, rgba(255,255,255,0.16)); background:rgba(0,0,0,0.25); color:var(--text-main, #eceae4); font-size:0.76rem;">
+                <button id="mSaveWifiUrlBtn" class="m-btn m-btn-secondary" style="white-space:nowrap; padding:8px 12px; font-size:0.76rem;">URL保存＆同期</button>
+              </div>
+            </details>
+          </div>
+
+          <!-- セクション1: USB / ローカル library.db 読み込み（ブラウザ単体HTML用） -->
+          <div class="m-sync-card m-browser-only">
             <div class="m-sync-card-title">1. USBメモリ内の <code>cache/library.db</code> を開く</div>
             <p class="m-sync-card-desc">
               USBメモリ内の <code>cache</code> フォルダにある <code>library.db</code> を選択してメモリに読み込みます。
@@ -363,8 +426,8 @@
             <div id="mLoadedDbStatus" class="m-sync-status-box" style="margin-top:8px;"></div>
           </div>
 
-          <!-- セクション2: 選別結果（評価・タグ変更）のPCへの書き戻し -->
-          <div class="m-sync-card">
+          <!-- セクション2: 選別結果（評価・タグ変更）のPCへの書き戻し（ブラウザ単体HTML用） -->
+          <div class="m-sync-card m-browser-only">
             <div class="m-sync-card-title">2. 選別結果をUSBメモリに保存してPCへ反映する</div>
             <div id="mPendingSummaryBox" class="m-sync-status-box" style="margin-bottom:10px;">
               未反映の変更: <strong>0件</strong>
@@ -420,8 +483,8 @@
             </div>
           </div>
 
-          <!-- セクション3: オフライン用単体完結型HTMLのスマホ保存 -->
-          <div class="m-sync-card" id="mStandaloneDownloadCard">
+          <!-- セクション3: オフライン用単体完結型HTMLのスマホ保存（ブラウザアクセス時のみ表示） -->
+          <div class="m-sync-card m-browser-only" id="mStandaloneDownloadCard">
             <div class="m-sync-card-title">3. この選別アプリ（単体HTML）をスマホ本体に保存</div>
             <p class="m-sync-card-desc">
               <code>Tetheract_Mobile.html</code> をスマホ本体（ダウンロードフォルダ）にコピーしておくと、USBメモリ上のHTMLを直接開かずに済むため、USBメモリの取り外しがさらに安全になります。
@@ -431,6 +494,29 @@
               <span>単体完結型HTML (Tetheract_Mobile.html) をスマホに保存</span>
             </a>
           </div>
+
+          <!-- セクション4: 画面レイアウト設定（Auto / Phone / Tablet） -->
+          <div class="m-sync-card" id="mDeviceModeSettingCard">
+            <div class="m-sync-card-title">画面レイアウトモード</div>
+            <p class="m-sync-card-desc" style="margin-bottom:8px;">
+              通常は「Auto（自動判定）」のままで画面サイズに自動適応します。スマホ1ペイン表示とタブレット3ペイン表示を手動で固定したい場合は下から選択してください。
+            </p>
+            <div id="mDeviceModeSwitchMount"></div>
+          </div>
+
+          <!-- Androidネイティブ専用: Loome USB 原本リンク（読み取り専用・鍵付き対応） -->
+          <details class="m-sync-card m-native-only" id="mNativeUsbSubCard" open style="padding:10px 12px;">
+            <summary style="font-size:0.78rem; font-weight:600; color:var(--text-muted, #9ca6b5); cursor:pointer;">Loome USB 原本リンク（読み取り専用・鍵付き対応）</summary>
+            <div style="margin-top:8px; display:flex; flex-direction:column; gap:8px;">
+              <div style="font-size:0.74rem; color:var(--text-muted, #9ca6b5); line-height:1.5;">
+                初回のみUSB内の Loome（または Tetheract）フォルダの読み取りを許可すると、以降はUSBを挿すだけで原本（鍵付きLoome含む）を直接表示できます。※USBへは一切書き込まないため、いつでもそのまま取り外せます。
+              </div>
+              <div style="display:flex; gap:6px; width:100%;">
+                <button type="button" id="mNativeUsbPickFolderBtn" class="m-btn m-btn-secondary" style="flex:1; font-size:0.75rem; padding:8px;">Loome USBフォルダを選択</button>
+              </div>
+              <button type="button" id="mNativeClearPendingProxyBtn" class="m-text-btn" style="align-self:flex-end; font-size:0.72rem;">未送信の変更履歴をリセット</button>
+            </div>
+          </details>
         </div>
       </div>
     </div>
@@ -439,6 +525,19 @@
     <div id="mToast" class="m-toast" style="display:none;"></div>
   </div>
 
-  <script src="/js/mobile.js?v=1.8.10"></script>
+  <!-- Layer 2: Core Domain & State -->
+  <script src="/js/core/tree_builder.js?v=2.2.1"></script>
+  <!-- Layer 1: Data Adapter (Android Native / HTTP API / WASM SQLite) -->
+  <script src="/js/adapters/data_adapter.js?v=2.2.1"></script>
+  <script src="/js/adapters/field_log_adapter.js?v=2.2.1"></script>
+  <script src="/js/adapters/phone_case_adapter.js?v=2.2.1"></script>
+  <!-- Layer 3: Touch & Tablet View / Gesture Controllers -->
+  <script src="/js/views/touch/touch_layout.js?v=2.2.1"></script>
+  <script src="/js/views/touch/touch_gestures.js?v=2.2.1"></script>
+  <script src="/js/views/touch/morph_thumb_bar.js?v=2.2.1"></script>
+  <script src="/js/views/touch/touch_duel.js?v=2.2.1"></script>
+  <script src="/js/views/touch/touch_field_log.js?v=2.2.1"></script>
+  <script src="/js/views/touch/touch_phone_case.js?v=2.2.1"></script>
+  <script src="/js/mobile.js?v=2.2.1"></script>
 </body>
 </html>

@@ -223,14 +223,9 @@ class AITaggingWorker:
                         try:
                             from ..scanner import ensure_thumbnail
 
-                            gen_thumb = ensure_thumbnail(
-                                pid,
-                                row["file_path"],
-                                paired_raw_path=row["paired_raw_path"],
-                                volume_serial=row["volume_serial"],
-                            )
-                            if gen_thumb and gen_thumb.get("data"):
-                                thumb_bytes = gen_thumb["data"]
+                            gen_thumb = ensure_thumbnail(pid, row["file_path"])
+                            if isinstance(gen_thumb, (bytes, bytearray)) and len(gen_thumb) > 0:
+                                thumb_bytes = bytes(gen_thumb)
                         except Exception as gen_err:
                             logger.debug(f"AI推論用の動的サムネイル生成スキップ (ID={pid}): {gen_err}")
 

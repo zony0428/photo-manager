@@ -788,22 +788,37 @@ function renderActiveFilterChips() {
   //    - 異なる親（ルート）同士は別文節となり「かつ (AND)」で結合
   // =========================================================================
   if (state.tagFilters && state.tagFilters.size > 0) {
-    const colorEntries = [];
-    const rootGroups = new Map(); // rootName -> { includes: [], excludes: [] }
-
-    state.tagFilters.forEach((mode, tag) => {
-      if (typeof COLOR_TAG_MAP !== 'undefined' && (tag in COLOR_TAG_MAP)) {
-        colorEntries.push({ tag, mode });
-      } else {
-        const root = String(tag).split('/')[0].trim();
-        if (!rootGroups.has(root)) {
-          rootGroups.set(root, { includes: [], excludes: [] });
-        }
-        const grp = rootGroups.get(root);
-        if (mode === 'include') grp.includes.push(tag);
-        else if (mode === 'exclude') grp.excludes.push(tag);
-      }
-    });
+    const allAvailTags = state.availableTags || [];
+    const colorMapRef = typeof COLOR_TAG_MAP !== 'undefined' ? COLOR_TAG_MAP : null;
+    const tb = window.TetheractCore && window.TetheractCore.TreeBuilder;
+    const grouped = (tb && typeof tb.groupTagFiltersByRoot === 'function')
+      ? tb.groupTagFiltersByRoot(state.tagFilters, allAvailTags, colorMapRef)
+      : (() => {
+          const fallbackColors = [];
+          const fallbackMap = new Map();
+          state.tagFilters.forEach((mode, tag) => {
+            if (colorMapRef && (tag in colorMapRef)) {
+              fallbackColors.push({ tag, mode });
+            } else {
+              const root = String(tag).split('/')[0].trim();
+              if (!fallbackMap.has(root)) fallbackMap.set(root, { includes: [], excludes: [] });
+              const grp = fallbackMap.get(root);
+              if (mode === 'include') grp.includes.push(tag);
+              else if (mode === 'exclude') grp.excludes.push(tag);
+            }
+          });
+          return {
+            colorEntries: fallbackColors,
+            groups: Array.from(fallbackMap.entries()).map(([root, g]) => ({
+              root,
+              includes: g.includes,
+              excludes: g.excludes,
+              rootHasSubTags: g.includes.some(t => t.includes('/')) || g.excludes.some(t => t.includes('/')),
+            })),
+          };
+        })();
+    const colorEntries = grouped.colorEntries;
+    const tagGroups = grouped.groups;
 
     // 4a. カラータグ文節
     if (colorEntries.length > 0) {
@@ -894,35 +909,11 @@ function renderActiveFilterChips() {
       appendClause(colorClause);
     }
 
-    // 4b. 階層タグ・一般タグ文節（ルート親ごとに1つの文節を構築し、すべて自然順で整列）
-    const allAvailTags = state.availableTags || [];
-    const compareNaturalPath = (pathA, pathB) => {
-      const partsA = String(pathA || '').split('/');
-      const partsB = String(pathB || '').split('/');
-      const minLen = Math.min(partsA.length, partsB.length);
-      for (let i = 0; i < minLen; i++) {
-        const cmp = partsA[i].localeCompare(partsB[i], undefined, { numeric: true, sensitivity: 'base' });
-        if (cmp !== 0) return cmp;
-      }
-      return partsA.length - partsB.length;
-    };
+    // 4b. 階層タグ・一般タグ文節（TetheractCore.TreeBuilder で構造化・自然順整列したグループを描画）
+    const includeGroupCount = tagGroups.filter(g => g.includes.length > 0).length;
 
-    const sortedRootKeys = Array.from(rootGroups.keys()).sort((a, b) => {
-      const aHasInc = (rootGroups.get(a)?.includes?.length || 0) > 0 ? 0 : 1;
-      const bHasInc = (rootGroups.get(b)?.includes?.length || 0) > 0 ? 0 : 1;
-      if (aHasInc !== bHasInc) return aHasInc - bHasInc;
-      return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
-    });
-
-    sortedRootKeys.forEach((root) => {
-      const grp = rootGroups.get(root);
-      const includes = [...grp.includes].sort(compareNaturalPath);
-      const excludes = [...grp.excludes].sort(compareNaturalPath);
+    tagGroups.forEach(({ root, includes, excludes, rootHasSubTags }) => {
       const isIntraAnd = Boolean(state.tagAndRoots && state.tagAndRoots.has(root));
-      const rootHasSubTags = allAvailTags.some(t => {
-        const tn = t.tag || t.name || '';
-        return tn.startsWith(root + '/');
-      }) || includes.some(t => t.includes('/')) || excludes.some(t => t.includes('/'));
 
       const jumpToTagInTree = (targetTag) => {
         const tagToReveal = targetTag || includes[0] || excludes[0] || root;
@@ -979,7 +970,6 @@ function renderActiveFilterChips() {
           }
 
           // グループ内（OR ⇄ AND）および異グループ間（AND ⇄ OR）の結合モード切替バー
-          const includeGroupCount = sortedRootKeys.filter(k => (rootGroups.get(k)?.includes?.length || 0) > 0).length;
           if (rootHasSubTags || includes.length >= 2 || includeGroupCount >= 2) {
             const logicBar = document.createElement('div');
             logicBar.className = 'nl-pop-current-bar nl-pop-logic-bar';
@@ -1050,24 +1040,21 @@ function renderActiveFilterChips() {
           function renderCandidateList(queryText = '') {
             body.innerHTML = '';
             const q = String(queryText || '').trim().toLowerCase();
-
-            let candidates = allAvailTags.filter(t => {
-              const tn = t.tag || t.name || '';
-              if (!tn || (typeof COLOR_TAG_MAP !== 'undefined' && (tn in COLOR_TAG_MAP))) return false;
-              if (q) return tn.toLowerCase().includes(q);
-              if (rootHasSubTags) return tn === root || tn.startsWith(root + '/');
-              return !tn.includes('/') || tn === root || state.tagFilters.has(tn);
-            });
-
-            // 現在のルート配下を優先して辞書順ソート
-            candidates.sort((a, b) => {
-              const na = a.tag || a.name || '';
-              const nb = b.tag || b.name || '';
-              const aInRoot = (na === root || na.startsWith(root + '/')) ? 0 : 1;
-              const bInRoot = (nb === root || nb.startsWith(root + '/')) ? 0 : 1;
-              if (aInRoot !== bInRoot) return aInRoot - bInRoot;
-              return compareNaturalPath(na, nb);
-            });
+            const candidates = (tb && typeof tb.collectGroupTagCandidates === 'function')
+              ? tb.collectGroupTagCandidates(allAvailTags, {
+                  root,
+                  rootHasSubTags,
+                  queryText: q,
+                  tagFilters: state.tagFilters,
+                  colorTagMap: colorMapRef,
+                })
+              : allAvailTags.filter(t => {
+                  const tn = t.tag || t.name || '';
+                  if (!tn || (colorMapRef && (tn in colorMapRef))) return false;
+                  if (q) return tn.toLowerCase().includes(q);
+                  if (rootHasSubTags) return tn === root || tn.startsWith(root + '/');
+                  return !tn.includes('/') || tn === root || state.tagFilters.has(tn);
+                });
 
             if (candidates.length === 0) {
               const emptyEl = document.createElement('div');

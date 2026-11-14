@@ -37,9 +37,38 @@
     histOpen: false,
     histDataA: null,
     histDataB: null,
+    _stripPoolRef: null,
+    _stripWinStart: -1,
+    _stripWinEnd: -1,
   };
 
+  const COMPARE_STRIP_ITEM_WIDTH = 78;
+  const COMPARE_STRIP_GAP = 8;
+  const COMPARE_STRIP_PITCH = COMPARE_STRIP_ITEM_WIDTH + COMPARE_STRIP_GAP;
+  const COMPARE_STRIP_DIRECT_MAX = 160;
+  const COMPARE_STRIP_WINDOW_RADIUS = 70;
+
   let modalEl = null;
+  let _cmpPanRafId = null;
+  let _cmpStripScrollRafId = null;
+  const _cmpViewportRectCache = { A: null, B: null, dirty: true };
+
+  function _invalidateCompareViewportMetrics() {
+    _cmpViewportRectCache.dirty = true;
+    _cmpViewportRectCache.A = null;
+    _cmpViewportRectCache.B = null;
+  }
+
+  function _getCachedCompareViewportRect(side) {
+    if (_cmpViewportRectCache.dirty || !_cmpViewportRectCache[side]) {
+      const vpA = document.getElementById('compareViewportA');
+      const vpB = document.getElementById('compareViewportB');
+      if (vpA) _cmpViewportRectCache.A = vpA.getBoundingClientRect();
+      if (vpB) _cmpViewportRectCache.B = vpB.getBoundingClientRect();
+      _cmpViewportRectCache.dirty = false;
+    }
+    return _cmpViewportRectCache[side];
+  }
 
   /**
    * 比較モーダルDOMを初期化生成して body に追加
@@ -273,7 +302,7 @@
         const clampedDelta = Math.max(-80, Math.min(80, e.deltaY));
         const zoomFactor = Math.exp(-clampedDelta * 0.0012);
 
-        const rect = vp.getBoundingClientRect();
+        const rect = _getCachedCompareViewportRect(side) || vp.getBoundingClientRect();
         const cursorX = e.clientX - (rect.left + rect.width / 2);
         const cursorY = e.clientY - (rect.top + rect.height / 2);
 
@@ -349,7 +378,7 @@
         if (e.target.closest('.compare-hist-overlay, button')) return;
         const syncZ = cmpState.syncZoom && !e.altKey;
         const syncV = cmpState.syncView && !e.altKey;
-        const rect = vp.getBoundingClientRect();
+        const rect = _getCachedCompareViewportRect(side) || vp.getBoundingClientRect();
         const cursorX = e.clientX - (rect.left + rect.width / 2);
         const cursorY = e.clientY - (rect.top + rect.height / 2);
         const mA = _getCompareSideMetrics('A');
@@ -397,6 +426,13 @@
       });
     });
 
+    window.addEventListener('resize', () => {
+      if (cmpState.isOpen) {
+        _invalidateCompareViewportMetrics();
+        applyCompareTransforms(true);
+      }
+    }, { passive: true });
+
     window.addEventListener('mousemove', (e) => {
       if (!cmpState.isPanning || !cmpState.isOpen) return;
       const dx = e.clientX - cmpState.panStartX;
@@ -418,19 +454,60 @@
         cmpState.panBX += dx;
         cmpState.panBY += dy;
       }
-      applyCompareTransforms(true);
+      if (!_cmpPanRafId) {
+        _cmpPanRafId = requestAnimationFrame(() => {
+          _cmpPanRafId = null;
+          if (cmpState.isOpen) applyCompareTransforms(true, true);
+        });
+      }
     });
 
     window.addEventListener('mouseup', () => {
       if (cmpState.isPanning) {
         cmpState.isPanning = false;
+        if (_cmpPanRafId) {
+          cancelAnimationFrame(_cmpPanRafId);
+          _cmpPanRafId = null;
+        }
         applyCompareTransforms(false);
       }
     });
 
-    // 下部フィルムストリップ上でのホイール回転で右(B)の候補を次々送り（逆方向切り返し時は即時応答）
+    // 下部フィルムストリップのクリックイベント委譲・横スクロール連動ウィンドウ更新・ホイール送り
     const stripEl = document.getElementById('compareStrip');
     if (stripEl) {
+      stripEl.addEventListener('click', (e) => {
+        const item = e.target.closest('.compare-strip-item');
+        if (!item) return;
+        const idx = parseInt(item.dataset.idx, 10);
+        if (isNaN(idx) || idx < 0 || idx >= cmpState.pool.length) return;
+        if (e.shiftKey) {
+          if (idx === cmpState.idxB) {
+            swapCompareSides();
+          } else {
+            cmpState.idxA = idx;
+            updateComparePanesUI();
+          }
+        } else {
+          if (idx === cmpState.idxA) {
+            swapCompareSides();
+          } else {
+            cmpState.idxB = idx;
+            updateComparePanesUI();
+          }
+        }
+      });
+
+      stripEl.addEventListener('scroll', () => {
+        if (!cmpState.isOpen || cmpState.pool.length <= COMPARE_STRIP_DIRECT_MAX) return;
+        if (!_cmpStripScrollRafId) {
+          _cmpStripScrollRafId = requestAnimationFrame(() => {
+            _cmpStripScrollRafId = null;
+            if (cmpState.isOpen) renderCompareStrip(false);
+          });
+        }
+      }, { passive: true });
+
       let wheelAcc = 0;
       let lastStep = 0;
       let lastDir = 0;
@@ -494,20 +571,11 @@
   }
 
   function _getCompareSideMetrics(side) {
-    const vp = document.getElementById(`compareViewport${side}`);
     const imgEl = document.getElementById(`compareImg${side}`);
     const photo = cmpState.pool[side === 'A' ? cmpState.idxA : cmpState.idxB];
-    const rect = vp ? vp.getBoundingClientRect() : null;
-    let vw = Math.max(120, (rect && rect.width) || (window.innerWidth * 0.48) || 600);
-    let vh = Math.max(120, (rect && rect.height) || (window.innerHeight * 0.75) || 500);
-    const isBaked = typeof hasBakedViewAdjustments === 'function' && hasBakedViewAdjustments(photo);
-    const rotNorm = ((Number(photo?.rotation) || 0) % 360 + 360) % 360;
-    const unbakedRot = isBaked ? 0 : rotNorm;
-    if (unbakedRot === 90 || unbakedRot === 270) {
-      const tmp = vw;
-      vw = vh;
-      vh = tmp;
-    }
+    const rect = _getCachedCompareViewportRect(side);
+    const vw = Math.max(120, (rect && rect.width) || (window.innerWidth * 0.48) || 600);
+    const vh = Math.max(120, (rect && rect.height) || (window.innerHeight * 0.75) || 500);
     let nw = Number(imgEl?.naturalWidth) || 0;
     let nh = Number(imgEl?.naturalHeight) || 0;
     let metaW = Number(photo?.width) || 0;
@@ -517,6 +585,9 @@
       metaW = Math.max(1, Math.round(metaW * (cw > 0 && cw < 1 ? cw : 1)));
       metaH = Math.max(1, Math.round(metaH * (ch > 0 && ch < 1 ? ch : 1)));
     }
+    const rawRot = side === 'A' ? (cmpState.rotA || 0) : (cmpState.rotB || 0);
+    const isBaked = typeof hasBakedViewAdjustments === 'function' && hasBakedViewAdjustments(photo);
+    const rotNorm = ((Number(photo?.rotation ?? rawRot) || 0) % 360 + 360) % 360;
     if (isBaked && (rotNorm === 90 || rotNorm === 270) && metaW > 0 && metaH > 0) {
       const tmpM = metaW;
       metaW = metaH;
@@ -524,7 +595,11 @@
     }
     const origW = (nw > 640 || nh > 640) ? nw : (metaW || nw || 1600);
     const origH = (nw > 640 || nh > 640) ? nh : (metaH || nh || 1200);
-    const fitScale = Math.min(1.0, vw / Math.max(1, origW), vh / Math.max(1, origH));
+    const cssRot = isBaked ? 0 : rawRot;
+    const isCssRot90 = Math.abs(cssRot) % 180 === 90;
+    const availW = isCssRot90 ? vh : vw;
+    const availH = isCssRot90 ? vw : vh;
+    const fitScale = Math.min(1.0, availW / Math.max(1, origW), availH / Math.max(1, origH));
     const baseFitW = Math.max(1, origW * fitScale);
     const baseFitH = Math.max(1, origH * fitScale);
     const dpr = Math.max(1, window.devicePixelRatio || 1);
@@ -538,35 +613,46 @@
   /**
    * 左右の画像要素へ実ピクセルサイズ・パン・回転を適用（scale拡大によるモザイクを排除）
    */
-  function applyCompareTransforms(immediate = false) {
+  function applyCompareTransforms(immediate = false, panOnly = false) {
     const imgA = document.getElementById('compareImgA');
     const imgB = document.getElementById('compareImgB');
-    const zoomReadout = document.getElementById('compareZoomResetBtn');
-    const mA = _getCompareSideMetrics('A');
-    const mB = _getCompareSideMetrics('B');
-
-    if (zoomReadout) {
-      const zA = Math.max(1, Math.round(cmpState.zoomA * mA.fitRatio * 100));
-      const zB = Math.max(1, Math.round(cmpState.zoomB * mB.fitRatio * 100));
-      zoomReadout.textContent = (zA === zB) ? `${zA}%` : `${zA}% | ${zB}%`;
-    }
-
     const photoA = cmpState.pool[cmpState.idxA];
     const photoB = cmpState.pool[cmpState.idxB];
+
+    if (!panOnly) {
+      const zoomReadout = document.getElementById('compareZoomResetBtn');
+      const mA = _getCompareSideMetrics('A');
+      const mB = _getCompareSideMetrics('B');
+
+      if (zoomReadout) {
+        const zA = Math.max(1, Math.round(cmpState.zoomA * mA.fitRatio * 100));
+        const zB = Math.max(1, Math.round(cmpState.zoomB * mB.fitRatio * 100));
+        zoomReadout.textContent = (zA === zB) ? `${zA}%` : `${zA}% | ${zB}%`;
+      }
+
+      if (imgA && photoA) {
+        const wA = `${Math.round(mA.baseFitW * cmpState.zoomA)}px`;
+        const hA = `${Math.round(mA.baseFitH * cmpState.zoomA)}px`;
+        if (imgA.style.width !== wA) imgA.style.width = wA;
+        if (imgA.style.height !== hA) imgA.style.height = hA;
+      }
+      if (imgB && photoB) {
+        const wB = `${Math.round(mB.baseFitW * cmpState.zoomB)}px`;
+        const hB = `${Math.round(mB.baseFitH * cmpState.zoomB)}px`;
+        if (imgB.style.width !== wB) imgB.style.width = wB;
+        if (imgB.style.height !== hB) imgB.style.height = hB;
+      }
+    }
 
     if (imgA && photoA) {
       imgA.style.transition = immediate ? 'none' : 'transform 0.12s ease-out';
       const rotA = (typeof hasBakedViewAdjustments === 'function' && hasBakedViewAdjustments(photoA)) ? 0 : (photoA.rotation || 0);
-      imgA.style.width = `${Math.round(mA.baseFitW * cmpState.zoomA)}px`;
-      imgA.style.height = `${Math.round(mA.baseFitH * cmpState.zoomA)}px`;
       imgA.style.transform = `translate(${Math.round(cmpState.panAX)}px, ${Math.round(cmpState.panAY)}px) rotate(${rotA}deg)`;
     }
 
     if (imgB && photoB) {
       imgB.style.transition = immediate ? 'none' : 'transform 0.12s ease-out';
       const rotB = (typeof hasBakedViewAdjustments === 'function' && hasBakedViewAdjustments(photoB)) ? 0 : (photoB.rotation || 0);
-      imgB.style.width = `${Math.round(mB.baseFitW * cmpState.zoomB)}px`;
-      imgB.style.height = `${Math.round(mB.baseFitH * cmpState.zoomB)}px`;
       imgB.style.transform = `translate(${Math.round(cmpState.panBX)}px, ${Math.round(cmpState.panBY)}px) rotate(${rotB}deg)`;
     }
   }
@@ -679,64 +765,108 @@
     renderCompareStrip();
   }
 
+  function _createCompareStripItemEl(p, idx) {
+    const item = document.createElement('div');
+    item.className = 'compare-strip-item';
+    item.dataset.idx = String(idx);
+
+    let subText = (p && p.file_name) || `#${idx + 1}`;
+    if (p && p.exposure_bias !== undefined && p.exposure_bias !== null && Math.abs(p.exposure_bias) > 0.01) {
+      const b = Number(p.exposure_bias);
+      subText = `${b > 0 ? '+' : ''}${b.toFixed(1)}EV`;
+    }
+
+    item.innerHTML = `
+      <img src="${p ? getThumbnailUrl(p) : ''}" alt="${escapeHtml((p && p.file_name) || '')}" loading="lazy">
+      <span class="compare-strip-slot-tag" style="display: none;"></span>
+      <span class="compare-strip-rate-dot" style="display: none;"></span>
+      <span class="compare-strip-sub-label">${escapeHtml(subText)}</span>
+    `;
+    item.title = `${(p && p.file_name) || ''}\nクリック: 右(B)に表示\nShift+クリック: 左(A)に固定`;
+    return item;
+  }
+
   /**
-   * 下部候補サムネイル帯の描画
+   * 下部候補サムネイル帯の描画（大規模プール時は現在位置前後の横仮想ウィンドウのみマウント）
    */
-  function renderCompareStrip() {
+  function renderCompareStrip(scrollToActive = true) {
     const stripEl = document.getElementById('compareStrip');
     if (!stripEl) return;
 
-    // プールが変わっていない場合はクラスとバッジだけ差分更新して高速化
-    const existingItems = stripEl.querySelectorAll('.compare-strip-item');
-    if (existingItems.length !== cmpState.pool.length) {
+    const total = Array.isArray(cmpState.pool) ? cmpState.pool.length : 0;
+    if (total === 0) {
       stripEl.innerHTML = '';
-      cmpState.pool.forEach((p, idx) => {
-        const item = document.createElement('div');
-        item.className = 'compare-strip-item';
-        item.dataset.idx = String(idx);
-
-        let subText = p.file_name || `#${idx + 1}`;
-        if (p.exposure_bias !== undefined && p.exposure_bias !== null && Math.abs(p.exposure_bias) > 0.01) {
-          const b = Number(p.exposure_bias);
-          subText = `${b > 0 ? '+' : ''}${b.toFixed(1)}EV`;
-        }
-
-        item.innerHTML = `
-          <img src="${getThumbnailUrl(p)}" alt="${escapeHtml(p.file_name || '')}" loading="lazy">
-          <span class="compare-strip-slot-tag" style="display: none;"></span>
-          <span class="compare-strip-rate-dot" style="display: none;"></span>
-          <span class="compare-strip-sub-label">${escapeHtml(subText)}</span>
-        `;
-
-        item.title = `${p.file_name}\nクリック: 右(B)に表示\nShift+クリック: 左(A)に固定`;
-        item.addEventListener('click', (e) => {
-          if (e.shiftKey) {
-            if (idx === cmpState.idxB) {
-              swapCompareSides();
-            } else {
-              cmpState.idxA = idx;
-              updateComparePanesUI();
-            }
-          } else {
-            if (idx === cmpState.idxA) {
-              swapCompareSides();
-            } else {
-              cmpState.idxB = idx;
-              updateComparePanesUI();
-            }
-          }
-        });
-
-        stripEl.appendChild(item);
-      });
+      cmpState._stripPoolRef = null;
+      cmpState._stripWinStart = -1;
+      cmpState._stripWinEnd = -1;
+      return;
     }
 
-    // スロットA/B枠と評価バッジの同期
+    const isVirtual = total > COMPARE_STRIP_DIRECT_MAX;
+    let nextStart = 0;
+    let nextEnd = total;
+
+    if (isVirtual) {
+      let centerIdx = cmpState.idxB;
+      if (!scrollToActive) {
+        const viewCenterPx = stripEl.scrollLeft + (stripEl.clientWidth || 600) * 0.5;
+        centerIdx = Math.max(0, Math.min(total - 1, Math.floor(viewCenterPx / COMPARE_STRIP_PITCH)));
+      }
+      nextStart = Math.max(0, centerIdx - COMPARE_STRIP_WINDOW_RADIUS);
+      nextEnd = Math.min(total, centerIdx + COMPARE_STRIP_WINDOW_RADIUS + 1);
+    }
+
+    const samePool = cmpState._stripPoolRef === cmpState.pool;
+    const margin = 16;
+    const isCovered = samePool && (
+      !isVirtual
+        ? (cmpState._stripWinStart === 0 && cmpState._stripWinEnd === total && stripEl.querySelectorAll('.compare-strip-item').length === total)
+        : (
+          cmpState._stripWinStart >= 0 &&
+          nextStart >= cmpState._stripWinStart - margin &&
+          nextEnd <= cmpState._stripWinEnd + margin &&
+          (scrollToActive ? (cmpState.idxB >= cmpState._stripWinStart && cmpState.idxB < cmpState._stripWinEnd) : true)
+        )
+    );
+
+    if (!isCovered) {
+      cmpState._stripPoolRef = cmpState.pool;
+      cmpState._stripWinStart = nextStart;
+      cmpState._stripWinEnd = nextEnd;
+
+      const frag = document.createDocumentFragment();
+      if (isVirtual && nextStart > 0) {
+        const leftSpacer = document.createElement('div');
+        leftSpacer.className = 'compare-strip-spacer';
+        leftSpacer.style.cssText = `flex:0 0 auto;width:${Math.max(0, nextStart * COMPARE_STRIP_PITCH - COMPARE_STRIP_GAP)}px;height:1px;pointer-events:none;`;
+        frag.appendChild(leftSpacer);
+      }
+
+      for (let idx = nextStart; idx < nextEnd; idx++) {
+        frag.appendChild(_createCompareStripItemEl(cmpState.pool[idx], idx));
+      }
+
+      if (isVirtual && nextEnd < total) {
+        const rightSpacer = document.createElement('div');
+        rightSpacer.className = 'compare-strip-spacer';
+        rightSpacer.style.cssText = `flex:0 0 auto;width:${Math.max(0, (total - nextEnd) * COMPARE_STRIP_PITCH - COMPARE_STRIP_GAP)}px;height:1px;pointer-events:none;`;
+        frag.appendChild(rightSpacer);
+      }
+
+      stripEl.innerHTML = '';
+      stripEl.appendChild(frag);
+    }
+
+    let activeItemB = null;
     const items = stripEl.querySelectorAll('.compare-strip-item');
-    items.forEach((item, idx) => {
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      const idx = parseInt(item.dataset.idx, 10);
       const p = cmpState.pool[idx];
       const isA = idx === cmpState.idxA;
       const isB = idx === cmpState.idxB;
+      if (isB) activeItemB = item;
+
       item.classList.toggle('is-slot-a', isA);
       item.classList.toggle('is-slot-b', isB);
       item.classList.toggle('is-discarded', Boolean(p && Number(p.rating ?? 0) === -1));
@@ -775,11 +905,20 @@
           rateDot.style.display = 'none';
         }
       }
+    }
 
-      if (isB) {
-        item.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+    if (scrollToActive) {
+      if (isVirtual) {
+        const stripW = stripEl.clientWidth || 600;
+        const itemLeft = cmpState.idxB * COMPARE_STRIP_PITCH;
+        const itemRight = itemLeft + COMPARE_STRIP_ITEM_WIDTH;
+        if (itemLeft < stripEl.scrollLeft + 40 || itemRight > stripEl.scrollLeft + stripW - 40) {
+          stripEl.scrollLeft = Math.max(0, Math.round(itemLeft - stripW * 0.5 + COMPARE_STRIP_ITEM_WIDTH * 0.5));
+        }
+      } else if (activeItemB && typeof activeItemB.scrollIntoView === 'function') {
+        activeItemB.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
       }
-    });
+    }
   }
 
   /**
@@ -873,7 +1012,7 @@
         inst.rating = newRating;
       });
     } else if (typeof state !== 'undefined' && Array.isArray(state.photos)) {
-      const mainPhoto = state.photos.find(p => p.id === photo.id);
+      const mainPhoto = typeof getPhotoById === 'function' ? getPhotoById(photo.id) : state.photos.find(p => p.id === photo.id);
       if (mainPhoto) mainPhoto.rating = newRating;
       state.photos.forEach(p => {
         if (Array.isArray(p.stack_photos)) {
@@ -1050,18 +1189,26 @@
     cmpState.sourceLabel = sourceLabel;
     cmpState.isOpen = true;
     cmpState.activeSide = 'B';
+    cmpState._stripPoolRef = null;
+    cmpState._stripWinStart = -1;
+    cmpState._stripWinEnd = -1;
 
     const badgeEl = document.getElementById('compareSourceBadge');
     if (badgeEl) badgeEl.textContent = sourceLabel;
 
     // ストリップを一旦クリアして新規プールで構築させる
     const stripEl = document.getElementById('compareStrip');
-    if (stripEl) stripEl.innerHTML = '';
+    if (stripEl) {
+      stripEl.innerHTML = '';
+      stripEl.scrollLeft = 0;
+    }
+
+    modalEl.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+    _invalidateCompareViewportMetrics();
 
     resetCompareZoom();
     setActiveCompareSide('B');
-    modalEl.style.display = 'flex';
-    document.body.style.overflow = 'hidden';
 
     updateComparePanesUI();
   }
@@ -1072,28 +1219,56 @@
   function closeCompareModal() {
     if (!cmpState.isOpen) return;
     cmpState.isOpen = false;
+    cmpState.isPanning = false;
+    if (_cmpPanRafId) {
+      cancelAnimationFrame(_cmpPanRafId);
+      _cmpPanRafId = null;
+    }
+    if (_cmpStripScrollRafId) {
+      cancelAnimationFrame(_cmpStripScrollRafId);
+      _cmpStripScrollRafId = null;
+    }
     if (modalEl) modalEl.style.display = 'none';
 
     // 比較中に変更された評価によって現在の評価フィルタ条件から外れた写真をグリッドから即座に除外
     if (typeof state !== 'undefined' && Array.isArray(cmpState.pool)) {
-      let removedAny = false;
+      const idsToRemove = [];
       for (const p of cmpState.pool) {
         if (!p) continue;
-        const r = Number(p.rating || 0);
-        const shouldRemove =
-          (state.ratingFilter === 'normal' && r === -1) ||
-          (state.ratingFilter === 1 && r !== 1) ||
-          (state.ratingFilter === 2 && r !== 2) ||
-          (state.ratingFilter === -1 && r !== -1);
-        if (shouldRemove && typeof removePhotoFromView === 'function') {
-          removePhotoFromView(p.id);
-          removedAny = true;
+        const r = Number(p.rating ?? 0);
+        const shouldRemove = (state.ratingFilter instanceof Set)
+          ? (state.ratingFilter.size > 0 && !state.ratingFilter.has(r))
+          : (
+            (state.ratingFilter === 'normal' && r === -1) ||
+            (state.ratingFilter === 1 && r !== 1) ||
+            (state.ratingFilter === 2 && r !== 2) ||
+            (state.ratingFilter === -1 && r !== -1)
+          );
+        if (shouldRemove) {
+          idsToRemove.push(p.id);
         }
       }
-      if (!removedAny && typeof updateInspectorView === 'function' && state.isInspectorOpen) {
+      if (idsToRemove.length > 0) {
+        if (typeof removePhotosFromViewBatch === 'function') {
+          removePhotosFromViewBatch(idsToRemove);
+        } else if (typeof removePhotoFromView === 'function') {
+          idsToRemove.forEach(pid => removePhotoFromView(pid));
+        }
+      } else if (typeof updateInspectorView === 'function' && state.isInspectorOpen) {
         updateInspectorView();
       }
     }
+
+    // ストリップDOMと一時プール参照を解放する
+    const stripEl = document.getElementById('compareStrip');
+    if (stripEl) stripEl.innerHTML = '';
+    cmpState.pool = [];
+    cmpState._stripPoolRef = null;
+    cmpState._stripWinStart = -1;
+    cmpState._stripWinEnd = -1;
+    cmpState.histDataA = null;
+    cmpState.histDataB = null;
+    _invalidateCompareViewportMetrics();
 
     // ライトボックスが開いていなければ body の overflow を戻す
     if (typeof state !== 'undefined' && state.currentPhotoIndex < 0) {

@@ -706,10 +706,30 @@
   justify-content: center;
 }
 
+/* 2D仮想スクロール用の上下スペーサー要素 */
+.grid-virtual-spacer {
+  grid-column: 1 / -1;
+  flex: 0 0 100%;
+  width: 100%;
+  height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  pointer-events: none;
+  visibility: hidden;
+  overflow-anchor: none;
+}
+
+/* 仮想スクロール稼働中は可視行＋オーバースキャンのみDOM保持するため推定サイズ誤差を排除 */
+.photo-grid.is-virtual-grid .photo-card {
+  content-visibility: visible;
+  contain-intrinsic-size: none;
+}
+
 /* 個別写真カード（Tiat風クリーン＆ストイック・額装マットスタイル） */
 .photo-card {
   background: var(--bg-secondary);
-  border: 1px solid var(--border-soft);
+  border: 1px solid rgba(235, 232, 224, 0.25);
   border-radius: 4px;
   overflow: hidden;
   display: flex;
@@ -725,22 +745,45 @@
 
 [data-theme="paper"] .photo-card {
   background: rgba(255, 255, 255, 0.45);
-  border-color: var(--border-soft);
+  border-color: rgba(42, 41, 38, 0.25);
+}
+
+.photo-card:not(.is-offline):not(.is-unlinked) {
+  border: 1px solid rgba(235, 232, 224, 0.25);
+}
+
+[data-theme="paper"] .photo-card:not(.is-offline):not(.is-unlinked) {
+  border-color: rgba(42, 41, 38, 0.25);
+}
+
+.photo-card.is-offline,
+.photo-card.is-unlinked {
+  border: 1px dashed rgba(203, 213, 225, 0.62);
+}
+
+[data-theme="paper"] .photo-card.is-offline,
+[data-theme="paper"] .photo-card.is-unlinked {
+  border-color: rgba(95, 88, 76, 0.64);
 }
 
 .photo-card:hover {
-  border-color: var(--border-color);
+  border-color: rgba(235, 232, 224, 0.5);
   background: var(--bg-hover);
 }
 
 [data-theme="paper"] .photo-card:hover {
   background: rgba(255, 255, 255, 0.75);
-  border-color: var(--border-color);
+  border-color: rgba(42, 41, 38, 0.45);
 }
 
 .photo-card.selected {
   outline: 2px solid var(--accent-primary);
-  border-color: var(--accent-primary);
+  border: 1px solid var(--accent-primary);
+}
+
+.photo-card.is-offline.selected,
+.photo-card.is-unlinked.selected {
+  border: 1px dashed var(--accent-primary);
 }
 
 .card-thumb-wrapper {
@@ -788,7 +831,7 @@
   z-index: 2;
 }
 
-/* 一文字アイコン（優・良・棄）＆ サムネイル上バッジのすりガラス・モノトーン統一 (P3) */
+/* 一文字アイコン（優・良・棄）＆ サムネイル上バッジのモノトーン統一（大量カード高速合成のためGPUブラー不使用） */
 .card-rating-icon,
 .bkt-badge,
 .dup-badge {
@@ -803,13 +846,20 @@
   border-radius: 3px;
   line-height: 1;
   letter-spacing: 0;
-  background: rgba(20, 20, 20, 0.68) !important;
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  background: rgba(18, 18, 18, 0.84) !important;
   color: rgba(255, 255, 255, 0.92) !important;
-  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  border: 1px solid rgba(255, 255, 255, 0.16) !important;
   text-shadow: none;
   transition: opacity var(--transition-fast);
+}
+
+/* グリッド内小バッジの個別 backdrop-filter 合成レイヤを無効化 */
+.photo-grid .format-badge,
+.photo-grid .stack-badge,
+.photo-grid .unlinked-card-badge,
+.photo-grid .card-select-checkbox {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
 .card-rating-icon.rating-5,
@@ -832,8 +882,7 @@
   filter: grayscale(0.5);
 }
 
-/* ホバー時の評価バー (日の丸UI・両テーマ高コントラスト対応 v1.88) */
-/* ホバー時の評価バー (日の丸UI・両テーマ高コントラスト対応 v1.88-v1.96) */
+/* ホバー時の評価バー（高コントラスト半透明ソリッド背景） */
 .card-rating-bar,
 :root .card-rating-bar,
 [data-theme="paper"] .card-rating-bar {
@@ -841,7 +890,6 @@
   top: 6px;
   right: 6px;
   background: rgba(251, 249, 244, 0.96);
-  backdrop-filter: blur(8px);
   padding: 3px 5px;
   border-radius: var(--radius-sm, 2px);
   display: flex;
@@ -1202,6 +1250,19 @@
 /* ==========================================================================
    ライトボックス (全画面プレビューモーダル)
    ========================================================================== */
+@keyframes gridSweepFadeIn {
+  from {
+    opacity: 0.18;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.photo-grid.grid-sweep-enter {
+  animation: gridSweepFadeIn var(--motion-grid-fade, 272ms) cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 @keyframes lightboxModalFadeIn {
   from {
     opacity: 0;
@@ -1214,9 +1275,11 @@
 @keyframes lightboxImgFadeIn {
   from {
     opacity: 0;
+    transform: scale(0.992);
   }
   to {
     opacity: 1;
+    transform: scale(1);
   }
 }
 
@@ -1228,7 +1291,7 @@
   z-index: 5000;
   display: flex;
   flex-direction: column;
-  animation: lightboxModalFadeIn 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: lightboxModalFadeIn var(--motion-lightbox-fade, 280ms) cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .lightbox-header {
@@ -1402,7 +1465,7 @@
 }
 
 #lightboxImage.lightbox-image-fadein {
-  animation: lightboxImgFadeIn 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: lightboxImgFadeIn var(--motion-lightbox-fade, 280ms) cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .lightbox-zoom-badge {
@@ -1604,7 +1667,6 @@ body.minimal-view .card-info {
 body.minimal-view .photo-card {
   border-radius: var(--radius-sm);
   background: transparent;
-  border-color: rgba(255, 255, 255, 0.08);
 }
 
 body.minimal-view .card-rating-overlay {
@@ -1648,6 +1710,7 @@ body.layout-masonry .photo-grid::after {
 }
 
 body.layout-masonry .photo-card {
+  position: relative;
   flex-grow: 1;
   flex-shrink: 1;
   flex-basis: auto;
@@ -1662,6 +1725,31 @@ body.layout-masonry .photo-card {
   background: var(--bg-secondary);
   transition: transform var(--transition-fast), box-shadow var(--transition-fast);
   contain-intrinsic-size: auto calc(var(--thumbnail-size, 230px) * var(--photo-aspect-ratio, 1.5)) var(--thumbnail-size, 230px);
+}
+
+body.layout-masonry .photo-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+  border-radius: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  box-sizing: border-box;
+}
+
+[data-theme="paper"] body.layout-masonry .photo-card::after {
+  border-color: rgba(42, 41, 38, 0.28);
+}
+
+body.layout-masonry .photo-card.is-offline::after,
+body.layout-masonry .photo-card.is-unlinked::after {
+  border: 1.5px dashed rgba(226, 232, 240, 0.76);
+}
+
+[data-theme="paper"] body.layout-masonry .photo-card.is-offline::after,
+[data-theme="paper"] body.layout-masonry .photo-card.is-unlinked::after {
+  border-color: rgba(75, 68, 58, 0.75);
 }
 
 body.layout-masonry .photo-card:hover {
@@ -1743,7 +1831,7 @@ body.layout-mount .photo-card {
   height: auto;
   background: #ebebe6; /* クラシックな厚紙/プラスチックマウントのアイボリー白 */
   border-radius: 4px;
-  border: 1px solid #d4d4cc;
+  border: 1.5px solid #bcbab0;
   padding: 15px 14px 15px 14px;
   box-shadow: 
     0 6px 16px rgba(0, 0, 0, 0.45),
@@ -1757,6 +1845,11 @@ body.layout-mount .photo-card {
   transition: transform var(--transition-fast), box-shadow var(--transition-fast);
   box-sizing: border-box;
   contain-intrinsic-size: auto calc(var(--thumbnail-size, 220px) * 1.15) calc(var(--thumbnail-size, 220px) * 1.15);
+}
+
+body.layout-mount .photo-card.is-offline,
+body.layout-mount .photo-card.is-unlinked {
+  border: 2px dashed #7d796f;
 }
 
 body.layout-mount .photo-card:hover {
@@ -1888,6 +1981,11 @@ body.layout-mount .card-thumb-img {
   flex-shrink: 0;
 }
 
+body.layout-mount .photo-card.is-offline .card-thumb-img,
+body.layout-mount .photo-card.is-unlinked .card-thumb-img {
+  border: 2px dashed #6b6860;
+}
+
 /* 横写真: 幅いっぱいに広がり、上下にマウントの白余白ができる */
 body.layout-mount .photo-card.is-landscape .card-thumb-img {
   width: 100%;
@@ -2001,7 +2099,12 @@ body.layout-mount .card-mount-bottom .mount-stamp-brand-wrap {
 body.layout-mount.minimal-view .photo-card {
   background: #ebebe6 !important;
   border-radius: 4px !important;
-  border: 1px solid #d4d4cc !important;
+  border: 1.5px solid #bcbab0 !important;
+}
+
+body.layout-mount.minimal-view .photo-card.is-offline,
+body.layout-mount.minimal-view .photo-card.is-unlinked {
+  border: 2px dashed #7d796f !important;
 }
 
 body.layout-mount.minimal-view .card-mount-top {

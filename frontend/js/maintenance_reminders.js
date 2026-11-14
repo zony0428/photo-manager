@@ -262,25 +262,33 @@ function syncPurgeUnlinkedButtonUI() {
 window.syncPurgeUnlinkedButtonUI = syncPurgeUnlinkedButtonUI;
 
 /**
- * 「リンク情報なし（リンク消失の写真）」絞り込み時に、選択した写真（または未選択時は現在表示中の対象写真）をDBから完全消去する
+ * 「リンク情報なし（リンク消失の写真）」の選択写真（または現在表示中/全件の対象写真）をDBから完全消去する
  */
-async function purgeUnlinkedPhotosAction(explicitPhotoIds = null) {
+async function purgeUnlinkedPhotosAction(explicitPhotoIds = null, options = {}) {
+  const purgeAllDirect = Boolean(options && options.purgeAllDirect);
   const isUnlinkedView = typeof isStrictlyUnlinkedOnlyView === 'function'
     ? isStrictlyUnlinkedOnlyView()
     : (state.connectionFilter === 'unlinked');
+
   if (!isUnlinkedView) {
-    showToast('データの完全消去は「リンク情報なし（リンク消失の写真）」の絞り込み表示中のみ実行できます', 'warning');
-    return;
+    if (purgeAllDirect && typeof setConnectionFilter === 'function') {
+      setConnectionFilter('unlinked');
+    } else {
+      showToast('データの完全消去は「リンク情報なし（リンク消失の写真）」の絞り込み表示中のみ実行できます', 'warning');
+      return;
+    }
   }
 
   let targetIds = null;
   let isSelectedMode = false;
-  if (Array.isArray(explicitPhotoIds) && explicitPhotoIds.length > 0) {
-    targetIds = explicitPhotoIds.map(Number).filter(Boolean);
-    isSelectedMode = true;
-  } else if (state.selectedPhotoIds && state.selectedPhotoIds.size > 0) {
-    targetIds = Array.from(state.selectedPhotoIds).map(Number).filter(Boolean);
-    isSelectedMode = true;
+  if (!purgeAllDirect) {
+    if (Array.isArray(explicitPhotoIds) && explicitPhotoIds.length > 0) {
+      targetIds = explicitPhotoIds.map(Number).filter(Boolean);
+      isSelectedMode = true;
+    } else if (state.selectedPhotoIds && state.selectedPhotoIds.size > 0) {
+      targetIds = Array.from(state.selectedPhotoIds).map(Number).filter(Boolean);
+      isSelectedMode = true;
+    }
   }
 
   const dispIds = getDisplayedUnlinkedPhotoIds();
@@ -289,16 +297,20 @@ async function purgeUnlinkedPhotosAction(explicitPhotoIds = null) {
     || elements.folderTreeUnlinkedCount?.textContent
     || dispIds.length
   );
-  const isFilteredSubset = !isSelectedMode && dispIds.length > 0 && totalUnlinked > dispIds.length;
+  const isFilteredSubset = !purgeAllDirect && !isSelectedMode && dispIds.length > 0 && totalUnlinked > dispIds.length;
   if (isFilteredSubset) {
     targetIds = dispIds;
   }
 
   const isPartial = Array.isArray(targetIds) && targetIds.length > 0;
-  let headingText = 'リンク消失しているすべての写真レコードをDBから完全に消去しますか？';
+  let headingText = totalUnlinked > 0
+    ? `リンク情報なし（リンク消失）の写真レコード 全 ${totalUnlinked.toLocaleString()} 枚をDBから完全に消去しますか？`
+    : 'リンク消失しているすべての写真レコードをDBから完全に消去しますか？';
   let modalTitle = 'リンク消失写真の完全消去';
   let modalSubtitle = 'データベースからのレコード一括消去';
-  let confirmBtnText = 'すべて完全に消去する';
+  let confirmBtnText = totalUnlinked > 0
+    ? `全 ${totalUnlinked.toLocaleString()} 枚を完全に消去する`
+    : 'すべて完全に消去する';
 
   if (isSelectedMode && isPartial) {
     headingText = `選択した ${targetIds.length} 枚のリンク消失写真レコードをDBから完全に消去しますか？`;

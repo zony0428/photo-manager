@@ -73,14 +73,23 @@ Tetheract Photo Manager は、USBメモリやポータブルSSDで持ち歩け�
 同一オリジンGETリクエストはブラウザが `Origin` ヘッダを送出しないため、悪意ある外部WebサイトがDNS Rebinding（攻撃者ドメインのAレコードを `127.0.0.1` へ動的変更）を行うと Origin 検証をすり抜ける。
 これを防ぐため、HTTPの `Host` ヘッダが `localhost` または許可されたIPアドレスリテラル（`127.0.0.1`, `::1`, 検出されたPC自身のLAN IP）である場合のみ通信を許可し、それ以外のドメイン名は直ちに `HTTP 400 Bad Request` で破棄する。
 
-### Layer 2: Origin ヘッダ検証 (`server/app.py`)
+### Layer 2: Origin ヘッダ検証 ＆ `Origin: null` + PNA 越境封鎖 (`server/app.py`)
 - `Origin` が存在する場合、ループバック（`127.0.0.1` / `localhost` / `[::1]`）か、リクエストの `Host` ヘッダと一致する同一オリジンのみ許可する。
 - プライベートLANのIP帯を一括許可しないことで、同一LAN上の他ホストで開かれたページから `127.0.0.1` 宛ての破壊系APIを呼ばれる攻撃を完全に防ぐ。
-- `Origin: null`（単体モバイルHTML `Tetheract_Mobile.html`）は `_NULL_ORIGIN_ALLOWED_PATHS` の同期系APIのみ許可する。
+- **`Origin: null` の3重封鎖（Drive-by Localhost / `<iframe sandbox="allow-scripts">` PNA攻撃対策）**:
+  1. `_NULL_ORIGIN_ALLOWED_PATHS` は単体HTML（`Tetheract_Mobile.html`）が必要とする `/api/mobile/sync-import` 1本のみに限定し、`/api/mobile/locker-sync`, `/api/mobile/info`, `/api/mobile/pair-info`, `/api/mobile/case-*`, `/api/mobile/discover`, `/api/mobile/field-logs` 等はすべて `403 Forbidden origin` で即時拒否する。
+  2. `Origin == "null"` に対しては `OPTIONS` プリフライトでも通常応答でも `Access-Control-Allow-Private-Network: true` を一切返さず、外部サイトからの Private Network Access 越境をブラウザレベルで遮断する。
+  3. `Origin == "null"` は送信元が `127.0.0.1` / `::1`（ループバック）であっても無認証ループバック特権を剥奪し、クエリ（`?t=`）または明示ヘッダ（`X-Tetheract-Lan-Token` / `Authorization: Bearer`）による有効な `LAN_TOKEN` 提示を必須化する（Cookie単体・未提示・不一致は即 `403`）。
 
-### Layer 3 & 4: LAN接続トークン認証 ＆ LAN API ホワイトリスト (`server/lan_access.py`)
-- アプリ起動直後は `127.0.0.1:8088` のみで待ち受け、ユーザーが「スマホ連携」モーダルを開いた時のみセカンダリUvicornスレッドがLAN IPでリッスンを開始する（30分無通信で自動停止）。
-- QRコード内のランダムトークン（`secrets.token_urlsafe(18)`）による `HttpOnly; SameSite=Lax` Cookie 認証を必須とし、かつホワイトリスト（`_LAN_API_EXACT` / `_LAN_API_PATTERNS`）に登録されたスマホ閲覧・選別用API以外はすべて `HTTP 403 Forbidden` で遮断する。
+### Layer 3 & 4: LAN接続トークン認証・指定IPワンタイム承認・LAN API ホワイトリスト ＆ WFP回避ブリッジ (`server/lan_access.py`, `server/lan_bridge.py`, `server/routers/mobile_router.py`)
+- アプリ起動直後は `127.0.0.1:8088` のみで待ち受け、スマホ連携が有効化された時のみLANリッスンを開始する。QR画面表示（`enable_lan=1`）はLANリスナーを起動するのみで、無認証ペアリング窓口は一切開かない（QR URL自体が `?t=<LAN_TOKEN>` を保持）。
+- **指定IPワンタイム承認と秘密トークン非漏洩**:
+  - グローバルな全IP無差別開放窓口は持たず、`POST /api/mobile/approve-pair`（localhost専用）で承認された**特定の正規化済みプライベート `client_ip` のみ**を短時間（既定90秒・上限120秒）許可し、TCP経由の `/api/mobile/discover` で当該 `client_ip` に `pair_token` を引き渡した瞬間にワンタイム消費（即時失効）する。承認中であっても同一LAN上の第三者IPには `pair_token` を一切渡さず、UDP `8088` ディスカバリ応答にも秘密トークンを含めない（常時 `pair_token: ""`・承認未消費）。
+  - ミドルウェアでの無認証LANリクエスト通過および自動Cookie交付は行わず、`365日有効の pm_lan_token Cookie` は有効な `LAN_TOKEN` を明示提示して検証通過した通常オリジン要求にのみ発行する。
+- **WFP回避ブリッジのヘッダ検証・32KBフェイルクローズ化 (`server/lan_bridge.py`)**:
+  - TCP中継スレッドが `127.0.0.1:8088` へ転送する際、クライアント由来の偽装 `X-Tetheract-Lan-Client` ヘッダ（LF単独改行・先頭空白を含む）を完全除去した上で実接続元IPを注入する。
+  - 初回32KB（`32,768 bytes`）読取ループで `\r\n\r\n` が未検出のまま上限に達した場合（または未完結切断時）は、上流 `127.0.0.1` へ1バイトも接続・転送せず、`HTTP/1.1 431 Request Header Fields Too Large` を返して即時ソケット切断するフェイルクローズ動作を徹底する。
+- QRコード／ペアリングで発行されるランダムトークン（`secrets.token_urlsafe(24)`）による認証を必須とし、ホワイトリスト（`_LAN_API_EXACT` / `_LAN_API_PATTERNS`）に登録されたモバイル用API以外はすべて `HTTP 403 Forbidden` で遮断する。
 
 ---
 
@@ -164,7 +173,7 @@ flowchart TD
      - `"own"`: `.loome_seal` の `owner_id` と `seal_mac` が自DBと一致する、または自DBの `volumes` / `photos` / `scan_roots` に登録履歴がある既存 `Loome`（アクセス許可）。
      - `"foreign"`: 異なる `owner_id` の `.loome_seal` がある、または `.loome_seal` が無く自DBに登録履歴もないのに中にファイルが存在する（**他人の `Loome` としてエシカル保護ロック発動**）。
 2. **エシカル保護ロック時の遮断範囲**:
-   - 左サイドバーの `Loome` ツリーおよび `Folder` ツリーに `🔒 他環境のLoome（保護中）` バッジを表示。
+   - 左サイドバーの `Loome` ツリーおよび `Folder` ツリーに `他環境のLoome（保護中）` バッジを表示。
    - そのドライブ内の `Loome` の閲覧、そのドライブ全体またはサブフォルダの「フォルダの管理登録（スキャン）」、およびそのドライブへの「新規 `Loome` 作成」を API（`assert_drive_not_blocked_by_foreign_loome`）と UI の双方で完全に拒否する。
 3. **別PCで作成した自分の外付け `Loome` の承認 (`unlock_foreign_loome_with_password`)**:
    - 自宅PCと外出先ノートPCなど、別の Tetheract 環境で作った自分の外付け `Loome` を接続した場合は、ロック案内モーダル（`#foreignLoomeUnlockModal`）から**設定していたパスワードまたはリカバリーコード**を入力することで、`.loome_seal`（および `previous_seals` 履歴）内のバンドルを復号して正当なオーナーであることを証明できる。
@@ -256,3 +265,4 @@ Red Team（破壊的セキュリティ・アップデート批判）と Blue Tea
 - `test_open_folder_rejects_files`: エクスプローラー起動APIがディレクトリ以外の実行ファイルを拒絶すること
 - `test_three_tier_security_and_ethical_protection`: **【v1.7.0】** Lv.0 他人のLoome完全拒否＆同一パスワード承認、DB単体引き抜き検知＆所有メディア照合／リカバリーコード救済、Lv.1 起動ロック＆サムネイルBLOB暗号化、Lv.2 Loomeファイルカプセル化（`TETHVLT1`）＆1ビット完全復元の総合検証
 - `test_red_blue_team_failsafe_and_salvage`: **【v1.7.0】** Red Team vs Blue Team 監査項目（①Lv.2カプセル化ファイルの `compute_file_sample_hash` 平文一致性、②重複統合で `photo_id` が変わった暗号化サムネイルの復号＆Lv.0解除、③Lv.2運用中に `library.db` と `.tetheract_instance` を誤削除して再起動した際の `Loome/.loome_seal` からの鍵自動サルベージと完全復号、④Lv.0での `cache/`+`Loome/` 引っ越し自動ペアリングと `library.db` 単体引き抜きロック）の総合検証
+- Drive-by `Origin: null` + PNA 遮断・指定IPワンタイム承認＆第三者LAN IP遮断・`lan_bridge.py` 32KB超未完結ヘッダ `431` 即時切断（フェイルクローズ）の攻撃シミュレーション＆正規ペアリング回帰検証

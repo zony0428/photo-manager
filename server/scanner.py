@@ -213,6 +213,8 @@ _remote_drive_letters_cache: set = set()
 # ネットワークドライブルート（例: 'Z:\' や '\\server\share'）の疎通キャッシュ（SMB 21秒タイムアウト防止用）
 _network_root_online_cache: Dict[str, Tuple[bool, float]] = {}
 _network_root_probing: set = set()
+# クラウドドライブルート（Google Drive / OneDrive 等）のオンライン判定キャッシュ（2秒TTL）
+_cloud_root_online_cache: Dict[str, Tuple[Optional[Path], float]] = {}
 
 
 def clear_online_cache() -> None:
@@ -225,8 +227,9 @@ def clear_online_cache() -> None:
         _drive_to_serial_cache.clear()
         _remote_drive_letters_cache.clear()
         _network_root_online_cache.clear()
-    from .database.connection import bump_db_commit_seq
-    bump_db_commit_seq()
+        _cloud_root_online_cache.clear()
+    from .database.connection import bump_links_seq
+    bump_links_seq()
 
 
 def _get_connected_drive_serial_map() -> Tuple[Dict[str, str], Dict[str, str]]:
@@ -568,6 +571,84 @@ def resolve_portable_path(
     return orig_path, False
 
 
+def _resolve_cloud_drive_online_fast(clean_path: str) -> Optional[Path]:
+    """クラウドドライブ（OneDrive / Google Drive 等）のルート接続状態を2秒TTLで高速判定し、候補パスを返す"""
+    if not clean_path:
+        return None
+    norm = clean_path.replace("/", "\\")
+    lower = norm.lower()
+    now = time.time()
+
+    def _get_cached_cloud_root(cache_key: str, resolver_fn) -> Optional[Path]:
+        with _online_cache_lock:
+            hit = _cloud_root_online_cache.get(cache_key)
+            if hit is not None and now < hit[1]:
+                return hit[0]
+        resolved_root = resolver_fn()
+        with _online_cache_lock:
+            _cloud_root_online_cache[cache_key] = (resolved_root, now + 2.0)
+        return resolved_root
+
+    m_od = re.search(r"\\onedrive(?:\s*-\s*[^\\]+)?(?:\\|$)", lower)
+    if m_od:
+        rel = norm[m_od.end():].lstrip("\\")
+
+        def _find_od_root() -> Optional[Path]:
+            for env_key in ("OneDrive", "OneDriveConsumer", "OneDriveCommercial"):
+                env_val = os.environ.get(env_key)
+                if env_val and os.path.isdir(env_val):
+                    return Path(env_val)
+            cand_h = Path.home() / "OneDrive"
+            return cand_h if cand_h.is_dir() else None
+
+        od_root = _get_cached_cloud_root("onedrive", _find_od_root)
+        return (od_root / rel if rel else od_root) if od_root else None
+
+    for marker, key_name, folder_name in (
+        ("\\google drive\\", "gdrive_home", "Google Drive"),
+        ("\\dropbox\\", "dropbox_home", "Dropbox"),
+        ("\\iclouddrive\\", "icloud_home", "iCloudDrive"),
+    ):
+        idx = lower.find(marker)
+        if idx != -1 or lower.endswith(marker.rstrip("\\")):
+            rel = norm[idx + len(marker):].lstrip("\\") if idx != -1 else ""
+            c_root = _get_cached_cloud_root(
+                key_name,
+                lambda fn=folder_name: (Path.home() / fn) if (Path.home() / fn).is_dir() else None,
+            )
+            return (c_root / rel if rel else c_root) if c_root else None
+
+    for gm in ("\\マイドライブ", "\\my drive", "\\共有ドライブ", "\\shared drives"):
+        idx = lower.find(gm)
+        if idx != -1:
+            after_idx = idx + len(gm)
+            if after_idx == len(lower) or lower[after_idx] == "\\":
+                rel_after = norm[after_idx:].lstrip("\\")
+                orig_drive = Path(norm).drive.upper()
+                marker_cased = norm[idx + 1 : after_idx]
+
+                def _find_gstream_root(drv=orig_drive, mk=marker_cased) -> Optional[Path]:
+                    if drv:
+                        cand0 = Path(f"{drv}\\{mk}")
+                        if cand0.is_dir():
+                            return cand0
+                    _, drive_to_serial = _get_connected_drive_serial_map()
+                    for d_let in drive_to_serial.keys():
+                        cand_d = Path(f"{d_let}\\{mk}")
+                        if cand_d.is_dir():
+                            return cand_d
+                    cand_h = Path.home() / "Google Drive" / mk
+                    if cand_h.is_dir():
+                        return cand_h
+                    cand_h2 = Path.home() / "Google Drive"
+                    return cand_h2 if cand_h2.is_dir() else None
+
+                gs_root = _get_cached_cloud_root(f"gstream:{orig_drive}:{gm}", _find_gstream_root)
+                return (gs_root / rel_after if rel_after else gs_root) if gs_root else None
+
+    return None
+
+
 def resolve_drive_online_path(
     stored_path: str,
     base_dir: Optional[Path] = None,
@@ -619,8 +700,8 @@ def resolve_drive_online_path(
             else:
                 target_candidate = orig_path
             return target_candidate, True
-        # 該当VSNが未接続でもクラウドドライブ移動の可能性がある場合のみフォールバック解決
-        cloud_cand = _resolve_cloud_drive_path(clean_path)
+        # 該当VSNが未接続でもクラウドドライブ移動の可能性がある場合のみルートキャッシュで高速フォールバック解決
+        cloud_cand = _resolve_cloud_drive_online_fast(clean_path)
         if cloud_cand is not None:
             return cloud_cand, True
         return orig_path, False
@@ -799,45 +880,47 @@ def _parse_gps_coord(coord, ref) -> Optional[float]:
 def _apply_xmp_hardware_fallback(meta: Dict[str, Any], file_path: Path, fallback_dt_str: str) -> Dict[str, Any]:
     """
     Exifから取得できなかったハードウェア情報（レンズ機種名・カメラ機種名・撮影日時・GPS座標）がある場合のみ、
-    付随する .xmp サイドカーからハードウェア情報を安全に補完する（評価・タグ・ビットマップ調整は自動反映しない）。
+    付随する .xmp サイドカーからハードウェア情報を安全に補完し、has_xmp と調査済み lens_model を確定する。
     """
+    from .database.photos import _has_xmp_sidecar_fast
+    has_xmp_sc = _has_xmp_sidecar_fast(str(file_path))
+    meta["has_xmp"] = 1 if has_xmp_sc else 0
+
     need_lens = not is_valid_lens_name(meta.get("lens_model"))
     need_cam = meta.get("camera_model") in (None, "", "不明", "RAW写真")
     need_dt = (not meta.get("date_taken")) or (meta.get("date_taken") == fallback_dt_str)
     need_gps = meta.get("latitude") is None or meta.get("longitude") is None
 
-    if not (need_lens or need_cam or need_dt or need_gps):
-        return meta
+    if has_xmp_sc and (need_lens or need_cam or need_dt or need_gps):
+        try:
+            from .sidecar import parse_xmp_for_photo
+            xmp_info = parse_xmp_for_photo(file_path)
+            if xmp_info.get("has_xmp"):
+                hw = xmp_info.get("hardware") or {}
+                if need_lens and hw.get("lens_model") and is_valid_lens_name(hw["lens_model"]):
+                    meta["lens_model"] = hw["lens_model"]
+                if need_cam and hw.get("camera_model"):
+                    meta["camera_model"] = sanitize_camera_model(hw["camera_model"])
+                if need_dt and hw.get("date_taken"):
+                    meta["date_taken"] = hw["date_taken"]
+                    meta["has_exif_date"] = True
+                    meta["year_month"] = hw["date_taken"][:7] if len(hw["date_taken"]) >= 7 else ""
+                if need_gps and hw.get("latitude") is not None and hw.get("longitude") is not None:
+                    meta["latitude"] = hw["latitude"]
+                    meta["longitude"] = hw["longitude"]
+                    meta["gps_source"] = meta.get("gps_source") or "exif"
+                    try:
+                        from server.geocoder import reverse_geocode
+                        loc = reverse_geocode(meta["latitude"], meta["longitude"])
+                        meta["country"] = loc.get("country")
+                        meta["state"] = loc.get("state")
+                        meta["city"] = loc.get("city")
+                    except Exception as geo_err:
+                        logger.warning(f"XMP GPS逆ジオコーディング失敗 ({file_path.name}): {geo_err}")
+        except Exception as e:
+            logger.debug(f"XMPハードウェア補完スキップ ({file_path.name}): {e}")
 
-    try:
-        from .sidecar import parse_xmp_for_photo
-        xmp_info = parse_xmp_for_photo(file_path)
-        if not xmp_info.get("has_xmp"):
-            return meta
-        hw = xmp_info.get("hardware") or {}
-        if need_lens and hw.get("lens_model") and is_valid_lens_name(hw["lens_model"]):
-            meta["lens_model"] = hw["lens_model"]
-        if need_cam and hw.get("camera_model"):
-            meta["camera_model"] = sanitize_camera_model(hw["camera_model"])
-        if need_dt and hw.get("date_taken"):
-            meta["date_taken"] = hw["date_taken"]
-            meta["has_exif_date"] = True
-            meta["year_month"] = hw["date_taken"][:7] if len(hw["date_taken"]) >= 7 else ""
-        if need_gps and hw.get("latitude") is not None and hw.get("longitude") is not None:
-            meta["latitude"] = hw["latitude"]
-            meta["longitude"] = hw["longitude"]
-            meta["gps_source"] = meta.get("gps_source") or "exif"
-            try:
-                from server.geocoder import reverse_geocode
-                loc = reverse_geocode(meta["latitude"], meta["longitude"])
-                meta["country"] = loc.get("country")
-                meta["state"] = loc.get("state")
-                meta["city"] = loc.get("city")
-            except Exception as geo_err:
-                logger.warning(f"XMP GPS逆ジオコーディング失敗 ({file_path.name}): {geo_err}")
-    except Exception as e:
-        logger.debug(f"XMPハードウェア補完スキップ ({file_path.name}): {e}")
-
+    meta["lens_model"] = meta["lens_model"] if is_valid_lens_name(meta.get("lens_model")) else ""
     return meta
 
 
@@ -1632,13 +1715,15 @@ def scan_directory(
         if not matched_root or os.path.normpath(target_dir_str) == os.path.normpath(matched_root):
             add_scan_root(target_dir_str)
 
-        # 1. まず高速に対象画像ファイルをリストアップして総数を把握
+        # 1. os.scandir で対象画像ファイル（DirEntry.stat による size/mtime 付き）と .xmp 一覧を単一パスで高速列挙
         scan_tracker.set_phase("listing")
-        image_files = []
+        image_files: List[Tuple[str, str, int, float]] = []
+        dir_xmp_map: Dict[str, set] = {}
 
         # 除外フォルダ一覧の取得と正規化
         ignored_list = get_ignored_folders()
         ignored_set = {os.path.normpath(p).lower() for p in ignored_list}
+        ignore_dir_names = {"import", ".cache", "cache", "uploads", "carry", "take_out", "$recycle.bin", "system volume information"}
 
         # スキャン対象自身が除外リストに入っていた場合は、ユーザーが意図してスキャンしたため除外を自動解除
         target_norm = os.path.normpath(target_dir_str).lower()
@@ -1646,31 +1731,44 @@ def scan_directory(
             remove_ignored_folder(target_dir_str)
             ignored_set.discard(target_norm)
 
-        if recursive:
-            for root, dirs, files in os.walk(target_dir):
-                # 隠しフォルダ、システム除外フォルダ（carry/take_out等）、およびユーザー除外フォルダを再帰探索から除外
-                pruned = []
-                for d in dirs:
-                    if d.startswith(".") or d.lower() in ("import", ".cache", "cache", "uploads", "carry", "take_out", "$recycle.bin"):
-                        continue
-                    full_d = os.path.normpath(os.path.join(root, d)).lower()
-                    if any(full_d == ig or full_d.startswith(ig + os.sep) for ig in ignored_set):
-                        continue
-                    pruned.append(d)
-                dirs[:] = pruned
+        def _collect_dir_entries(cur_dir: str, recurse: bool) -> None:
+            stack_dirs = [cur_dir]
+            while stack_dirs:
+                root_s = stack_dirs.pop()
+                abs_root = os.path.abspath(root_s)
+                xmp_set: set = set()
+                subdirs_to_visit: List[str] = []
+                try:
+                    with os.scandir(root_s) as it:
+                        for entry in it:
+                            try:
+                                if entry.is_dir(follow_symlinks=False):
+                                    if not recurse:
+                                        continue
+                                    d_lower = entry.name.lower()
+                                    if entry.name.startswith(".") or d_lower in ignore_dir_names:
+                                        continue
+                                    full_d = os.path.normpath(entry.path).lower()
+                                    if any(full_d == ig or full_d.startswith(ig + os.sep) for ig in ignored_set):
+                                        continue
+                                    subdirs_to_visit.append(entry.path)
+                                elif entry.is_file(follow_symlinks=False):
+                                    ext = os.path.splitext(entry.name)[1].lower()
+                                    if ext in SUPPORTED_EXTENSIONS:
+                                        st = entry.stat(follow_symlinks=False)
+                                        image_files.append((abs_root, entry.name, st.st_size, st.st_mtime))
+                                    elif ext == ".xmp":
+                                        xmp_set.add(entry.name.lower())
+                            except Exception:
+                                continue
+                except Exception as scan_err:
+                    logger.debug(f"ディレクトリスキャン列挙スキップ ({root_s}): {scan_err}")
+                    continue
+                dir_xmp_map[abs_root] = xmp_set
+                for sd in reversed(sorted(subdirs_to_visit)):
+                    stack_dirs.append(sd)
 
-                for file in files:
-                    ext = os.path.splitext(file)[1].lower()
-                    if ext in SUPPORTED_EXTENSIONS:
-                        image_files.append((root, file))
-        else:
-            # 直下のみスキャン（子フォルダは走査しない）
-            for file in os.listdir(target_dir):
-                full = target_dir / file
-                if full.is_file():
-                    ext = os.path.splitext(file)[1].lower()
-                    if ext in SUPPORTED_EXTENSIONS:
-                        image_files.append((str(target_dir), file))
+        _collect_dir_entries(str(target_dir), recursive)
 
         total_files = len(image_files)
         scan_tracker.set_phase("scanning", total_files=total_files)
@@ -1679,7 +1777,11 @@ def scan_directory(
         existing_map = get_existing_photos_map(target_dir_str, recursive=recursive, volume_serial=volume_serial)
 
         # スタック再計算用の列挙済み絶対パス集合
-        existing_paths_set = {os.path.abspath(os.path.join(root, file)) for root, file in image_files}
+        existing_paths_set = {os.path.abspath(os.path.join(root, file)) for root, file, _, _ in image_files}
+
+        from .database.photos import _has_xmp_sidecar_fast, sync_has_xmp_from_dir_scan_map
+        from .storage_manager import is_path_in_storage
+        is_loome_scan = is_path_in_storage(target_dir_str, volume_serial=volume_serial)
 
         total_scanned = 0
         total_added = 0
@@ -1703,35 +1805,37 @@ def scan_directory(
                 dup_tag_pairs.clear()
             batch_meta.clear()
 
-        # 2. 各ファイルのメタデータ抽出および同期処理
-        for idx, (root, file) in enumerate(image_files, start=1):
-            abs_path_str = os.path.abspath(os.path.join(root, file))
+        # 2. 各ファイルのメタデータ抽出および同期処理（未変更ファイルはファイルオープン一切なしで高速スキップ）
+        for idx, (root, file, raw_size, raw_mtime) in enumerate(image_files, start=1):
+            abs_path_str = os.path.join(root, file)
             norm_key = os.path.normcase(abs_path_str)
             existing = existing_map.get(norm_key)
             full_path = Path(abs_path_str)
 
             total_scanned += 1
             try:
-                stat = full_path.stat()
-                st_size = get_logical_file_size(full_path)
-                st_mtime = stat.st_mtime
-
-                # 差分判定: size と mtime が両方一致したファイルは extract_metadata を呼ばず unchanged
-                # （file_mtime が NULL の既存行は従来どおり解析して埋める）
                 if existing is not None:
                     ex_id, ex_size, ex_mtime = existing
-                    if ex_mtime is not None and ex_size == st_size and abs(ex_mtime - st_mtime) < 1e-4:
+                    if (
+                        ex_mtime is not None
+                        and abs(ex_mtime - raw_mtime) < 1e-4
+                        and (ex_size == raw_size or (is_loome_scan and raw_size == ex_size + 72))
+                    ):
                         total_unchanged += 1
                         scan_tracker.update_progress(idx, file, "unchanged")
                         continue
 
-                    # size または mtime が変わったファイル（またはRAWメタデータ/サムネイル未取得で ex_mtime が NULL 化されたファイル）は更新時にサムネイルを削除（P2-3）
-                    is_modified = (ex_size != st_size) or (ex_mtime is None) or (abs(ex_mtime - st_mtime) >= 1e-4)
-                    if is_modified:
-                        delete_thumbnail(ex_id)
+                    st_size = get_logical_file_size(full_path)
+                    if ex_mtime is not None and ex_size == st_size and abs(ex_mtime - raw_mtime) < 1e-4:
+                        total_unchanged += 1
+                        scan_tracker.update_progress(idx, file, "unchanged")
+                        continue
+
+                    delete_thumbnail(ex_id)
 
                 meta = extract_metadata(full_path)
                 meta["volume_serial"] = volume_serial
+                meta["has_xmp"] = 1 if _has_xmp_sidecar_fast(abs_path_str, None, dir_file_set=dir_xmp_map.get(root, set())) else 0
                 sync_action = smart_sync_photo(meta, existing_record=existing, do_upsert=False)
 
                 if sync_action == "relinked":
@@ -1757,8 +1861,13 @@ def scan_directory(
                 continue
 
         # 残りのバッチをコミット
-        # 残りのバッチをコミット
         _flush_batch_with_duplicates()
+
+        # スキャン時に取得済みの .xmp 一覧を用いて既存 unchanged 写真を含む has_xmp カラムを差分同期
+        try:
+            sync_has_xmp_from_dir_scan_map(dir_xmp_map, volume_serial=volume_serial)
+        except Exception as xmp_sync_err:
+            logger.debug(f"スキャン完了時の has_xmp 同期スキップ: {xmp_sync_err}")
 
         # Exif（撮影日時）を持たない既存画像の識別キー更新・重複レコード統合（進捗通知付き）
         exifless_updated = 0
@@ -1779,7 +1888,7 @@ def scan_directory(
         except Exception as ex_err:
             print(f"[WARN] Exifなし画像の識別キー更新・統合処理で警告: {ex_err}")
 
-        # 既存（unchanged）レコードで lens_model が未取得の写真を MakerNote / XMP から高速補完
+        # 既存（unchanged）レコードで lens_model が未調査 (NULL / '----') の写真のみ補完
         try:
             backfill_missing_lens_models(
                 directory_path=os.path.abspath(target_dir_str),
@@ -1796,12 +1905,22 @@ def scan_directory(
                 volume_serial=volume_serial,
             )
 
-        # 3. スキャン完了後にブラケット・連写スタックを自動再計算（列挙済みパス集合を渡してos.path.existsを回避）
-        scan_tracker.set_phase("stacks")
-        stacks_created = recalculate_stacks(os.path.abspath(target_dir_str), recursive=recursive, existing_paths=existing_paths_set)
+        has_changes = (
+            total_added > 0
+            or total_updated > 0
+            or total_relinked > 0
+            or cleaned_count > 0
+            or exifless_merged > 0
+        )
+
+        # 3. 追加・更新・再リンク・削除・統合があった場合のみブラケット・連写スタックを再計算
+        stacks_created = 0
+        if has_changes:
+            scan_tracker.set_phase("stacks")
+            stacks_created = recalculate_stacks(os.path.abspath(target_dir_str), recursive=recursive, existing_paths=existing_paths_set)
 
         # 4. 指紋（フィンガープリント）を最新状態に更新（写真の変更・追加・削除があった場合のみ更新）
-        if total_added > 0 or total_updated > 0 or total_relinked > 0 or cleaned_count > 0:
+        if has_changes:
             try:
                 fp_root = matched_root or target_dir_str
                 new_fp = extract_folder_fingerprint(fp_root)
@@ -1824,17 +1943,17 @@ def scan_directory(
         }
         # Lv.2 フルロック有効時、スキャン対象が Loome 配下なら未保護ファイルをカプセル化保護する
         try:
-            from .storage_manager import is_path_in_storage
-            if get_current_security_level() == 2 and is_path_in_storage(target_dir_str, volume_serial=volume_serial):
+            if get_current_security_level() == 2 and is_loome_scan:
                 seal_all_files_in_directory(target_dir)
         except Exception as seal_err:
             print(f"[WARN] Lv.2 Loome カプセル化警告: {seal_err}")
 
         # 所有メディアVSN照合用の救済バンドルを最新化
-        try:
-            refresh_vsn_rescue_bundles_if_unlocked()
-        except Exception as vsn_err:
-            print(f"[WARN] VSN救済バンドル更新警告: {vsn_err}")
+        if has_changes:
+            try:
+                refresh_vsn_rescue_bundles_if_unlocked()
+            except Exception as vsn_err:
+                print(f"[WARN] VSN救済バンドル更新警告: {vsn_err}")
         # スマホで cache/library.db 単体を開いた際にもスキャン結果がすべて含まれるようWALをフラッシュ
         try:
             with get_connection() as ck_conn:
@@ -1844,22 +1963,23 @@ def scan_directory(
 
         scan_tracker.finish(result)
 
-        # スキャン完了後、未生成のサムネイルをバックグラウンドで事前キャッシュ
-        def _bg_preload():
-            try:
-                from .preload_thumbnails import preload_all_thumbnails
-                preload_all_thumbnails()
-                with get_connection() as ck_conn:
-                    ck_conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
-            except Exception as e:
-                print(f"[WARN] バックグラウンドサムネイル生成エラー: {e}")
-            finally:
+        # 追加・更新があった場合のみ未生成のサムネイルをバックグラウンドで事前キャッシュ
+        if total_added > 0 or total_updated > 0 or total_relinked > 0:
+            def _bg_preload():
                 try:
-                    close_thread_connection()
-                except Exception:
-                    pass
+                    from .preload_thumbnails import preload_all_thumbnails
+                    preload_all_thumbnails()
+                    with get_connection() as ck_conn:
+                        ck_conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
+                except Exception as e:
+                    print(f"[WARN] バックグラウンドサムネイル生成エラー: {e}")
+                finally:
+                    try:
+                        close_thread_connection()
+                    except Exception:
+                        pass
 
-        threading.Thread(target=_bg_preload, daemon=True).start()
+            threading.Thread(target=_bg_preload, daemon=True).start()
 
         clear_online_cache()
         clear_folders_fs_cache()

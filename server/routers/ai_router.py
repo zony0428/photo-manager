@@ -13,6 +13,7 @@ from ..database import (
     get_thumbnail as db_get_thumbnail,
 )
 from ..scanner import ensure_thumbnail
+from .common import clear_api_photos_cache
 
 logger = logging.getLogger("photo_manager.app")
 
@@ -107,6 +108,7 @@ def api_ai_tag_single_photo(photo_id: int, color_only: bool = False):
     elif matches:
         add_ai_tags_to_photo(photo_id, matches)
 
+    clear_api_photos_cache()
     updated_tags = get_photo_tags_details(photo_id)
     return {"status": "ok", "photo_id": photo_id, "predicted": matches, "tags": updated_tags}
 
@@ -160,6 +162,7 @@ def api_ai_tag_color_photos(req: AITagColorBatchRequest):
             predicted_colors[pid] = [m["tag"] for m in matches]
         results[pid] = get_photo_tags_details(pid)
 
+    clear_api_photos_cache()
     return {
         "status": "ok",
         "tagged_count": tagged_count,
@@ -174,6 +177,8 @@ def api_ai_promote_tag(req: AIPromoteTagRequest):
     """AIタグを手動タグに昇格（確定）する"""
     from ..database import promote_ai_tag
     success = promote_ai_tag(req.photo_id, req.tag)
+    if success:
+        clear_api_photos_cache()
     return {"status": "ok", "photo_id": req.photo_id, "tag": req.tag, "success": success}
 
 
@@ -182,4 +187,6 @@ def api_ai_clear_tags(photo_id: Optional[int] = None, folder_path: Optional[str]
     """AIタグのみを一括削除する（手動タグは保護）"""
     from ..database import remove_ai_tags
     deleted_count = remove_ai_tags(photo_id=photo_id, folder_path=folder_path)
+    if deleted_count > 0:
+        clear_api_photos_cache()
     return {"status": "ok", "deleted_count": deleted_count}

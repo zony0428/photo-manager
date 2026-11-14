@@ -14,7 +14,21 @@
   'use strict';
 
   const STORAGE_KEY = 'pm_lang';
-  let currentLang = localStorage.getItem(STORAGE_KEY) === 'en' ? 'en' : 'ja';
+  // 未設定時はOS/ブラウザの表示言語を自動判定し、日本語環境なら 'ja'、それ以外は 'en' を既定にする
+  function _detectInitialLang() {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved === 'ja' || saved === 'en') return saved;
+    } catch (e) {}
+    const navLang = String(
+      (navigator.languages && navigator.languages[0]) ||
+      navigator.language ||
+      navigator.userLanguage ||
+      ''
+    ).toLowerCase();
+    return navLang.startsWith('ja') ? 'ja' : 'en';
+  }
+  let currentLang = _detectInitialLang();
   let isApplying = false;
 
   const _dict = window._PM_I18N_DICT || {};
@@ -65,30 +79,43 @@
     return raw;
   }
 
+  const SKIP_USER_DATA_CLASSES = [
+    'path-val',
+    'path-cell',
+    'raw-filename',
+    'card-filename',
+    'card-camera',
+    'mount-stamp-brand',
+    'lightbox-filename',
+    'compare-filename',
+    'compare-strip-sub-label',
+    'submenu-tag-label',
+    'inspector-tree-label',
+  ];
+
   /**
-   * 翻訳対象外とすべき要素か判定する（スクリプト・スタイル・ファイルパス表示セル・言語切替ボタン自身）
+   * 翻訳対象外とすべき要素（スクリプト・SVG・ファイル名・機種名・手動タグ名等のユーザーデータ）か判定する
    * @param {Element|null} el
    * @returns {boolean}
    */
   function shouldSkipElement(el) {
     if (!el || el.nodeType !== Node.ELEMENT_NODE) return true;
     const tag = el.tagName;
-    if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'NOSCRIPT' || tag === 'TEXTAREA') {
+    if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'NOSCRIPT' || tag === 'TEXTAREA' || tag === 'SVG' || tag === 'svg') {
       return true;
     }
-    if (el.id === 'langToggleBtn' || el.closest('#langToggleBtn')) {
+    if (el.id === 'langToggleBtn' || (typeof el.closest === 'function' && el.closest('#langToggleBtn'))) {
       return true;
     }
-    if (
-      el.classList &&
-      (el.classList.contains('path-val') ||
-        el.classList.contains('path-cell') ||
-        el.classList.contains('raw-filename') ||
-        el.classList.contains('card-filename') ||
-        el.classList.contains('lightbox-filename') ||
-        el.classList.contains('compare-filename'))
-    ) {
-      return true;
+    const cls = el.classList;
+    if (cls && cls.length > 0) {
+      for (let i = 0; i < SKIP_USER_DATA_CLASSES.length; i++) {
+        if (cls.contains(SKIP_USER_DATA_CLASSES[i])) return true;
+      }
+      // カード上の手動タグバッジ（カラータグドットを持たない純粋ユーザー定義タグ）は正規表現走査を除外
+      if (cls.contains('card-tag-badge') && !el.querySelector('.tag-color-dot')) {
+        return true;
+      }
     }
     return false;
   }
@@ -133,7 +160,7 @@
    */
   function processElementAttributes(el) {
     if (!el || el.nodeType !== Node.ELEMENT_NODE) return;
-    if (el.id === 'langToggleBtn' || el.closest('#langToggleBtn')) return;
+    if (shouldSkipElement(el)) return;
 
     for (let i = 0; i < TARGET_ATTRS.length; i++) {
       const attr = TARGET_ATTRS[i];
@@ -162,6 +189,15 @@
     }
   }
 
+  const SUBTREE_WALKER_FILTER = {
+    acceptNode(node) {
+      if (node.nodeType === Node.ELEMENT_NODE && shouldSkipElement(node)) {
+        return NodeFilter.FILTER_REJECT;
+      }
+      return NodeFilter.FILTER_ACCEPT;
+    },
+  };
+
   /**
    * 指定されたルートノード配下のすべてのTextNodeおよび属性を一括走査する
    * @param {Node} root
@@ -175,13 +211,14 @@
         return;
       }
       if (root.nodeType === Node.ELEMENT_NODE) {
+        if (shouldSkipElement(root)) return;
         processElementAttributes(root);
       }
 
       const walker = document.createTreeWalker(
         root,
         NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT,
-        null
+        SUBTREE_WALKER_FILTER
       );
 
       let node = walker.nextNode();

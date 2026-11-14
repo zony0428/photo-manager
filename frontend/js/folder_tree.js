@@ -10,6 +10,7 @@ const folderTreeState = {
   childrenPromises: new Map(), // ノードキー → 取得中の Promise（重複リクエスト防止）
   expanded: new Map(),         // 展開中のノードキー → ノード情報（再取得時のパラメータに使う）
   renderToken: 0,              // 古い取得結果で描画し直さないための世代番号
+  showOfflineVolumes: localStorage.getItem('pm_show_offline_volumes') !== 'false',
 };
 
 const FOLDER_SVG_CLOSED = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
@@ -204,18 +205,29 @@ function renderFolderTree() {
   const drives = roots.drives || [];
   const offline = roots.offline_volumes || [];
 
+  const offlineToggleBtn = document.getElementById('toggleOfflineVolumesBtn');
+  if (offlineToggleBtn) {
+    const showOff = Boolean(folderTreeState.showOfflineVolumes);
+    offlineToggleBtn.classList.toggle('active', showOff);
+    offlineToggleBtn.setAttribute('aria-pressed', showOff ? 'true' : 'false');
+    offlineToggleBtn.textContent = offline.length > 0 ? `未接続(${offline.length})` : '未接続';
+    offlineToggleBtn.title = showOff
+      ? `未接続メディア（${offline.length}件）を表示中（クリックで非表示）`
+      : `未接続メディア（${offline.length}件）を非表示中（クリックで表示）`;
+  }
+
   const frag = document.createDocumentFragment();
   if (shortcuts.length > 0) {
     frag.appendChild(_ftSectionLi('ショートカット'));
     shortcuts.forEach(s => frag.appendChild(_ftBuildNodeLi(_ftShortcutNode(s))));
   }
-  frag.appendChild(_ftSectionLi('接続中のドライブ'));
+  frag.appendChild(_ftSectionLi('ドライブ・登録メディア'));
   if (drives.length > 0) {
     drives.forEach(d => frag.appendChild(_ftBuildNodeLi(_ftDriveNode(d))));
   } else {
     frag.appendChild(_ftHintLi('接続中のドライブがありません'));
   }
-  if (offline.length > 0) {
+  if (offline.length > 0 && folderTreeState.showOfflineVolumes) {
     frag.appendChild(_ftSeparatorLi());
     frag.appendChild(_ftSectionLi('未接続（キャッシュのみ）'));
     offline.forEach(v => frag.appendChild(_ftBuildNodeLi(_ftOfflineNode(v))));
@@ -313,6 +325,100 @@ function _ftBadges(node) {
     b.textContent = '●';
     badges.push(b);
   }
+  if ((node.kind === 'drive' || node.kind === 'offline') && node.volumeSerial && (node.total > 0 || node.hasManaged)) {
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    editBtn.className = 'folder-inline-unmanage-btn drive-rename-btn';
+    editBtn.textContent = '✎';
+    editBtn.title = 'メディアの識別名（ニックネーム）・ラベルを設定';
+    editBtn.style.cssText = 'background:transparent; border:none; color:var(--text-muted); cursor:pointer; font-size:11px; padding:1px 4px; margin-left:2px; border-radius:3px; line-height:1; opacity:0.75; flex-shrink:0; transition:color 0.15s, background 0.15s, opacity 0.15s;';
+    editBtn.addEventListener('mouseenter', () => {
+      editBtn.style.color = 'var(--accent-primary, #e14d2a)';
+      editBtn.style.background = 'rgba(var(--accent-rgb, 225, 77, 42), 0.14)';
+      editBtn.style.opacity = '1';
+    });
+    editBtn.addEventListener('mouseleave', () => {
+      editBtn.style.color = 'var(--text-muted)';
+      editBtn.style.background = 'transparent';
+      editBtn.style.opacity = '0.75';
+    });
+    editBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof window.promptRenameVolume === 'function') {
+        await window.promptRenameVolume(node.volumeSerial, node.customName || '', node.label || '', node.letter || '');
+      }
+    });
+    badges.push(editBtn);
+  }
+  if (node.kind === 'offline') {
+    const rmBtn = document.createElement('button');
+    rmBtn.type = 'button';
+    rmBtn.className = 'folder-inline-unmanage-btn';
+    rmBtn.textContent = '✕';
+    rmBtn.title = 'この未接続メディアを管理から外す（登録削除）';
+    rmBtn.style.cssText = 'background:transparent; border:none; color:var(--text-muted); cursor:pointer; font-size:11px; padding:1px 4px; margin-left:2px; border-radius:3px; line-height:1; opacity:0.8; flex-shrink:0; transition:color 0.15s, background 0.15s, opacity 0.15s;';
+    rmBtn.addEventListener('mouseenter', () => {
+      rmBtn.style.color = 'var(--danger, #ef4444)';
+      rmBtn.style.background = 'rgba(239, 68, 68, 0.14)';
+      rmBtn.style.opacity = '1';
+    });
+    rmBtn.addEventListener('mouseleave', () => {
+      rmBtn.style.color = 'var(--text-muted)';
+      rmBtn.style.background = 'transparent';
+      rmBtn.style.opacity = '0.8';
+    });
+    rmBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (node.volumeSerial && typeof window.promptAndRemoveManagedVolume === 'function') {
+        const displayHint = node.customName || node.label || node.name || '';
+        await window.promptAndRemoveManagedVolume(node.volumeSerial, displayHint, Number(node.total || 0));
+      } else {
+        openFolderContextMenu(e.clientX, e.clientY, {
+          name: node.name,
+          fullPath: node.path,
+          status: node.status,
+          kind: node.kind,
+          isMissing: !!node.isMissing,
+          isOffline: !!node.isOffline,
+          count: Number(node.count || 0),
+          subCount: Number(node.subCount || 0),
+          totalCount: Number(node.total || 0),
+          hasManaged: node.hasManaged,
+          hasChildren: !!node.hasChildren,
+          volumeSerial: node.volumeSerial || null,
+          serialMode: node.serialMode || 'any',
+        });
+      }
+    });
+    badges.push(rmBtn);
+  } else if (node.isMissing && (node.total > 0 || node.hasManaged)) {
+    const rmBtn = document.createElement('button');
+    rmBtn.type = 'button';
+    rmBtn.className = 'folder-inline-unmanage-btn';
+    rmBtn.textContent = '✕';
+    rmBtn.title = 'この消失フォルダを管理から外す（リンク削除）';
+    rmBtn.style.cssText = 'background:transparent; border:none; color:var(--text-muted); cursor:pointer; font-size:11px; padding:1px 4px; margin-left:2px; border-radius:3px; line-height:1; opacity:0.8; flex-shrink:0; transition:color 0.15s, background 0.15s, opacity 0.15s;';
+    rmBtn.addEventListener('mouseenter', () => {
+      rmBtn.style.color = 'var(--danger, #ef4444)';
+      rmBtn.style.background = 'rgba(239, 68, 68, 0.14)';
+      rmBtn.style.opacity = '1';
+    });
+    rmBtn.addEventListener('mouseleave', () => {
+      rmBtn.style.color = 'var(--text-muted)';
+      rmBtn.style.background = 'transparent';
+      rmBtn.style.opacity = '0.8';
+    });
+    rmBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof window.promptAndCleanupMissingFolder === 'function') {
+        await window.promptAndCleanupMissingFolder(node.path, node.name, node.volumeSerial || null);
+      }
+    });
+    badges.push(rmBtn);
+  }
   return badges;
 }
 
@@ -371,7 +477,17 @@ function syncFolderTreeFilterStates() {
     el.classList.toggle('has-active-child-include', isAncestor && !isExclude);
     el.classList.toggle('has-active-child-exclude', isAncestor && isExclude);
 
-    el.querySelectorAll('.child-filter-badge').forEach(b => b.remove());
+    el.querySelectorAll('.folder-filter-state-badge').forEach(b => b.remove());
+    if (isExact) {
+      const stateBadge = document.createElement('span');
+      stateBadge.className = `folder-filter-state-badge child-filter-badge ${isExclude ? 'is-exclude' : 'is-include'}`;
+      stateBadge.textContent = isExclude ? '−' : '+';
+      stateBadge.title = isExclude ? 'このフォルダを除外中（もう1回クリックで解除）' : 'このフォルダで絞り込み中（もう1回クリックで除外へ切替）';
+      const nameEl = el.querySelector('.folder-tree-name');
+      if (nameEl) el.insertBefore(stateBadge, nameEl);
+    }
+
+    el.querySelectorAll('.child-filter-badge:not(.folder-filter-state-badge)').forEach(b => b.remove());
     if (isAncestor) {
       const badge = document.createElement('span');
       badge.className = `child-filter-badge ${isExclude ? 'is-exclude' : 'is-include'}`;
@@ -404,6 +520,7 @@ function _ftBuildNodeLi(node) {
   else if (filterState === 'exclude') classes.push('active-exclude');
   item.className = classes.join(' ');
   // setFilter() のアクティブ表示更新と互換を保つための属性
+  item._ftNode = node;
   item.dataset.filterType = 'folder';
   item.dataset.filterValue = node.path;
   item.dataset.status = node.status;
@@ -427,18 +544,35 @@ function _ftBuildNodeLi(node) {
   icon.className = 'folder-tree-icon';
   icon.innerHTML = _ftIcon(node, isExpanded);
 
-  const tooltipText = _ftTooltip(node);
-  item.title = tooltipText;
-
   const name = document.createElement('span');
   name.className = 'folder-tree-name';
-  name.textContent = node.name;
-  name.title = tooltipText;
+  if (node.kind === 'drive' && (node.total > 0 || node.hasManaged)) {
+    const dot = document.createElement('span');
+    dot.className = 'drive-online-dot';
+    dot.textContent = '● ';
+    dot.style.cssText = 'color:#22c55e; font-size:10px; vertical-align:1px;';
+    dot.title = '接続中（管理対象メディア）';
+    name.appendChild(dot);
+    const displayText = node.customName && !String(node.name || '').includes(node.customName)
+      ? `${node.customName} · ${node.name}`
+      : node.name;
+    name.appendChild(document.createTextNode(displayText));
+  } else if (node.kind === 'offline') {
+    const dot = document.createElement('span');
+    dot.className = 'drive-offline-dot';
+    dot.textContent = '○ ';
+    dot.style.cssText = 'color:var(--warning, #e67e22); font-size:10px; vertical-align:1px;';
+    dot.title = '未接続（キャッシュのみ）';
+    name.appendChild(dot);
+    name.appendChild(document.createTextNode(node.name));
+  } else {
+    name.textContent = node.name;
+  }
 
   item.append(toggle, icon, name, ..._ftBadges(node));
 
   item.addEventListener('click', (e) => {
-    if (e.target.closest('.folder-toggle-btn')) return;
+    if (e.target.closest('.folder-toggle-btn, .folder-inline-unmanage-btn')) return;
     _ftHandleClick(node);
   });
   item.addEventListener('contextmenu', (e) => _ftHandleContextMenu(e, node));
@@ -447,7 +581,9 @@ function _ftBuildNodeLi(node) {
       e.preventDefault();
       e.stopPropagation();
       if (e.dataTransfer) {
-        e.dataTransfer.dropEffect = 'move';
+        const isExtFile = !(window._draggingPhotoIds && window._draggingPhotoIds.length > 0) &&
+          Array.from(e.dataTransfer.types || []).includes('Files');
+        e.dataTransfer.dropEffect = isExtFile ? 'copy' : 'move';
       }
       item.classList.add('drag-over-storage');
     });
@@ -456,10 +592,13 @@ function _ftBuildNodeLi(node) {
         item.classList.remove('drag-over-storage');
       }
     });
-    item.addEventListener('drop', (e) => {
+    item.addEventListener('drop', async (e) => {
       e.preventDefault();
       e.stopPropagation();
       item.classList.remove('drag-over-storage');
+      const overlay = document.getElementById('dragDropOverlay');
+      if (overlay) overlay.style.display = 'none';
+
       let explicitIds = null;
       if (e.dataTransfer) {
         const raw = e.dataTransfer.getData('application/x-photomanager-photos') || e.dataTransfer.getData('text/plain');
@@ -472,6 +611,23 @@ function _ftBuildNodeLi(node) {
           }
         }
       }
+
+      const isInternalCardDrag = Boolean(
+        (explicitIds && explicitIds.length > 0) ||
+        (window._draggingPhotoIds && window._draggingPhotoIds.length > 0)
+      );
+      if (
+        !isInternalCardDrag &&
+        e.dataTransfer &&
+        Array.from(e.dataTransfer.types || []).includes('Files') &&
+        typeof window.extractDroppedFilesWithPaths === 'function' &&
+        typeof window.handleExternalFilesOrFoldersToLoome === 'function'
+      ) {
+        const { items } = await window.extractDroppedFilesWithPaths(e.dataTransfer);
+        await window.handleExternalFilesOrFoldersToLoome(items, node.path, node.name);
+        return;
+      }
+
       if (typeof window.handleDropPhotosToStorageFolder === 'function') {
         window.handleDropPhotosToStorageFolder(node.path, node.name, explicitIds);
       }
@@ -1076,10 +1232,11 @@ async function executeScan(folderPath, recursive = true, cleanupOrphans = false,
       : '';
     showToast(`スキャン完了: ${scanned}枚検出 (${updated}枚更新${cleanedInfo}${exiflessInfo})`, 'success', (exiflessUpd > 0 || exiflessMrg > 0) ? 5500 : 3500);
 
-    await Promise.all([
-      typeof refreshAll === 'function' ? refreshAll() : null,
-      refreshFolderTree(),
-    ]);
+    if (typeof refreshAll === 'function') {
+      await refreshAll();
+    } else {
+      await refreshFolderTree();
+    }
 
     if (autoAi) {
       _ftStartAiPolling();
@@ -1101,6 +1258,24 @@ window.executeScan = executeScan;
    UI初期化（AI自動タグトグル / パス直接入力 / DBメンテナンスモーダル）
    -------------------------------------------------------------------------- */
 function _ftInitAutoAiToggle() {
+  const offBtn = document.getElementById('toggleOfflineVolumesBtn');
+  if (offBtn && !offBtn.dataset.bound) {
+    offBtn.dataset.bound = 'true';
+    offBtn.addEventListener('click', () => {
+      folderTreeState.showOfflineVolumes = !folderTreeState.showOfflineVolumes;
+      localStorage.setItem('pm_show_offline_volumes', folderTreeState.showOfflineVolumes ? 'true' : 'false');
+      renderFolderTree();
+      if (typeof showToast === 'function') {
+        showToast(
+          folderTreeState.showOfflineVolumes
+            ? '未接続メディア（キャッシュのみ）を一覧に表示しました'
+            : '未接続メディア（キャッシュのみ）を非表示にしました',
+          'info',
+          1800
+        );
+      }
+    });
+  }
   const btn = elements.folderAutoAiToggleBtn;
   if (!btn) return;
   const isAuto = localStorage.getItem('pm_auto_ai_tag') === 'true';
@@ -1225,8 +1400,27 @@ function _ftInitDbMaintenanceModal() {
     }
   };
 
+  const _fallbackPruneTags = (tags, removedTag) => {
+    if (!Array.isArray(tags) || !removedTag) return tags || [];
+    const prefix = removedTag + '/';
+    let remaining = tags.filter(t => t !== removedTag && !t.startsWith(prefix));
+    const parts = removedTag.split('/').map(p => p.trim()).filter(Boolean);
+    for (let i = parts.length - 1; i >= 1; i--) {
+      const anc = parts.slice(0, i).join('/');
+      if (!remaining.some(t => t.startsWith(anc + '/'))) {
+        remaining = remaining.filter(t => t !== anc);
+      }
+    }
+    return remaining;
+  };
+
   const replaceTagPrefixInLocalPhotos = (oldPrefix, newPrefix) => {
     if (!Array.isArray(state.photos) || !oldPrefix) return;
+    const oldParts = oldPrefix.split('/').map(p => p.trim()).filter(Boolean);
+    const oldAncestors = [];
+    for (let i = 0; i < oldParts.length - 1; i++) {
+      oldAncestors.push(oldParts.slice(0, i + 1).join('/'));
+    }
     const newAncestors = [];
     if (newPrefix) {
       const parts = newPrefix.split('/').map(p => p.trim()).filter(Boolean);
@@ -1234,18 +1428,39 @@ function _ftInitDbMaintenanceModal() {
         newAncestors.push(parts.slice(0, i + 1).join('/'));
       }
     }
+
+    // トップレベル写真＋スタックメンバー＋ライトボックス展開スタックの全インスタンスを収集
+    const targets = new Set();
     state.photos.forEach(p => {
+      if (!p) return;
+      targets.add(p);
+      if (Array.isArray(p.stack_photos)) {
+        p.stack_photos.forEach(sp => { if (sp) targets.add(sp); });
+      }
+    });
+    if (Array.isArray(state.currentLightboxStackPhotos)) {
+      state.currentLightboxStackPhotos.forEach(sp => { if (sp) targets.add(sp); });
+    }
+
+    targets.forEach(p => {
       if (!Array.isArray(p.tags)) return;
       const hadMatch = p.tags.some(t => t === oldPrefix || t.startsWith(oldPrefix + '/'));
       if (!hadMatch) return;
       if (!newPrefix) {
-        // 削除時
-        p.tags = p.tags.filter(t => t !== oldPrefix && !t.startsWith(oldPrefix + '/'));
+        // 削除時: 対象および子孫を除去し、孤児になった祖先タグも自動クリーンアップ
+        p.tags = typeof pruneRemovedTagFromArray === 'function'
+          ? pruneRemovedTagFromArray(p.tags, oldPrefix)
+          : _fallbackPruneTags(p.tags, oldPrefix);
         if (Array.isArray(p.tag_details)) {
-          p.tag_details = p.tag_details.filter(d => d.tag !== oldPrefix && !d.tag.startsWith(oldPrefix + '/'));
+          if (typeof pruneRemovedTagDetailsFromArray === 'function') {
+            p.tag_details = pruneRemovedTagDetailsFromArray(p.tag_details, oldPrefix);
+          } else {
+            const validSet = new Set(p.tags);
+            p.tag_details = p.tag_details.filter(d => validSet.has(d.tag));
+          }
         }
       } else {
-        // リネーム・移動時
+        // リネーム・移動時: プレフィックス置換 + 旧孤児祖先掃除 + 新祖先展開
         const nextTags = new Set();
         p.tags.forEach(t => {
           if (t === oldPrefix) nextTags.add(newPrefix);
@@ -1253,6 +1468,12 @@ function _ftInitDbMaintenanceModal() {
           else nextTags.add(t);
         });
         newAncestors.forEach(anc => nextTags.add(anc));
+        for (let i = oldAncestors.length - 1; i >= 0; i--) {
+          const anc = oldAncestors[i];
+          if (newAncestors.includes(anc) || anc === newPrefix) continue;
+          const hasChild = Array.from(nextTags).some(t => t.startsWith(anc + '/'));
+          if (!hasChild) nextTags.delete(anc);
+        }
         p.tags = Array.from(nextTags);
 
         if (Array.isArray(p.tag_details)) {
@@ -1261,7 +1482,9 @@ function _ftInitDbMaintenanceModal() {
             let tName = d.tag;
             if (tName === oldPrefix) tName = newPrefix;
             else if (tName && tName.startsWith(oldPrefix + '/')) tName = newPrefix + tName.slice(oldPrefix.length);
-            detailMap.set(tName, { ...d, tag: tName });
+            if (tName && nextTags.has(tName)) {
+              detailMap.set(tName, { ...d, tag: tName });
+            }
           });
           newAncestors.forEach(anc => {
             if (!detailMap.has(anc)) {
@@ -1272,6 +1495,9 @@ function _ftInitDbMaintenanceModal() {
         }
       }
     });
+    if (typeof rebuildPhotoByIdIndex === 'function') {
+      rebuildPhotoByIdIndex();
+    }
   };
 
   const syncAfterTagMutation = async (apiResponseData = null) => {
@@ -1288,13 +1514,21 @@ function _ftInitDbMaintenanceModal() {
     if (state.selectedPhotoIds && state.selectedPhotoIds.size > 1 && typeof showBatchInspector === 'function') {
       showBatchInspector();
     } else if (state.activeInspectorPhotoId && typeof showSingleInspector === 'function') {
-      const p = state.photos.find(x => x.id === state.activeInspectorPhotoId);
+      const p = typeof findPhotoByIdAnywhere === 'function'
+        ? findPhotoByIdAnywhere(state.activeInspectorPhotoId)
+        : state.photos.find(x => x.id === state.activeInspectorPhotoId);
       if (p) showSingleInspector(p);
     }
+    if (state.currentPhotoIndex >= 0 && typeof renderLightboxTags === 'function') {
+      const lbPhoto = typeof getCurrentLightboxPhoto === 'function'
+        ? getCurrentLightboxPhoto()
+        : state.photos[state.currentPhotoIndex];
+      if (lbPhoto) renderLightboxTags(lbPhoto);
+    }
 
-    // 2. 写真一覧のDB再取得はバックグラウンドで非同期に行い、UI操作を一切ブロックしない
+    // 2. 写真一覧のDB再取得で全状態（フィルタ除外・インスペクタ・ライトボックス）を完全同期
     if (typeof fetchPhotos === 'function') {
-      fetchPhotos().catch(err => console.warn('タグ変更後の背景写真同期エラー:', err));
+      await fetchPhotos().catch(err => console.warn('タグ変更後の写真同期エラー:', err));
     }
   };
 
@@ -1386,11 +1620,17 @@ function _ftInitDbMaintenanceModal() {
       state.settingsTagTreeExpandedPaths = new Set();
     }
 
-    const manualTags = (state.availableTags || []).filter(t => {
-      const isAi = t.source === 'ai';
-      const isColor = (typeof COLOR_TAG_MAP !== 'undefined') && ((t.tag || t.name) in COLOR_TAG_MAP);
-      return !isAi && !isColor;
-    });
+    const tb = window.TetheractCore && window.TetheractCore.TreeBuilder;
+    const manualTags = (tb && typeof tb.filterTagsForPcTree === 'function')
+      ? tb.filterTagsForPcTree(state.availableTags || [], {
+          sourceFilter: 'manual_only',
+          colorTagMap: typeof COLOR_TAG_MAP !== 'undefined' ? COLOR_TAG_MAP : null,
+        })
+      : (state.availableTags || []).filter(t => {
+          const isAi = t.source === 'ai';
+          const isColor = (typeof COLOR_TAG_MAP !== 'undefined') && ((t.tag || t.name) in COLOR_TAG_MAP);
+          return !isAi && !isColor;
+        });
 
     if (manualTags.length === 0) {
       const emptyEl = document.createElement('div');
@@ -1417,7 +1657,11 @@ function _ftInitDbMaintenanceModal() {
       }
     }
 
-    const treeRoot = typeof buildTagTree === 'function' ? buildTagTree(manualTags, { sortByCount: Boolean(state.settingsTagSortByCount) }) : { children: new Map() };
+    const treeRoot = typeof buildTagTree === 'function'
+      ? buildTagTree(manualTags, { sortByCount: Boolean(state.settingsTagSortByCount) })
+      : (tb && typeof tb.buildTagTreeMap === 'function'
+          ? tb.buildTagTreeMap(manualTags, { sortByCount: Boolean(state.settingsTagSortByCount) })
+          : { children: new Map() });
 
     function appendInlineChildCreator(targetEl, parentFullPath, parentDisplayName, indent, options = {}) {
       const onCancel = typeof options.onCancel === 'function' ? options.onCancel : null;
@@ -1985,7 +2229,45 @@ function _ftInitDbMaintenanceModal() {
     });
   }
 
-  const openModal = () => {
+  const switchSettingsTab = (tabName) => {
+    const targetTab = tabName || 'appearance';
+    const navButtons = modal.querySelectorAll('.settings-vtab-btn[data-settings-tab]');
+    const panes = modal.querySelectorAll('.settings-vtab-pane[data-settings-pane]');
+    navButtons.forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.settingsTab === targetTab);
+    });
+    panes.forEach((pane) => {
+      pane.classList.toggle('active', pane.dataset.settingsPane === targetTab);
+    });
+    if (targetTab === 'folders' && typeof fetchManagedVolumes === 'function') {
+      fetchManagedVolumes();
+    } else if (targetTab === 'tags') {
+      renderSettingsTagTreeEditor();
+      if (typeof fetchTags === 'function') {
+        fetchTags();
+      }
+    } else if (targetTab === 'database') {
+      loadStats();
+    } else if (targetTab === 'security' && typeof window.refreshSecuritySettingsUI === 'function') {
+      window.refreshSecuritySettingsUI();
+    }
+  };
+  window.switchSettingsTab = switchSettingsTab;
+
+  const vtabNav = document.getElementById('settingsVtabNav');
+  if (vtabNav && !vtabNav.dataset.bound) {
+    vtabNav.dataset.bound = 'true';
+    vtabNav.addEventListener('click', (e) => {
+      const btn = e.target.closest('.settings-vtab-btn[data-settings-tab]');
+      if (!btn) return;
+      switchSettingsTab(btn.dataset.settingsTab);
+    });
+  }
+
+  const openModal = (initialTab) => {
+    const activeTab = (typeof initialTab === 'string' && initialTab)
+      ? initialTab
+      : (modal.querySelector('.settings-vtab-btn.active')?.dataset.settingsTab || 'appearance');
     const themeSelect = document.getElementById('settingThemeSelect');
     if (themeSelect) {
       themeSelect.value = document.documentElement.getAttribute('data-scheme') || localStorage.getItem('pm_theme_scheme') || 'tetheract-d';
@@ -1993,6 +2275,10 @@ function _ftInitDbMaintenanceModal() {
     const tbPosSelect = elements.settingToolbarPositionSelect || document.getElementById('settingToolbarPositionSelect');
     if (tbPosSelect) {
       tbPosSelect.value = document.documentElement.getAttribute('data-toolbar-pos') || localStorage.getItem('pm_toolbar_position') || 'bottom';
+    }
+    const treeStyleSelect = elements.settingSidebarTreeStyleSelect || document.getElementById('settingSidebarTreeStyleSelect');
+    if (treeStyleSelect) {
+      treeStyleSelect.value = document.documentElement.getAttribute('data-tree-style') || localStorage.getItem('pm_sidebar_tree_style') || 'boxed';
     }
     const winSelect = elements.settingStartupWindowModeSelect || document.getElementById('settingStartupWindowModeSelect');
     if (winSelect) {
@@ -2014,15 +2300,9 @@ function _ftInitDbMaintenanceModal() {
         : 'natural';
     }
     modal.style.display = 'flex';
-    loadStats();
-    if (typeof window.refreshSecuritySettingsUI === 'function') {
-      window.refreshSecuritySettingsUI();
-    }
-    renderSettingsTagTreeEditor();
-    if (typeof fetchTags === 'function') {
-      fetchTags();
-    }
+    switchSettingsTab(activeTab);
   };
+  window.openSettingsModal = openModal;
 
   const closeModal = () => {
     modal.style.display = 'none';
@@ -2045,6 +2325,30 @@ function _ftInitDbMaintenanceModal() {
           pos === 'top'
             ? 'ツールバーを上部（ヘッダー）に配置しました'
             : 'ツールバーを下部（フッター）に配置しました',
+          'success',
+          2000
+        );
+      }
+    });
+  }
+
+  const treeStyleSelectEl = elements.settingSidebarTreeStyleSelect || document.getElementById('settingSidebarTreeStyleSelect');
+  if (treeStyleSelectEl && !treeStyleSelectEl.dataset.bound) {
+    treeStyleSelectEl.dataset.bound = 'true';
+    treeStyleSelectEl.value = document.documentElement.getAttribute('data-tree-style') || localStorage.getItem('pm_sidebar_tree_style') || 'boxed';
+    treeStyleSelectEl.addEventListener('change', () => {
+      const nextStyle = treeStyleSelectEl.value === 'flat' ? 'flat' : 'boxed';
+      if (typeof window.applySidebarTreeStyle === 'function') {
+        window.applySidebarTreeStyle(nextStyle);
+      } else {
+        document.documentElement.setAttribute('data-tree-style', nextStyle);
+        localStorage.setItem('pm_sidebar_tree_style', nextStyle);
+      }
+      if (typeof showToast === 'function') {
+        showToast(
+          nextStyle === 'boxed'
+            ? '左ペインを「ボックス枠（NeXTSTEP風カード）」に統一しました'
+            : '左ペインを「フラット（シンプル行）」に統一しました',
           'success',
           2000
         );
@@ -2108,7 +2412,18 @@ function _ftInitDbMaintenanceModal() {
     });
   }
 
-  openBtn.addEventListener('click', openModal);
+  openBtn.addEventListener('click', () => openModal());
+  const headerLogoBtn = document.getElementById('headerAppLogo');
+  if (headerLogoBtn && !headerLogoBtn.dataset.settingsBound) {
+    headerLogoBtn.dataset.settingsBound = 'true';
+    headerLogoBtn.addEventListener('click', () => openModal());
+    headerLogoBtn.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        openModal();
+      }
+    });
+  }
   if (closeBtn) closeBtn.addEventListener('click', closeModal);
   if (footerCloseBtn) footerCloseBtn.addEventListener('click', closeModal);
   modal.addEventListener('click', (e) => {
@@ -2198,3 +2513,12 @@ if (document.readyState === 'loading') {
   _ftInitDbMaintenanceModal();
   _ftCheckInitialScan();
 }
+
+window._ftCascadeApi = {
+  fetchChildren: _ftFetchChildren,
+  makeChildNode: _ftChildNode,
+  handleClick: _ftHandleClick,
+  handleContextMenu: _ftHandleContextMenu,
+  filterState: _ftFilterState,
+  formatCount: _ftFormatCount,
+};
