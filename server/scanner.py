@@ -1630,15 +1630,16 @@ def scan_directory(
 
         # 既存の登録ルート配下のサブフォルダでない場合のみ、新規ルートとしてDBに記録
         if not matched_root or os.path.normpath(target_dir_str) == os.path.normpath(matched_root):
-            add_scan_root(target_dir_str)
+            add_scan_root(target_dir_str, is_recursive=recursive)
 
-        # 1. まず高速に対象画像ファイルをリストアップして総数を把握
+        # 1. os.scandir で対象画像ファイル（DirEntry.stat による size/mtime 付き）を単一パスで高速列挙
         scan_tracker.set_phase("listing")
-        image_files = []
+        image_files: List[Tuple[str, str, int, float]] = []
 
         # 除外フォルダ一覧の取得と正規化
         ignored_list = get_ignored_folders()
         ignored_set = {os.path.normpath(p).lower() for p in ignored_list}
+        ignore_dir_names = {"import", ".cache", "cache", "uploads", "carry", "take_out", "$recycle.bin", "system volume information"}
 
         # スキャン対象自身が除外リストに入っていた場合は、ユーザーが意図してスキャンしたため除外を自動解除
         target_norm = os.path.normpath(target_dir_str).lower()
@@ -1646,46 +1647,79 @@ def scan_directory(
             remove_ignored_folder(target_dir_str)
             ignored_set.discard(target_norm)
 
-        if recursive:
-            for root, dirs, files in os.walk(target_dir):
-                # 隠しフォルダ、システム除外フォルダ（carry/take_out等）、およびユーザー除外フォルダを再帰探索から除外
-                pruned = []
-                for d in dirs:
-                    if d.startswith(".") or d.lower() in ("import", ".cache", "cache", "uploads", "carry", "take_out", "$recycle.bin"):
-                        continue
-                    full_d = os.path.normpath(os.path.join(root, d)).lower()
-                    if any(full_d == ig or full_d.startswith(ig + os.sep) for ig in ignored_set):
-                        continue
-                    pruned.append(d)
-                dirs[:] = pruned
+        def _collect_dir_entries(cur_dir: str, recurse: bool) -> None:
+            stack_dirs = [cur_dir]
+            while stack_dirs:
+                root_s = stack_dirs.pop()
+                abs_root = os.path.abspath(root_s)
+                subdirs_to_visit: List[str] = []
+                try:
+                    with os.scandir(root_s) as it:
+                        for entry in it:
+                            try:
+                                if entry.is_dir(follow_symlinks=False):
+                                    if not recurse:
+                                        continue
+                                    d_lower = entry.name.lower()
+                                    if entry.name.startswith(".") or d_lower in ignore_dir_names:
+                                        continue
+                                    full_d = os.path.normpath(entry.path).lower()
+                                    if any(full_d == ig or full_d.startswith(ig + os.sep) for ig in ignored_set):
+                                        continue
+                                    subdirs_to_visit.append(entry.path)
+                                elif entry.is_file(follow_symlinks=False):
+                                    ext = os.path.splitext(entry.name)[1].lower()
+                                    if ext in SUPPORTED_EXTENSIONS:
+                                        st = entry.stat(follow_symlinks=False)
+                                        image_files.append((abs_root, entry.name, st.st_size, st.st_mtime))
+                            except OSError:
+                                continue
+                except OSError as scan_err:
+                    logger.debug(f"ディレクトリスキャン列挙スキップ ({root_s}): {scan_err}")
+                    continue
+                for sd in reversed(sorted(subdirs_to_visit)):
+                    stack_dirs.append(sd)
 
-                for file in files:
-                    ext = os.path.splitext(file)[1].lower()
-                    if ext in SUPPORTED_EXTENSIONS:
-                        image_files.append((root, file))
-        else:
-            # 直下のみスキャン（子フォルダは走査しない）
-            for file in os.listdir(target_dir):
-                full = target_dir / file
-                if full.is_file():
-                    ext = os.path.splitext(file)[1].lower()
-                    if ext in SUPPORTED_EXTENSIONS:
-                        image_files.append((str(target_dir), file))
+        _collect_dir_entries(str(target_dir), recursive)
 
         total_files = len(image_files)
-        scan_tracker.set_phase("scanning", total_files=total_files)
 
         # 既存レコード {file_path: (id, file_size, file_mtime)} を先読み（VSN単位で分離）
         existing_map = get_existing_photos_map(target_dir_str, recursive=recursive, volume_serial=volume_serial)
 
-        # スタック再計算用の列挙済み絶対パス集合
-        existing_paths_set = {os.path.abspath(os.path.join(root, file)) for root, file in image_files}
+        # 列挙済み絶対パス集合（消失リンク判定・スタック再計算での個別 os.path.exists 回避用）
+        existing_paths_set = {os.path.abspath(os.path.join(root, file)) for root, file, _, _ in image_files}
+
+        from .storage_manager import is_path_in_storage
+        from .database.stacks import recalculate_stacks_for_directories
+        is_loome_scan = is_path_in_storage(target_dir_str, volume_serial=volume_serial)
 
         total_scanned = 0
         total_added = 0
         total_updated = 0
         total_relinked = 0
         total_unchanged = 0
+        dirty_dirs: set = set()
+
+        # 未変更ファイルをメモリ照合で一括除外し、本当に追加・変更された候補のみを進捗・解析対象にする
+        to_process: List[Tuple[str, str, int, float, Optional[Tuple[int, int, Optional[float]]]]] = []
+        for root, file, raw_size, raw_mtime in image_files:
+            abs_path_str = os.path.join(root, file)
+            norm_key = os.path.normcase(abs_path_str)
+            existing = existing_map.get(norm_key)
+            if existing is not None:
+                _, ex_size, ex_mtime = existing
+                if (
+                    ex_mtime is not None
+                    and abs(ex_mtime - raw_mtime) < 1e-4
+                    and (ex_size == raw_size or (is_loome_scan and raw_size == ex_size + 72))
+                ):
+                    total_scanned += 1
+                    total_unchanged += 1
+                    continue
+            to_process.append((root, file, raw_size, raw_mtime, existing))
+
+        scan_tracker.set_phase("scanning", total_files=len(to_process))
 
         batch_meta: List[Dict[str, Any]] = []
         dup_tag_pairs: List[Tuple[int, str]] = []  # (dup_source_id, full_path_str)
@@ -1703,36 +1737,27 @@ def scan_directory(
                 dup_tag_pairs.clear()
             batch_meta.clear()
 
-        # 2. 各ファイルのメタデータ抽出および同期処理
-        for idx, (root, file) in enumerate(image_files, start=1):
-            abs_path_str = os.path.abspath(os.path.join(root, file))
-            norm_key = os.path.normcase(abs_path_str)
-            existing = existing_map.get(norm_key)
+        # 2. 追加・変更候補のみメタデータ抽出および同期処理（未変更ファイルはファイルオープン一切なし）
+        for idx, (root, file, raw_size, raw_mtime, existing) in enumerate(to_process, start=1):
+            abs_path_str = os.path.join(root, file)
             full_path = Path(abs_path_str)
 
             total_scanned += 1
             try:
-                stat = full_path.stat()
-                st_size = get_logical_file_size(full_path)
-                st_mtime = stat.st_mtime
-
-                # 差分判定: size と mtime が両方一致したファイルは extract_metadata を呼ばず unchanged
-                # （file_mtime が NULL の既存行は従来どおり解析して埋める）
                 if existing is not None:
                     ex_id, ex_size, ex_mtime = existing
-                    if ex_mtime is not None and ex_size == st_size and abs(ex_mtime - st_mtime) < 1e-4:
+                    st_size = get_logical_file_size(full_path)
+                    if ex_mtime is not None and ex_size == st_size and abs(ex_mtime - raw_mtime) < 1e-4:
                         total_unchanged += 1
                         scan_tracker.update_progress(idx, file, "unchanged")
                         continue
 
-                    # size または mtime が変わったファイル（またはRAWメタデータ/サムネイル未取得で ex_mtime が NULL 化されたファイル）は更新時にサムネイルを削除（P2-3）
-                    is_modified = (ex_size != st_size) or (ex_mtime is None) or (abs(ex_mtime - st_mtime) >= 1e-4)
-                    if is_modified:
-                        delete_thumbnail(ex_id)
+                    delete_thumbnail(ex_id)
 
                 meta = extract_metadata(full_path)
                 meta["volume_serial"] = volume_serial
                 sync_action = smart_sync_photo(meta, existing_record=existing, do_upsert=False)
+                dirty_dirs.add(root)
 
                 if sync_action == "relinked":
                     total_relinked += 1
@@ -1757,7 +1782,6 @@ def scan_directory(
                 continue
 
         # 残りのバッチをコミット
-        # 残りのバッチをコミット
         _flush_batch_with_duplicates()
 
         # Exif（撮影日時）を持たない既存画像の識別キー更新・重複レコード統合（進捗通知付き）
@@ -1779,7 +1803,7 @@ def scan_directory(
         except Exception as ex_err:
             print(f"[WARN] Exifなし画像の識別キー更新・統合処理で警告: {ex_err}")
 
-        # 既存（unchanged）レコードで lens_model が未取得の写真を MakerNote / XMP から高速補完
+        # 既存（unchanged）レコードで lens_model が未調査 (NULL / '----') の写真のみ補完
         try:
             backfill_missing_lens_models(
                 directory_path=os.path.abspath(target_dir_str),
@@ -1794,14 +1818,55 @@ def scan_directory(
                 target_dir_str,
                 recursive=recursive,
                 volume_serial=volume_serial,
+                known_existing_paths=existing_paths_set,
+                recalculate_stacks_after=False,
+                out_affected_dirs=dirty_dirs,
             )
 
-        # 3. スキャン完了後にブラケット・連写スタックを自動再計算（列挙済みパス集合を渡してos.path.existsを回避）
-        scan_tracker.set_phase("stacks")
-        stacks_created = recalculate_stacks(os.path.abspath(target_dir_str), recursive=recursive, existing_paths=existing_paths_set)
+        has_changes = (
+            total_added > 0
+            or total_updated > 0
+            or total_relinked > 0
+            or cleaned_count > 0
+            or exifless_merged > 0
+        )
+
+        # 3. 変更が発生した場合のみ、変更のあったディレクトリに絞ってブラケット・連写スタックを再計算
+        stacks_created = 0
+        if has_changes:
+            scan_tracker.set_phase("stacks")
+            target_abs_norm = os.path.normcase(os.path.abspath(target_dir_str)).rstrip("\\/")
+
+            def _is_in_scanned_scope(d_path: str) -> bool:
+                dn = os.path.normcase(os.path.abspath(d_path)).rstrip("\\/")
+                if recursive:
+                    return dn == target_abs_norm or dn.startswith(target_abs_norm + os.sep)
+                return dn == target_abs_norm
+
+            if dirty_dirs and exifless_merged == 0:
+                sorted_dirty = sorted(dirty_dirs)
+                stack_existing = existing_paths_set if all(_is_in_scanned_scope(d) for d in sorted_dirty) else None
+                if len(sorted_dirty) == 1:
+                    stacks_created = recalculate_stacks(
+                        sorted_dirty[0],
+                        recursive=False,
+                        existing_paths=stack_existing,
+                    )
+                else:
+                    stacks_created = recalculate_stacks_for_directories(
+                        sorted_dirty,
+                        recursive=False,
+                        existing_paths=stack_existing,
+                    )
+            else:
+                stacks_created = recalculate_stacks(
+                    os.path.abspath(target_dir_str),
+                    recursive=recursive,
+                    existing_paths=existing_paths_set,
+                )
 
         # 4. 指紋（フィンガープリント）を最新状態に更新（写真の変更・追加・削除があった場合のみ更新）
-        if total_added > 0 or total_updated > 0 or total_relinked > 0 or cleaned_count > 0:
+        if has_changes:
             try:
                 fp_root = matched_root or target_dir_str
                 new_fp = extract_folder_fingerprint(fp_root)
@@ -1824,17 +1889,17 @@ def scan_directory(
         }
         # Lv.2 フルロック有効時、スキャン対象が Loome 配下なら未保護ファイルをカプセル化保護する
         try:
-            from .storage_manager import is_path_in_storage
-            if get_current_security_level() == 2 and is_path_in_storage(target_dir_str, volume_serial=volume_serial):
+            if get_current_security_level() == 2 and is_loome_scan:
                 seal_all_files_in_directory(target_dir)
         except Exception as seal_err:
             print(f"[WARN] Lv.2 Loome カプセル化警告: {seal_err}")
 
         # 所有メディアVSN照合用の救済バンドルを最新化
-        try:
-            refresh_vsn_rescue_bundles_if_unlocked()
-        except Exception as vsn_err:
-            print(f"[WARN] VSN救済バンドル更新警告: {vsn_err}")
+        if has_changes:
+            try:
+                refresh_vsn_rescue_bundles_if_unlocked()
+            except Exception as vsn_err:
+                print(f"[WARN] VSN救済バンドル更新警告: {vsn_err}")
         # スマホで cache/library.db 単体を開いた際にもスキャン結果がすべて含まれるようWALをフラッシュ
         try:
             with get_connection() as ck_conn:
@@ -1844,22 +1909,23 @@ def scan_directory(
 
         scan_tracker.finish(result)
 
-        # スキャン完了後、未生成のサムネイルをバックグラウンドで事前キャッシュ
-        def _bg_preload():
-            try:
-                from .preload_thumbnails import preload_all_thumbnails
-                preload_all_thumbnails()
-                with get_connection() as ck_conn:
-                    ck_conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
-            except Exception as e:
-                print(f"[WARN] バックグラウンドサムネイル生成エラー: {e}")
-            finally:
+        # 追加・更新があった場合のみ未生成のサムネイルをバックグラウンドで事前キャッシュ
+        if total_added > 0 or total_updated > 0 or total_relinked > 0:
+            def _bg_preload():
                 try:
-                    close_thread_connection()
-                except Exception:
-                    pass
+                    from .preload_thumbnails import preload_all_thumbnails
+                    preload_all_thumbnails()
+                    with get_connection() as ck_conn:
+                        ck_conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
+                except Exception as e:
+                    print(f"[WARN] バックグラウンドサムネイル生成エラー: {e}")
+                finally:
+                    try:
+                        close_thread_connection()
+                    except Exception as close_err:
+                        logger.debug(f"スレッドDB接続クローズ警告: {close_err}")
 
-        threading.Thread(target=_bg_preload, daemon=True).start()
+            threading.Thread(target=_bg_preload, daemon=True).start()
 
         clear_online_cache()
         clear_folders_fs_cache()
@@ -1870,358 +1936,4 @@ def scan_directory(
         raise
 
 
-def _count_images_in_new_subdir_fast(subdir_path: str, ignored_set: set, deadline: float) -> int:
-    """新規追加された子フォルダ内の対象画像ファイル数を時間予算内で高速カウントする"""
-    count = 0
-    stack = [subdir_path]
-    ignore_names = {"import", ".cache", "cache", "uploads", "carry", "take_out", "$recycle.bin", "system volume information"}
-    while stack and time.monotonic() < deadline:
-        cur = stack.pop()
-        try:
-            with os.scandir(cur) as it:
-                for entry in it:
-                    if time.monotonic() >= deadline:
-                        break
-                    if entry.is_file():
-                        ext = os.path.splitext(entry.name)[1].lower()
-                        if ext in SUPPORTED_EXTENSIONS:
-                            count += 1
-                    elif entry.is_dir():
-                        name_lower = entry.name.lower()
-                        if name_lower.startswith(".") or name_lower in ignore_names:
-                            continue
-                        full_sub = os.path.normpath(entry.path).lower()
-                        if any(full_sub == ig or full_sub.startswith(ig + os.sep) for ig in ignored_set):
-                            continue
-                        stack.append(entry.path)
-        except Exception:
-            continue
-    return count
-
-
-def check_folder_diff(target_dir_str: str, volume_serial: Optional[str] = None) -> Dict[str, Any]:
-    """
-    指定ディレクトリ直下および管理下の子フォルダの実ファイル・フォルダ構成とDBレコードを高速照合し、
-    ファイルおよび子フォルダの追加・削除・変更件数をミリ秒単位で集計して返却する。
-    画像デコードやEXIF解析は行わず、os.scandir のメタデータ（size, mtime）のみを使用するため極めて高速。
-    VSN（volume_serial）を考慮し、別SDカードの同名フォルダ（E:\\DCIM等）のレコードと混同しない。
-    """
-    target_path = Path(target_dir_str)
-    folder_deleted = False
-    if not target_path.exists() or not target_path.is_dir():
-        resolved_target, is_drive_online = resolve_drive_online_path(target_dir_str, expected_serial=volume_serial)
-        if not is_drive_online:
-            return {"has_changes": False, "added": 0, "deleted": 0, "modified": 0, "is_valid": False}
-        target_path = resolved_target
-        target_dir_str = str(resolved_target)
-        if not target_path.exists() or not target_path.is_dir():
-            folder_deleted = True
-
-    eff_serial = volume_serial
-    if not eff_serial:
-        probe_path = str(target_path) if not folder_deleted else (f"{target_path.drive}\\" if target_path.drive else str(target_path))
-        vol_info = get_volume_info(probe_path)
-        if vol_info and vol_info.get("serial"):
-            eff_serial = vol_info["serial"]
-
-    from .security import assert_drive_not_blocked_by_foreign_loome
-    assert_drive_not_blocked_by_foreign_loome(target_dir_str, volume_serial=eff_serial)
-
-    norm_win = os.path.normpath(target_dir_str).rstrip("\\/")
-    norm_win_lower = norm_win.lower()
-    is_drive_root = (os.path.dirname(norm_win) == norm_win) or bool(re.match(r"^[a-zA-Z]:$", norm_win))
-
-    ignored_set = {os.path.normpath(p).lower() for p in get_ignored_folders()}
-    ignore_dir_names = {"import", ".cache", "cache", "uploads", "carry", "take_out", "$recycle.bin", "system volume information"}
-
-    # 1. 実ファイル一覧および直下サブフォルダ一覧の取得（フォルダ自体が削除済みの場合は空として扱う）
-    disk_files: Dict[str, Tuple[int, float]] = {}
-    disk_subdirs: Dict[str, Tuple[str, str]] = {}  # lower_name -> (cased_name, full_path)
-    if not folder_deleted:
-        try:
-            with os.scandir(target_path) as it:
-                for entry in it:
-                    if entry.is_file():
-                        ext = os.path.splitext(entry.name)[1].lower()
-                        if ext in SUPPORTED_EXTENSIONS:
-                            try:
-                                stat = entry.stat()
-                                disk_files[entry.name.lower()] = (stat.st_size, stat.st_mtime)
-                            except Exception:
-                                continue
-                    elif entry.is_dir():
-                        name_lower = entry.name.lower()
-                        if name_lower.startswith(".") or name_lower in ignore_dir_names:
-                            continue
-                        full_sub = os.path.normpath(entry.path)
-                        full_sub_lower = full_sub.lower()
-                        if any(full_sub_lower == ig or full_sub_lower.startswith(ig + os.sep) for ig in ignored_set):
-                            continue
-                        disk_subdirs[name_lower] = (entry.name, full_sub)
-        except Exception as e:
-            logger.warning(f"check_folder_diff scandir エラー ({target_dir_str}): {e}")
-            return {"has_changes": False, "added": 0, "deleted": 0, "modified": 0, "is_valid": False}
-
-    # 2. DBレコード一覧（直下＋配下サブフォルダ）・管理状態の取得
-    db_files: Dict[str, Tuple[int, float]] = {}
-    db_sub_files_by_dir: Dict[str, Dict[str, Tuple[int, float]]] = {}
-    db_sub_cased_dirs: Dict[str, str] = {}
-    db_direct_subdirs: Dict[str, str] = {}  # lower_name -> cased_name
-    is_managed = False
-    is_explicit_scan_root = False
-
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        # 直下の photo_links / photos レコードを取得（リンク消失済みは除外、VSNが判明している場合はそのメディアのレコードに限定）
-        if eff_serial:
-            cursor.execute(
-                """
-                SELECT pl.file_name, p.file_size, COALESCE(pl.file_mtime, p.file_mtime) AS file_mtime
-                FROM photo_links pl
-                INNER JOIN photos p ON pl.photo_id = p.id
-                WHERE pl.directory_path = ? COLLATE NOCASE
-                  AND IFNULL(p.is_unlinked, 0) = 0
-                  AND (pl.volume_serial = ? COLLATE NOCASE OR pl.volume_serial = '')
-                """,
-                (norm_win, eff_serial),
-            )
-        else:
-            cursor.execute(
-                """
-                SELECT pl.file_name, p.file_size, COALESCE(pl.file_mtime, p.file_mtime) AS file_mtime
-                FROM photo_links pl
-                INNER JOIN photos p ON pl.photo_id = p.id
-                WHERE pl.directory_path = ? COLLATE NOCASE
-                  AND IFNULL(p.is_unlinked, 0) = 0
-                """,
-                (norm_win,),
-            )
-        for r in cursor.fetchall():
-            fn = r["file_name"].lower()
-            sz = r["file_size"] or 0
-            mt = r["file_mtime"] or 0.0
-            db_files[fn] = (sz, mt)
-        if eff_serial and len(norm_win) >= 2 and norm_win[1] == ":":
-            rel_tail_dir = norm_win[2:]
-            cursor.execute(
-                """
-                SELECT pl.file_name, p.file_size, COALESCE(pl.file_mtime, p.file_mtime) AS file_mtime
-                FROM photo_links pl
-                INNER JOIN photos p ON pl.photo_id = p.id
-                WHERE pl.volume_serial = ? COLLATE NOCASE
-                  AND pl.rel_dir = ? COLLATE NOCASE
-                  AND IFNULL(p.is_unlinked, 0) = 0
-                """,
-                (eff_serial, rel_tail_dir),
-            )
-            for r in cursor.fetchall():
-                fn = r["file_name"].lower()
-                if fn not in db_files:
-                    db_files[fn] = (r["file_size"] or 0, r["file_mtime"] or 0.0)
-
-        # 配下（サブフォルダ）の photo_links レコードを取得（ドライブルートでも管理下サブフォルダの増減・削除を検知できるよう取得）
-        escaped_prefix = norm_win.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "\\\\%"
-        if eff_serial:
-            cursor.execute(
-                """
-                SELECT pl.directory_path, pl.file_name, p.file_size, COALESCE(pl.file_mtime, p.file_mtime) AS file_mtime
-                FROM photo_links pl
-                INNER JOIN photos p ON pl.photo_id = p.id
-                WHERE pl.directory_path LIKE ? ESCAPE '\\'
-                  AND IFNULL(p.is_unlinked, 0) = 0
-                  AND (pl.volume_serial = ? COLLATE NOCASE OR pl.volume_serial = '')
-                """,
-                (escaped_prefix, eff_serial),
-            )
-        else:
-            cursor.execute(
-                """
-                SELECT pl.directory_path, pl.file_name, p.file_size, COALESCE(pl.file_mtime, p.file_mtime) AS file_mtime
-                FROM photo_links pl
-                INNER JOIN photos p ON pl.photo_id = p.id
-                WHERE pl.directory_path LIKE ? ESCAPE '\\'
-                  AND IFNULL(p.is_unlinked, 0) = 0
-                """,
-                (escaped_prefix,),
-            )
-        sub_rows = list(cursor.fetchall())
-        if eff_serial and len(norm_win) >= 2 and norm_win[1] == ":":
-            escaped_tail_prefix = norm_win[2:].replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "\\\\%"
-            cursor.execute(
-                """
-                SELECT pl.directory_path, pl.file_name, p.file_size, COALESCE(pl.file_mtime, p.file_mtime) AS file_mtime
-                FROM photo_links pl
-                INNER JOIN photos p ON pl.photo_id = p.id
-                WHERE pl.volume_serial = ? COLLATE NOCASE
-                  AND pl.rel_dir LIKE ? ESCAPE '\\'
-                  AND IFNULL(p.is_unlinked, 0) = 0
-                """,
-                (eff_serial, escaped_tail_prefix),
-            )
-            sub_rows.extend(cursor.fetchall())
-        prefix_len = len(norm_win) + 1
-        for r in sub_rows:
-            d_norm = os.path.normpath(r["directory_path"]).rstrip("\\/")
-            if eff_serial and len(norm_win) >= 2 and norm_win[1] == ":" and len(d_norm) >= 2 and d_norm[1] == ":":
-                d_norm = norm_win[:2] + d_norm[2:]
-            d_lower = d_norm.lower()
-            if not d_lower.startswith(norm_win_lower + "\\"):
-                continue
-            rel = d_norm[prefix_len:]
-            first_seg = rel.split("\\", 1)[0]
-            if first_seg:
-                db_direct_subdirs.setdefault(first_seg.lower(), first_seg)
-            db_sub_cased_dirs.setdefault(d_lower, d_norm)
-            fmap = db_sub_files_by_dir.setdefault(d_lower, {})
-            fmap[r["file_name"].lower()] = (r["file_size"] or 0, r["file_mtime"] or 0.0)
-
-        # scan_roots の登録状況を確認
-        cursor.execute("SELECT folder_path FROM scan_roots")
-        for r in cursor.fetchall():
-            sr_norm = os.path.normpath(r["folder_path"]).rstrip("\\/")
-            sr_lower = sr_norm.lower()
-            if sr_lower == norm_win_lower:
-                if eff_serial:
-                    cursor.execute(
-                        "SELECT id FROM photo_links WHERE directory_path = ? COLLATE NOCASE AND volume_serial != '' AND volume_serial != ? COLLATE NOCASE LIMIT 1",
-                        (norm_win, eff_serial),
-                    )
-                    if not cursor.fetchone():
-                        is_explicit_scan_root = True
-                else:
-                    is_explicit_scan_root = True
-            elif not is_drive_root and sr_lower.startswith(norm_win_lower + "\\"):
-                rel = sr_norm[len(norm_win) + 1:]
-                first_seg = rel.split("\\", 1)[0]
-                if first_seg:
-                    db_direct_subdirs.setdefault(first_seg.lower(), first_seg)
-
-        from .storage_manager import is_path_in_storage
-        if len(db_files) > 0 or len(db_sub_files_by_dir) > 0 or is_explicit_scan_root or is_path_in_storage(norm_win, volume_serial=eff_serial):
-            is_managed = True
-
-    # 3. 直下ファイルの差分集計
-    disk_keys = set(disk_files.keys())
-    db_keys = set(db_files.keys())
-
-    direct_added = len(disk_keys - db_keys)
-    direct_deleted = len(db_keys - disk_keys)
-    direct_modified = 0
-    for k in (disk_keys & db_keys):
-        d_sz, d_mt = disk_files[k]
-        b_sz, b_mt = db_files[k]
-        if (d_sz != b_sz and d_sz != b_sz + 72) or (b_mt > 0 and abs(d_mt - b_mt) >= 1e-4):
-            direct_modified += 1
-
-    # 4. 子フォルダおよび子フォルダ内ファイルの差分集計
-    added_folders: List[str] = []
-    deleted_folders: List[str] = []
-    sub_added = 0
-    sub_deleted = 0
-    sub_modified = 0
-
-    if is_managed:
-        deadline = time.monotonic() + 0.25
-
-        # (A) 管理下だった直下子フォルダがOS側で削除・移動されたケース
-        for sub_lower, sub_cased in db_direct_subdirs.items():
-            if sub_lower not in disk_subdirs:
-                deleted_folders.append(sub_cased)
-
-        # (B) 既存の管理下サブフォルダ内のファイル増減・変更チェック
-        for sub_dir_lower, sub_fmap in db_sub_files_by_dir.items():
-            sub_dir_path = db_sub_cased_dirs[sub_dir_lower]
-            if not os.path.isdir(sub_dir_path):
-                sub_deleted += len(sub_fmap)
-                rel_dir = sub_dir_path[len(norm_win) + 1:]
-                first_seg = rel_dir.split("\\", 1)[0]
-                if first_seg.lower() not in {d.lower() for d in deleted_folders} and rel_dir not in deleted_folders:
-                    deleted_folders.append(rel_dir)
-                continue
-
-            if time.monotonic() >= deadline:
-                continue
-
-            disk_sub_files: Dict[str, Tuple[int, float]] = {}
-            try:
-                with os.scandir(sub_dir_path) as it:
-                    for entry in it:
-                        if entry.is_file():
-                            ext = os.path.splitext(entry.name)[1].lower()
-                            if ext in SUPPORTED_EXTENSIONS:
-                                try:
-                                    st = entry.stat()
-                                    disk_sub_files[entry.name.lower()] = (st.st_size, st.st_mtime)
-                                except Exception:
-                                    continue
-            except Exception:
-                continue
-
-            ds_keys = set(disk_sub_files.keys())
-            bs_keys = set(sub_fmap.keys())
-            sub_added += len(ds_keys - bs_keys)
-            sub_deleted += len(bs_keys - ds_keys)
-            for k in (ds_keys & bs_keys):
-                d_sz, d_mt = disk_sub_files[k]
-                b_sz, b_mt = sub_fmap[k]
-                if (d_sz != b_sz and d_sz != b_sz + 72) or (b_mt > 0 and abs(d_mt - b_mt) >= 1e-4):
-                    sub_modified += 1
-
-        # (C) OS側で新規追加された未登録の直下子フォルダチェック（ドライブルート以外かつ実在時のみ）
-        # ※画像が0枚の空サブフォルダはスキャンしてもDB（photo_links）に登録されないため、
-        #   空サブフォルダを added_folders に入れるとクリックするたびに毎回「変更検知」が無限ループする。
-        #   内部に未登録画像が1枚以上存在する場合のみ新規追加サブフォルダとして検知する。
-        if not is_drive_root and not folder_deleted:
-            for sub_lower, (sub_cased, sub_full_path) in disk_subdirs.items():
-                if sub_lower not in db_direct_subdirs:
-                    img_in_sub = (
-                        _count_images_in_new_subdir_fast(sub_full_path, ignored_set, deadline)
-                        if time.monotonic() < deadline
-                        else 0
-                    )
-                    if img_in_sub > 0:
-                        added_folders.append(sub_cased)
-                        sub_added += img_in_sub
-
-    added_folders.sort()
-    deleted_folders.sort()
-
-    total_added = (direct_added + sub_added) if is_managed else 0
-    total_deleted = (direct_deleted + sub_deleted) if is_managed else 0
-    total_modified = (direct_modified + sub_modified) if is_managed else 0
-    has_subfolder_changes = is_managed and bool(
-        added_folders or deleted_folders or sub_added > 0 or sub_deleted > 0 or sub_modified > 0
-    )
-
-    # 管理外フォルダの場合は「変更」ではなく未登録扱いとする
-    has_changes = is_managed and (
-        folder_deleted
-        or total_added > 0
-        or total_deleted > 0
-        or total_modified > 0
-        or len(added_folders) > 0
-        or len(deleted_folders) > 0
-    )
-    return {
-        "has_changes": has_changes,
-        "is_managed": is_managed,
-        "folder_deleted": folder_deleted and is_managed,
-        "added": total_added,
-        "deleted": total_deleted,
-        "modified": total_modified,
-        "direct_added": direct_added if is_managed else 0,
-        "direct_deleted": direct_deleted if is_managed else 0,
-        "direct_modified": direct_modified if is_managed else 0,
-        "sub_added": sub_added if is_managed else 0,
-        "sub_deleted": sub_deleted if is_managed else 0,
-        "sub_modified": sub_modified if is_managed else 0,
-        "added_folders": added_folders if is_managed else [],
-        "deleted_folders": deleted_folders if is_managed else [],
-        "added_folders_count": len(added_folders) if is_managed else 0,
-        "deleted_folders_count": len(deleted_folders) if is_managed else 0,
-        "has_subfolder_changes": has_subfolder_changes,
-        "is_valid": True,
-        "total_disk": len(disk_files),
-        "total_disk_subdirs": len(disk_subdirs),
-        "total_db": len(db_files),
-    }
+from .folder_diff import check_folder_diff, refresh_folder_diff  # noqa: E402, F401

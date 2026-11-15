@@ -6,7 +6,7 @@
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 from .connection import get_connection
 from .photos import _build_folder_missing_filter, _directory_filter_sql, _strip_vsn_prefix_raw, invalidate_fast_cache
@@ -94,25 +94,38 @@ def _sync_tags_across_groups(cursor: Any, member_groups: List[List[int]]) -> int
 
 
 def recalculate_stacks(directory_path: Optional[str] = None, recursive: bool = True, existing_paths: Optional[set] = None) -> int:
+    """単一ディレクトリ（またはライブラリ全体）のRAW+JPEGペア・連写・重複スタックを再計算する"""
+    target_dirs = [directory_path] if directory_path else None
+    return recalculate_stacks_for_directories(target_dirs, recursive=recursive, existing_paths=existing_paths)
+
+
+def recalculate_stacks_for_directories(
+    directory_paths: Optional[Iterable[str]] = None,
+    recursive: bool = True,
+    existing_paths: Optional[set] = None,
+) -> int:
     """
-    同一ディレクトリ内の写真を走査し、
-    1. 同名ステムのRAW+JPEGペアの自動紐付け（JPEGを代表、RAWをスタックメンバー化）
-    2. 露出ブラケット（露出補正値の差）および連写（burst）の自動グルーピング
-    を行い、スタックグループ（stack_id）と代表写真（is_stack_primary）を割り当てる。
+    指定された1つ以上のディレクトリ（未指定時は全体）の写真を一括走査し、
+    RAW+JPEGペア・露出ブラケット・連写・重複スタックを単一パスで再計算する。
     """
     with get_connection() as conn:
         cursor = conn.cursor()
 
         # 対象ディレクトリの抽出（photos と photo_links の両方から収集）
-        if directory_path:
-            sql_frag_p, sql_params_p = _build_folder_missing_filter(directory_path, recursive=recursive)
-            cursor.execute(f"SELECT DISTINCT directory_path FROM photos WHERE {sql_frag_p}", sql_params_p)
-            dirs_set = {r["directory_path"] for r in cursor.fetchall() if r["directory_path"]}
-            sql_frag_pl, sql_params_pl = _build_folder_missing_filter(directory_path, recursive=recursive)
-            cursor.execute(f"SELECT DISTINCT directory_path FROM photo_links WHERE {sql_frag_pl}", sql_params_pl)
-            for r in cursor.fetchall():
-                if r["directory_path"]:
-                    dirs_set.add(r["directory_path"])
+        cleaned_targets = [d for d in (directory_paths or []) if d]
+        if cleaned_targets:
+            dirs_set: set = set()
+            for dir_target in cleaned_targets:
+                sql_frag_p, sql_params_p = _build_folder_missing_filter(dir_target, recursive=recursive)
+                cursor.execute(f"SELECT DISTINCT directory_path FROM photos WHERE {sql_frag_p}", sql_params_p)
+                for r in cursor.fetchall():
+                    if r["directory_path"]:
+                        dirs_set.add(r["directory_path"])
+                sql_frag_pl, sql_params_pl = _build_folder_missing_filter(dir_target, recursive=recursive)
+                cursor.execute(f"SELECT DISTINCT directory_path FROM photo_links WHERE {sql_frag_pl}", sql_params_pl)
+                for r in cursor.fetchall():
+                    if r["directory_path"]:
+                        dirs_set.add(r["directory_path"])
             dirs = sorted(dirs_set)
         else:
             cursor.execute("SELECT DISTINCT directory_path FROM photos WHERE directory_path IS NOT NULL")
