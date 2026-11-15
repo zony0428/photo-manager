@@ -131,6 +131,18 @@
   }
 
   const _isLabCardVisible = () => Boolean(state.activeLabSlot && state.activeLabSlot.isConnected);
+  const _hasCenterDialMounted = () => Boolean(document.getElementById('tCenterDialBtn'));
+
+  function _emitFieldLogUiState() {
+    global.dispatchEvent(
+      new CustomEvent('tetheract:fieldlog-ui-state', {
+        detail: {
+          status: { ...state.status },
+          busyToggle: Boolean(state.busyToggle),
+        },
+      })
+    );
+  }
 
   function _updateElapsedTextOnly() {
     if (!state.status.recording) return;
@@ -149,7 +161,7 @@
       state.tickTimer = setInterval(() => {
         _updateElapsedTextOnly();
         const now = Date.now();
-        if (now - state.lastPollMs >= 15000 && (state.screenOpen || _isLabCardVisible())) {
+        if (now - state.lastPollMs >= 15000 && (state.screenOpen || _isLabCardVisible() || _hasCenterDialMounted())) {
           state.lastPollMs = now;
           refreshStatusAndDays({ includeDays: state.screenOpen });
         }
@@ -167,6 +179,7 @@
       state.status.available = false;
       _renderLabCardSlot();
       if (state.screenOpen) _renderModalState();
+      _emitFieldLogUiState();
       return state.status;
     }
 
@@ -188,6 +201,7 @@
       _renderModalState();
       if (options && options.includeDays) _renderDaysSection();
     }
+    _emitFieldLogUiState();
     return state.status;
   }
 
@@ -197,6 +211,7 @@
     state.busyToggle = true;
     _renderLabCardSlot();
     if (state.screenOpen) _renderModalState();
+    _emitFieldLogUiState();
 
     try {
       if (state.status.recording) {
@@ -640,6 +655,7 @@
         state.status = { ...state.status, ...nextStatus, available: adapter.isAvailable() };
         _syncElapsedTicker();
         _renderLabCardSlot();
+        _emitFieldLogUiState();
         if (state.screenOpen) {
           _renderModalState();
           adapter.listDays().then((days) => {
@@ -650,10 +666,11 @@
       });
       adapter.onOpenRequested(() => openFieldLogScreen());
       if (adapter.isAvailable()) refreshStatusAndDays({ includeDays: false });
+      else _emitFieldLogUiState();
     }
 
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible' && (state.screenOpen || _isLabCardVisible())) {
+      if (document.visibilityState === 'visible' && (state.screenOpen || _isLabCardVisible() || _hasCenterDialMounted())) {
         refreshStatusAndDays({ includeDays: state.screenOpen });
       }
     });
@@ -662,13 +679,15 @@
   const fieldLogUiApi = {
     openFieldLogScreen,
     closeFieldLogScreen,
+    toggleRecording: handleToggleRecording,
     refreshStatusAndDays,
-    getState: () => ({ screenOpen: state.screenOpen, status: { ...state.status }, dayCount: state.days.length }),
+    getState: () => ({ screenOpen: state.screenOpen, busyToggle: state.busyToggle, status: { ...state.status }, dayCount: state.days.length }),
   };
 
   global.TetheractTouchUI = Object.assign(global.TetheractTouchUI || {}, {
     openFieldLogScreen,
     closeFieldLogScreen,
+    toggleFieldLogRecording: handleToggleRecording,
     fieldLog: fieldLogUiApi,
   });
 

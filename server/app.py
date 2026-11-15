@@ -475,6 +475,7 @@ class ScanRequest(BaseModel):
     recursive: bool = True
     auto_ai_tag: bool = False
     volume_serial: Optional[str] = None
+    diff_only: bool = False
 
 
 class DeleteFolderRequest(BaseModel):
@@ -2692,17 +2693,27 @@ def api_get_scan_status():
 
 @app.post("/api/scan")
 def api_scan_folder(req: ScanRequest):
-    """指定されたフォルダをスキャンしてインデックスを更新する（指紋不一致時は403でブロック）"""
+    """指定されたフォルダをスキャンしてインデックスを更新する（diff_only=True 時は変更ディレクトリのみピンポイント更新）"""
     try:
-        result = scan_directory(
-            req.folder_path,
-            cleanup_orphans=req.cleanup_orphans,
-            recursive=req.recursive,
-            volume_serial=req.volume_serial,
-        )
-        if getattr(req, "auto_ai_tag", False):
+        if getattr(req, "diff_only", False):
+            from .folder_diff import refresh_folder_diff
+            result = refresh_folder_diff(
+                req.folder_path,
+                volume_serial=req.volume_serial,
+            )
+        else:
+            result = scan_directory(
+                req.folder_path,
+                cleanup_orphans=req.cleanup_orphans,
+                recursive=req.recursive,
+                volume_serial=req.volume_serial,
+            )
+        clear_api_photos_cache()
+        if getattr(req, "auto_ai_tag", False) and int(result.get("added_or_updated") or 0) > 0:
             from .ai import get_ai_worker
-            get_ai_worker().start_tagging(folder_path=req.folder_path)
+            aff_dirs = result.get("affected_dirs")
+            ai_folder = aff_dirs[0] if isinstance(aff_dirs, list) and len(aff_dirs) == 1 else req.folder_path
+            get_ai_worker().start_tagging(folder_path=ai_folder)
         return {"status": "ok", "result": result}
     except PermissionError as e:
         # 指紋不一致によるセキュリティブロック

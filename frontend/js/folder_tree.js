@@ -1171,13 +1171,14 @@ function _ftStartAiPolling() {
 }
 
 /**
- * フォルダスキャン実行（共通）
+ * フォルダスキャン実行（共通 / diffOnly=true 時は変更ディレクトリのみピンポイント更新）
  */
-async function executeScan(folderPath, recursive = true, cleanupOrphans = false, volumeSerial = null) {
+async function executeScan(folderPath, recursive = true, cleanupOrphans = false, volumeSerial = null, options = {}) {
   if (!folderPath) {
     showToast('フォルダパスが指定されていません', 'warning');
     return;
   }
+  const diffOnly = Boolean(options && options.diffOnly);
   const autoAi = (localStorage.getItem('pm_auto_ai_tag') === 'true');
 
   if (elements.folderPathScanBtn) elements.folderPathScanBtn.disabled = true;
@@ -1190,7 +1191,7 @@ async function executeScan(folderPath, recursive = true, cleanupOrphans = false,
   }
   if (typeof setGlobalActivity === 'function') {
     setGlobalActivity('scan', {
-      title: t('scan.preparing', 'スキャン準備中...'),
+      title: diffOnly ? '差分を更新中...' : t('scan.preparing', 'スキャン準備中...'),
       countText: '',
       percent: null,
       filename: folderPath,
@@ -1210,6 +1211,7 @@ async function executeScan(folderPath, recursive = true, cleanupOrphans = false,
         cleanup_orphans: cleanupOrphans,
         auto_ai_tag: autoAi,
         volume_serial: volumeSerial || null,
+        diff_only: diffOnly,
       }),
     });
     const data = await res.json();
@@ -1222,7 +1224,8 @@ async function executeScan(folderPath, recursive = true, cleanupOrphans = false,
 
     if (elements.folderScanProgressCard) elements.folderScanProgressCard.style.display = 'none';
 
-    const cleanedInfo = (data.result && data.result.cleaned > 0) ? ` / ${data.result.cleaned}枚 リンク整理` : '';
+    const cleaned = data.result ? (data.result.cleaned || 0) : 0;
+    const cleanedInfo = cleaned > 0 ? ` / ${cleaned}枚 リンク整理` : '';
     const scanned = data.result ? (data.result.scanned || 0) : 0;
     const updated = data.result ? (data.result.added_or_updated || 0) : 0;
     const exiflessUpd = data.result ? (data.result.exifless_updated || 0) : 0;
@@ -1230,7 +1233,15 @@ async function executeScan(folderPath, recursive = true, cleanupOrphans = false,
     const exiflessInfo = (exiflessUpd > 0 || exiflessMrg > 0)
       ? ` / Exifなし画像 ${exiflessUpd}枚識別更新・${exiflessMrg}件統合`
       : '';
-    showToast(`スキャン完了: ${scanned}枚検出 (${updated}枚更新${cleanedInfo}${exiflessInfo})`, 'success', (exiflessUpd > 0 || exiflessMrg > 0) ? 5500 : 3500);
+    if (diffOnly) {
+      if (updated === 0 && cleaned > 0) {
+        showToast(`リフレッシュ完了: ${cleaned}枚のリンクを整理しました${exiflessInfo}`, 'success', 3500);
+      } else {
+        showToast(`リフレッシュ完了: ${updated}枚更新${cleanedInfo}${exiflessInfo}`, 'success', (exiflessUpd > 0 || exiflessMrg > 0) ? 5500 : 3500);
+      }
+    } else {
+      showToast(`スキャン完了: ${scanned}枚検出 (${updated}枚更新${cleanedInfo}${exiflessInfo})`, 'success', (exiflessUpd > 0 || exiflessMrg > 0) ? 5500 : 3500);
+    }
 
     if (typeof refreshAll === 'function') {
       await refreshAll();
@@ -1238,7 +1249,7 @@ async function executeScan(folderPath, recursive = true, cleanupOrphans = false,
       await refreshFolderTree();
     }
 
-    if (autoAi) {
+    if (autoAi && updated > 0) {
       _ftStartAiPolling();
     }
   } catch (err) {

@@ -18,6 +18,7 @@
     activeFolderId: 'all', activeFolderName: 'スマホ内フォルダ', filterMode: 'unstored',
     items: [], renderLimit: GRID_BATCH_SIZE, selectedKeys: new Set(), commonTagText: '',
     availableMotherTags: [], loadingScan: false, transferring: false,
+    quickUplinkRunning: false, quickUplinkResolver: null,
     transferProgress: { current: 0, total: 0, fileName: '', importedCount: 0, skippedCount: 0 },
     browserFilesMap: new Map(), browserDrafts: {}, activeSlotEl: null,
   };
@@ -29,6 +30,28 @@
   const _escAttr = _escHtml;
 
   function _getAdapter() { return global.TetheractPhoneCaseAdapter || null; }
+
+  function _isMotherShipLinked() {
+    if (global.TetheractTouchUI && typeof global.TetheractTouchUI.isMotherShipLinked === 'function') {
+      return Boolean(global.TetheractTouchUI.isMotherShipLinked());
+    }
+    if (global.TetheractNative && typeof global.TetheractNative.getLockerStatusJson === 'function') {
+      try {
+        const st = JSON.parse(global.TetheractNative.getLockerStatusJson() || '{}');
+        return Boolean(st.pcOnline);
+      } catch (e) {}
+    }
+    const badge = document.getElementById('mModeBadge');
+    const txt = badge ? (badge.textContent || '').trim() : '';
+    return txt === '● Wi-Fi接続' || txt === '● LINK';
+  }
+
+  function _formatSubmitButtonLabel(selCount, isLinked) {
+    if (!isLinked) {
+      return '母艦に収納（母艦と未接続）';
+    }
+    return `Uplink — 母艦に収納 (${selCount}枚 · 重複スキップ)`;
+  }
 
   function _showToast(msg, durationMs = 2600) {
     if (typeof global.showToast === 'function') { global.showToast(msg, durationMs); return; }
@@ -165,6 +188,7 @@
     }
 
     const hasFolders = state.folders.length > 0;
+    const isLinked = _isMotherShipLinked();
     const activeFp = typeof global.__getActiveMobileFolderPath === 'function' ? global.__getActiveMobileFolderPath() : '';
     const folderRowsHtml = hasFolders
       ? state.folders.map((f) => {
@@ -179,12 +203,12 @@
               <span class="m-filter-count" style="margin-left:6px;flex-shrink:0;">${_escHtml(countLabel)}</span>
             </div>
             <div class="t-pcase-folder-row-actions">
-              <button type="button" class="t-pcase-open-pill" data-pcase-open-folder="${_escAttr(f.id)}" data-pcase-folder-name="${_escAttr(f.name)}" data-no-dismiss="1" style="border:none;cursor:pointer;">母艦に収納</button>
+              <button type="button" class="t-pcase-open-pill ${!isLinked ? 'is-unlinked' : ''}" data-pcase-open-folder="${_escAttr(f.id)}" data-pcase-folder-name="${_escAttr(f.name)}" data-no-dismiss="1" style="cursor:pointer;">母艦に収納</button>
               <button type="button" class="t-pcase-unlink-btn" data-pcase-unlink="${_escAttr(f.id)}" data-no-dismiss="1" title="管理下から解除（ファイルは消えません）">✕</button>
             </div>
           </div>`;
         }).join('') + (state.folders.length > 1
-          ? `<div class="t-pcase-folder-row" data-pcase-open-folder="all" data-pcase-folder-name="Uplink — 全スマホフォルダ" data-no-dismiss="1"><div class="t-pcase-folder-row-main"><span>📱 全スマホフォルダの未収納写真をまとめて母艦に収納</span></div><div class="t-pcase-folder-row-actions"><span class="t-pcase-open-pill">Uplink</span></div></div>`
+          ? `<div class="t-pcase-folder-row" data-pcase-open-folder="all" data-pcase-folder-name="Uplink — 全スマホフォルダ" data-no-dismiss="1"><div class="t-pcase-folder-row-main"><span>📱 全スマホフォルダの未収納写真をまとめて母艦に収納</span></div><div class="t-pcase-folder-row-actions"><span class="t-pcase-open-pill ${!isLinked ? 'is-unlinked' : ''}">Uplink</span></div></div>`
           : '')
       : `<div class="t-pcase-card-sub">スマホ内のカメラフォルダ（<code>DCIM/Camera</code> や <code>Pictures</code> 等）を追加すると、起動時に自動スキャンしてTetheractのギャラリー管理下に表示し、手動で <code>\\Loome\\case\\YYYY-MM-DD</code> へ転送できます。</div>`;
 
@@ -268,6 +292,282 @@
       });
     }
     inp.click();
+  }
+
+  function _triggerBrowserCameraCapture() {
+    let inp = document.getElementById('tPhoneCaseBrowserCameraInput');
+    if (!inp) {
+      inp = Object.assign(document.createElement('input'), {
+        type: 'file', id: 'tPhoneCaseBrowserCameraInput', accept: 'image/*',
+      });
+      inp.setAttribute('capture', 'environment');
+      inp.style.display = 'none';
+      document.body.appendChild(inp);
+      inp.addEventListener('change', () => {
+        const files = Array.from(inp.files || []);
+        if (files.length) _openBrowserFilesModal(files);
+        inp.value = '';
+      });
+    }
+    inp.click();
+  }
+
+  /**
+   * 端末の標準カメラアプリを起動する（ブラウザ閲覧時はカメラ撮影入力を起動する）
+   */
+  async function openCameraCapture() {
+    if (global.TetheractTouchUI && typeof global.TetheractTouchUI.closePerspectiveSheet === 'function') {
+      global.TetheractTouchUI.closePerspectiveSheet();
+    }
+    const adapter = _getAdapter();
+    if (adapter && typeof adapter.launchCameraApp === 'function') {
+      const res = await adapter.launchCameraApp();
+      if (res && res.ok) return true;
+      if (res && res.mode === 'native' && res.error) {
+        _showToast(res.error);
+        return false;
+      }
+    }
+    _triggerBrowserCameraCapture();
+    return true;
+  }
+
+  /**
+   * ワンタップ差分送信中の軽量プログレスオーバーレイを表示・更新する
+   */
+  function _showQuickUplinkOverlay(title, text, subText, percent = 15) {
+    let overlay = document.getElementById('tQuickUplinkOverlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'tQuickUplinkOverlay';
+      overlay.style.cssText = 'position:fixed;inset:0;z-index:11800;background:rgba(10,12,16,0.68);display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(3px);';
+      overlay.innerHTML = `
+        <div style="width:100%;max-width:340px;background:var(--surface-card, #1e1e1e);color:var(--text-primary, #f5f5f5);border:1px solid var(--border-color, rgba(255,255,255,0.14));border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:10px;box-shadow:0 16px 40px rgba(0,0,0,0.45);">
+          <div style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700;">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--accent-primary, #e14d2a)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <span id="tQuickUplinkTitle"></span>
+          </div>
+          <div id="tQuickUplinkText" style="font-size:12px;color:var(--text-muted, #9ca6b5);word-break:break-all;line-height:1.45;"></div>
+          <div style="height:6px;border-radius:3px;background:var(--bg-tertiary, rgba(255,255,255,0.1));overflow:hidden;">
+            <div id="tQuickUplinkBar" style="height:100%;background:var(--accent-primary, #e14d2a);width:15%;transition:width 0.14s ease;"></div>
+          </div>
+          <div id="tQuickUplinkSub" style="font-size:11px;color:var(--text-muted, #9ca6b5);"></div>
+        </div>
+      `;
+      document.body.appendChild(overlay);
+    }
+    overlay.style.display = 'flex';
+    const titleEl = document.getElementById('tQuickUplinkTitle');
+    const txtEl = document.getElementById('tQuickUplinkText');
+    const barEl = document.getElementById('tQuickUplinkBar');
+    const subEl = document.getElementById('tQuickUplinkSub');
+    if (titleEl) titleEl.textContent = String(title || '');
+    if (txtEl) txtEl.textContent = String(text || '');
+    if (barEl) barEl.style.width = `${Math.max(6, Math.min(100, Number(percent || 15)))}%`;
+    if (subEl) {
+      subEl.textContent = String(subText || '');
+      subEl.style.display = subText ? 'block' : 'none';
+    }
+  }
+
+  function _hideQuickUplinkOverlay() {
+    const overlay = document.getElementById('tQuickUplinkOverlay');
+    if (overlay) overlay.style.display = 'none';
+  }
+
+  /**
+   * リンク済みスマホフォルダの未収納写真を走査し、未収納分があれば母艦 \Loome\case へ自動転送する
+   */
+  async function _scanAndTransferUnstoredPhotos() {
+    const adapter = _getAdapter();
+    if (!adapter || !adapter.isNativeAvailable()) {
+      return { skippedNoFolders: true, unstoredCount: 0, importedCount: 0 };
+    }
+    const listRes = await adapter.listFolders();
+    const readableFolders = (Array.isArray(listRes && listRes.folders) ? listRes.folders : []).filter(
+      (f) => f && f.canRead !== false
+    );
+    if (readableFolders.length === 0) {
+      return { skippedNoFolders: true, unstoredCount: 0, importedCount: 0 };
+    }
+
+    _showQuickUplinkOverlay('母艦への差分収納を準備中...', 'スマホ管理下フォルダの未収納写真を確認しています', '', 15);
+    const scanRes = await adapter.scanPhotos('all', { includeItems: true, force: true });
+    _updateFolderCountsFromScanResult(scanRes, 'all');
+    if (state.activeSlotEl && document.body.contains(state.activeSlotEl)) {
+      _renderFolderCardInner(state.activeSlotEl);
+    }
+
+    const unstored = (Array.isArray(scanRes && scanRes.items) ? scanRes.items : []).filter((it) => !it.inMotherShip);
+    if (unstored.length === 0) {
+      _hideQuickUplinkOverlay();
+      return { ok: true, unstoredCount: 0, importedCount: 0 };
+    }
+
+    _showQuickUplinkOverlay(
+      '母艦 \\Loome\\case へ未収納写真を転送中...',
+      `0 / ${unstored.length} 枚 · 母艦DBと照合中...`,
+      '新規収納: 0枚 / 重複スキップ: 0枚',
+      12
+    );
+
+    state.transferring = true;
+    state.transferProgress = {
+      current: 0,
+      total: unstored.length,
+      fileName: '母艦DBと照合中...',
+      importedCount: 0,
+      skippedCount: 0,
+      errorCount: 0,
+    };
+
+    let timeoutId = null;
+    const donePromise = new Promise((resolve) => {
+      state.quickUplinkResolver = (res) => {
+        if (timeoutId) clearTimeout(timeoutId);
+        resolve(res);
+      };
+      timeoutId = setTimeout(() => {
+        if (state.quickUplinkResolver) {
+          state.quickUplinkResolver = null;
+          state.transferring = false;
+          resolve({ ok: false, error: '転送待機がタイムアウトしました' });
+        }
+      }, 3600000);
+    });
+
+    const startRes = await adapter.transferToMotherShip({ items: unstored, commonTags: [] });
+    if (!startRes || !startRes.ok) {
+      if (timeoutId) clearTimeout(timeoutId);
+      state.quickUplinkResolver = null;
+      state.transferring = false;
+      _hideQuickUplinkOverlay();
+      return {
+        ok: false,
+        unstoredCount: unstored.length,
+        importedCount: 0,
+        error: (startRes && startRes.error) || '未収納写真の転送開始に失敗しました',
+      };
+    }
+
+    const transferRes = await donePromise;
+    _hideQuickUplinkOverlay();
+    return Object.assign({ unstoredCount: unstored.length }, transferRes || {});
+  }
+
+  /**
+   * ワンタップ差分一括収納:
+   * スマホ管理フォルダの未収納写真転送 ＋ Wi-Fi双方向差分同期（GPSフィールドログ・選別変更・最新DB）を実行する
+   */
+  async function triggerQuickDeltaUplink() {
+    global.TetheractTouchUI?.closePerspectiveSheet?.();
+    if (!_isMotherShipLinked()) {
+      _showToast('母艦とLINKしていないため収納できません');
+      return false;
+    }
+    if (state.transferring || state.quickUplinkRunning) {
+      _showToast('現在すでに母艦への収納を実行中です');
+      return false;
+    }
+
+    if (!global.TetheractNative) {
+      if (
+        (global.location.protocol === 'file:' || global.__PM_STANDALONE_HTML__) &&
+        typeof global.__exportSyncToAndroidUsb === 'function'
+      ) {
+        global.__exportSyncToAndroidUsb();
+        return true;
+      }
+      _triggerBrowserFileInput();
+      return true;
+    }
+
+    state.quickUplinkRunning = true;
+    try {
+      let st = {};
+      try {
+        st = JSON.parse(global.TetheractNative.getLockerStatusJson?.() || '{}');
+      } catch (e) {
+        st = {};
+      }
+
+      if (!st.wifiConfigured) {
+        // 初回未ペアリング時はPC自動検出＆承認ペアリングを含むWi-Fi同期を先行し、成功後に未収納写真を自動転送する
+        const onPairedSyncDone = async (ev) => {
+          global.removeEventListener('tetheract:usb-sync-completed', onPairedSyncDone);
+          clearTimeout(cleanupTimer);
+          const detail = (ev && ev.detail) || {};
+          if (!detail.ok || state.transferring || state.quickUplinkRunning) return;
+          state.quickUplinkRunning = true;
+          try {
+            const followRes = await _scanAndTransferUnstoredPhotos();
+            if (followRes && followRes.unstoredCount > 0) {
+              const imp = Number(followRes.importedCount || 0);
+              const skp = Number(followRes.skippedCount || 0);
+              const rem = Number(followRes.remainingCount || 0);
+              if (imp > 0) {
+                global.__pendingQuickUplinkSummary = { importedCount: imp, skippedCount: skp, partialRemaining: rem };
+                _showToast(`未収納写真 ${imp}枚を収納完了 — 最新DBを反映中...`, 2400);
+              } else if (!followRes.ok && followRes.error) {
+                _showToast(followRes.error, 4200);
+              }
+            }
+          } finally {
+            _hideQuickUplinkOverlay();
+            state.quickUplinkRunning = false;
+          }
+        };
+        const cleanupTimer = setTimeout(() => {
+          global.removeEventListener('tetheract:usb-sync-completed', onPairedSyncDone);
+        }, 90000);
+        global.addEventListener('tetheract:usb-sync-completed', onPairedSyncDone);
+        if (typeof global.__syncLockerOverWifi === 'function') global.__syncLockerOverWifi();
+        return true;
+      }
+
+      const upRes = await _scanAndTransferUnstoredPhotos();
+      if (upRes && upRes.unstoredCount > 0) {
+        const imp = Number(upRes.importedCount || 0);
+        const skp = Number(upRes.skippedCount || 0);
+        const app = Number(upRes.appliedToExisting || 0);
+        const errCnt = Number(upRes.errorCount || 0);
+        const rem = Number(upRes.remainingCount || 0);
+
+        if (!upRes.ok && imp === 0 && skp === 0) {
+          _showToast(upRes.error || '母艦PCへの接続に失敗しました', 4500);
+          return false;
+        }
+        if (upRes.aborted) {
+          if (imp > 0 || app > 0) {
+            global.__pendingQuickUplinkSummary = { importedCount: imp, skippedCount: skp, partialRemaining: rem };
+          }
+          _showToast(
+            `一部未完了: ${imp}枚収納・${skp}枚重複スキップ / 残り${rem}枚が未転送です${upRes.error ? ` (${upRes.error})` : ''}`,
+            5500
+          );
+          return false;
+        }
+
+        global.__pendingQuickUplinkSummary = {
+          importedCount: imp,
+          skippedCount: skp,
+          partialRemaining: errCnt > 0 ? rem : 0,
+        };
+        if (imp > 0 || app > 0) {
+          // ネイティブ側で転送完了後に自動でWi-Fi差分同期（GPSログ送信＋DB取得）が直列実行される
+          _showToast(`未収納写真 ${imp}枚を収納完了 — 続けてGPSログ・DB差分を同期中...`, 2400);
+          return true;
+        }
+      }
+
+      if (typeof global.__syncLockerOverWifi === 'function') {
+        global.__syncLockerOverWifi();
+      }
+      return true;
+    } finally {
+      _hideQuickUplinkOverlay();
+      state.quickUplinkRunning = false;
+    }
   }
 
   function _openBrowserFilesModal(files) {
@@ -464,7 +764,12 @@
           <button type="button" class="t-pcase-add-folder-btn" data-pcase-action="open-tag-picker" style="height:28px;">＋ タグ選択</button>
         </div>
         <div style="display:flex;gap:6px;align-items:center;"><input type="text" id="tPcaseCommonTagInput" class="t-inspector-tag-input" value="${_escAttr(state.commonTagText)}" placeholder="転送分すべてに付ける共通タグ (カンマ区切り可: ロケハン, スナップ)..." autocomplete="off"></div>
-        <button type="button" id="tPcaseSubmitBtn" class="t-pcase-submit-btn" data-pcase-action="submit-transfer" ${selCount === 0 || state.transferring ? 'disabled' : ''}><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg><span id="tPcaseSubmitBtnLabel">Uplink — 母艦に収納 (${selCount}枚 · 重複スキップ)</span></button>
+        ${(() => {
+          const isLinked = _isMotherShipLinked();
+          const canSubmit = isLinked && selCount > 0 && !state.transferring;
+          const submitLabel = _formatSubmitButtonLabel(selCount, isLinked);
+          return `<button type="button" id="tPcaseSubmitBtn" class="t-pcase-submit-btn ${!isLinked ? 'is-unlinked' : ''}" data-pcase-action="submit-transfer" ${!canSubmit ? 'disabled' : ''}><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg><span id="tPcaseSubmitBtnLabel">${_escHtml(submitLabel)}</span></button>`;
+        })()}
       </div>
       ${previewHtml}${tagPickerHtml}${progressOverlayHtml}`;
     const nextScrollEl = modal.querySelector('.t-pcase-scroll');
@@ -644,12 +949,16 @@
         if (chk) chk.textContent = nowSel ? '✓' : '';
       }
       const selCount = state.selectedKeys.size;
+      const isLinked = _isMotherShipLinked();
       const cntLbl = document.getElementById('tPcaseSelCountLabel');
       const subBtn = document.getElementById('tPcaseSubmitBtn');
       const subLbl = document.getElementById('tPcaseSubmitBtnLabel');
       if (cntLbl) cntLbl.textContent = `選択${selCount}枚に付与:`;
-      if (subBtn) subBtn.disabled = selCount === 0 || state.transferring;
-      if (subLbl) subLbl.textContent = `Uplink — 母艦に収納 (${selCount}枚 · 重複スキップ)`;
+      if (subBtn) {
+        subBtn.disabled = !isLinked || selCount === 0 || state.transferring;
+        subBtn.classList.toggle('is-unlinked', !isLinked);
+      }
+      if (subLbl) subLbl.textContent = _formatSubmitButtonLabel(selCount, isLinked);
     }
   }
 
@@ -671,6 +980,11 @@
   async function _executeTransfer() {
     const adapter = _getAdapter();
     if (!adapter || state.transferring) return;
+    if (!_isMotherShipLinked()) {
+      _showToast('母艦とLINKしていないため収納できません');
+      _renderModalContent();
+      return;
+    }
 
     const selectedItems = state.items.filter((it) => state.selectedKeys.has(it.docKey));
     if (!selectedItems.length) { _showToast('転送する写真を選択してください'); return; }
@@ -710,6 +1024,25 @@
       return undefined;
     });
 
+    global.addEventListener('tetheract:link-state-changed', () => {
+      if (state.modalOpen && !state.transferring) {
+        const isLinked = _isMotherShipLinked();
+        const selCount = state.selectedKeys.size;
+        const subBtn = document.getElementById('tPcaseSubmitBtn');
+        const subLbl = document.getElementById('tPcaseSubmitBtnLabel');
+        if (subBtn) {
+          subBtn.disabled = !isLinked || selCount === 0 || state.transferring;
+          subBtn.classList.toggle('is-unlinked', !isLinked);
+        }
+        if (subLbl) {
+          subLbl.textContent = _formatSubmitButtonLabel(selCount, isLinked);
+        }
+      }
+      if (state.activeSlotEl && document.body.contains(state.activeSlotEl)) {
+        _renderFolderCardInner(state.activeSlotEl);
+      }
+    });
+
     const adapter = _getAdapter();
     if (adapter) {
       document.getElementById('mWelcomeAddPhoneFolderBtn')?.addEventListener('click', () => adapter.pickFolder());
@@ -747,6 +1080,18 @@
           fileName: String(prog.fileName || ''), importedCount: Number(prog.importedCount || 0),
           skippedCount: Number(prog.skippedCount || 0), errorCount: Number(prog.errorCount || 0),
         };
+        if (state.quickUplinkRunning && !state.modalOpen) {
+          const p = state.transferProgress;
+          const pct = p.total > 0 ? Math.min(100, Math.round((p.current / p.total) * 100)) : 20;
+          const sub = `新規収納: ${p.importedCount}枚 / 重複スキップ: ${p.skippedCount}枚${p.errorCount > 0 ? ` / リトライ失敗: ${p.errorCount}枚` : ''}`;
+          _showQuickUplinkOverlay(
+            '母艦 \\Loome\\case へ未収納写真を転送中...',
+            `${p.current} / ${p.total} 枚 · ${p.fileName || '照合中...'}`,
+            sub,
+            pct
+          );
+          return;
+        }
         if (state.modalOpen && !_updateProgressOverlayInPlace()) _renderModalContent();
       });
 
@@ -763,6 +1108,13 @@
           state.items.forEach((it) => { if (state.selectedKeys.has(it.docKey)) it.inMotherShip = true; });
           state.selectedKeys.clear();
         }
+        if (typeof state.quickUplinkResolver === 'function') {
+          const resolveFn = state.quickUplinkResolver;
+          state.quickUplinkResolver = null;
+          if (state.modalOpen) _renderModalContent();
+          resolveFn(res || { ok: false });
+          return;
+        }
         _renderModalContent();
         if ((imp > 0 || Number((res && res.appliedToExisting) || 0) > 0) && typeof global.__onTetheractPhoneCatalogSynced === 'function') {
           global.__onTetheractPhoneCatalogSynced();
@@ -778,7 +1130,12 @@
     }
   }
 
-  global.TetheractTouchUI = Object.assign(global.TetheractTouchUI || {}, { openPhoneCaseModal, closePhoneCaseModal });
+  global.TetheractTouchUI = Object.assign(global.TetheractTouchUI || {}, {
+    openPhoneCaseModal,
+    closePhoneCaseModal,
+    openCameraCapture,
+    triggerQuickDeltaUplink,
+  });
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _initTouchPhoneCase);
   else _initTouchPhoneCase();
 })(window);

@@ -108,6 +108,7 @@ class MainActivity : Activity() {
                 onStartFieldLogFromUi = { startOrRequestFieldLogFromUi() },
                 onTriggerUsbSyncAsync = { bgExecutor.execute { handleConnectedUsbAutoSync() } },
                 onLaunchPhoneFolderPicker = { launchSafUsbFolderPicker(REQ_CODE_OPEN_PHONE_FOLDER_TREE) },
+                onLaunchCamera = { launchExternalCameraApp() },
                 onEvalJs = { js -> runOnUiThread { if (::webView.isInitialized) webView.evaluateJavascript(js, null) } },
                 onKeepScreenOn = { keep -> updateKeepScreenOn(keep) }
             )
@@ -765,6 +766,25 @@ class MainActivity : Activity() {
                 .setPositiveButton("OK", null)
                 .show()
         }
+    }
+
+    /**
+     * 端末の標準カメラアプリを通常撮影モード（フル機能）で起動する
+     */
+    private fun launchExternalCameraApp(): Boolean {
+        val actions = listOf(
+            android.provider.MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA,
+            android.provider.MediaStore.ACTION_IMAGE_CAPTURE
+        )
+        for (action in actions) {
+            try {
+                startActivity(Intent(action))
+                return true
+            } catch (e: Exception) {
+                Log.w(TAG, "カメラ起動試行スキップ ($action): ${e.message}")
+            }
+        }
+        return false
     }
 
     private fun registerGestureBackHandler() {

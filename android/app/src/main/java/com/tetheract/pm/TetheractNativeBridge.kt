@@ -25,6 +25,7 @@ class TetheractNativeBridge(
     private val onStartFieldLogFromUi: () -> JSONObject,
     private val onTriggerUsbSyncAsync: () -> Unit = {},
     private val onLaunchPhoneFolderPicker: () -> Unit = {},
+    private val onLaunchCamera: () -> Boolean = { false },
     private val onEvalJs: (String) -> Unit = {},
     private val onKeepScreenOn: (Boolean) -> Unit = {}
 ) {
@@ -550,6 +551,24 @@ class TetheractNativeBridge(
         } catch (e: Exception) {
             Log.e(TAG, "phoneCasePickFolderJson エラー", e)
             JSONObject().put("ok", false).put("error", e.message ?: "Picker failed").toString()
+        }
+    }
+
+    /**
+     * 端末の標準カメラアプリを起動する
+     */
+    @JavascriptInterface
+    fun launchCameraAppJson(): String {
+        return try {
+            val launched = onLaunchCamera.invoke()
+            if (launched) {
+                JSONObject().put("ok", true).put("status", "camera_launched").toString()
+            } else {
+                JSONObject().put("ok", false).put("error", "カメラアプリが見つかりません").toString()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "launchCameraAppJson エラー", e)
+            JSONObject().put("ok", false).put("error", e.message ?: "Camera launch failed").toString()
         }
     }
 

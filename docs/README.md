@@ -63,6 +63,7 @@ GitHub Releases 投稿用に作成されたバージョン別リリースノー�
 
 | バージョン | 主な更新内容 | ファイル |
 | :--- | :--- | :--- |
+| **v2.2.2** | フォルダ差分ピンポイント更新＆未登録フォルダ巻き込み防止（v1.8.11共通）、スマホ下部3構成メニュー（86px中央丸型GPSダイヤル・上下スワイプ切替・ワンタップ『母艦に収納』・未LINK時グレーアウト） | [RELEASE_NOTES_v2.2.2.md](release_notes/RELEASE_NOTES_v2.2.2.md) |
 | **v2.2.1** | モーションアジャスタ（Slap & Sweep）搭載、タグ/スタック/インスペクタ即時同期＆キャッシュ無効化漏れ修正 | [RELEASE_NOTES_v2.2.1.md](release_notes/RELEASE_NOTES_v2.2.1.md) |
 | **v2.2.0** | 手許PhoneCase一括転送＆GPS補完、PC 2D仮想スクロール＆SQL高速化、Android並列DB＆一括保存、LANペアリング防御強化 | [RELEASE_NOTES_v2.2.0.md](release_notes/RELEASE_NOTES_v2.2.0.md) |
 | **v2.1.7** | RAWスタッキング修正、形式フィルタ整理＆RAW抱き合わせ出力、共通タグ一括削除、Loomeフォルダ単位取り込み＆ピッカー小窓 | [RELEASE_NOTES_v2.1.7.md](release_notes/RELEASE_NOTES_v2.1.7.md) |

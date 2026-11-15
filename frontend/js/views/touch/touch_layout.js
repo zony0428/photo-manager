@@ -127,11 +127,14 @@
   }
 
   function _syncBottomNavActive() {
+    if (document.body) {
+      document.body.classList.toggle('has-open-nav-sheet', Boolean(state.sheetOpen));
+    }
     const activeTab = state.sheetOpen
       ? (state.activePerspective === 'lab' ? 'lab' : 'filter')
-      : 'photos';
+      : '';
     document.querySelectorAll('#tPhoneBottomNav [data-bnav]').forEach((btn) => {
-      btn.classList.toggle('is-active', btn.getAttribute('data-bnav') === activeTab);
+      btn.classList.toggle('is-active', Boolean(activeTab) && btn.getAttribute('data-bnav') === activeTab);
     });
   }
 
@@ -338,53 +341,35 @@
       _bindPerspectiveSheetEvents(sheetOverlay, sheet);
     }
 
-    // 3. Phone用 4タブ親指ボトムナビゲーションバー（写真一覧 / 絞り込み / Uplink［母艦に収納］ / 採取・再会）
+    // 3. Phone用 3カラム親指ボトムナビゲーションバー（左: フィルタ / 中央: 丸型GPSダイヤル / 右: ラボ）
     if (!document.getElementById('tPhoneBottomNav')) {
       const bnav = document.createElement('nav');
       bnav.id = 'tPhoneBottomNav';
       bnav.className = 't-phone-bottom-nav';
       bnav.setAttribute('aria-label', 'ボトムナビゲーション');
       bnav.innerHTML = `
-        <button type="button" class="t-bnav-btn is-active" data-bnav="photos">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
-          <span>写真一覧</span>
-        </button>
-        <button type="button" class="t-bnav-btn" data-bnav="filter">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
-          <span>絞り込み</span>
+        <button type="button" class="t-bnav-btn" data-bnav="filter" title="絞り込み条件シートを開閉">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+          <span>フィルタ</span>
           <span id="tBnavFilterDot" class="t-bnav-dot" style="display:none;"></span>
         </button>
-        <button type="button" class="t-bnav-btn" data-bnav="uplink" title="Uplink — 母艦に収納">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-          <span>母艦に収納</span>
-        </button>
-        <button type="button" class="t-bnav-btn" data-bnav="lab" title="Lab — 採取（GPSログ）・再会">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v7.31"/><path d="M14 9.3V1.99"/><path d="M8.5 2h7"/><path d="M14 9.3a6.5 6.5 0 1 1-4 0"/><path d="M5.52 16h12.96"/></svg>
-          <span>採取・再会</span>
+        <div id="tCenterDialSlot" class="t-center-dial-slot"></div>
+        <button type="button" class="t-bnav-btn" data-bnav="lab" title="ラボ — GPSフィールドログ管理・再会">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v7.31"/><path d="M14 9.3V1.99"/><path d="M8.5 2h7"/><path d="M14 9.3a6.5 6.5 0 1 1-4 0"/><path d="M5.52 16h12.96"/></svg>
+          <span>ラボ</span>
         </button>
       `;
       appRoot.appendChild(bnav);
+      global.TetheractTouchUI?.mountCenterDial?.(bnav.querySelector('#tCenterDialSlot'));
+
       bnav.addEventListener('click', (e) => {
         const btn = e.target.closest('[data-bnav]');
         if (!btn) return;
         const tab = btn.getAttribute('data-bnav');
-        if (tab === 'photos') {
-          closePerspectiveSheet();
-          global.TetheractTouchUI?.closePhoneCaseModal?.();
-          document.getElementById('mCloseDbSyncBtn')?.click();
-          document.getElementById('mCloseInfoSheetBtn')?.click();
-          document.getElementById('mScrollContainer')?.scrollTo({ top: 0, behavior: 'smooth' });
-        } else if (tab === 'filter') {
+        if (tab === 'filter') {
           global.TetheractTouchUI?.closePhoneCaseModal?.();
           if (state.sheetOpen && state.activePerspective !== 'lab') closePerspectiveSheet();
           else openPerspectiveSheet();
-        } else if (tab === 'uplink') {
-          closePerspectiveSheet();
-          if (global.TetheractTouchUI && typeof global.TetheractTouchUI.openPhoneCaseModal === 'function') {
-            global.TetheractTouchUI.openPhoneCaseModal('all', 'Uplink — 母艦に収納');
-          } else {
-            document.getElementById('mHeaderWifiSyncBtn')?.click();
-          }
         } else if (tab === 'lab') {
           global.TetheractTouchUI?.closePhoneCaseModal?.();
           if (state.sheetOpen && state.activePerspective === 'lab') closePerspectiveSheet();

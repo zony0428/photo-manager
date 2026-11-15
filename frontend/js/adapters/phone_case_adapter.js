@@ -74,6 +74,25 @@
   }
 
   /**
+   * Android 端末の標準カメラアプリを起動する（未対応・ブラウザ時は mode='browser' を返す）
+   */
+  async function launchCameraApp() {
+    if (!global.TetheractNative || typeof global.TetheractNative.launchCameraAppJson !== 'function') {
+      return { ok: false, mode: 'browser', error: 'native_camera_unavailable' };
+    }
+    try {
+      const res = _safeParseJson(global.TetheractNative.launchCameraAppJson(), { ok: false });
+      return {
+        ok: Boolean(res && res.ok),
+        mode: 'native',
+        error: res && res.error ? String(res.error) : '',
+      };
+    } catch (err) {
+      return { ok: false, mode: 'native', error: String(err) };
+    }
+  }
+
+  /**
    * リンク済みのスマホ内画像フォルダを登録解除する（実ファイルは削除しない）
    */
   async function removeFolder(folderId) {
@@ -420,6 +439,7 @@
     isNativeAvailable,
     listFolders,
     pickFolder,
+    launchCameraApp,
     removeFolder,
     scanPhotos,
     saveDraft,

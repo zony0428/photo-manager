@@ -437,13 +437,14 @@ def initialize_database(fast_boot: bool = False) -> None:
             """
         )
 
-        # スキャン登録ルートフォルダ管理テーブル（フィンガープリントによる別PC・別アカウント誤読防止対応）
+        # スキャン登録ルートフォルダ管理テーブル（フィンガープリントによる別PC・別アカウント誤読防止・再帰管理区分対応）
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS scan_roots (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 folder_path TEXT UNIQUE NOT NULL,
                 fingerprint TEXT,
+                is_recursive INTEGER,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """
@@ -452,6 +453,8 @@ def initialize_database(fast_boot: bool = False) -> None:
         existing_root_cols = {row["name"] for row in cursor.fetchall()}
         if "fingerprint" not in existing_root_cols:
             cursor.execute("ALTER TABLE scan_roots ADD COLUMN fingerprint TEXT")
+        if "is_recursive" not in existing_root_cols:
+            cursor.execute("ALTER TABLE scan_roots ADD COLUMN is_recursive INTEGER")
 
         # 除外（管理対象外）フォルダ管理テーブル
         cursor.execute(

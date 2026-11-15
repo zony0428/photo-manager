@@ -3743,6 +3743,176 @@ class TestCoreRegression(unittest.TestCase):
         tagged_stacked_after = get_photos(folder=str(folder_dir), included_tags=["野鳥/カワセミ"], stacked=True)
         self.assertEqual(len(tagged_stacked_after), 1)
 
+    def test_32_pinpoint_folder_diff_refresh_skips_unchanged_subfolders(self) -> None:
+        """
+        多数のサブフォルダを抱える管理ルートで一部サブフォルダのみに差分がある際、
+        check_folder_diff と diff_only リフレッシュ（refresh_folder_diff）が無変更サブフォルダを一切走査せず、
+        変更ファイル数分だけをピンポイント処理することを検証する。
+        """
+        from unittest import mock as _mock
+        from fastapi.testclient import TestClient
+        from PIL import Image as _PilImage
+        from server import scanner
+        from server.app import app
+        from server.database import get_photos
+
+        def _save_cam_jpg(dst_path: Path, seq: int, size=(96, 72)) -> None:
+            im = _PilImage.new("RGB", size, ((seq * 37) % 255, (seq * 73) % 255, (seq * 19) % 255))
+            ex = im.getexif()
+            ex[0x0110] = "ILCE-7M4"
+            ex[0x9003] = f"2026:05:{(seq % 28) + 1:02d} 12:{(seq % 60):02d}:{(seq % 60):02d}"
+            im.save(dst_path, "JPEG", exif=ex.tobytes())
+
+        with _mock.patch("server.preload_thumbnails.preload_all_thumbnails", return_value=None):
+            archive_root = Path(self._temp_dir.name) / "Archive2026"
+            sub_clean = archive_root / "202601_Clean"
+            sub_dirty = archive_root / "202602_Dirty"
+            sub_clean.mkdir(parents=True, exist_ok=True)
+            sub_dirty.mkdir(parents=True, exist_ok=True)
+
+            for i in range(1, 6):
+                _save_cam_jpg(sub_clean / f"CLEAN_{i:03d}.JPG", i)
+            for i in range(1, 5):
+                _save_cam_jpg(sub_dirty / f"DIRTY_{i:03d}.JPG", 10 + i)
+
+            init_res = scanner.scan_directory(str(archive_root), recursive=True, cleanup_orphans=True)
+            self.assertEqual(init_res["added"], 9)
+
+            clean_diff = scanner.check_folder_diff(str(archive_root))
+            self.assertFalse(clean_diff["has_changes"])
+
+            # 202602_Dirty に2枚追加・1枚更新・1枚削除、さらに新規サブフォルダ 202603_New に2枚追加
+            _save_cam_jpg(sub_dirty / "DIRTY_ADD_1.JPG", 21)
+            _save_cam_jpg(sub_dirty / "DIRTY_ADD_2.JPG", 22)
+            mod_target = sub_dirty / "DIRTY_001.JPG"
+            _save_cam_jpg(mod_target, 11, size=(128, 96))
+            os.utime(mod_target, (mod_target.stat().st_mtime + 15.0, mod_target.stat().st_mtime + 15.0))
+            (sub_dirty / "DIRTY_004.JPG").unlink()
+
+            sub_new = archive_root / "202603_New"
+            sub_new.mkdir(parents=True, exist_ok=True)
+            _save_cam_jpg(sub_new / "NEW_001.JPG", 31)
+            _save_cam_jpg(sub_new / "NEW_002.JPG", 32)
+
+            diff = scanner.check_folder_diff(str(archive_root))
+            self.assertTrue(diff["has_changes"])
+            self.assertEqual(diff["added"], 4)
+            self.assertEqual(diff["modified"], 1)
+            self.assertEqual(diff["deleted"], 1)
+            self.assertEqual(diff["added_folders"], ["202603_New"])
+            self.assertEqual(
+                [os.path.normcase(p) for p in diff["dirty_direct_dirs"]],
+                [os.path.normcase(str(sub_dirty))],
+            )
+            self.assertEqual(
+                [os.path.normcase(p) for p in diff["added_subdir_paths"]],
+                [os.path.normcase(str(sub_new))],
+            )
+
+            # API経由で diff_only=True リフレッシュを実行し、変更・追加された5ファイルのみ解析されることを検証
+            tc = TestClient(app, base_url="http://127.0.0.1:8088")
+            with _mock.patch.object(scanner, "extract_metadata", wraps=scanner.extract_metadata) as mock_extract:
+                api_res = tc.post(
+                    "/api/scan",
+                    json={
+                        "folder_path": str(archive_root),
+                        "recursive": False,
+                        "cleanup_orphans": True,
+                        "diff_only": True,
+                    },
+                )
+                self.assertEqual(api_res.status_code, 200)
+                payload = api_res.json()
+                self.assertEqual(payload["status"], "ok")
+                body = payload["result"]
+                self.assertEqual(mock_extract.call_count, 5, "変更・追加された5枚のみメタデータ抽出が走ること")
+
+            self.assertEqual(body["total_files"], 5)
+            self.assertEqual(body["added"], 4)
+            self.assertEqual(body["updated"], 1)
+            self.assertEqual(body["cleaned"], 1)
+            affected_norm = {os.path.normcase(p) for p in body.get("affected_dirs", [])}
+            self.assertNotIn(os.path.normcase(str(sub_clean)), affected_norm)
+
+            after_diff = scanner.check_folder_diff(str(archive_root))
+            self.assertFalse(after_diff["has_changes"])
+            all_managed = get_photos(folder=str(archive_root), stacked=False)
+            self.assertEqual(len(all_managed), 12)
+
+    def test_33_container_parent_and_direct_only_root_never_drag_in_unmanaged_folders(self) -> None:
+        """
+        通り道の上位コンテナ親フォルダ（管理下サブフォルダと未登録の兄弟フォルダが同居）や、
+        直下限定（recursive=False）で登録したフォルダをクリック・リフレッシュした際、
+        未登録の兄弟・子フォルダを新規追加と誤認せず一切巻き込まないことを検証する。
+        """
+        from unittest import mock as _mock
+        from PIL import Image as _PilImage
+        from server import scanner
+        from server.database import get_photos
+
+        def _save_cam_jpg(dst_path: Path, seq: int) -> None:
+            im = _PilImage.new("RGB", (96, 72), ((seq * 41) % 255, (seq * 67) % 255, (seq * 29) % 255))
+            ex = im.getexif()
+            ex[0x0110] = "ILCE-7M4"
+            ex[0x9003] = f"2026:06:{(seq % 28) + 1:02d} 15:{(seq % 60):02d}:{(seq % 60):02d}"
+            im.save(dst_path, "JPEG", exif=ex.tobytes())
+
+        with _mock.patch("server.preload_thumbnails.preload_all_thumbnails", return_value=None):
+            container_dir = Path(self._temp_dir.name) / "10_PHOTO_Container"
+            managed_root = container_dir / "2026_Managed"
+            managed_sub_a = managed_root / "SubA"
+            unmanaged_sibling = container_dir / "30_Unmanaged_Huge"
+            unmanaged_deep = unmanaged_sibling / "DeepRaw"
+            managed_sub_a.mkdir(parents=True, exist_ok=True)
+            unmanaged_deep.mkdir(parents=True, exist_ok=True)
+
+            # 管理対象は 2026_Managed のみスキャン登録
+            _save_cam_jpg(managed_sub_a / "M_001.JPG", 1)
+            _save_cam_jpg(managed_sub_a / "M_002.JPG", 2)
+            # 未登録兄弟フォルダと上位コンテナ直下に未管理画像を配置
+            for idx in range(1, 7):
+                _save_cam_jpg(unmanaged_deep / f"UNMANAGED_{idx:03d}.JPG", 20 + idx)
+            _save_cam_jpg(container_dir / "LOOSE_UNMANAGED.JPG", 40)
+
+            scanner.scan_directory(str(managed_root), recursive=True, cleanup_orphans=True)
+
+            # 1) 上位コンテナ親 10_PHOTO_Container クリック時: 未登録の 30_Unmanaged_Huge や直下ファイルを検知しないこと
+            diff_clean = scanner.check_folder_diff(str(container_dir))
+            self.assertTrue(diff_clean["is_managed"])
+            self.assertFalse(diff_clean["has_changes"])
+            self.assertEqual(diff_clean["added"], 0)
+            self.assertEqual(diff_clean["added_folders"], [])
+
+            # 2) 管理下ルート 2026_Managed 内にファイル追加＋新規サブフォルダ SubB 追加があった場合:
+            #    上位コンテナ親からでも管理下スコープの差分だけを検知し、リフレッシュで未登録兄弟を1枚も取り込まないこと
+            _save_cam_jpg(managed_sub_a / "M_003.JPG", 3)
+            managed_sub_b = managed_root / "SubB"
+            managed_sub_b.mkdir(parents=True, exist_ok=True)
+            _save_cam_jpg(managed_sub_b / "MB_001.JPG", 4)
+
+            diff_parent = scanner.check_folder_diff(str(container_dir))
+            self.assertTrue(diff_parent["has_changes"])
+            self.assertEqual(diff_parent["added"], 2)
+            self.assertEqual(diff_parent["added_folders"], [os.path.join("2026_Managed", "SubB")])
+
+            ref_res = scanner.refresh_folder_diff(str(container_dir))
+            self.assertEqual(ref_res["added"], 2)
+            self.assertEqual(len(get_photos(folder=str(unmanaged_sibling), stacked=False)), 0)
+            self.assertEqual(len(get_photos(folder=str(container_dir), stacked=False)), 4)
+
+            # 3) recursive=False（直下限定）で登録したルートでは、未登録の子フォルダを新規追加扱いしないこと
+            direct_only_root = Path(self._temp_dir.name) / "DirectOnlyRoot"
+            direct_child = direct_only_root / "ChildSubfolder"
+            direct_child.mkdir(parents=True, exist_ok=True)
+            _PilImage.new("RGB", (80, 60), (100, 100, 200)).save(direct_only_root / "TOP_001.JPG", "JPEG")
+            _PilImage.new("RGB", (80, 60), (200, 100, 100)).save(direct_child / "CHILD_001.JPG", "JPEG")
+
+            scanner.scan_directory(str(direct_only_root), recursive=False, cleanup_orphans=True)
+            diff_direct = scanner.check_folder_diff(str(direct_only_root))
+            self.assertTrue(diff_direct["is_managed"])
+            self.assertFalse(diff_direct["has_changes"])
+            self.assertEqual(diff_direct["added_folders"], [])
+
 
 if __name__ == "__main__":
     unittest.main()

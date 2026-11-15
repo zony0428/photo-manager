@@ -3087,6 +3087,9 @@ def cleanup_missing_photos_in_folder(
     directory_path: str,
     recursive: bool = False,
     volume_serial: Optional[str] = None,
+    known_existing_paths: Optional[set] = None,
+    recalculate_stacks_after: bool = True,
+    out_affected_dirs: Optional[set] = None,
 ) -> int:
     """
     指定フォルダのファイル存在チェックを行い、実ファイルが消えているリンクを photo_links から解除する。
@@ -3098,6 +3101,9 @@ def cleanup_missing_photos_in_folder(
         directory_path=directory_path,
         recursive=recursive,
         volume_serial=volume_serial,
+        known_existing_paths=known_existing_paths,
+        recalculate_stacks_after=recalculate_stacks_after,
+        out_affected_dirs=out_affected_dirs,
     )
 
 
@@ -3384,18 +3390,23 @@ def unlink_missing_photos_in_folder(
     directory_path: str,
     recursive: bool = False,
     volume_serial: Optional[str] = None,
+    known_existing_paths: Optional[set] = None,
+    recalculate_stacks_after: bool = True,
+    out_affected_dirs: Optional[set] = None,
 ) -> int:
     """
     指定フォルダ内で実ファイルが見つからないリンクを photo_links から削除する。
-    - 他メディア・他フォルダにまだリンクが残っている写真は、残存リンクを代表にして通常表示（is_unlinked = 0）を維持する。
-    - すべてのリンクが失われた（残りリンク0本になった）写真のみ is_unlinked = 1, link_count = 0 として
-      「リンク消失の写真」リストへ移行し、明示的にパージされるまでサムネイル・タグ・評価を保持する。
+    known_existing_paths が指定された場合はメモリ集合照合を優先し、実在ファイルへの個別 os.path.exists を省略する。
     """
     from ..scanner import resolve_drive_online_path, clear_online_cache
     from .folders import clear_folders_fs_cache
 
     clear_online_cache()
     clear_folders_fs_cache()
+
+    norm_known: Optional[set] = None
+    if known_existing_paths is not None:
+        norm_known = {os.path.normcase(os.path.abspath(p)) for p in known_existing_paths}
 
     sql_frag, sql_params = _build_folder_missing_filter(
         directory_path,
@@ -3411,6 +3422,11 @@ def unlink_missing_photos_in_folder(
 
     with get_connection() as conn:
         cursor = conn.cursor()
+        resolved_target_dir, is_target_drive_online = resolve_drive_online_path(
+            directory_path, expected_serial=volume_serial or None
+        )
+        active_drive_prefix = (resolved_target_dir.drive or "")[:2] if is_target_drive_online else ""
+
         cursor.execute(
             f"""
             SELECT pl.id AS link_id, pl.photo_id, pl.file_path, pl.directory_path, pl.volume_serial
@@ -3423,14 +3439,27 @@ def unlink_missing_photos_in_folder(
         rows = cursor.fetchall()
         missing_link_ids: List[int] = []
         affected_photo_ids: List[int] = []
+        affected_dirs_set: set = set()
         seen_pids: set = set()
         for r in rows:
+            raw_fp = _strip_vsn_prefix_raw(r["file_path"] or "")
+            if norm_known is not None and raw_fp:
+                cand_norm = os.path.normcase(os.path.abspath(raw_fp))
+                if cand_norm in norm_known:
+                    continue
+                if active_drive_prefix and len(raw_fp) >= 2 and raw_fp[1] == ":":
+                    alt_norm = os.path.normcase(os.path.abspath(active_drive_prefix + raw_fp[2:]))
+                    if alt_norm in norm_known:
+                        continue
+
             v_ser = r["volume_serial"] or volume_serial or None
             f_path, is_drive_online = resolve_drive_online_path(r["file_path"], expected_serial=v_ser)
             if not is_drive_online:
                 continue
             if not os.path.exists(str(f_path)):
                 missing_link_ids.append(r["link_id"])
+                if r["directory_path"]:
+                    affected_dirs_set.add(os.path.normpath(r["directory_path"]).rstrip("\\/"))
                 pid = r["photo_id"]
                 if pid not in seen_pids:
                     seen_pids.add(pid)
@@ -3438,9 +3467,6 @@ def unlink_missing_photos_in_folder(
 
         # 対象ディレクトリ自体がOS上で削除済みの場合、scan_roots に残っている孤立ルートも掃除する
         norm_win = os.path.normpath(directory_path).rstrip("\\/")
-        resolved_target_dir, is_target_drive_online = resolve_drive_online_path(
-            directory_path, expected_serial=volume_serial or None
-        )
         removed_scan_roots = False
         if is_target_drive_online:
             cursor.execute("SELECT folder_path FROM scan_roots")
@@ -3460,6 +3486,9 @@ def unlink_missing_photos_in_folder(
                         cursor.execute("DELETE FROM scan_roots WHERE folder_path = ?", (sr_raw,))
                         removed_scan_roots = True
 
+        if out_affected_dirs is not None and affected_dirs_set:
+            out_affected_dirs.update(affected_dirs_set)
+
         if missing_link_ids or removed_scan_roots:
             for i in range(0, len(missing_link_ids), 500):
                 chunk = missing_link_ids[i:i + 500]
@@ -3473,10 +3502,11 @@ def unlink_missing_photos_in_folder(
             invalidate_fast_cache()
             clear_folders_fs_cache()
 
-            if missing_link_ids:
+            if missing_link_ids and recalculate_stacks_after:
                 try:
-                    from .stacks import recalculate_stacks
-                    recalculate_stacks(norm_win, recursive=recursive)
+                    from .stacks import recalculate_stacks_for_directories
+                    stack_targets = sorted(affected_dirs_set) if affected_dirs_set else [norm_win]
+                    recalculate_stacks_for_directories(stack_targets, recursive=False)
                 except Exception as stack_err:
                     logger.warning(f"スタック修復スキップ: {stack_err}")
 
@@ -4061,14 +4091,50 @@ def sync_has_xmp_from_dir_scan_map(
     if not norm_map:
         return 0
 
-    dir_list = [os.path.normpath(d).rstrip("\\/") for d in dir_xmp_map.keys() if d]
+    non_empty_xmp_dirs = [os.path.normpath(d).rstrip("\\/") for d, xset in dir_xmp_map.items() if d and xset]
+    empty_xmp_dirs = [os.path.normpath(d).rstrip("\\/") for d, xset in dir_xmp_map.items() if d and not xset]
     updates: List[Tuple[int, int]] = []
     with get_connection() as conn:
         cursor = conn.cursor()
         chunk_sz = 400
         seen_pids: set = set()
-        for i in range(0, len(dir_list), chunk_sz):
-            d_chunk = dir_list[i:i + chunk_sz]
+
+        # .xmp が1件もないディレクトリでは、過去に has_xmp=1 だった行のみをリセット対象として高速抽出する
+        for i in range(0, len(empty_xmp_dirs), chunk_sz):
+            d_chunk = empty_xmp_dirs[i:i + chunk_sz]
+            ph = ",".join("?" * len(d_chunk))
+            if vsn_norm:
+                cursor.execute(
+                    f"""
+                    SELECT DISTINCT p.id
+                    FROM photo_links pl
+                    INNER JOIN photos p ON pl.photo_id = p.id
+                    WHERE pl.directory_path COLLATE NOCASE IN ({ph})
+                      AND (pl.volume_serial = ? COLLATE NOCASE OR pl.volume_serial = '')
+                      AND IFNULL(p.is_unlinked, 0) = 0
+                      AND COALESCE(p.has_xmp, 0) = 1
+                    """,
+                    d_chunk + [vsn_norm],
+                )
+            else:
+                cursor.execute(
+                    f"""
+                    SELECT DISTINCT p.id
+                    FROM photos p
+                    WHERE p.directory_path COLLATE NOCASE IN ({ph})
+                      AND IFNULL(p.is_unlinked, 0) = 0
+                      AND COALESCE(p.has_xmp, 0) = 1
+                    """,
+                    d_chunk,
+                )
+            for r in cursor.fetchall():
+                pid = int(r["id"])
+                if pid not in seen_pids:
+                    seen_pids.add(pid)
+                    updates.append((0, pid))
+
+        for i in range(0, len(non_empty_xmp_dirs), chunk_sz):
+            d_chunk = non_empty_xmp_dirs[i:i + chunk_sz]
             ph = ",".join("?" * len(d_chunk))
             if vsn_norm:
                 cursor.execute(

@@ -687,6 +687,29 @@
 
   let _nativeUsbSyncEventBound = false;
 
+  function _formatWifiSyncDoneToast(res, quickSum, hasDbChanges) {
+    const pushed = Number((res && res.pushedCount) || 0);
+    const logDays = Number((res && res.uploadedFieldLogDays) || 0);
+    const importedPhotos = Number((quickSum && quickSum.importedCount) || 0);
+    const partialRem = Number((quickSum && quickSum.partialRemaining) || 0);
+    const parts = [];
+    if (importedPhotos > 0) parts.push(`写真${importedPhotos}枚収納`);
+    if (pushed > 0) parts.push(`選別${pushed}件`);
+    if (logDays > 0) parts.push(`GPSログ${logDays}日分`);
+
+    if (partialRem > 0) {
+      return `✓ 母艦と同期完了（${parts.join('・') || '差分同期'} / 未転送残り${partialRem}枚）`;
+    }
+    if (parts.length > 0) {
+      return importedPhotos > 0
+        ? `✓ 母艦に収納完了（${parts.join('・')}）`
+        : `✓ 母艦と同期完了（${parts.join('・')}）`;
+    }
+    return hasDbChanges
+      ? '✓ PCからWi-Fiで最新ロッカーへ高速同期しました'
+      : '✓ Wi-Fi同期完了（変更なし・最新状態です）';
+  }
+
   async function _handleNativeUsbSyncCompleted(res) {
     if (res && (res.syncMode === 'loome_detached' || res.usbDetached)) {
       setLoading(false);
@@ -694,6 +717,10 @@
       return;
     }
     setLoading(false);
+    const isWifiMode = Boolean(res && String(res.syncMode || '').startsWith('wifi_'));
+    const quickSum = isWifiMode ? (window.__pendingQuickUplinkSummary || null) : null;
+    if (isWifiMode) window.__pendingQuickUplinkSummary = null;
+
     if (res && res.ok) {
       updatePendingBadgeUI();
       const skipped = Number(res.skippedCount || 0);
@@ -704,11 +731,7 @@
       }
       if (res.syncMode === 'wifi_noop' && mState.localDb && mState.photos.length > 0) {
         _refreshWifiStatusBox();
-        const pushed = Number(res.pushedCount || 0);
-        const msg = pushed > 0
-          ? `✓ Wi-Fi同期完了！選別 ${pushed}件をPCへ即時反映しました`
-          : '✓ Wi-Fi同期完了（変更なし・最新状態です）';
-        showToast(msg, 3500);
+        showToast(_formatWifiSyncDoneToast(res, quickSum, false), 3600);
         return;
       }
       if (res.syncMode === 'loome_mount' && mState.localDb && mState.photos.length > 0) {
@@ -720,11 +743,7 @@
       const opened = await _activateAndroidNativeLockerDb();
       if (opened) {
         if (res.syncMode === 'wifi_delta' || res.syncMode === 'wifi_full' || res.syncMode === 'wifi_noop') {
-          const pushed = Number(res.pushedCount || 0);
-          const msg = pushed > 0
-            ? `✓ Wi-Fi同期完了！選別 ${pushed}件をPCへ送信し、最新DBを反映しました`
-            : '✓ PCからWi-Fiで最新ロッカーへ高速同期しました';
-          showToast(msg, 4000);
+          showToast(_formatWifiSyncDoneToast(res, quickSum, res.syncMode !== 'wifi_noop'), 4000);
         } else if (res.syncMode !== 'loome_mount') {
           showToast('✓ USBから専用ロッカーへ高速同期しました', 3500);
         }

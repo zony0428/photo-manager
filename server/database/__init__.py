@@ -125,7 +125,12 @@ from .duplicates import (
 )
 
 # スタック計算
-from .stacks import recalculate_stacks, recalculate_duplicate_stacks, set_stack_primary
+from .stacks import (
+    recalculate_stacks,
+    recalculate_stacks_for_directories,
+    recalculate_duplicate_stacks,
+    set_stack_primary,
+)
 
 # フォルダ・タイムライン・カメラ集計・スキャンルート・ボリューム・除外フォルダ
 from .folders import (

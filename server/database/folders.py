@@ -439,14 +439,29 @@ def get_calendar_summary() -> List[Dict[str, Any]]:
 
 
 
-def add_scan_root(folder_path: str) -> None:
-    """スキャン対象として指定された親フォルダ（ルート）を登録する"""
+def add_scan_root(folder_path: str, is_recursive: Optional[bool] = None) -> None:
+    """スキャン対象として指定された親フォルダ（ルート）と再帰管理フラグを登録する"""
     norm_path = os.path.normpath(folder_path)
     with get_connection() as conn:
-        conn.execute(
-            "INSERT OR IGNORE INTO scan_roots (folder_path) VALUES (?)",
-            (norm_path,)
-        )
+        if is_recursive is None:
+            conn.execute(
+                "INSERT OR IGNORE INTO scan_roots (folder_path) VALUES (?)",
+                (norm_path,),
+            )
+        else:
+            rec_val = 1 if is_recursive else 0
+            conn.execute(
+                """
+                INSERT INTO scan_roots (folder_path, is_recursive)
+                VALUES (?, ?)
+                ON CONFLICT(folder_path) DO UPDATE SET
+                    is_recursive = CASE
+                        WHEN excluded.is_recursive = 1 THEN 1
+                        ELSE COALESCE(scan_roots.is_recursive, excluded.is_recursive)
+                    END
+                """,
+                (norm_path, rec_val),
+            )
         conn.commit()
 
 

@@ -778,7 +778,7 @@ async function checkAndPromptFolderRefresh(folderPath, folderName, node) {
     if (diff.added > 0) {
       detailRows.push({
         label: '新規追加:',
-        value: `${diff.added.toLocaleString()} 枚`,
+        value: `${diff.added.toLocaleString()}${diff.count_capped ? '+' : ''} 枚`,
         color: '#22c55e',
       });
     }
@@ -826,10 +826,9 @@ async function checkAndPromptFolderRefresh(folderPath, folderName, node) {
     }
     _dismissedFolderDiffSignatures.delete(normKey);
 
-    const useRecursive = Boolean(diff.has_subfolder_changes || diff.folder_deleted || /^[a-zA-Z]:\\?$/.test(folderPath));
-    showToast(`「${name}」をリフレッシュ中...`, 'info');
-    // 差分スキャン＋消失写真リンクの自動整理を一括実行
-    await executeScan(folderPath, useRecursive, true, (node && node.volumeSerial) || null);
+    showToast(`「${name}」の差分をリフレッシュ中...`, 'info');
+    // 変更のあった管理下ディレクトリのみをピンポイント更新（無変更フォルダや未登録フォルダは走査しない）
+    await executeScan(folderPath, false, true, (node && node.volumeSerial) || null, { diffOnly: true });
   } catch (err) {
     console.warn('[WARN] checkAndPromptFolderRefresh エラー:', err);
   } finally {

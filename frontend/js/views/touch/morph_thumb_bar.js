@@ -435,9 +435,34 @@
 
   let _syncingModeBadge = false;
   let _pcOnlineOverride = null;
+  let _lastIsPcLinked = null;
   let _lastKnownLinkKey = '';
   let _cachedPcConnRev = '';
   let _cachedUsbVsn = '';
+
+  /**
+   * 母艦PCと現在LINK（オンライン疎通）しているかを返す
+   */
+  function isMotherShipLinked() {
+    if (global.TetheractNative && typeof global.TetheractNative.getLockerStatusJson === 'function') {
+      try {
+        const st = JSON.parse(global.TetheractNative.getLockerStatusJson() || '{}');
+        if (typeof st.pcOnline === 'boolean') {
+          _pcOnlineOverride = st.pcOnline;
+          _lastIsPcLinked = st.pcOnline;
+          return st.pcOnline;
+        }
+      } catch (e) {}
+    }
+    if (_lastIsPcLinked !== null) return Boolean(_lastIsPcLinked);
+    if (_pcOnlineOverride !== null) return Boolean(_pcOnlineOverride);
+    const badge = document.getElementById('mModeBadge');
+    if (badge) {
+      const txt = (badge.textContent || '').trim();
+      return txt === '● Wi-Fi接続' || txt === '● LINK';
+    }
+    return false;
+  }
 
   /**
    * バナー横のステータスバッジ (#mModeBadge) を以下の4状態で統一表示する：
@@ -493,8 +518,11 @@
       if (badge.className !== nextClass) badge.className = nextClass;
       if (badge.textContent !== nextText) badge.textContent = nextText;
 
+      const prevLinked = _lastIsPcLinked;
+      _lastIsPcLinked = Boolean(isPcLinked);
+
       const linkKey = `${isPcLinked ? 1 : 0}:${usbConnected ? 1 : 0}:${pcConnRevision}:${usbVsn}`;
-      if (linkKey !== _lastKnownLinkKey) {
+      if (linkKey !== _lastKnownLinkKey || prevLinked !== _lastIsPcLinked) {
         _lastKnownLinkKey = linkKey;
         if (typeof global.__refreshMobileOfflineGridState === 'function') {
           global.__refreshMobileOfflineGridState({
@@ -504,6 +532,14 @@
             usbVsn,
           });
         }
+        global.dispatchEvent(
+          new CustomEvent('tetheract:link-state-changed', {
+            detail: {
+              isPcLinked: Boolean(isPcLinked),
+              usbConnected: Boolean(usbConnected),
+            },
+          })
+        );
       }
     } finally {
       _syncingModeBadge = false;
@@ -669,6 +705,7 @@
 
   global.TetheractTouchUI = Object.assign(global.TetheractTouchUI || {}, {
     initMorphThumbBar,
+    isMotherShipLinked,
     setThumbBarMode,
     getThumbBarMode: thumbBarApi.getThumbBarMode,
     updateSelectionCount,

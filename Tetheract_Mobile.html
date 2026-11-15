@@ -2108,7 +2108,7 @@ html.is-native-app .m-browser-only {
 }
 
 [data-device-mode="phone"] .m-main {
-  padding-bottom: calc(var(--thumb-bar-height) + 16px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(var(--thumb-bar-height) + 44px + env(safe-area-inset-bottom, 0px));
 }
 
 [data-device-mode="tablet"] #mOpenDrawerBtn {
@@ -2573,7 +2573,7 @@ html.is-native-app button.m-native-only {
   z-index: 130;
 }
 
-/* ==================== 10. Phone 2段スリムAppBar & 4タブ親指ボトムナビゲーション ==================== */
+/* ==================== 10. Phone 2段スリムAppBar & 中央GPSダイヤル付き3カラムボトムナビ ==================== */
 .m-brand {
   cursor: pointer;
   padding: 2px 6px;
@@ -2637,12 +2637,14 @@ html.is-native-app button.m-native-only {
   right: 0;
   bottom: 0;
   min-height: calc(var(--thumb-bar-height) + env(safe-area-inset-bottom, 0px));
-  padding: 4px 4px calc(4px + env(safe-area-inset-bottom, 0px));
+  padding: 4px 12px calc(4px + env(safe-area-inset-bottom, 0px));
   background-color: var(--surface-card);
   border-top: 1px solid var(--border-color);
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 2px;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  overflow: visible;
   z-index: 92;
 }
 
@@ -2657,13 +2659,13 @@ body.has-visible-thumb-bar .t-phone-bottom-nav {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
-  height: 46px;
+  gap: 3px;
+  height: 48px;
   border: none;
   border-radius: 8px;
   background: transparent;
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   cursor: pointer;
 }
@@ -2703,6 +2705,246 @@ body.has-visible-thumb-bar .t-phone-bottom-nav {
   justify-content: center;
 }
 
+/* 中央丸型GPSダイヤル（直径86px・上下スワイプ1コマ循環: 母艦に収納 ⇄ GPSロガー ⇄ カメラ） */
+.t-center-dial-slot {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: -34px;
+  margin-bottom: -2px;
+  padding: 0 6px;
+  z-index: 2;
+  transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+body.has-open-nav-sheet .t-center-dial-slot {
+  transform: translateY(17px) scale(0.60);
+}
+
+.t-center-dial-btn {
+  position: relative;
+  width: 86px;
+  height: 86px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-color);
+  background-color: var(--surface-elevated);
+  color: var(--text-primary);
+  box-shadow:
+    0 0 0 4px var(--surface-card),
+    0 6px 20px rgba(0, 0, 0, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.12s ease, border-color 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease;
+}
+
+[data-theme="paper"] .t-center-dial-btn {
+  box-shadow:
+    0 0 0 4px var(--surface-card),
+    0 4px 14px rgba(0, 0, 0, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.t-center-dial-btn:active {
+  transform: scale(0.95);
+}
+
+.t-center-dial-btn.is-gps-busy {
+  opacity: 0.72;
+  pointer-events: none;
+}
+
+.t-center-dial-btn.is-uplink-offline:not(.is-gps-recording) {
+  border-color: var(--border-soft);
+}
+
+.t-center-dial-btn.is-uplink-offline:not(.is-gps-recording) .t-center-dial-ring {
+  opacity: 0.52;
+}
+
+.t-center-dial-btn.is-uplink-offline .t-center-dial-face {
+  opacity: 0.40;
+}
+
+.t-center-dial-btn.is-uplink-offline .t-dial-svg,
+.t-center-dial-btn.is-uplink-offline .t-center-dial-label {
+  color: var(--text-muted);
+}
+
+.t-center-dial-ring {
+  position: absolute;
+  inset: 4.5px;
+  border-radius: 50%;
+  border: 1.25px solid var(--border-soft);
+  pointer-events: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.t-center-dial-btn[data-dial-mode="gps"] .t-center-dial-ring {
+  border-color: rgba(var(--accent-rgb), 0.40);
+}
+
+.t-center-dial-btn[data-dial-mode="gps"] .t-dial-svg-globe {
+  color: var(--accent-primary);
+}
+
+@keyframes tCenterDialRecRing {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.50; }
+}
+
+.t-center-dial-btn.is-gps-recording {
+  border-color: var(--fl-rec-border, rgba(45, 212, 191, 0.55));
+}
+
+.t-center-dial-btn.is-gps-recording .t-center-dial-ring {
+  border-color: var(--fl-rec-fg, #2dd4bf);
+  box-shadow: inset 0 0 10px var(--fl-rec-bg, rgba(20, 184, 166, 0.18));
+  animation: tCenterDialRecRing 2.4s ease-in-out infinite;
+}
+
+.t-center-dial-btn[data-dial-mode="gps"].is-gps-recording .t-dial-svg-globe,
+.t-center-dial-btn[data-dial-mode="gps"].is-gps-recording .t-center-dial-label {
+  color: var(--fl-rec-fg, #2dd4bf);
+}
+
+.t-center-dial-face {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  z-index: 1;
+  pointer-events: none;
+  transition: transform 0.1s ease-out;
+}
+
+@keyframes tDialSlideFromBottom {
+  from { opacity: 0.25; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes tDialSlideFromTop {
+  from { opacity: 0.25; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.t-center-dial-face.is-slide-from-bottom {
+  animation: tDialSlideFromBottom 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.t-center-dial-face.is-slide-from-top {
+  animation: tDialSlideFromTop 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.t-center-dial-icon-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+}
+
+.t-dial-svg {
+  display: block;
+  flex-shrink: 0;
+}
+
+.t-center-dial-rec-dot {
+  position: absolute;
+  top: -1px;
+  right: -6px;
+  width: 6.5px;
+  height: 6.5px;
+  border-radius: 50%;
+  background-color: var(--fl-rec-fg, #2dd4bf);
+  opacity: 0;
+  transform: scale(0.6);
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.t-center-dial-btn.is-gps-recording .t-center-dial-rec-dot {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.t-center-dial-label {
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.t-center-dial-cue {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  color: var(--text-muted);
+  opacity: 0.56;
+  line-height: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.t-center-dial-cue.is-up {
+  top: 6px;
+}
+
+.t-center-dial-cue.is-down {
+  bottom: 6px;
+}
+
+.t-center-dial-dots {
+  position: absolute;
+  right: 7px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3.5px;
+  pointer-events: none;
+}
+
+.t-center-dial-dot {
+  width: 3.5px;
+  height: 3.5px;
+  border-radius: 50%;
+  background-color: var(--text-dim);
+  opacity: 0.48;
+  transition: transform 0.15s ease, background-color 0.15s ease, opacity 0.15s ease;
+}
+
+.t-center-dial-dot.is-active {
+  opacity: 1;
+  background-color: var(--accent-primary);
+  transform: scale(1.3);
+}
+
+.t-center-dial-dot.is-rec {
+  opacity: 1;
+  background-color: var(--fl-rec-fg, #2dd4bf);
+}
+
+.t-center-dial-dot.is-offline {
+  opacity: 0.24;
+}
+
+.t-center-dial-dot.is-offline.is-active {
+  background-color: var(--text-muted);
+  opacity: 0.65;
+}
+
 /* ==================== 9. スマホ内カメラフォルダ統合 & Loome\case 転送 UI ==================== */
 .t-pcase-folder-card { background-color: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 11px; display: flex; flex-direction: column; gap: 8px; }
 .t-pcase-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -2714,6 +2956,7 @@ body.has-visible-thumb-bar .t-phone-bottom-nav {
 .t-pcase-folder-row-main { display: flex; align-items: center; gap: 7px; flex: 1; min-width: 0; font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .t-pcase-folder-row-actions { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; }
 .t-pcase-open-pill { padding: 3px 8px; border-radius: 4px; background-color: var(--accent-subtle); color: var(--accent-primary); border: 1px solid var(--accent-primary); font-size: 10.5px; font-weight: 700; white-space: nowrap; }
+.t-pcase-open-pill.is-unlinked { border-color: var(--border-color); background-color: var(--bg-tertiary); color: var(--text-muted); }
 .t-pcase-unlink-btn { width: 26px; height: 26px; border-radius: 4px; border: 1px solid var(--border-color); background: transparent; color: var(--text-muted); font-size: 11px; cursor: pointer; }
 .t-pcase-modal { position: fixed; inset: 0; z-index: 130; background-color: var(--bg-primary); color: var(--text-primary); display: flex; flex-direction: column; overflow: hidden; }
 .t-pcase-topbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 48px; padding: calc(6px + env(safe-area-inset-top, 0px)) 10px 6px 10px; background-color: var(--surface-card); border-bottom: 1px solid var(--border-color); flex-shrink: 0; }
@@ -2735,7 +2978,8 @@ body.has-visible-thumb-bar .t-phone-bottom-nav {
 .t-pcase-curation-row { display: flex; align-items: center; gap: 5px; overflow-x: auto; scrollbar-width: none; }
 .t-pcase-curation-row::-webkit-scrollbar { display: none; }
 .t-pcase-submit-btn { width: 100%; height: 42px; padding: 0 10px; border-radius: 7px; border: 1px solid var(--accent-primary); background-color: var(--accent-primary); color: #ffffff; font-size: 12.5px; font-weight: 700; white-space: nowrap; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
-.t-pcase-submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.t-pcase-submit-btn:disabled,
+.t-pcase-submit-btn.is-unlinked { background-color: var(--bg-tertiary); border-color: var(--border-color); color: var(--text-muted); opacity: 0.72; cursor: not-allowed; }
 
 
 </style>
@@ -3632,7 +3876,7 @@ else if (typeof exports === 'object'){
               <span id="mModeBadge" class="m-mode-badge mode-checking">○ UNLINK</span>
               <span id="mPhotoCount" class="m-photo-count">0枚</span>
               <span id="mPendingBadge" class="m-pending-badge" style="display:none;">0</span>
-              <span id="mAppBuildBadge" class="m-build-badge" style="display:none;">v2.2.1 (11/13 14:40)</span>
+              <span id="mAppBuildBadge" class="m-build-badge" style="display:none;">v2.2.2 (11/13 14:40)</span>
             </div>
           </div>
         </div>
@@ -6168,6 +6412,25 @@ else if (typeof exports === 'object'){
   }
 
   /**
+   * Android 端末の標準カメラアプリを起動する（未対応・ブラウザ時は mode='browser' を返す）
+   */
+  async function launchCameraApp() {
+    if (!global.TetheractNative || typeof global.TetheractNative.launchCameraAppJson !== 'function') {
+      return { ok: false, mode: 'browser', error: 'native_camera_unavailable' };
+    }
+    try {
+      const res = _safeParseJson(global.TetheractNative.launchCameraAppJson(), { ok: false });
+      return {
+        ok: Boolean(res && res.ok),
+        mode: 'native',
+        error: res && res.error ? String(res.error) : '',
+      };
+    } catch (err) {
+      return { ok: false, mode: 'native', error: String(err) };
+    }
+  }
+
+  /**
    * リンク済みのスマホ内画像フォルダを登録解除する（実ファイルは削除しない）
    */
   async function removeFolder(folderId) {
@@ -6514,6 +6777,7 @@ else if (typeof exports === 'object'){
     isNativeAvailable,
     listFolders,
     pickFolder,
+    launchCameraApp,
     removeFolder,
     scanPhotos,
     saveDraft,
@@ -6660,11 +6924,14 @@ else if (typeof exports === 'object'){
   }
 
   function _syncBottomNavActive() {
+    if (document.body) {
+      document.body.classList.toggle('has-open-nav-sheet', Boolean(state.sheetOpen));
+    }
     const activeTab = state.sheetOpen
       ? (state.activePerspective === 'lab' ? 'lab' : 'filter')
-      : 'photos';
+      : '';
     document.querySelectorAll('#tPhoneBottomNav [data-bnav]').forEach((btn) => {
-      btn.classList.toggle('is-active', btn.getAttribute('data-bnav') === activeTab);
+      btn.classList.toggle('is-active', Boolean(activeTab) && btn.getAttribute('data-bnav') === activeTab);
     });
   }
 
@@ -6871,53 +7138,35 @@ else if (typeof exports === 'object'){
       _bindPerspectiveSheetEvents(sheetOverlay, sheet);
     }
 
-    // 3. Phone用 4タブ親指ボトムナビゲーションバー（写真一覧 / 絞り込み / Uplink［母艦に収納］ / 採取・再会）
+    // 3. Phone用 3カラム親指ボトムナビゲーションバー（左: フィルタ / 中央: 丸型GPSダイヤル / 右: ラボ）
     if (!document.getElementById('tPhoneBottomNav')) {
       const bnav = document.createElement('nav');
       bnav.id = 'tPhoneBottomNav';
       bnav.className = 't-phone-bottom-nav';
       bnav.setAttribute('aria-label', 'ボトムナビゲーション');
       bnav.innerHTML = `
-        <button type="button" class="t-bnav-btn is-active" data-bnav="photos">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
-          <span>写真一覧</span>
-        </button>
-        <button type="button" class="t-bnav-btn" data-bnav="filter">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
-          <span>絞り込み</span>
+        <button type="button" class="t-bnav-btn" data-bnav="filter" title="絞り込み条件シートを開閉">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+          <span>フィルタ</span>
           <span id="tBnavFilterDot" class="t-bnav-dot" style="display:none;"></span>
         </button>
-        <button type="button" class="t-bnav-btn" data-bnav="uplink" title="Uplink — 母艦に収納">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-          <span>母艦に収納</span>
-        </button>
-        <button type="button" class="t-bnav-btn" data-bnav="lab" title="Lab — 採取（GPSログ）・再会">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v7.31"/><path d="M14 9.3V1.99"/><path d="M8.5 2h7"/><path d="M14 9.3a6.5 6.5 0 1 1-4 0"/><path d="M5.52 16h12.96"/></svg>
-          <span>採取・再会</span>
+        <div id="tCenterDialSlot" class="t-center-dial-slot"></div>
+        <button type="button" class="t-bnav-btn" data-bnav="lab" title="ラボ — GPSフィールドログ管理・再会">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v7.31"/><path d="M14 9.3V1.99"/><path d="M8.5 2h7"/><path d="M14 9.3a6.5 6.5 0 1 1-4 0"/><path d="M5.52 16h12.96"/></svg>
+          <span>ラボ</span>
         </button>
       `;
       appRoot.appendChild(bnav);
+      global.TetheractTouchUI?.mountCenterDial?.(bnav.querySelector('#tCenterDialSlot'));
+
       bnav.addEventListener('click', (e) => {
         const btn = e.target.closest('[data-bnav]');
         if (!btn) return;
         const tab = btn.getAttribute('data-bnav');
-        if (tab === 'photos') {
-          closePerspectiveSheet();
-          global.TetheractTouchUI?.closePhoneCaseModal?.();
-          document.getElementById('mCloseDbSyncBtn')?.click();
-          document.getElementById('mCloseInfoSheetBtn')?.click();
-          document.getElementById('mScrollContainer')?.scrollTo({ top: 0, behavior: 'smooth' });
-        } else if (tab === 'filter') {
+        if (tab === 'filter') {
           global.TetheractTouchUI?.closePhoneCaseModal?.();
           if (state.sheetOpen && state.activePerspective !== 'lab') closePerspectiveSheet();
           else openPerspectiveSheet();
-        } else if (tab === 'uplink') {
-          closePerspectiveSheet();
-          if (global.TetheractTouchUI && typeof global.TetheractTouchUI.openPhoneCaseModal === 'function') {
-            global.TetheractTouchUI.openPhoneCaseModal('all', 'Uplink — 母艦に収納');
-          } else {
-            document.getElementById('mHeaderWifiSyncBtn')?.click();
-          }
         } else if (tab === 'lab') {
           global.TetheractTouchUI?.closePhoneCaseModal?.();
           if (state.sheetOpen && state.activePerspective === 'lab') closePerspectiveSheet();
@@ -8470,9 +8719,34 @@ else if (typeof exports === 'object'){
 
   let _syncingModeBadge = false;
   let _pcOnlineOverride = null;
+  let _lastIsPcLinked = null;
   let _lastKnownLinkKey = '';
   let _cachedPcConnRev = '';
   let _cachedUsbVsn = '';
+
+  /**
+   * 母艦PCと現在LINK（オンライン疎通）しているかを返す
+   */
+  function isMotherShipLinked() {
+    if (global.TetheractNative && typeof global.TetheractNative.getLockerStatusJson === 'function') {
+      try {
+        const st = JSON.parse(global.TetheractNative.getLockerStatusJson() || '{}');
+        if (typeof st.pcOnline === 'boolean') {
+          _pcOnlineOverride = st.pcOnline;
+          _lastIsPcLinked = st.pcOnline;
+          return st.pcOnline;
+        }
+      } catch (e) {}
+    }
+    if (_lastIsPcLinked !== null) return Boolean(_lastIsPcLinked);
+    if (_pcOnlineOverride !== null) return Boolean(_pcOnlineOverride);
+    const badge = document.getElementById('mModeBadge');
+    if (badge) {
+      const txt = (badge.textContent || '').trim();
+      return txt === '● Wi-Fi接続' || txt === '● LINK';
+    }
+    return false;
+  }
 
   /**
    * バナー横のステータスバッジ (#mModeBadge) を以下の4状態で統一表示する：
@@ -8528,8 +8802,11 @@ else if (typeof exports === 'object'){
       if (badge.className !== nextClass) badge.className = nextClass;
       if (badge.textContent !== nextText) badge.textContent = nextText;
 
+      const prevLinked = _lastIsPcLinked;
+      _lastIsPcLinked = Boolean(isPcLinked);
+
       const linkKey = `${isPcLinked ? 1 : 0}:${usbConnected ? 1 : 0}:${pcConnRevision}:${usbVsn}`;
-      if (linkKey !== _lastKnownLinkKey) {
+      if (linkKey !== _lastKnownLinkKey || prevLinked !== _lastIsPcLinked) {
         _lastKnownLinkKey = linkKey;
         if (typeof global.__refreshMobileOfflineGridState === 'function') {
           global.__refreshMobileOfflineGridState({
@@ -8539,6 +8816,14 @@ else if (typeof exports === 'object'){
             usbVsn,
           });
         }
+        global.dispatchEvent(
+          new CustomEvent('tetheract:link-state-changed', {
+            detail: {
+              isPcLinked: Boolean(isPcLinked),
+              usbConnected: Boolean(usbConnected),
+            },
+          })
+        );
       }
     } finally {
       _syncingModeBadge = false;
@@ -8704,6 +8989,7 @@ else if (typeof exports === 'object'){
 
   global.TetheractTouchUI = Object.assign(global.TetheractTouchUI || {}, {
     initMorphThumbBar,
+    isMotherShipLinked,
     setThumbBarMode,
     getThumbBarMode: thumbBarApi.getThumbBarMode,
     updateSelectionCount,
@@ -9438,6 +9724,18 @@ else if (typeof exports === 'object'){
   }
 
   const _isLabCardVisible = () => Boolean(state.activeLabSlot && state.activeLabSlot.isConnected);
+  const _hasCenterDialMounted = () => Boolean(document.getElementById('tCenterDialBtn'));
+
+  function _emitFieldLogUiState() {
+    global.dispatchEvent(
+      new CustomEvent('tetheract:fieldlog-ui-state', {
+        detail: {
+          status: { ...state.status },
+          busyToggle: Boolean(state.busyToggle),
+        },
+      })
+    );
+  }
 
   function _updateElapsedTextOnly() {
     if (!state.status.recording) return;
@@ -9456,7 +9754,7 @@ else if (typeof exports === 'object'){
       state.tickTimer = setInterval(() => {
         _updateElapsedTextOnly();
         const now = Date.now();
-        if (now - state.lastPollMs >= 15000 && (state.screenOpen || _isLabCardVisible())) {
+        if (now - state.lastPollMs >= 15000 && (state.screenOpen || _isLabCardVisible() || _hasCenterDialMounted())) {
           state.lastPollMs = now;
           refreshStatusAndDays({ includeDays: state.screenOpen });
         }
@@ -9474,6 +9772,7 @@ else if (typeof exports === 'object'){
       state.status.available = false;
       _renderLabCardSlot();
       if (state.screenOpen) _renderModalState();
+      _emitFieldLogUiState();
       return state.status;
     }
 
@@ -9495,6 +9794,7 @@ else if (typeof exports === 'object'){
       _renderModalState();
       if (options && options.includeDays) _renderDaysSection();
     }
+    _emitFieldLogUiState();
     return state.status;
   }
 
@@ -9504,6 +9804,7 @@ else if (typeof exports === 'object'){
     state.busyToggle = true;
     _renderLabCardSlot();
     if (state.screenOpen) _renderModalState();
+    _emitFieldLogUiState();
 
     try {
       if (state.status.recording) {
@@ -9947,6 +10248,7 @@ else if (typeof exports === 'object'){
         state.status = { ...state.status, ...nextStatus, available: adapter.isAvailable() };
         _syncElapsedTicker();
         _renderLabCardSlot();
+        _emitFieldLogUiState();
         if (state.screenOpen) {
           _renderModalState();
           adapter.listDays().then((days) => {
@@ -9957,10 +10259,11 @@ else if (typeof exports === 'object'){
       });
       adapter.onOpenRequested(() => openFieldLogScreen());
       if (adapter.isAvailable()) refreshStatusAndDays({ includeDays: false });
+      else _emitFieldLogUiState();
     }
 
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible' && (state.screenOpen || _isLabCardVisible())) {
+      if (document.visibilityState === 'visible' && (state.screenOpen || _isLabCardVisible() || _hasCenterDialMounted())) {
         refreshStatusAndDays({ includeDays: state.screenOpen });
       }
     });
@@ -9969,13 +10272,15 @@ else if (typeof exports === 'object'){
   const fieldLogUiApi = {
     openFieldLogScreen,
     closeFieldLogScreen,
+    toggleRecording: handleToggleRecording,
     refreshStatusAndDays,
-    getState: () => ({ screenOpen: state.screenOpen, status: { ...state.status }, dayCount: state.days.length }),
+    getState: () => ({ screenOpen: state.screenOpen, busyToggle: state.busyToggle, status: { ...state.status }, dayCount: state.days.length }),
   };
 
   global.TetheractTouchUI = Object.assign(global.TetheractTouchUI || {}, {
     openFieldLogScreen,
     closeFieldLogScreen,
+    toggleFieldLogRecording: handleToggleRecording,
     fieldLog: fieldLogUiApi,
   });
 
@@ -10009,6 +10314,7 @@ else if (typeof exports === 'object'){
     activeFolderId: 'all', activeFolderName: 'スマホ内フォルダ', filterMode: 'unstored',
     items: [], renderLimit: GRID_BATCH_SIZE, selectedKeys: new Set(), commonTagText: '',
     availableMotherTags: [], loadingScan: false, transferring: false,
+    quickUplinkRunning: false, quickUplinkResolver: null,
     transferProgress: { current: 0, total: 0, fileName: '', importedCount: 0, skippedCount: 0 },
     browserFilesMap: new Map(), browserDrafts: {}, activeSlotEl: null,
   };
@@ -10020,6 +10326,28 @@ else if (typeof exports === 'object'){
   const _escAttr = _escHtml;
 
   function _getAdapter() { return global.TetheractPhoneCaseAdapter || null; }
+
+  function _isMotherShipLinked() {
+    if (global.TetheractTouchUI && typeof global.TetheractTouchUI.isMotherShipLinked === 'function') {
+      return Boolean(global.TetheractTouchUI.isMotherShipLinked());
+    }
+    if (global.TetheractNative && typeof global.TetheractNative.getLockerStatusJson === 'function') {
+      try {
+        const st = JSON.parse(global.TetheractNative.getLockerStatusJson() || '{}');
+        return Boolean(st.pcOnline);
+      } catch (e) {}
+    }
+    const badge = document.getElementById('mModeBadge');
+    const txt = badge ? (badge.textContent || '').trim() : '';
+    return txt === '● Wi-Fi接続' || txt === '● LINK';
+  }
+
+  function _formatSubmitButtonLabel(selCount, isLinked) {
+    if (!isLinked) {
+      return '母艦に収納（母艦と未接続）';
+    }
+    return `Uplink — 母艦に収納 (${selCount}枚 · 重複スキップ)`;
+  }
 
   function _showToast(msg, durationMs = 2600) {
     if (typeof global.showToast === 'function') { global.showToast(msg, durationMs); return; }
@@ -10156,6 +10484,7 @@ else if (typeof exports === 'object'){
     }
 
     const hasFolders = state.folders.length > 0;
+    const isLinked = _isMotherShipLinked();
     const activeFp = typeof global.__getActiveMobileFolderPath === 'function' ? global.__getActiveMobileFolderPath() : '';
     const folderRowsHtml = hasFolders
       ? state.folders.map((f) => {
@@ -10170,12 +10499,12 @@ else if (typeof exports === 'object'){
               <span class="m-filter-count" style="margin-left:6px;flex-shrink:0;">${_escHtml(countLabel)}</span>
             </div>
             <div class="t-pcase-folder-row-actions">
-              <button type="button" class="t-pcase-open-pill" data-pcase-open-folder="${_escAttr(f.id)}" data-pcase-folder-name="${_escAttr(f.name)}" data-no-dismiss="1" style="border:none;cursor:pointer;">母艦に収納</button>
+              <button type="button" class="t-pcase-open-pill ${!isLinked ? 'is-unlinked' : ''}" data-pcase-open-folder="${_escAttr(f.id)}" data-pcase-folder-name="${_escAttr(f.name)}" data-no-dismiss="1" style="cursor:pointer;">母艦に収納</button>
               <button type="button" class="t-pcase-unlink-btn" data-pcase-unlink="${_escAttr(f.id)}" data-no-dismiss="1" title="管理下から解除（ファイルは消えません）">✕</button>
             </div>
           </div>`;
         }).join('') + (state.folders.length > 1
-          ? `<div class="t-pcase-folder-row" data-pcase-open-folder="all" data-pcase-folder-name="Uplink — 全スマホフォルダ" data-no-dismiss="1"><div class="t-pcase-folder-row-main"><span>📱 全スマホフォルダの未収納写真をまとめて母艦に収納</span></div><div class="t-pcase-folder-row-actions"><span class="t-pcase-open-pill">Uplink</span></div></div>`
+          ? `<div class="t-pcase-folder-row" data-pcase-open-folder="all" data-pcase-folder-name="Uplink — 全スマホフォルダ" data-no-dismiss="1"><div class="t-pcase-folder-row-main"><span>📱 全スマホフォルダの未収納写真をまとめて母艦に収納</span></div><div class="t-pcase-folder-row-actions"><span class="t-pcase-open-pill ${!isLinked ? 'is-unlinked' : ''}">Uplink</span></div></div>`
           : '')
       : `<div class="t-pcase-card-sub">スマホ内のカメラフォルダ（<code>DCIM/Camera</code> や <code>Pictures</code> 等）を追加すると、起動時に自動スキャンしてTetheractのギャラリー管理下に表示し、手動で <code>\\Loome\\case\\YYYY-MM-DD</code> へ転送できます。</div>`;
 
@@ -10259,6 +10588,282 @@ else if (typeof exports === 'object'){
       });
     }
     inp.click();
+  }
+
+  function _triggerBrowserCameraCapture() {
+    let inp = document.getElementById('tPhoneCaseBrowserCameraInput');
+    if (!inp) {
+      inp = Object.assign(document.createElement('input'), {
+        type: 'file', id: 'tPhoneCaseBrowserCameraInput', accept: 'image/*',
+      });
+      inp.setAttribute('capture', 'environment');
+      inp.style.display = 'none';
+      document.body.appendChild(inp);
+      inp.addEventListener('change', () => {
+        const files = Array.from(inp.files || []);
+        if (files.length) _openBrowserFilesModal(files);
+        inp.value = '';
+      });
+    }
+    inp.click();
+  }
+
+  /**
+   * 端末の標準カメラアプリを起動する（ブラウザ閲覧時はカメラ撮影入力を起動する）
+   */
+  async function openCameraCapture() {
+    if (global.TetheractTouchUI && typeof global.TetheractTouchUI.closePerspectiveSheet === 'function') {
+      global.TetheractTouchUI.closePerspectiveSheet();
+    }
+    const adapter = _getAdapter();
+    if (adapter && typeof adapter.launchCameraApp === 'function') {
+      const res = await adapter.launchCameraApp();
+      if (res && res.ok) return true;
+      if (res && res.mode === 'native' && res.error) {
+        _showToast(res.error);
+        return false;
+      }
+    }
+    _triggerBrowserCameraCapture();
+    return true;
+  }
+
+  /**
+   * ワンタップ差分送信中の軽量プログレスオーバーレイを表示・更新する
+   */
+  function _showQuickUplinkOverlay(title, text, subText, percent = 15) {
+    let overlay = document.getElementById('tQuickUplinkOverlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'tQuickUplinkOverlay';
+      overlay.style.cssText = 'position:fixed;inset:0;z-index:11800;background:rgba(10,12,16,0.68);display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(3px);';
+      overlay.innerHTML = `
+        <div style="width:100%;max-width:340px;background:var(--surface-card, #1e1e1e);color:var(--text-primary, #f5f5f5);border:1px solid var(--border-color, rgba(255,255,255,0.14));border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:10px;box-shadow:0 16px 40px rgba(0,0,0,0.45);">
+          <div style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700;">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--accent-primary, #e14d2a)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <span id="tQuickUplinkTitle"></span>
+          </div>
+          <div id="tQuickUplinkText" style="font-size:12px;color:var(--text-muted, #9ca6b5);word-break:break-all;line-height:1.45;"></div>
+          <div style="height:6px;border-radius:3px;background:var(--bg-tertiary, rgba(255,255,255,0.1));overflow:hidden;">
+            <div id="tQuickUplinkBar" style="height:100%;background:var(--accent-primary, #e14d2a);width:15%;transition:width 0.14s ease;"></div>
+          </div>
+          <div id="tQuickUplinkSub" style="font-size:11px;color:var(--text-muted, #9ca6b5);"></div>
+        </div>
+      `;
+      document.body.appendChild(overlay);
+    }
+    overlay.style.display = 'flex';
+    const titleEl = document.getElementById('tQuickUplinkTitle');
+    const txtEl = document.getElementById('tQuickUplinkText');
+    const barEl = document.getElementById('tQuickUplinkBar');
+    const subEl = document.getElementById('tQuickUplinkSub');
+    if (titleEl) titleEl.textContent = String(title || '');
+    if (txtEl) txtEl.textContent = String(text || '');
+    if (barEl) barEl.style.width = `${Math.max(6, Math.min(100, Number(percent || 15)))}%`;
+    if (subEl) {
+      subEl.textContent = String(subText || '');
+      subEl.style.display = subText ? 'block' : 'none';
+    }
+  }
+
+  function _hideQuickUplinkOverlay() {
+    const overlay = document.getElementById('tQuickUplinkOverlay');
+    if (overlay) overlay.style.display = 'none';
+  }
+
+  /**
+   * リンク済みスマホフォルダの未収納写真を走査し、未収納分があれば母艦 \Loome\case へ自動転送する
+   */
+  async function _scanAndTransferUnstoredPhotos() {
+    const adapter = _getAdapter();
+    if (!adapter || !adapter.isNativeAvailable()) {
+      return { skippedNoFolders: true, unstoredCount: 0, importedCount: 0 };
+    }
+    const listRes = await adapter.listFolders();
+    const readableFolders = (Array.isArray(listRes && listRes.folders) ? listRes.folders : []).filter(
+      (f) => f && f.canRead !== false
+    );
+    if (readableFolders.length === 0) {
+      return { skippedNoFolders: true, unstoredCount: 0, importedCount: 0 };
+    }
+
+    _showQuickUplinkOverlay('母艦への差分収納を準備中...', 'スマホ管理下フォルダの未収納写真を確認しています', '', 15);
+    const scanRes = await adapter.scanPhotos('all', { includeItems: true, force: true });
+    _updateFolderCountsFromScanResult(scanRes, 'all');
+    if (state.activeSlotEl && document.body.contains(state.activeSlotEl)) {
+      _renderFolderCardInner(state.activeSlotEl);
+    }
+
+    const unstored = (Array.isArray(scanRes && scanRes.items) ? scanRes.items : []).filter((it) => !it.inMotherShip);
+    if (unstored.length === 0) {
+      _hideQuickUplinkOverlay();
+      return { ok: true, unstoredCount: 0, importedCount: 0 };
+    }
+
+    _showQuickUplinkOverlay(
+      '母艦 \\Loome\\case へ未収納写真を転送中...',
+      `0 / ${unstored.length} 枚 · 母艦DBと照合中...`,
+      '新規収納: 0枚 / 重複スキップ: 0枚',
+      12
+    );
+
+    state.transferring = true;
+    state.transferProgress = {
+      current: 0,
+      total: unstored.length,
+      fileName: '母艦DBと照合中...',
+      importedCount: 0,
+      skippedCount: 0,
+      errorCount: 0,
+    };
+
+    let timeoutId = null;
+    const donePromise = new Promise((resolve) => {
+      state.quickUplinkResolver = (res) => {
+        if (timeoutId) clearTimeout(timeoutId);
+        resolve(res);
+      };
+      timeoutId = setTimeout(() => {
+        if (state.quickUplinkResolver) {
+          state.quickUplinkResolver = null;
+          state.transferring = false;
+          resolve({ ok: false, error: '転送待機がタイムアウトしました' });
+        }
+      }, 3600000);
+    });
+
+    const startRes = await adapter.transferToMotherShip({ items: unstored, commonTags: [] });
+    if (!startRes || !startRes.ok) {
+      if (timeoutId) clearTimeout(timeoutId);
+      state.quickUplinkResolver = null;
+      state.transferring = false;
+      _hideQuickUplinkOverlay();
+      return {
+        ok: false,
+        unstoredCount: unstored.length,
+        importedCount: 0,
+        error: (startRes && startRes.error) || '未収納写真の転送開始に失敗しました',
+      };
+    }
+
+    const transferRes = await donePromise;
+    _hideQuickUplinkOverlay();
+    return Object.assign({ unstoredCount: unstored.length }, transferRes || {});
+  }
+
+  /**
+   * ワンタップ差分一括収納:
+   * スマホ管理フォルダの未収納写真転送 ＋ Wi-Fi双方向差分同期（GPSフィールドログ・選別変更・最新DB）を実行する
+   */
+  async function triggerQuickDeltaUplink() {
+    global.TetheractTouchUI?.closePerspectiveSheet?.();
+    if (!_isMotherShipLinked()) {
+      _showToast('母艦とLINKしていないため収納できません');
+      return false;
+    }
+    if (state.transferring || state.quickUplinkRunning) {
+      _showToast('現在すでに母艦への収納を実行中です');
+      return false;
+    }
+
+    if (!global.TetheractNative) {
+      if (
+        (global.location.protocol === 'file:' || global.__PM_STANDALONE_HTML__) &&
+        typeof global.__exportSyncToAndroidUsb === 'function'
+      ) {
+        global.__exportSyncToAndroidUsb();
+        return true;
+      }
+      _triggerBrowserFileInput();
+      return true;
+    }
+
+    state.quickUplinkRunning = true;
+    try {
+      let st = {};
+      try {
+        st = JSON.parse(global.TetheractNative.getLockerStatusJson?.() || '{}');
+      } catch (e) {
+        st = {};
+      }
+
+      if (!st.wifiConfigured) {
+        // 初回未ペアリング時はPC自動検出＆承認ペアリングを含むWi-Fi同期を先行し、成功後に未収納写真を自動転送する
+        const onPairedSyncDone = async (ev) => {
+          global.removeEventListener('tetheract:usb-sync-completed', onPairedSyncDone);
+          clearTimeout(cleanupTimer);
+          const detail = (ev && ev.detail) || {};
+          if (!detail.ok || state.transferring || state.quickUplinkRunning) return;
+          state.quickUplinkRunning = true;
+          try {
+            const followRes = await _scanAndTransferUnstoredPhotos();
+            if (followRes && followRes.unstoredCount > 0) {
+              const imp = Number(followRes.importedCount || 0);
+              const skp = Number(followRes.skippedCount || 0);
+              const rem = Number(followRes.remainingCount || 0);
+              if (imp > 0) {
+                global.__pendingQuickUplinkSummary = { importedCount: imp, skippedCount: skp, partialRemaining: rem };
+                _showToast(`未収納写真 ${imp}枚を収納完了 — 最新DBを反映中...`, 2400);
+              } else if (!followRes.ok && followRes.error) {
+                _showToast(followRes.error, 4200);
+              }
+            }
+          } finally {
+            _hideQuickUplinkOverlay();
+            state.quickUplinkRunning = false;
+          }
+        };
+        const cleanupTimer = setTimeout(() => {
+          global.removeEventListener('tetheract:usb-sync-completed', onPairedSyncDone);
+        }, 90000);
+        global.addEventListener('tetheract:usb-sync-completed', onPairedSyncDone);
+        if (typeof global.__syncLockerOverWifi === 'function') global.__syncLockerOverWifi();
+        return true;
+      }
+
+      const upRes = await _scanAndTransferUnstoredPhotos();
+      if (upRes && upRes.unstoredCount > 0) {
+        const imp = Number(upRes.importedCount || 0);
+        const skp = Number(upRes.skippedCount || 0);
+        const app = Number(upRes.appliedToExisting || 0);
+        const errCnt = Number(upRes.errorCount || 0);
+        const rem = Number(upRes.remainingCount || 0);
+
+        if (!upRes.ok && imp === 0 && skp === 0) {
+          _showToast(upRes.error || '母艦PCへの接続に失敗しました', 4500);
+          return false;
+        }
+        if (upRes.aborted) {
+          if (imp > 0 || app > 0) {
+            global.__pendingQuickUplinkSummary = { importedCount: imp, skippedCount: skp, partialRemaining: rem };
+          }
+          _showToast(
+            `一部未完了: ${imp}枚収納・${skp}枚重複スキップ / 残り${rem}枚が未転送です${upRes.error ? ` (${upRes.error})` : ''}`,
+            5500
+          );
+          return false;
+        }
+
+        global.__pendingQuickUplinkSummary = {
+          importedCount: imp,
+          skippedCount: skp,
+          partialRemaining: errCnt > 0 ? rem : 0,
+        };
+        if (imp > 0 || app > 0) {
+          // ネイティブ側で転送完了後に自動でWi-Fi差分同期（GPSログ送信＋DB取得）が直列実行される
+          _showToast(`未収納写真 ${imp}枚を収納完了 — 続けてGPSログ・DB差分を同期中...`, 2400);
+          return true;
+        }
+      }
+
+      if (typeof global.__syncLockerOverWifi === 'function') {
+        global.__syncLockerOverWifi();
+      }
+      return true;
+    } finally {
+      _hideQuickUplinkOverlay();
+      state.quickUplinkRunning = false;
+    }
   }
 
   function _openBrowserFilesModal(files) {
@@ -10455,7 +11060,12 @@ else if (typeof exports === 'object'){
           <button type="button" class="t-pcase-add-folder-btn" data-pcase-action="open-tag-picker" style="height:28px;">＋ タグ選択</button>
         </div>
         <div style="display:flex;gap:6px;align-items:center;"><input type="text" id="tPcaseCommonTagInput" class="t-inspector-tag-input" value="${_escAttr(state.commonTagText)}" placeholder="転送分すべてに付ける共通タグ (カンマ区切り可: ロケハン, スナップ)..." autocomplete="off"></div>
-        <button type="button" id="tPcaseSubmitBtn" class="t-pcase-submit-btn" data-pcase-action="submit-transfer" ${selCount === 0 || state.transferring ? 'disabled' : ''}><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg><span id="tPcaseSubmitBtnLabel">Uplink — 母艦に収納 (${selCount}枚 · 重複スキップ)</span></button>
+        ${(() => {
+          const isLinked = _isMotherShipLinked();
+          const canSubmit = isLinked && selCount > 0 && !state.transferring;
+          const submitLabel = _formatSubmitButtonLabel(selCount, isLinked);
+          return `<button type="button" id="tPcaseSubmitBtn" class="t-pcase-submit-btn ${!isLinked ? 'is-unlinked' : ''}" data-pcase-action="submit-transfer" ${!canSubmit ? 'disabled' : ''}><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg><span id="tPcaseSubmitBtnLabel">${_escHtml(submitLabel)}</span></button>`;
+        })()}
       </div>
       ${previewHtml}${tagPickerHtml}${progressOverlayHtml}`;
     const nextScrollEl = modal.querySelector('.t-pcase-scroll');
@@ -10635,12 +11245,16 @@ else if (typeof exports === 'object'){
         if (chk) chk.textContent = nowSel ? '✓' : '';
       }
       const selCount = state.selectedKeys.size;
+      const isLinked = _isMotherShipLinked();
       const cntLbl = document.getElementById('tPcaseSelCountLabel');
       const subBtn = document.getElementById('tPcaseSubmitBtn');
       const subLbl = document.getElementById('tPcaseSubmitBtnLabel');
       if (cntLbl) cntLbl.textContent = `選択${selCount}枚に付与:`;
-      if (subBtn) subBtn.disabled = selCount === 0 || state.transferring;
-      if (subLbl) subLbl.textContent = `Uplink — 母艦に収納 (${selCount}枚 · 重複スキップ)`;
+      if (subBtn) {
+        subBtn.disabled = !isLinked || selCount === 0 || state.transferring;
+        subBtn.classList.toggle('is-unlinked', !isLinked);
+      }
+      if (subLbl) subLbl.textContent = _formatSubmitButtonLabel(selCount, isLinked);
     }
   }
 
@@ -10662,6 +11276,11 @@ else if (typeof exports === 'object'){
   async function _executeTransfer() {
     const adapter = _getAdapter();
     if (!adapter || state.transferring) return;
+    if (!_isMotherShipLinked()) {
+      _showToast('母艦とLINKしていないため収納できません');
+      _renderModalContent();
+      return;
+    }
 
     const selectedItems = state.items.filter((it) => state.selectedKeys.has(it.docKey));
     if (!selectedItems.length) { _showToast('転送する写真を選択してください'); return; }
@@ -10701,6 +11320,25 @@ else if (typeof exports === 'object'){
       return undefined;
     });
 
+    global.addEventListener('tetheract:link-state-changed', () => {
+      if (state.modalOpen && !state.transferring) {
+        const isLinked = _isMotherShipLinked();
+        const selCount = state.selectedKeys.size;
+        const subBtn = document.getElementById('tPcaseSubmitBtn');
+        const subLbl = document.getElementById('tPcaseSubmitBtnLabel');
+        if (subBtn) {
+          subBtn.disabled = !isLinked || selCount === 0 || state.transferring;
+          subBtn.classList.toggle('is-unlinked', !isLinked);
+        }
+        if (subLbl) {
+          subLbl.textContent = _formatSubmitButtonLabel(selCount, isLinked);
+        }
+      }
+      if (state.activeSlotEl && document.body.contains(state.activeSlotEl)) {
+        _renderFolderCardInner(state.activeSlotEl);
+      }
+    });
+
     const adapter = _getAdapter();
     if (adapter) {
       document.getElementById('mWelcomeAddPhoneFolderBtn')?.addEventListener('click', () => adapter.pickFolder());
@@ -10738,6 +11376,18 @@ else if (typeof exports === 'object'){
           fileName: String(prog.fileName || ''), importedCount: Number(prog.importedCount || 0),
           skippedCount: Number(prog.skippedCount || 0), errorCount: Number(prog.errorCount || 0),
         };
+        if (state.quickUplinkRunning && !state.modalOpen) {
+          const p = state.transferProgress;
+          const pct = p.total > 0 ? Math.min(100, Math.round((p.current / p.total) * 100)) : 20;
+          const sub = `新規収納: ${p.importedCount}枚 / 重複スキップ: ${p.skippedCount}枚${p.errorCount > 0 ? ` / リトライ失敗: ${p.errorCount}枚` : ''}`;
+          _showQuickUplinkOverlay(
+            '母艦 \\Loome\\case へ未収納写真を転送中...',
+            `${p.current} / ${p.total} 枚 · ${p.fileName || '照合中...'}`,
+            sub,
+            pct
+          );
+          return;
+        }
         if (state.modalOpen && !_updateProgressOverlayInPlace()) _renderModalContent();
       });
 
@@ -10754,6 +11404,13 @@ else if (typeof exports === 'object'){
           state.items.forEach((it) => { if (state.selectedKeys.has(it.docKey)) it.inMotherShip = true; });
           state.selectedKeys.clear();
         }
+        if (typeof state.quickUplinkResolver === 'function') {
+          const resolveFn = state.quickUplinkResolver;
+          state.quickUplinkResolver = null;
+          if (state.modalOpen) _renderModalContent();
+          resolveFn(res || { ok: false });
+          return;
+        }
         _renderModalContent();
         if ((imp > 0 || Number((res && res.appliedToExisting) || 0) > 0) && typeof global.__onTetheractPhoneCatalogSynced === 'function') {
           global.__onTetheractPhoneCatalogSynced();
@@ -10769,9 +11426,505 @@ else if (typeof exports === 'object'){
     }
   }
 
-  global.TetheractTouchUI = Object.assign(global.TetheractTouchUI || {}, { openPhoneCaseModal, closePhoneCaseModal });
+  global.TetheractTouchUI = Object.assign(global.TetheractTouchUI || {}, {
+    openPhoneCaseModal,
+    closePhoneCaseModal,
+    openCameraCapture,
+    triggerQuickDeltaUplink,
+  });
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _initTouchPhoneCase);
   else _initTouchPhoneCase();
+})(window);
+
+</script>
+  <script>
+/* === Inlined js/views/touch/touch_center_dial.js === */
+/**
+ * Tetheract Touch Center Action Dial (Layer 3)
+ * スマホ下部メニュー中央の大型・地球モチーフ丸型ダイヤルボタン（直径86px）。
+ * - 上下スワイプで1コマずつ循環切替［母艦に収納 (上) ⇄ GPSロガー (既定・中央) ⇄ カメラ (下)］
+ * - GPSロガー: タップで記録ON/OFF、長押しでGPSログ管理・設定画面を開く
+ * - 母艦に収納: LINK時はタップで差分一括収納、未LINK時はグレーアウト（長押しで手動Uplink画面は常時開ける）
+ * - カメラ: タップで標準カメラを起動（カメラ・母艦収納の実行後は自動でGPSロガー表示へ復帰）
+ */
+(function (global) {
+  'use strict';
+
+  const SWIPE_STEP_PX = 18;
+  const LONG_PRESS_CANCEL_PX = 12;
+  const LONG_PRESS_MS = 440;
+
+  // 0: 母艦に収納 / 1 (既定): GPSロガー / 2: カメラ（上下スワイプで1コマずつ循環）
+  const DIAL_MODES = [
+    {
+      id: 'uplink',
+      label: '母艦に収納',
+      recordingLabel: '母艦に収納',
+      ariaHint: 'タップで差分一括収納、長押しで写真を手動選択（上下スワイプで機能切替）',
+      svg: '<svg class="t-dial-svg" viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>',
+    },
+    {
+      id: 'gps',
+      label: 'GPSロガー',
+      recordingLabel: 'GPS記録中',
+      ariaHint: 'タップでGPS記録ON/OFF、長押しで管理画面（上スワイプで母艦に収納、下スワイプでカメラ）',
+      svg: '<svg class="t-dial-svg t-dial-svg-globe" viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9.4"/><ellipse cx="12" cy="12" rx="4.2" ry="9.4"/><path d="M3.1 9.3h17.8"/><path d="M3.1 14.7h17.8"/></svg>',
+    },
+    {
+      id: 'camera',
+      label: 'カメラ',
+      recordingLabel: 'カメラ',
+      ariaHint: 'タップでカメラを起動（上下スワイプで機能切替）',
+      svg: '<svg class="t-dial-svg" viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="3.9"/></svg>',
+    },
+  ];
+
+  const state = {
+    modeIndex: 1, // 既定は中央 (GPSロガー)
+    gpsRecording: false,
+    gpsAvailable: false,
+    gpsBusy: false,
+    pcLinked: false,
+    todayPoints: 0,
+    suppressClickUntil: 0,
+    slideAnimTimer: null,
+  };
+
+  function _escHtml(val) {
+    if (val === null || val === undefined) return '';
+    return String(val)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function _vibrate(ms) {
+    try {
+      if (global.navigator && typeof global.navigator.vibrate === 'function') {
+        global.navigator.vibrate(ms);
+      }
+    } catch (e) {}
+  }
+
+  function _showToast(msg, durationMs = 2600) {
+    if (typeof global.showToast === 'function') {
+      global.showToast(msg, durationMs);
+      return;
+    }
+    const toast = document.getElementById('mToast');
+    if (!toast) return;
+    toast.textContent = String(msg || '');
+    toast.style.display = 'block';
+    clearTimeout(_showToast._timer);
+    _showToast._timer = setTimeout(() => {
+      toast.style.display = 'none';
+    }, durationMs);
+  }
+
+  function _syncLinkState() {
+    if (global.TetheractTouchUI && typeof global.TetheractTouchUI.isMotherShipLinked === 'function') {
+      state.pcLinked = Boolean(global.TetheractTouchUI.isMotherShipLinked());
+      return;
+    }
+    if (global.TetheractNative && typeof global.TetheractNative.getLockerStatusJson === 'function') {
+      try {
+        const st = JSON.parse(global.TetheractNative.getLockerStatusJson() || '{}');
+        state.pcLinked = Boolean(st.pcOnline);
+        return;
+      } catch (e) {}
+    }
+    const badge = document.getElementById('mModeBadge');
+    const txt = badge ? (badge.textContent || '').trim() : '';
+    state.pcLinked = txt === '● Wi-Fi接続' || txt === '● LINK';
+  }
+
+  function _syncStateFromFieldLog() {
+    const flApi = global.TetheractTouchUI && global.TetheractTouchUI.fieldLog;
+    if (flApi && typeof flApi.getState === 'function') {
+      const flState = flApi.getState();
+      const st = (flState && flState.status) || {};
+      state.gpsAvailable = Boolean(st.available);
+      state.gpsRecording = Boolean(st.available && st.recording);
+      state.gpsBusy = Boolean(flState && flState.busyToggle);
+      state.todayPoints = Number(st.todayPoints || 0);
+      return;
+    }
+    const adapter = global.TetheractFieldLogAdapter;
+    state.gpsAvailable = Boolean(adapter && typeof adapter.isAvailable === 'function' && adapter.isAvailable());
+  }
+
+  function _getCurrentModeDef() {
+    return DIAL_MODES[state.modeIndex] || DIAL_MODES[1];
+  }
+
+  function _buildDialInnerHtml() {
+    const mode = _getCurrentModeDef();
+    const labelText = mode.id === 'gps' && state.gpsRecording ? mode.recordingLabel : mode.label;
+
+    const dotsHtml = DIAL_MODES.map(
+      (m, idx) =>
+        `<span class="t-center-dial-dot ${idx === state.modeIndex ? 'is-active' : ''} ${m.id === 'gps' && state.gpsRecording ? 'is-rec' : ''} ${m.id === 'uplink' && !state.pcLinked ? 'is-offline' : ''}"></span>`
+    ).join('');
+
+    return `
+      <span class="t-center-dial-ring" aria-hidden="true"></span>
+      <span class="t-center-dial-cue is-up" aria-hidden="true">
+        <svg viewBox="0 0 12 6" width="12" height="6" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><polyline points="2 4.6 6 1.4 10 4.6"/></svg>
+      </span>
+      <span class="t-center-dial-face" id="tCenterDialFace">
+        <span class="t-center-dial-icon-wrap">
+          ${mode.svg}
+          <span class="t-center-dial-rec-dot" aria-hidden="true"></span>
+        </span>
+        <span class="t-center-dial-label">${_escHtml(labelText)}</span>
+      </span>
+      <span class="t-center-dial-cue is-down" aria-hidden="true">
+        <svg viewBox="0 0 12 6" width="12" height="6" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><polyline points="2 1.4 6 4.6 10 1.4"/></svg>
+      </span>
+      <span class="t-center-dial-dots" aria-hidden="true">${dotsHtml}</span>
+    `;
+  }
+
+  function _renderDialButton(slideDirection = '') {
+    const btn = document.getElementById('tCenterDialBtn');
+    if (!btn) return;
+
+    const mode = _getCurrentModeDef();
+    const isUplinkOffline = mode.id === 'uplink' && !state.pcLinked;
+    const hintText = isUplinkOffline
+      ? '母艦と未接続 — 長押しで手動メニューを開けます（上下スワイプで機能切替）'
+      : mode.ariaHint;
+    btn.setAttribute('data-dial-mode', mode.id);
+    btn.setAttribute('aria-label', `${mode.label} — ${hintText}`);
+    btn.setAttribute('aria-disabled', isUplinkOffline ? 'true' : 'false');
+    btn.title = hintText;
+    btn.classList.toggle('is-uplink-offline', isUplinkOffline);
+    btn.classList.toggle('is-gps-recording', Boolean(state.gpsRecording));
+    btn.classList.toggle('is-gps-busy', Boolean(state.gpsBusy));
+    btn.innerHTML = _buildDialInnerHtml();
+
+    if (slideDirection) {
+      const face = btn.querySelector('#tCenterDialFace');
+      if (face) {
+        const cls = slideDirection === 'up' ? 'is-slide-from-bottom' : 'is-slide-from-top';
+        face.classList.add(cls);
+        if (state.slideAnimTimer) clearTimeout(state.slideAnimTimer);
+        state.slideAnimTimer = setTimeout(() => {
+          face.classList.remove('is-slide-from-bottom', 'is-slide-from-top');
+        }, 180);
+      }
+    }
+  }
+
+  /**
+   * ダイヤルの選択モードを変更する ('uplink' | 'gps' | 'camera')
+   */
+  function setMode(modeIdOrIndex, slideDir = '', options = {}) {
+    const len = DIAL_MODES.length;
+    let nextIdx = state.modeIndex;
+    if (typeof modeIdOrIndex === 'number') {
+      nextIdx = ((modeIdOrIndex % len) + len) % len;
+    } else {
+      const foundIdx = DIAL_MODES.findIndex((m) => m.id === modeIdOrIndex);
+      if (foundIdx >= 0) nextIdx = foundIdx;
+    }
+    if (nextIdx === state.modeIndex) {
+      _renderDialButton('');
+      return _getCurrentModeDef().id;
+    }
+    const dir = slideDir || (nextIdx < state.modeIndex ? 'up' : 'down');
+    state.modeIndex = nextIdx;
+    if (!options.silent) {
+      _vibrate(8);
+    }
+    _renderDialButton(options.silent ? '' : dir);
+    global.dispatchEvent(
+      new CustomEvent('tetheract:center-dial-change', {
+        detail: { mode: _getCurrentModeDef().id, index: state.modeIndex },
+      })
+    );
+    return _getCurrentModeDef().id;
+  }
+
+  /**
+   * 上下スワイプ量に応じて1コマずつ循環切り替えする（飛び越し防止のため常に1ステップ移動）
+   * - 上スワイプ (dy < 0): GPS(1) -> 母艦に収納(0) -> カメラ(2) -> GPS(1)
+   * - 下スワイプ (dy > 0): GPS(1) -> カメラ(2) -> 母艦に収納(0) -> GPS(1)
+   */
+  function _stepModeBySwipe(dy) {
+    if (Math.abs(dy) < SWIPE_STEP_PX) return false;
+    const len = DIAL_MODES.length;
+    if (dy < 0) {
+      setMode((state.modeIndex - 1 + len) % len, 'up');
+    } else {
+      setMode((state.modeIndex + 1) % len, 'down');
+    }
+    return true;
+  }
+
+  async function _executeActiveModeAction() {
+    const mode = _getCurrentModeDef();
+    if (mode.id === 'gps') {
+      const adapter = global.TetheractFieldLogAdapter;
+      const canNativeToggle = Boolean(adapter && typeof adapter.isAvailable === 'function' && adapter.isAvailable());
+      if (canNativeToggle && global.TetheractTouchUI && typeof global.TetheractTouchUI.toggleFieldLogRecording === 'function') {
+        _vibrate(10);
+        await global.TetheractTouchUI.toggleFieldLogRecording();
+        return;
+      }
+      if (global.TetheractTouchUI && typeof global.TetheractTouchUI.openFieldLogScreen === 'function') {
+        global.TetheractTouchUI?.closePerspectiveSheet?.();
+        await global.TetheractTouchUI.openFieldLogScreen();
+      }
+      return;
+    }
+
+    if (mode.id === 'uplink') {
+      _syncLinkState();
+      if (!state.pcLinked) {
+        _showToast('母艦と未接続です（長押しで手動メニューを開けます）', 2600);
+        _renderDialButton('');
+        return;
+      }
+      setMode('gps', '', { silent: true });
+      global.TetheractTouchUI?.closePerspectiveSheet?.();
+      _vibrate(10);
+      if (global.TetheractTouchUI && typeof global.TetheractTouchUI.triggerQuickDeltaUplink === 'function') {
+        await global.TetheractTouchUI.triggerQuickDeltaUplink();
+      } else if (typeof global.__syncLockerOverWifi === 'function') {
+        global.__syncLockerOverWifi();
+      } else {
+        document.getElementById('mOpenDbModalBtn')?.click();
+      }
+      return;
+    }
+
+    if (mode.id === 'camera') {
+      setMode('gps', '', { silent: true });
+      global.TetheractTouchUI?.closePerspectiveSheet?.();
+      if (global.TetheractTouchUI && typeof global.TetheractTouchUI.openCameraCapture === 'function') {
+        await global.TetheractTouchUI.openCameraCapture();
+      }
+    }
+  }
+
+  /**
+   * 選択中のダイヤルモードに応じた長押しアクションを実行する
+   */
+  function _executeActiveModeLongPress() {
+    _vibrate(14);
+    const mode = _getCurrentModeDef();
+    if (mode.id === 'uplink') {
+      setMode('gps', '', { silent: true });
+      global.TetheractTouchUI?.closePerspectiveSheet?.();
+      if (global.TetheractTouchUI && typeof global.TetheractTouchUI.openPhoneCaseModal === 'function') {
+        global.TetheractTouchUI.openPhoneCaseModal('all', 'Uplink — 母艦に収納');
+      } else {
+        document.getElementById('mOpenDbModalBtn')?.click();
+      }
+      return;
+    }
+
+    if (mode.id === 'camera') {
+      setMode('gps', '', { silent: true });
+      global.TetheractTouchUI?.closePerspectiveSheet?.();
+      global.TetheractTouchUI?.openCameraCapture?.();
+      return;
+    }
+
+    if (global.TetheractTouchUI && typeof global.TetheractTouchUI.openFieldLogScreen === 'function') {
+      global.TetheractTouchUI?.closePerspectiveSheet?.();
+      global.TetheractTouchUI.openFieldLogScreen();
+    }
+  }
+
+  function _bindDialInteractions(btn) {
+    if (!btn || btn.dataset.dialBound === '1') return;
+    btn.dataset.dialBound = '1';
+
+    let pointerId = null;
+    let startX = 0;
+    let startY = 0;
+    let movedBeyondTap = false;
+    let longPressFired = false;
+    let longPressTimer = null;
+
+    const clearLongPress = () => {
+      if (longPressTimer !== null) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+    };
+
+    const resetFaceOffset = () => {
+      const face = btn.querySelector('#tCenterDialFace');
+      if (face) face.style.transform = '';
+    };
+
+    btn.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+    });
+
+    btn.addEventListener('pointerdown', (e) => {
+      if (e.button !== undefined && e.button !== 0) return;
+      pointerId = e.pointerId;
+      startX = e.clientX;
+      startY = e.clientY;
+      movedBeyondTap = false;
+      longPressFired = false;
+      clearLongPress();
+      try {
+        btn.setPointerCapture(e.pointerId);
+      } catch (err) {}
+
+      longPressTimer = setTimeout(() => {
+        longPressTimer = null;
+        if (!movedBeyondTap && pointerId !== null) {
+          longPressFired = true;
+          state.suppressClickUntil = Date.now() + 450;
+          resetFaceOffset();
+          _executeActiveModeLongPress();
+        }
+      }, LONG_PRESS_MS);
+    });
+
+    btn.addEventListener('pointermove', (e) => {
+      if (pointerId === null || e.pointerId !== pointerId || longPressFired) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      if (Math.hypot(dx, dy) > LONG_PRESS_CANCEL_PX) {
+        movedBeyondTap = true;
+        clearLongPress();
+      }
+      if (Math.abs(dy) > 4 && Math.abs(dy) >= Math.abs(dx) * 0.65) {
+        const damped = Math.max(-10, Math.min(10, dy * 0.28));
+        const face = btn.querySelector('#tCenterDialFace');
+        if (face) face.style.transform = `translateY(${damped.toFixed(1)}px)`;
+      }
+    });
+
+    const finishGesture = (e, cancelled) => {
+      if (pointerId === null || e.pointerId !== pointerId) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      clearLongPress();
+      try {
+        if (btn.hasPointerCapture(e.pointerId)) btn.releasePointerCapture(e.pointerId);
+      } catch (err) {}
+      pointerId = null;
+      resetFaceOffset();
+
+      if (cancelled || longPressFired) return;
+
+      if (Math.abs(dy) >= SWIPE_STEP_PX && Math.abs(dy) >= Math.abs(dx) * 0.65) {
+        state.suppressClickUntil = Date.now() + 360;
+        _stepModeBySwipe(dy);
+      }
+    };
+
+    btn.addEventListener('pointerup', (e) => finishGesture(e, false));
+    btn.addEventListener('pointercancel', (e) => finishGesture(e, true));
+
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (Date.now() < state.suppressClickUntil) {
+        e.preventDefault();
+        return;
+      }
+      _executeActiveModeAction();
+    });
+
+    // PCブラウザ検証時のマウスホイール・上下矢印キー切替にも対応
+    btn.addEventListener(
+      'wheel',
+      (e) => {
+        if (Math.abs(e.deltaY) < 6) return;
+        e.preventDefault();
+        _stepModeBySwipe(e.deltaY > 0 ? SWIPE_STEP_PX + 2 : -(SWIPE_STEP_PX + 2));
+      },
+      { passive: false }
+    );
+
+    btn.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        _stepModeBySwipe(-(SWIPE_STEP_PX + 2));
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        _stepModeBySwipe(SWIPE_STEP_PX + 2);
+      }
+    });
+  }
+
+  /**
+   * ボトムナビ中央スロット (#tCenterDialSlot) へ丸型ダイヤルボタンをマウントする
+   */
+  function mountCenterDial(slotElOrSelector) {
+    const slot =
+      typeof slotElOrSelector === 'string'
+        ? document.querySelector(slotElOrSelector)
+        : slotElOrSelector || document.getElementById('tCenterDialSlot');
+    if (!slot) return null;
+
+    let btn = document.getElementById('tCenterDialBtn');
+    if (!btn) {
+      btn = document.createElement('button');
+      btn.type = 'button';
+      btn.id = 'tCenterDialBtn';
+      btn.className = 't-center-dial-btn';
+      slot.innerHTML = '';
+      slot.appendChild(btn);
+    }
+    _syncStateFromFieldLog();
+    _syncLinkState();
+    _renderDialButton('');
+    _bindDialInteractions(btn);
+    return btn;
+  }
+
+  function _initCenterDial() {
+    mountCenterDial();
+
+    global.addEventListener('tetheract:fieldlog-ui-state', (e) => {
+      const detail = (e && e.detail) || {};
+      const st = detail.status || {};
+      state.gpsAvailable = Boolean(st.available);
+      state.gpsRecording = Boolean(st.available && st.recording);
+      state.gpsBusy = Boolean(detail.busyToggle);
+      state.todayPoints = Number(st.todayPoints || 0);
+      _renderDialButton('');
+    });
+
+    global.addEventListener('tetheract:link-state-changed', (e) => {
+      const detail = (e && e.detail) || {};
+      if (typeof detail.isPcLinked === 'boolean') {
+        state.pcLinked = detail.isPcLinked;
+      } else {
+        _syncLinkState();
+      }
+      _renderDialButton('');
+    });
+  }
+
+  const centerDialApi = {
+    DIAL_MODES,
+    mountCenterDial,
+    getMode: () => _getCurrentModeDef().id,
+    setMode,
+  };
+
+  global.TetheractTouchUI = Object.assign(global.TetheractTouchUI || {}, {
+    mountCenterDial,
+    centerDial: centerDialApi,
+  });
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', _initCenterDial);
+  } else {
+    _initCenterDial();
+  }
 })(window);
 
 </script>
@@ -11466,6 +12619,29 @@ else if (typeof exports === 'object'){
 
   let _nativeUsbSyncEventBound = false;
 
+  function _formatWifiSyncDoneToast(res, quickSum, hasDbChanges) {
+    const pushed = Number((res && res.pushedCount) || 0);
+    const logDays = Number((res && res.uploadedFieldLogDays) || 0);
+    const importedPhotos = Number((quickSum && quickSum.importedCount) || 0);
+    const partialRem = Number((quickSum && quickSum.partialRemaining) || 0);
+    const parts = [];
+    if (importedPhotos > 0) parts.push(`写真${importedPhotos}枚収納`);
+    if (pushed > 0) parts.push(`選別${pushed}件`);
+    if (logDays > 0) parts.push(`GPSログ${logDays}日分`);
+
+    if (partialRem > 0) {
+      return `✓ 母艦と同期完了（${parts.join('・') || '差分同期'} / 未転送残り${partialRem}枚）`;
+    }
+    if (parts.length > 0) {
+      return importedPhotos > 0
+        ? `✓ 母艦に収納完了（${parts.join('・')}）`
+        : `✓ 母艦と同期完了（${parts.join('・')}）`;
+    }
+    return hasDbChanges
+      ? '✓ PCからWi-Fiで最新ロッカーへ高速同期しました'
+      : '✓ Wi-Fi同期完了（変更なし・最新状態です）';
+  }
+
   async function _handleNativeUsbSyncCompleted(res) {
     if (res && (res.syncMode === 'loome_detached' || res.usbDetached)) {
       setLoading(false);
@@ -11473,6 +12649,10 @@ else if (typeof exports === 'object'){
       return;
     }
     setLoading(false);
+    const isWifiMode = Boolean(res && String(res.syncMode || '').startsWith('wifi_'));
+    const quickSum = isWifiMode ? (window.__pendingQuickUplinkSummary || null) : null;
+    if (isWifiMode) window.__pendingQuickUplinkSummary = null;
+
     if (res && res.ok) {
       updatePendingBadgeUI();
       const skipped = Number(res.skippedCount || 0);
@@ -11483,11 +12663,7 @@ else if (typeof exports === 'object'){
       }
       if (res.syncMode === 'wifi_noop' && mState.localDb && mState.photos.length > 0) {
         _refreshWifiStatusBox();
-        const pushed = Number(res.pushedCount || 0);
-        const msg = pushed > 0
-          ? `✓ Wi-Fi同期完了！選別 ${pushed}件をPCへ即時反映しました`
-          : '✓ Wi-Fi同期完了（変更なし・最新状態です）';
-        showToast(msg, 3500);
+        showToast(_formatWifiSyncDoneToast(res, quickSum, false), 3600);
         return;
       }
       if (res.syncMode === 'loome_mount' && mState.localDb && mState.photos.length > 0) {
@@ -11499,11 +12675,7 @@ else if (typeof exports === 'object'){
       const opened = await _activateAndroidNativeLockerDb();
       if (opened) {
         if (res.syncMode === 'wifi_delta' || res.syncMode === 'wifi_full' || res.syncMode === 'wifi_noop') {
-          const pushed = Number(res.pushedCount || 0);
-          const msg = pushed > 0
-            ? `✓ Wi-Fi同期完了！選別 ${pushed}件をPCへ送信し、最新DBを反映しました`
-            : '✓ PCからWi-Fiで最新ロッカーへ高速同期しました';
-          showToast(msg, 4000);
+          showToast(_formatWifiSyncDoneToast(res, quickSum, res.syncMode !== 'wifi_noop'), 4000);
         } else if (res.syncMode !== 'loome_mount') {
           showToast('✓ USBから専用ロッカーへ高速同期しました', 3500);
         }
