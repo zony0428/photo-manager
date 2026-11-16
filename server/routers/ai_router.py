@@ -145,6 +145,8 @@ def api_ai_tag_color_photos(req: AITagColorBatchRequest):
         photo = get_photo_by_id(pid)
         if not photo:
             continue
+        if str(photo.get("file_name") or "").lower().startswith("thmod_"):
+            continue
         thumb = db_get_thumbnail(pid)
         thumb_bytes = thumb["data"] if thumb else None
         if not thumb_bytes:

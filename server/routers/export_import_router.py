@@ -6,7 +6,7 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -14,8 +14,10 @@ from pydantic import BaseModel
 from ..database import get_photo_by_id
 from ..exporter import (
     DEFAULT_TAKEOUT_DIR,
+    detect_photo_privacy_masks,
     open_folder_in_windows_explorer,
     pick_folder_dialog,
+    pick_watermark_image_dialog,
     run_contact_sheet_export,
     run_smart_export,
 )
@@ -243,6 +245,22 @@ class SmartExportRequest(BaseModel):
     export_xmp_sidecar: bool = False
     export_raw_original: bool = False
     open_folder_after: bool = True
+    art_preset: Optional[str] = None
+    seq_offset: int = 0
+    privacy_masks: Optional[Dict[str, Any]] = None
+    watermark: Optional[Dict[str, Any]] = None
+    print_frame: Optional[Dict[str, Any]] = None
+
+
+class DetectPrivacyRequest(BaseModel):
+    photo_id: int
+    apply_adjustments: bool = True
+    detect_plates: bool = True
+    detect_faces: bool = True
+
+
+class PickWatermarkImageRequest(BaseModel):
+    initial_path: Optional[str] = None
 
 
 class ContactSheetExportRequest(BaseModel):
@@ -317,3 +335,24 @@ def api_open_export_folder(req: OpenFolderRequest):
     p = Path(req.folder_path)
     ok = open_folder_in_windows_explorer(p)
     return {"status": "ok" if ok else "error"}
+
+
+@router.post("/api/export/detect-privacy")
+def api_detect_privacy_masks(req: DetectPrivacyRequest):
+    """対象写真のナンバープレート4頂点および人物顔をローカルONNX推論で自動検出して提案する"""
+    res = detect_photo_privacy_masks(
+        photo_id=req.photo_id,
+        apply_adjustments=req.apply_adjustments,
+        detect_plates=req.detect_plates,
+        detect_faces=req.detect_faces,
+    )
+    if res.get("status") == "error":
+        raise HTTPException(status_code=400, detail=res.get("message") or "自動検出に失敗しました")
+    return _fast_json(res)
+
+
+@router.post("/api/export/pick-watermark-image")
+def api_pick_watermark_image(req: Optional[PickWatermarkImageRequest] = None):
+    """ウォーターマーク用のローカル透過PNG/WebPロゴ画像をファイル選択ダイアログで取得する"""
+    init_path = req.initial_path if req else None
+    return _fast_json(pick_watermark_image_dialog(init_path))

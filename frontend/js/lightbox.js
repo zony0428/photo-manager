@@ -1994,6 +1994,11 @@ function initLightboxEvents() {
     if (e.button === 3 && isLightboxVisible()) {
       e.preventDefault();
       e.stopPropagation();
+      const afModal = document.getElementById('artFramerModal');
+      if (afModal && afModal.style.display !== 'none' && typeof window.closeArtFramerModal === 'function') {
+        window.closeArtFramerModal(false);
+        return;
+      }
       const adjustModal = document.getElementById('imageAdjustModal');
       if (adjustModal && adjustModal.style.display !== 'none' && typeof window.closeImageAdjustModal === 'function') {
         window.closeImageAdjustModal();
@@ -2010,6 +2015,14 @@ function initLightboxEvents() {
   }, true);
   window.addEventListener('popstate', () => {
     if (isLightboxVisible()) {
+      const afModal = document.getElementById('artFramerModal');
+      if (afModal && afModal.style.display !== 'none' && typeof window.closeArtFramerModal === 'function') {
+        window.closeArtFramerModal(false);
+        try {
+          window.history.pushState({ pmLightbox: true }, '');
+        } catch (err) {}
+        return;
+      }
       const adjustModal = document.getElementById('imageAdjustModal');
       if (adjustModal && adjustModal.style.display !== 'none' && typeof window.closeImageAdjustModal === 'function') {
         window.closeImageAdjustModal();

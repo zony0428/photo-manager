@@ -20,6 +20,12 @@ logger = logging.getLogger(__name__)
 from PIL import Image, ImageOps
 
 from .database import get_photo_by_id, get_thumbnails_batch
+from .export_decorator import (
+    apply_print_frame_pil,
+    apply_watermark_pil,
+    resize_photo_for_target_output,
+)
+from .privacy_mask import apply_privacy_masks_pil
 from .raw_loader import extract_raw_full_preview, is_raw_file
 from .scanner import apply_photo_adjustments_pil, ensure_thumbnail, resolve_portable_path
 from .sidecar import write_xmp_sidecar_for_photo
@@ -147,6 +153,32 @@ def filter_exif_data(
                 else:
                     # DB側で位置情報が削除・未設定の場合はExif側のGPSもクリアしてDB状態に一致させる
                     _clear_gps_from_exif(exif)
+
+            # (c) 撮影日時・サブ秒・カメラ機種のDB補完同期（RAWプレビュー欠落時や日時シフト時のスタック整合）
+            db_dt = photo.get("date_taken")
+            if db_dt:
+                exif_dt_str = str(db_dt).strip().replace("-", ":")
+                if len(exif_dt_str) >= 19:
+                    exif_dt_str = exif_dt_str[:19]
+                    try:
+                        exif_ifd_dt = exif.get_ifd(0x8769)
+                        if isinstance(exif_ifd_dt, dict):
+                            has_shifted_dt = bool(photo.get("original_date_taken"))
+                            if has_shifted_dt or not exif_ifd_dt.get(0x9003):
+                                exif_ifd_dt[0x9003] = exif_dt_str
+                                exif[0x0132] = exif_dt_str
+                            subsec_val = photo.get("subsec_time")
+                            if subsec_val and not exif_ifd_dt.get(0x9291):
+                                exif_ifd_dt[0x9291] = str(subsec_val).strip()
+                            exif[0x8769] = exif_ifd_dt
+                    except (KeyError, AttributeError, ValueError) as e:
+                        logger.debug(f"Exif撮影日時補完スキップ: {e}")
+
+            if not remove_camera:
+                db_cam = photo.get("camera_model")
+                if db_cam and str(db_cam).strip() and str(db_cam).strip() != "不明":
+                    if not exif.get(0x0110):
+                        exif[0x0110] = str(db_cam).strip()
 
         if not exif and not (sync_db_exif and photo is not None):
             return None
@@ -367,37 +399,34 @@ def export_single_photo(
                 saturation=photo.get("saturation") or 0,
             )
 
-        # 3. リサイズの適用
-        resize_mode = opts.get("resize_mode", "original")
-        target_long_edge = None
+        # 3. ターゲット解像度（for_x / for_insta / full_size または長辺指定）に応じた外寸逆算リサイズ
+        frame_cfg = opts.get("print_frame") if isinstance(opts.get("print_frame"), dict) else None
+        wm_cfg = opts.get("watermark") if isinstance(opts.get("watermark"), dict) else None
+        mask_cfg = opts.get("privacy_masks") if isinstance(opts.get("privacy_masks"), dict) else None
 
-        if resize_mode == "3840":
-            target_long_edge = 3840
-        elif resize_mode == "2048":
-            target_long_edge = 2048
-        elif resize_mode == "1920":
-            target_long_edge = 1920
-        elif resize_mode == "1280":
-            target_long_edge = 1280
-        elif resize_mode == "custom":
-            try:
-                target_long_edge = int(opts.get("custom_long_edge") or 0)
-            except Exception as e:
-                target_long_edge = None
+        img, fixed_canvas_size = resize_photo_for_target_output(img, opts, frame_cfg=frame_cfg)
 
-        if target_long_edge and target_long_edge > 0:
-            cur_w, cur_h = img.size
-            current_long_edge = max(cur_w, cur_h)
-            if current_long_edge > target_long_edge:
-                if cur_w >= cur_h:
-                    new_w = target_long_edge
-                    new_h = max(1, round(cur_h * (target_long_edge / cur_w)))
-                else:
-                    new_h = target_long_edge
-                    new_w = max(1, round(cur_w * (target_long_edge / cur_h)))
-                img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+        # 3.5 プライバシーマスク（ナンバー4頂点・顔モヤ）→ ウォーターマーク → プリント枠・キャプションの順に合成
+        has_masks = bool(mask_cfg and mask_cfg.get("enabled", True) and (mask_cfg.get("plates") or mask_cfg.get("faces")))
+        has_wm = bool(wm_cfg and wm_cfg.get("enabled"))
+        has_frame = bool(frame_cfg and frame_cfg.get("enabled"))
 
-        # 4. ExifのDB同期（位置情報GPS・回転向き）および選択的消去
+        if has_masks:
+            img = apply_privacy_masks_pil(img, mask_cfg)
+        if has_wm:
+            img = apply_watermark_pil(img, wm_cfg)
+        if has_frame:
+            img = apply_print_frame_pil(
+                img,
+                photo=photo,
+                frame_cfg=frame_cfg,
+                orig_exif_bytes=orig_exif,
+                fixed_canvas_size=fixed_canvas_size,
+            )
+
+        pixels_baked = bool(apply_adjustments or has_masks or has_wm or has_frame)
+
+        # 4. ExifのDB同期（位置情報GPS・回転向き・最終キャンバス寸法）および選択的消去
         filtered_exif = filter_exif_data(
             img,
             remove_gps=opts.get("exif_remove_gps", False),
@@ -407,7 +436,7 @@ def export_single_photo(
             remove_all=opts.get("exif_remove_all", False),
             orig_exif_bytes=orig_exif,
             photo=photo,
-            apply_adjustments=apply_adjustments,
+            apply_adjustments=pixels_baked,
             sync_db_exif=opts.get("exif_sync_db", True),
         )
 
@@ -434,11 +463,14 @@ def export_single_photo(
         fmt = opts.get("format", "jpeg").lower()
         ext = ".webp" if fmt == "webp" else ".jpg"
 
-        seq_num = index + 1
+        seq_offset = max(0, int(opts.get("seq_offset") or 0))
+        seq_num = seq_offset + index + 1
         prefix = (opts.get("custom_prefix") or opts.get("prefix") or "Photo").strip()
         prefix = re.sub(r'[\\/*?:"<>|]', '_', prefix)
 
-        if naming_rule == "date_original":
+        if naming_rule in ("thmod_original", "mod_original"):
+            base_name = orig_stem if orig_stem.lower().startswith("thmod_") else f"thmod_{orig_stem}"
+        elif naming_rule == "date_original":
             base_name = f"{date_str}_{orig_stem}"
         elif naming_rule == "date_seq":
             base_name = f"{date_str[:8]}_{seq_num:03d}"
@@ -634,6 +666,129 @@ if ($res -eq [System.Windows.Forms.DialogResult]::OK) {
     except Exception as e:
         print(f"[WARN] フォルダ選択ダイアログ呼び出し失敗: {e}")
         return None
+
+
+def pick_watermark_image_dialog(initial_path: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Windowsの標準ファイル選択ダイアログを表示し、ウォーターマーク用のロゴ画像 (PNG / WebP / JPEG) を選択する。
+    キャンバスプレビュー用の軽量PNG Data URIもあわせて返す。
+    """
+    import subprocess
+
+    init_dir = str(PROJECT_ROOT)
+    if initial_path and str(initial_path).strip():
+        cand = Path(str(initial_path).strip())
+        if cand.is_file():
+            init_dir = str(cand.parent.resolve())
+        elif cand.is_dir():
+            init_dir = str(cand.resolve())
+
+    ps_script = """
+[System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms") | Out-Null
+$dialog = New-Object System.Windows.Forms.OpenFileDialog
+$dialog.Title = "ウォーターマーク用のロゴ画像を選択してください"
+$dialog.Filter = "画像ファイル (*.png;*.webp;*.jpg;*.jpeg)|*.png;*.webp;*.jpg;*.jpeg"
+if ($env:PM_DIALOG_INIT_DIR -and (Test-Path -LiteralPath $env:PM_DIALOG_INIT_DIR)) {
+    $dialog.InitialDirectory = $env:PM_DIALOG_INIT_DIR
+}
+$res = $dialog.ShowDialog()
+if ($res -eq [System.Windows.Forms.DialogResult]::OK) {
+    Write-Output $dialog.FileName
+}
+"""
+    try:
+        creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+        env = os.environ.copy()
+        env["PM_DIALOG_INIT_DIR"] = init_dir
+
+        proc = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_script],
+            capture_output=True,
+            text=True,
+            env=env,
+            creationflags=creationflags,
+            timeout=60,
+        )
+        selected = proc.stdout.strip()
+        if not selected:
+            return {"selected_path": None, "preview_data_url": None, "file_name": None}
+
+        fpath = Path(selected)
+        if not fpath.is_file() or fpath.suffix.lower() not in (".png", ".webp", ".jpg", ".jpeg"):
+            return {"selected_path": None, "preview_data_url": None, "file_name": None}
+        if fpath.stat().st_size > 15 * 1024 * 1024:
+            return {"selected_path": None, "preview_data_url": None, "file_name": None, "error": "15MB以下の画像を選択してください"}
+
+        logo_img = Image.open(fpath).convert("RGBA")
+        lw, lh = logo_img.size
+        max_prev = 360
+        if max(lw, lh) > max_prev:
+            sc = max_prev / float(max(lw, lh))
+            logo_img = logo_img.resize((max(1, round(lw * sc)), max(1, round(lh * sc))), Image.Resampling.LANCZOS)
+
+        buf = io.BytesIO()
+        logo_img.save(buf, format="PNG", optimize=True)
+        b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+        return {
+            "selected_path": str(fpath.resolve()),
+            "file_name": fpath.name,
+            "preview_data_url": f"data:image/png;base64,{b64}",
+        }
+    except Exception as e:
+        logger.warning(f"ウォーターマーク画像選択ダイアログ失敗: {e}")
+        return {"selected_path": None, "preview_data_url": None, "file_name": None}
+
+
+def detect_photo_privacy_masks(
+    photo_id: int,
+    apply_adjustments: bool = True,
+    detect_plates: bool = True,
+    detect_faces: bool = True,
+) -> Dict[str, Any]:
+    """
+    指定された写真の調整後画像に対してローカルONNXモデルを実行し、
+    ナンバープレート4頂点および顔モヤスタンプ候補の正規化座標を返す。
+    """
+    from .ai.privacy_detector import get_privacy_detector
+
+    photo = get_photo_by_id(int(photo_id))
+    if not photo:
+        return {"status": "error", "message": "対象の写真が見つかりません"}
+
+    img, _ = load_photo_pil_image(photo)
+    if img is None:
+        return {"status": "error", "message": "写真ファイルにアクセスできません（未接続またはリンク消失）"}
+
+    if apply_adjustments:
+        crop_box = None
+        if photo.get("crop_w") and photo.get("crop_h"):
+            crop_box = (
+                photo.get("crop_x") or 0.0,
+                photo.get("crop_y") or 0.0,
+                photo.get("crop_w"),
+                photo.get("crop_h"),
+            )
+        img = apply_photo_adjustments_pil(
+            img,
+            rotation=photo.get("rotation") or 0,
+            fine_angle=photo.get("fine_angle") or 0.0,
+            crop_box=crop_box,
+            brightness=photo.get("brightness") or 0,
+            contrast=photo.get("contrast") or 0,
+            saturation=photo.get("saturation") or 0,
+        )
+
+    detector = get_privacy_detector()
+    det_res = detector.detect_all(img, detect_plates=detect_plates, detect_faces=detect_faces)
+    return {
+        "status": "ok",
+        "photo_id": int(photo_id),
+        "width": img.width,
+        "height": img.height,
+        "plates": det_res["plates"],
+        "faces": det_res["faces"],
+        "models_ready": det_res["models_ready"],
+    }
 
 
 def _format_exif_summary(p: Dict[str, Any]) -> str:

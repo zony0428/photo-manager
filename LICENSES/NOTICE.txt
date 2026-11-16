@@ -106,7 +106,21 @@
   - ライセンス: MIT License
   - ファイル: LICENSE.onnxruntime
   - URL: https://onnxruntime.ai/
-  - 備考: AI自動タグ付け機能の推論エンジン（CPU最適化・完全ローカル動作）に使用。
+  - 備考: AI自動タグ付けおよびプライバシーマスク自動検出（CPU最適化・完全ローカル動作）に使用。
+
+■ YuNet (OpenCV Zoo Face Detection ONNX Model)
+  - 著作権: Copyright (c) 2020 Shiqi Yu / Shenzhen Institute of Artificial Intelligence and Robotics for Society
+  - ライセンス: MIT License
+  - ファイル: LICENSE.YuNet
+  - URL: https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet
+  - 備考: Art Framer プライバシーマスクにおける人物顔のローカル自動検出提案に使用。
+
+■ LPD-YuNet (OpenCV Zoo License Plate Detection ONNX Model)
+  - 著作権: Copyright (c) OpenCV Zoo Contributors
+  - ライセンス: Apache License 2.0
+  - ファイル: LICENSE.LPD_YuNet
+  - URL: https://github.com/opencv/opencv_zoo/tree/main/models/license_plate_detection_yunet
+  - 備考: Art Framer プライバシーマスクにおける車両ナンバープレート4頂点のローカル自動検出提案に使用。
 
 ■ sql.js 1.10.3
   - 著作権: Copyright (c) Ophir LOJKINE and sql.js contributors

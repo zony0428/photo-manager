@@ -713,6 +713,16 @@ function showSingleInspector(photo) {
       }
     };
   }
+  const inspectorArtFramerBtn = document.getElementById('inspectorArtFramerBtn');
+  if (inspectorArtFramerBtn) {
+    inspectorArtFramerBtn.style.display = photo.is_unlinked ? 'none' : 'inline-flex';
+    inspectorArtFramerBtn.onclick = (e) => {
+      e.stopPropagation();
+      if (typeof window.openArtFramerModal === 'function') {
+        window.openArtFramerModal([photo.id], 'for_x');
+      }
+    };
+  }
 
   // storage内写真のみファイル名変更ボタンを表示
   const renameExifBtn = document.getElementById('inspectorRenameExifBtn');
@@ -958,6 +968,14 @@ function showSingleInspector(photo) {
               e.stopPropagation();
               if (typeof window.openSmartTakeoutModal === 'function') {
                 window.openSmartTakeoutModal([sp.id]);
+              }
+            };
+          }
+          if (inspectorArtFramerBtn) {
+            inspectorArtFramerBtn.onclick = (e) => {
+              e.stopPropagation();
+              if (typeof window.openArtFramerModal === 'function') {
+                window.openArtFramerModal([sp.id], 'for_x');
               }
             };
           }

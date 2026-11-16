@@ -98,6 +98,7 @@ body.selection-active .card-select-checkbox {
   background: rgba(var(--accent-rgb, 225, 77, 42), 0.12);
   color: #e14d2a;
   font-weight: 600;
+  z-index: 30;
 }
 
 .menu-item-content {
@@ -944,4 +945,128 @@ body.selection-active .card-select-checkbox {
   background: rgba(255, 255, 255, 0.03);
   border-bottom-color: rgba(255, 255, 255, 0.06);
 }
+
+/* ==========================================================================
+   テイクアウト ＞ Art Framer インライン3連プリセットカード (メニュー重なりゼロ設計)
+   ========================================================================== */
+#contextImportSubmenu {
+  width: 284px;
+}
+
+.af-context-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 7px 8px;
+  margin-bottom: 6px;
+  border-radius: 4px;
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.10);
+  border: 1px solid rgba(var(--accent-rgb, 225, 77, 42), 0.36);
+}
+
+.af-context-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  color: var(--accent-primary, #e14d2a);
+}
+
+.af-context-card-titles {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.af-context-card-name {
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: var(--accent-primary, #e14d2a);
+}
+
+.af-context-card-desc {
+  font-size: 0.67rem;
+  color: #6b7280;
+  white-space: nowrap;
+}
+
+.af-context-preset-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.af-context-preset-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 5px 4px;
+  border-radius: 4px;
+  border: 1px solid rgba(42, 41, 38, 0.18);
+  background: rgba(255, 255, 255, 0.88);
+  color: #1c1917;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease, transform 0.1s ease;
+}
+
+.af-context-preset-btn:hover {
+  background: var(--accent-primary, #e14d2a);
+  border-color: var(--accent-primary, #e14d2a);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.af-cp-title {
+  font-size: 0.74rem;
+  font-weight: 700;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.af-cp-sub {
+  font-size: 0.64rem;
+  color: #6b7280;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.af-context-preset-btn:hover .af-cp-sub {
+  color: rgba(255, 255, 255, 0.88);
+}
+
+[data-theme="sumi"] .af-context-card {
+  background: rgba(var(--accent-rgb, 225, 77, 42), 0.14);
+  border-color: rgba(var(--accent-rgb, 225, 77, 42), 0.42);
+}
+
+[data-theme="sumi"] .af-context-card-desc {
+  color: #94a3b8;
+}
+
+[data-theme="sumi"] .af-context-preset-btn {
+  background: rgba(15, 18, 24, 0.78);
+  border-color: rgba(255, 255, 255, 0.16);
+  color: #f8fafc;
+}
+
+[data-theme="sumi"] .af-context-preset-btn:hover {
+  background: var(--accent-primary, #e14d2a);
+  border-color: var(--accent-primary, #e14d2a);
+  color: #ffffff;
+}
+
+[data-theme="sumi"] .af-cp-sub {
+  color: #94a3b8;
+}
+
+[data-theme="sumi"] .af-context-preset-btn:hover .af-cp-sub {
+  color: rgba(255, 255, 255, 0.9);
+}
+
 

@@ -129,12 +129,17 @@ goto :FAILED
 echo [ERROR] Failed to copy server/.
 goto :FAILED
 
-:: --- models/ (Full dist only, incremental /MIR) ---
+:: --- models/ (Full dist, plus lightweight models/privacy for offline diff updates) ---
 :COPY_MODELS
 if not exist "%SRC%models" goto :COPY_PYTHON
 echo        models/         -^> dist/ (incremental sync)
 robocopy "%SRC%models" "%DIST%\models" /MIR /XD __pycache__ /R:1 /W:1 /NJH /NJS /NDL /NFL /NC /NS >nul
 if %errorlevel% geq 8 goto :ERR_MODELS
+if exist "%SRC%models\privacy" (
+    echo        models/privacy/ -^> dist_update/ (lightweight offline privacy ONNX)
+    robocopy "%SRC%models\privacy" "%DIST_UPD%\models\privacy" /MIR /XD __pycache__ /R:1 /W:1 /NJH /NJS /NDL /NFL /NC /NS >nul
+    if %errorlevel% geq 8 goto :ERR_MODELS
+)
 
 :: Restore tags_embeddings.json from server/ai if missing in models/clip
 if not exist "%DIST%\models\clip\tags_embeddings.json" (

@@ -12,6 +12,11 @@ from .connection import get_connection
 from .photos import _build_folder_missing_filter, _directory_filter_sql, _strip_vsn_prefix_raw, invalidate_fast_cache
 
 
+def _is_thmod_derivative(file_name: Optional[str]) -> bool:
+    """Art Framer 等で出力された thmod_ 接頭辞付きの加工派生ファイルか判定する"""
+    return bool(file_name and str(file_name).lower().startswith("thmod_"))
+
+
 def _sync_tags_across_groups(cursor: Any, member_groups: List[List[int]]) -> int:
     """
     同一スタック（連写・ブラケット・重複）または同一フォルダRAW+JPEGペアとして編成された
@@ -317,8 +322,15 @@ def recalculate_stacks_for_directories(
                         rep["has_pair"] = False
                         representative_list.append(rep)
 
-                # 代表アイテムを時系列順にソート
-                representative_list.sort(key=lambda p: (p.get("date_taken") or "", p.get("subsec_time") or "", p["file_name"]))
+                # 代表アイテムを時系列順にソート（同一秒内ではオリジナルを先、thmod_ 加工派生を後に配置）
+                representative_list.sort(
+                    key=lambda p: (
+                        p.get("date_taken") or "",
+                        p.get("subsec_time") or "",
+                        1 if _is_thmod_derivative(p.get("file_name")) else 0,
+                        p["file_name"],
+                    )
+                )
 
                 # datetime.strptime の結果を事前に1回だけ計算してキャッシュ
                 for p in representative_list:
@@ -359,9 +371,11 @@ def recalculate_stacks_for_directories(
 
                         time_diff = abs((t2 - t1).total_seconds())
                         total_diff = abs((t2 - t_start).total_seconds())
+                        is_curr_thmod = _is_thmod_derivative(curr.get("file_name"))
+                        non_thmod_len = sum(1 for g in group if not _is_thmod_derivative(g.get("file_name")))
 
-                        # 安全弁1: グループ先頭写真から5秒を超えるか、連写枚数が20枚に達したら打ち切り
-                        if total_diff > 5.0 or len(group) >= 20:
+                        # 安全弁1: グループ先頭写真から5秒を超えるか、元コマ数が20枚（全体ハード上限40枚）に達したら打ち切り
+                        if total_diff > 5.0 or len(group) >= 40 or (non_thmod_len >= 20 and not is_curr_thmod):
                             break
 
                         # カメラ機種が異なる場合は別カメラ撮影のため連写・ブラケット化しない
@@ -371,8 +385,8 @@ def recalculate_stacks_for_directories(
 
                         bias_diff = abs((curr.get("exposure_bias") or 0.0) - (prev.get("exposure_bias") or 0.0))
 
-                        # ブラケット候補: 2.5秒以内で露出差がある（最大7枚まで）
-                        if time_diff <= 2.5 and bias_diff > 0.1 and len(group) < 7:
+                        # ブラケット候補: 2.5秒以内で露出差がある（最大7枚まで、thmod_派生は枠外で合流可）
+                        if time_diff <= 2.5 and bias_diff > 0.1 and (non_thmod_len < 7 or is_curr_thmod):
                             group.append(curr)
                             j += 1
                             continue
@@ -405,17 +419,25 @@ def recalculate_stacks_for_directories(
                             stack_type = "bracket" if is_bracket else "burst"
 
                             # 代表写真の選定: 評価（優=2 > 良=1 > 可=0 > 棄=-1）が最も高いコマを最優先とし、
-                            # 同評価の場合はブラケットなら±0に最も近いもの、連写なら1枚目（必ず実在する写真から選出）
+                            # 同評価の場合はオリジナル（非 thmod_）優先の上、ブラケットなら±0に最も近いもの、連写なら1枚目を選出
                             if is_bracket:
                                 best_rep = min(
                                     online_reps,
-                                    key=lambda p: (-int(p.get("rating") or 0), abs(p.get("exposure_bias") or 0.0)),
+                                    key=lambda p: (
+                                        -int(p.get("rating") or 0),
+                                        1 if _is_thmod_derivative(p.get("file_name")) else 0,
+                                        abs(p.get("exposure_bias") or 0.0),
+                                    ),
                                 )
                                 primary_id = best_rep["id"]
                             else:
                                 best_rep = max(
                                     enumerate(online_reps),
-                                    key=lambda kv: (int(kv[1].get("rating") or 0), -kv[0]),
+                                    key=lambda kv: (
+                                        int(kv[1].get("rating") or 0),
+                                        0 if _is_thmod_derivative(kv[1].get("file_name")) else 1,
+                                        -kv[0],
+                                    ),
                                 )[1]
                                 primary_id = best_rep["id"]
 

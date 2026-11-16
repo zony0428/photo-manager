@@ -147,7 +147,11 @@ class AITaggingWorker:
                     SELECT p.id, p.file_name, p.file_path, p.volume_serial, p.paired_raw_path
                     FROM photos p
                 """
-                conditions = ["IFNULL(p.is_unlinked, 0) = 0"]
+                thmod_excl_sql = "LOWER(COALESCE(p.file_name, '')) NOT LIKE 'thmod\\_%' ESCAPE '\\'"
+                conditions = [
+                    "IFNULL(p.is_unlinked, 0) = 0",
+                    thmod_excl_sql,
+                ]
                 params = []
 
                 effective_force_retag = True if color_only else force_retag
@@ -157,7 +161,11 @@ class AITaggingWorker:
                     for i in range(0, len(photo_ids), id_chunk_size):
                         id_chunk = photo_ids[i : i + id_chunk_size]
                         placeholders = ",".join(["?"] * len(id_chunk))
-                        chunk_conds = [f"p.id IN ({placeholders})"]
+                        chunk_conds = [
+                            "IFNULL(p.is_unlinked, 0) = 0",
+                            thmod_excl_sql,
+                            f"p.id IN ({placeholders})",
+                        ]
                         if not effective_force_retag:
                             chunk_conds.append("p.id NOT IN (SELECT photo_id FROM photo_tags WHERE source = 'ai')")
                         chunk_query = query + " WHERE " + " AND ".join(chunk_conds) + " ORDER BY p.id ASC"

@@ -226,6 +226,9 @@ def test_lan_whitelist_blocks_admin_apis():
         ("POST", "/api/media/check"),
         ("GET", "/api/media/events"),
         ("POST", "/api/photos/check-external-updates"),
+        ("POST", "/api/export/smart"),
+        ("POST", "/api/export/detect-privacy"),
+        ("POST", "/api/export/pick-watermark-image"),
         ("GET", "/index.html"),
     ]
     for method, path in blocked:

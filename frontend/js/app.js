@@ -3966,9 +3966,13 @@ function setupEventListeners() {
       return;
     }
 
-    // スマートテイクアウトモーダル表示中
+    // スマートテイクアウト / Art Framer モーダル表示中
     const smartTakeoutEl = document.getElementById('smartTakeoutModal');
     if (smartTakeoutEl && smartTakeoutEl.style.display !== 'none') {
+      return;
+    }
+    const artFramerEl = document.getElementById('artFramerModal');
+    if (artFramerEl && artFramerEl.style.display !== 'none') {
       return;
     }
 
