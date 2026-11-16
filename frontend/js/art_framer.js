@@ -31,6 +31,9 @@
     detectPlates: true,
     detectFaces: true,
     plateFeather: 0.45,
+    faceStyle: 'frosted',
+    faceRadius: 0.052,
+    faceStrength: 0.92,
     frame: {
       enabled: true,
       layout: 'classic',
@@ -139,6 +142,18 @@
       if (typeof parsed.plateFeather === 'number' && !isNaN(parsed.plateFeather)) {
         cfg.plateFeather = Math.max(0, Math.min(1, parsed.plateFeather));
       }
+      if (typeof parsed.faceStyle === 'string' && parsed.faceStyle) {
+        cfg.faceStyle = parsed.faceStyle;
+      }
+      if (typeof parsed.faceRadius === 'number' && !isNaN(parsed.faceRadius)) {
+        cfg.faceRadius = Math.max(0.015, Math.min(0.35, parsed.faceRadius));
+      }
+      if (typeof parsed.faceStrength === 'number' && !isNaN(parsed.faceStrength)) {
+        cfg.faceStrength = Math.max(0.40, Math.min(1.0, parsed.faceStrength));
+      }
+      if (!parsed._faceHazeV2Migrated) {
+        if (cfg.faceStrength < 0.92) cfg.faceStrength = 0.92;
+      }
       if (parsed.frame && typeof parsed.frame === 'object') {
         Object.assign(cfg.frame, parsed.frame);
       }
@@ -163,10 +178,14 @@
     try {
       const payload = {
         _thmodNamingMigrated: true,
+        _faceHazeV2Migrated: true,
         autoDetectOnOpen: cfg.autoDetectOnOpen,
         detectPlates: cfg.detectPlates,
         detectFaces: cfg.detectFaces,
         plateFeather: cfg.plateFeather,
+        faceStyle: cfg.faceStyle,
+        faceRadius: cfg.faceRadius,
+        faceStrength: cfg.faceStrength,
         frame: cfg.frame,
         watermark: cfg.watermark,
         output: cfg.output,
@@ -254,7 +273,19 @@
     const pfPct = Math.round((cfg.plateFeather ?? 0.45) * 100);
     setVal('afPlateFeatherSlider', pfPct);
     setTxt('afPlateFeatherVal', `${pfPct}%`);
-    if (editor) editor.defaultPlateFeather = cfg.plateFeather ?? 0.45;
+    setVal('afHazeStyleSelect', cfg.faceStyle || 'frosted');
+    const frPct = ((cfg.faceRadius ?? 0.052) * 100).toFixed(1);
+    setVal('afStampRadiusSlider', frPct);
+    setTxt('afStampRadiusVal', `${frPct}%`);
+    const fsPct = Math.round((cfg.faceStrength ?? 0.92) * 100);
+    setVal('afStampStrengthSlider', fsPct);
+    setTxt('afStampStrengthVal', `${fsPct}%`);
+    if (editor) {
+      editor.defaultPlateFeather = cfg.plateFeather ?? 0.45;
+      editor.defaultHazeStyle = cfg.faceStyle || 'frosted';
+      editor.defaultStampRadius = cfg.faceRadius ?? 0.052;
+      editor.defaultStampStrength = cfg.faceStrength ?? 0.92;
+    }
 
     // Step 2: プリント枠
     setChk('afFrameEnableCheck', cfg.frame.enabled);
@@ -504,6 +535,20 @@
       const btn = document.createElement('button');
       btn.type = 'button';
       const isAct = Boolean(sel && sel.type === 'face' && sel.id === fc.id);
+      if (isAct) {
+        const hzSel = document.getElementById('afHazeStyleSelect');
+        if (hzSel && fc.style) hzSel.value = fc.style;
+        const rPct = ((fc.r ?? cfg.faceRadius ?? 0.052) * 100).toFixed(1);
+        const rSl = document.getElementById('afStampRadiusSlider');
+        const rLb = document.getElementById('afStampRadiusVal');
+        if (rSl) rSl.value = String(rPct);
+        if (rLb) rLb.textContent = `${rPct}%`;
+        const sPct = Math.round((fc.strength ?? cfg.faceStrength ?? 0.92) * 100);
+        const sSl = document.getElementById('afStampStrengthSlider');
+        const sLb = document.getElementById('afStampStrengthVal');
+        if (sSl) sSl.value = String(sPct);
+        if (sLb) sLb.textContent = `${sPct}%`;
+      }
       btn.className = `af-mask-pill is-face${isAct ? ' active' : ''}`;
       btn.textContent = `顔モヤ #${i + 1} 拡大`;
       btn.addEventListener('click', () => {
@@ -547,7 +592,11 @@
         ...p,
         feather: cfg.plateFeather ?? 0.45,
       }));
-      const fList = data.faces || [];
+      const fList = (data.faces || []).map((f) => ({
+        ...f,
+        style: cfg.faceStyle || f.style || 'frosted',
+        strength: cfg.faceStrength ?? f.strength ?? 0.92,
+      }));
       editor.setMasks(pList, fList);
 
       if (statusEl) {
@@ -997,19 +1046,29 @@
     });
 
     document.getElementById('afHazeStyleSelect')?.addEventListener('change', (e) => {
-      editor.applyFaceStyle({ style: e.target.value });
+      cfg.faceStyle = e.target.value;
+      editor.applyFaceStyle({ style: cfg.faceStyle });
+      saveSettings();
     });
     document.getElementById('afStampRadiusSlider')?.addEventListener('input', (e) => {
       const pct = parseFloat(e.target.value);
+      cfg.faceRadius = Math.max(0.015, Math.min(0.35, (isNaN(pct) ? 5.2 : pct) / 100));
       const lbl = document.getElementById('afStampRadiusVal');
-      if (lbl) lbl.textContent = `${pct.toFixed(1)}%`;
-      editor.applyFaceStyle({ radius: pct / 100 });
+      if (lbl) lbl.textContent = `${(cfg.faceRadius * 100).toFixed(1)}%`;
+      editor.applyFaceStyle({ radius: cfg.faceRadius });
+    });
+    document.getElementById('afStampRadiusSlider')?.addEventListener('change', () => {
+      saveSettings();
     });
     document.getElementById('afStampStrengthSlider')?.addEventListener('input', (e) => {
       const pct = parseInt(e.target.value, 10);
+      cfg.faceStrength = Math.max(0.40, Math.min(1.0, (isNaN(pct) ? 92 : pct) / 100));
       const lbl = document.getElementById('afStampStrengthVal');
-      if (lbl) lbl.textContent = `${pct}%`;
-      editor.applyFaceStyle({ strength: pct / 100 });
+      if (lbl) lbl.textContent = `${Math.round(cfg.faceStrength * 100)}%`;
+      editor.applyFaceStyle({ strength: cfg.faceStrength });
+    });
+    document.getElementById('afStampStrengthSlider')?.addEventListener('change', () => {
+      saveSettings();
     });
 
     // Step 2: プリント枠イベント

@@ -167,6 +167,52 @@ class TestArtFramerSuite(unittest.TestCase):
         # 4. 遠く離れた右下ピクセルは1ビットも変化していないこと
         np.testing.assert_array_equal(before_arr[580, 780], after_arr[580, 780])
 
+    def test_face_haze_100pct_destroys_spatial_features_against_ai_recovery(self) -> None:
+        """顔モヤ100% (および既定92%) で目・鼻・口・輪郭の低周波配置も含め完全に平坦化・不可逆消去されること"""
+        img = Image.new("RGB", (1000, 800), (80, 95, 110))
+        draw = ImageDraw.Draw(img)
+        # 中心 (500, 400)、半径 100px の範囲に強い明暗コントラストを持つ疑似顔（肌・黒い両目・白いハイライト・暗い口）を描画
+        draw.ellipse([400, 290, 600, 510], fill=(228, 192, 168), outline=(30, 20, 15), width=6)
+        draw.ellipse([435, 355, 475, 385], fill=(12, 12, 15))
+        draw.ellipse([525, 355, 565, 385], fill=(12, 12, 15))
+        draw.ellipse([452, 364, 462, 374], fill=(255, 255, 255))
+        draw.ellipse([542, 364, 552, 374], fill=(255, 255, 255))
+        draw.rectangle([492, 385, 508, 430], fill=(248, 224, 205))
+        draw.rectangle([455, 450, 545, 472], fill=(45, 18, 22))
+
+        orig_roi = np.asarray(img, dtype=np.float32)[330:480, 425:575]
+        orig_spatial_std = float(np.std(orig_roi, axis=(0, 1)).mean())
+        self.assertGreater(orig_spatial_std, 50.0)
+
+        for style in ("frosted", "milky", "smoke"):
+            masked_100 = apply_privacy_masks_pil(
+                img,
+                {
+                    "enabled": True,
+                    "faces": [{"x": 0.5, "y": 0.5, "r": 0.13, "style": style, "strength": 1.0}],
+                },
+            )
+            roi_100 = np.asarray(masked_100, dtype=np.float32)[330:480, 425:575]
+            # 100%時は微細グレイン以外の空間構造が完全に消滅 (各チャンネル空間標準偏差 3.0 未満) していること
+            spatial_std_100 = float(np.std(roi_100, axis=(0, 1)).mean())
+            self.assertLess(spatial_std_100, 3.0, f"style={style} で陰影が残存しています")
+            # 両目があった位置 (y=370, x=455) と額の位置 (y=340, x=500) のチャンネル別平均差もゼロに近いこと
+            eye_mean = roi_100[35:45, 25:40].mean(axis=(0, 1))
+            forehead_mean = roi_100[5:18, 65:85].mean(axis=(0, 1))
+            self.assertLess(float(np.max(np.abs(eye_mean - forehead_mean))), 2.5, f"style={style} で目元の暗さが残存しています")
+
+        # 既定値 (strength=0.92) でも空間コントラストが元の5%未満へ不可逆圧縮されていること
+        masked_92 = apply_privacy_masks_pil(
+            img,
+            {
+                "enabled": True,
+                "faces": [{"x": 0.5, "y": 0.5, "r": 0.13, "style": "frosted", "strength": 0.92}],
+            },
+        )
+        roi_92 = np.asarray(masked_92, dtype=np.float32)[330:480, 425:575]
+        spatial_std_92 = float(np.std(roi_92, axis=(0, 1)).mean())
+        self.assertLess(spatial_std_92, orig_spatial_std * 0.05)
+
     def test_multi_vehicle_and_hope_number_plate_detection(self) -> None:
         """複数台並び (日陰の希望ナンバー '・ ・・3' ＋ 通常4桁ナンバー) が誤検出なく両方検出・4辺スナップされること"""
         from PIL import ImageFont

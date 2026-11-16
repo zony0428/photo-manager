@@ -95,8 +95,8 @@
       this.defaultPlateColor = '#F4F6F9';
       this.defaultPlateFeather = 0.45;
       this.defaultHazeStyle = 'frosted';
-      this.defaultStampRadius = 0.048;
-      this.defaultStampStrength = 0.88;
+      this.defaultStampRadius = 0.052;
+      this.defaultStampStrength = 0.92;
 
       this.frameConfig = { enabled: true };
       this.watermarkConfig = { enabled: false };
@@ -196,7 +196,7 @@
           y: Number(f.y.toFixed(5)),
           r: Number(f.r.toFixed(5)),
           style: f.style,
-          strength: Number((f.strength ?? 0.88).toFixed(3)),
+          strength: Number((f.strength ?? 0.92).toFixed(3)),
         })),
       };
     }
@@ -376,16 +376,27 @@
 
     applyFaceStyle({ style, radius, strength }) {
       if (style) this.defaultHazeStyle = style;
-      if (radius !== undefined) this.defaultStampRadius = radius;
-      if (strength !== undefined) this.defaultStampStrength = strength;
+      if (radius !== undefined && radius !== null) {
+        this.defaultStampRadius = clamp(Number(radius), 0.012, 0.35);
+      }
+      if (strength !== undefined && strength !== null) {
+        this.defaultStampStrength = clamp(Number(strength), 0.35, 1.0);
+      }
 
       if (this.selected && this.selected.type === 'face') {
         const f = this.faces.find((x) => x.id === this.selected.id);
         if (f) {
           if (style) f.style = style;
-          if (radius !== undefined) f.r = radius;
-          if (strength !== undefined) f.strength = strength;
+          if (radius !== undefined && radius !== null) f.r = this.defaultStampRadius;
+          if (strength !== undefined && strength !== null) f.strength = this.defaultStampStrength;
         }
+      } else {
+        // 顔スタンプが個別選択されていない状態（ナンバー枠選択中または未選択）では全顔スタンプへ一括反映する
+        this.faces.forEach((f) => {
+          if (style) f.style = style;
+          if (radius !== undefined && radius !== null) f.r = this.defaultStampRadius;
+          if (strength !== undefined && strength !== null) f.strength = this.defaultStampStrength;
+        });
       }
       this._notifyChange();
       this.render();
@@ -612,40 +623,115 @@
         }
       });
 
-      // 2. 放射状フェザー減衰の顔モヤスタンプ合成
+      // 2. 不可逆ボトルネック量子化 ＋ 環境色収束 ＋ 外周拡張フェザーの顔モヤスタンプ合成
+      const sampleFaceAmbientRgb = (nx, ny, nr) => {
+        const sw = this._colorSampleOff.width;
+        const sh = this._colorSampleOff.height;
+        if (sw < 2 || sh < 2) return [180, 176, 172];
+        const rx = Math.max(1, Math.round(nr * sw * 0.65));
+        const ry = Math.max(1, Math.round(nr * sh * 0.65));
+        const x0 = clamp(Math.round(nx * sw) - rx, 0, sw - 1);
+        const y0 = clamp(Math.round(ny * sh) - ry, 0, sh - 1);
+        const x1 = clamp(Math.round(nx * sw) + rx, x0 + 1, sw);
+        const y1 = clamp(Math.round(ny * sh) + ry, y0 + 1, sh);
+        const imgData = this._colorSampleCtx.getImageData(x0, y0, x1 - x0, y1 - y0).data;
+        let sr = 0;
+        let sg = 0;
+        let sb = 0;
+        const count = Math.max(1, imgData.length / 4);
+        for (let k = 0; k < imgData.length; k += 4) {
+          sr += imgData[k];
+          sg += imgData[k + 1];
+          sb += imgData[k + 2];
+        }
+        return [sr / count, sg / count, sb / count];
+      };
+
       this.faces.forEach((face) => {
         const cx = face.x * pw;
         const cy = face.y * ph;
-        const rad = Math.max(10, face.r * pLong);
-        const box = Math.ceil(rad * 2.4);
+        const rad = Math.max(8, face.r * pLong);
+        const str = clamp(Number(face.strength ?? this.defaultStampStrength), 0.35, 1.0);
+        const tS = clamp((str - 0.35) / 0.65, 0, 1);
+
+        // ガイド円の内側は100%完全遮蔽し、フェザー減衰は外側(outerR)へ逃がして素顔の透けを防ぐ
+        const innerR = rad * (0.64 + 0.24 * tS);
+        const outerR = rad * (1.28 + 0.14 * tS);
+        const blurPx = Math.max(7, rad * (0.44 + 0.52 * tS));
+        const box = Math.max(8, Math.ceil((outerR + blurPx * 0.6 + 6) * 2));
         const sx = Math.round(cx - box * 0.5);
         const sy = Math.round(cy - box * 0.5);
+
+        // 1. 極小ボトルネック格子へ一度縮小して目鼻の空間位相を消去する
+        const cellsPerDiam = 5.2 * Math.pow(1.0 - tS, 1.38) + 1.0;
+        const cellPx = Math.max(4, (2.0 * rad) / cellsPerDiam);
+        const gw = Math.max(1, Math.round(box / cellPx));
+        const gh = Math.max(1, Math.round(box / cellPx));
+        this._mosaicOff.width = gw;
+        this._mosaicOff.height = gh;
+        this._mosaicCtx.clearRect(0, 0, gw, gh);
+        // 画像端での透明画素混入を防ぐためクランプ元領域を描画
+        const srcScaleX = origW / Math.max(1, pw);
+        const srcScaleY = origH / Math.max(1, ph);
+        const csx = clamp(sx * srcScaleX, 0, Math.max(0, origW - 2));
+        const csy = clamp(sy * srcScaleY, 0, Math.max(0, origH - 2));
+        const csw = clamp(box * srcScaleX, 2, origW - csx);
+        const csh = clamp(box * srcScaleY, 2, origH - csy);
+        this._mosaicCtx.drawImage(src, csx, csy, csw, csh, 0, 0, gw, gh);
 
         this._stampOff.width = box;
         this._stampOff.height = box;
         const sCtx = this._stampCtx;
         sCtx.clearRect(0, 0, box, box);
         sCtx.globalCompositeOperation = 'source-over';
-        sCtx.drawImage(this._blurOff, sx, sy, box, box, 0, 0, box, box);
+        sCtx.filter = `blur(${blurPx.toFixed(1)}px)`;
+        const padDraw = Math.ceil(blurPx * 1.2);
+        sCtx.drawImage(this._mosaicOff, 0, 0, gw, gh, -padDraw, -padDraw, box + padDraw * 2, box + padDraw * 2);
+        sCtx.filter = 'none';
 
-        const str = face.strength ?? 0.88;
-        if (face.style === 'milky') {
-          sCtx.fillStyle = `rgba(248, 250, 252, ${(0.45 * str).toFixed(2)})`;
-          sCtx.fillRect(0, 0, box, box);
-        } else if (face.style === 'smoke') {
-          sCtx.fillStyle = `rgba(28, 32, 40, ${(0.42 * str).toFixed(2)})`;
+        // 2. 濃さに応じて顔中心の環境平均色へフラット収束 (100%では陰影もゼロになる)
+        const [ambR, ambG, ambB] = sampleFaceAmbientRgb(face.x, face.y, face.r);
+        const ambLuma = 0.299 * ambR + 0.587 * ambG + 0.114 * ambB;
+        const frR = Math.round(ambR * 0.72 + ambLuma * 0.28);
+        const frG = Math.round(ambG * 0.72 + ambLuma * 0.28);
+        const frB = Math.round(ambB * 0.72 + ambLuma * 0.28);
+        const flatMix = Math.pow(tS, 1.55) * 0.96;
+        if (flatMix > 0.005) {
+          sCtx.fillStyle = `rgba(${frR}, ${frG}, ${frB}, ${flatMix.toFixed(3)})`;
           sCtx.fillRect(0, 0, box, box);
         }
 
+        // 3. スタイル別のベール合成
+        if (face.style === 'milky') {
+          const veilA = 0.30 + 0.62 * Math.pow(tS, 1.12);
+          sCtx.fillStyle = `rgba(247, 249, 252, ${veilA.toFixed(3)})`;
+          sCtx.fillRect(0, 0, box, box);
+        } else if (face.style === 'smoke') {
+          const veilA = 0.30 + 0.62 * Math.pow(tS, 1.12);
+          sCtx.fillStyle = `rgba(26, 30, 38, ${veilA.toFixed(3)})`;
+          sCtx.fillRect(0, 0, box, box);
+        } else {
+          const svR = clamp(Math.round(frR * 0.86 + 242 * 0.14), 0, 255);
+          const svG = clamp(Math.round(frG * 0.86 + 242 * 0.14), 0, 255);
+          const svB = clamp(Math.round(frB * 0.86 + 242 * 0.14), 0, 255);
+          const frA = 0.14 + 0.34 * tS;
+          sCtx.fillStyle = `rgba(${svR}, ${svG}, ${svB}, ${frA.toFixed(3)})`;
+          sCtx.fillRect(0, 0, box, box);
+        }
+
+        // 4. 内側コア100%完全遮蔽 ＋ 外周コサイン減衰マスク
         sCtx.globalCompositeOperation = 'destination-in';
         const half = box * 0.5;
-        const grad = sCtx.createRadialGradient(half, half, rad * 0.25, half, half, rad);
-        grad.addColorStop(0, `rgba(0, 0, 0, ${Math.min(1, str * 1.08).toFixed(2)})`);
-        grad.addColorStop(0.58, `rgba(0, 0, 0, ${(str * 0.86).toFixed(2)})`);
-        grad.addColorStop(0.85, `rgba(0, 0, 0, ${(str * 0.30).toFixed(2)})`);
+        const peakA = Math.min(1.0, 0.94 + 0.08 * tS);
+        const grad = sCtx.createRadialGradient(half, half, innerR, half, half, outerR);
+        grad.addColorStop(0, `rgba(0, 0, 0, ${peakA.toFixed(3)})`);
+        grad.addColorStop(0.25, `rgba(0, 0, 0, ${(peakA * 0.854).toFixed(3)})`);
+        grad.addColorStop(0.50, `rgba(0, 0, 0, ${(peakA * 0.500).toFixed(3)})`);
+        grad.addColorStop(0.75, `rgba(0, 0, 0, ${(peakA * 0.146).toFixed(3)})`);
         grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
         sCtx.fillStyle = grad;
         sCtx.fillRect(0, 0, box, box);
+        sCtx.globalCompositeOperation = 'source-over';
 
         mCtx.drawImage(this._stampOff, sx, sy);
       });
@@ -1448,7 +1534,7 @@
           const cxScreen = this._vp.originX + d.face.x * this._vp.pw * this._vp.scale;
           const cyScreen = this._vp.originY + d.face.y * this._vp.ph * this._vp.scale;
           const distScreen = Math.hypot(vx - cxScreen, vy - cyScreen);
-          d.face.r = clamp((distScreen / this._vp.scale) / this._vp.pLong, 0.014, 0.22);
+          d.face.r = clamp((distScreen / this._vp.scale) / this._vp.pLong, 0.014, 0.35);
           this.defaultStampRadius = d.face.r;
           this._notifyChange();
           this.render();

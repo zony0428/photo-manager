@@ -295,15 +295,15 @@ class PrivacyDetector:
             bx1, by1, bx2, by2 = boxes_np[idx]
             cx = ((bx1 + bx2) * 0.5) / w
             cy = ((by1 + by2) * 0.5) / h
-            # 顔全体が自然に隠れるよう長辺基準のスタンプ半径を少し広め (×0.66) に設定
-            radius = (max(bx2 - bx1, by2 - by1) * 0.66) / long_edge
-            radius = float(np.clip(radius, 0.016, 0.22))
+            # 顔全体と輪郭が100%遮蔽コア内へ確実に収まるようスタンプ半径を広め (×0.74) に設定
+            radius = (max(bx2 - bx1, by2 - by1) * 0.74) / long_edge
+            radius = float(np.clip(radius, 0.018, 0.35))
             results.append({
                 "x": round(float(np.clip(cx, 0.0, 1.0)), 5),
                 "y": round(float(np.clip(cy, 0.0, 1.0)), 5),
                 "r": round(radius, 5),
                 "style": "frosted",
-                "strength": 0.88,
+                "strength": 0.92,
                 "score": round(float(scores_np[idx]), 3),
             })
         return results
