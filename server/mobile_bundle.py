@@ -60,6 +60,8 @@ MOBILE_JS_REL_PATHS: List[str] = [
     "js/views/touch/touch_field_log.js",
     "js/views/touch/touch_phone_case.js",
     "js/views/touch/touch_center_dial.js",
+    "js/privacy_mask_editor.js",
+    "js/views/touch/touch_art_framer.js",
     "js/mobile.js",
 ]
 

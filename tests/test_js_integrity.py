@@ -518,19 +518,24 @@ class TestFrontendJsIntegrity(unittest.TestCase):
         self.assertIn("hasBakedAdjustments(", issues[0])
 
     def test_phone_bottom_nav_and_center_dial_wiring(self) -> None:
-        """スマホ下部ナビ3カラム構成（フィルタ / 中央丸型GPSダイヤル / ラボ）の配線整合性を確認"""
+        """スマホ下部ナビ3カラム構成（フィルタ / 中央丸型GPSダイヤル / ArtFramer）の配線整合性を確認"""
         self.assertIn("js/views/touch/touch_center_dial.js", MOBILE_JS_REL_PATHS)
+        self.assertIn("js/views/touch/touch_art_framer.js", MOBILE_JS_REL_PATHS)
+        self.assertIn("js/privacy_mask_editor.js", MOBILE_JS_REL_PATHS)
         layout_raw = (FRONTEND_DIR / "js" / "views" / "touch" / "touch_layout.js").read_text(encoding="utf-8")
         dial_raw = (FRONTEND_DIR / "js" / "views" / "touch" / "touch_center_dial.js").read_text(encoding="utf-8")
         pcase_raw = (FRONTEND_DIR / "js" / "views" / "touch" / "touch_phone_case.js").read_text(encoding="utf-8")
         morph_raw = (FRONTEND_DIR / "js" / "views" / "touch" / "morph_thumb_bar.js").read_text(encoding="utf-8")
+        mobile_html = (FRONTEND_DIR / "mobile.html").read_text(encoding="utf-8")
         touch_css = (FRONTEND_DIR / "css" / "touch-responsive.css").read_text(encoding="utf-8")
 
         self.assertIn('id="tCenterDialSlot"', layout_raw)
         self.assertIn('data-bnav="filter"', layout_raw)
-        self.assertIn('data-bnav="lab"', layout_raw)
+        self.assertIn('data-bnav="artframer"', layout_raw)
+        self.assertNotIn('data-bnav="lab"', layout_raw)
         self.assertNotIn('data-bnav="photos"', layout_raw)
         self.assertNotIn('data-bnav="uplink"', layout_raw)
+        self.assertIn('id="mOpenFieldLogFromSettingsBtn"', mobile_html)
 
         for mode_id in ("'uplink'", "'gps'", "'camera'"):
             self.assertIn(mode_id, dial_raw)
@@ -541,15 +546,15 @@ class TestFrontendJsIntegrity(unittest.TestCase):
         self.assertIn("openFieldLogScreen", dial_raw)
         self.assertIn("openCameraCapture", dial_raw)
         self.assertIn("triggerQuickDeltaUplink", dial_raw)
-        self.assertIn("openPhoneCaseModal", dial_raw)
+        self.assertNotIn("openPhoneCaseModal", dial_raw)
+        self.assertNotIn("openPhoneCaseModal", pcase_raw)
         self.assertIn("_executeActiveModeLongPress", dial_raw)
         self.assertIn("isMotherShipLinked", morph_raw)
         self.assertIn("isMotherShipLinked", dial_raw)
         self.assertIn("isMotherShipLinked", pcase_raw)
         self.assertIn("is-uplink-offline", dial_raw)
         self.assertIn("is-uplink-offline", touch_css)
-        self.assertIn("is-unlinked", pcase_raw)
-        self.assertIn("is-unlinked", touch_css)
+        self.assertNotIn("t-pcase-modal", touch_css)
         self.assertIn("triggerQuickDeltaUplink", pcase_raw)
 
 

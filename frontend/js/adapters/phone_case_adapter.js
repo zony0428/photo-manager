@@ -14,6 +14,7 @@
   const progressListeners = new Set();
   const completedListeners = new Set();
   const pendingScanResolvers = new Map();
+  const pendingPrivacyResolvers = new Map();
   let scanReqSeq = 0;
 
   function _safeParseJson(raw, fallback) {
@@ -435,17 +436,237 @@
     });
   };
 
+  global.__onTetheractPrivacyDetectCompleted = function (resObj) {
+    const parsed = _safeParseJson(resObj, { ok: false, faces: [], plates: [] });
+    const reqId = parsed && parsed.requestId ? String(parsed.requestId) : '';
+    const resolver = reqId ? pendingPrivacyResolvers.get(reqId) : null;
+    if (resolver) {
+      pendingPrivacyResolvers.delete(reqId);
+      resolver(parsed);
+    }
+  };
+
+  /**
+   * フォルダの役割モード（case: 本体収納 / working: 信号＋加工画のみ）を切り替える
+   */
+  async function setFolderMode(folderId, mode) {
+    if (
+      !isNativeAvailable() ||
+      !global.TetheractNative ||
+      typeof global.TetheractNative.phoneCaseSetFolderModeJson !== 'function'
+    ) {
+      return { ok: false, error: 'ネイティブ環境外ではフォルダモードを変更できません' };
+    }
+    try {
+      const res = _safeParseJson(
+        global.TetheractNative.phoneCaseSetFolderModeJson(String(folderId || ''), String(mode || 'case')),
+        { ok: false, folders: [] }
+      );
+      return {
+        ok: Boolean(res && res.ok),
+        folderId: String((res && res.folderId) || folderId || ''),
+        mode: String((res && res.mode) || mode || 'case'),
+        folders: Array.isArray(res && res.folders) ? res.folders : [],
+        unstoredCount: Number((res && res.unstoredCount) || 0),
+        error: res && res.error ? String(res.error) : '',
+      };
+    } catch (e) {
+      return { ok: false, error: e && e.message ? e.message : String(e) };
+    }
+  }
+
+  function _dataUrlToFile(dataUrl, fileName, mimeType, dateTaken) {
+    const raw = String(dataUrl || '');
+    const commaIdx = raw.indexOf(',');
+    const header = commaIdx >= 0 ? raw.slice(0, commaIdx) : '';
+    const b64 = commaIdx >= 0 ? raw.slice(commaIdx + 1) : raw;
+    const mimeMatch = header.match(/data:([^;]+);/i);
+    const resolvedMime = mimeType || (mimeMatch ? mimeMatch[1] : 'image/jpeg');
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i += 1) {
+      bytes[i] = bin.charCodeAt(i);
+    }
+    let lastModMs = Date.now();
+    const dtMatch = String(dateTaken || '').trim().match(/^(\d{4})[-:/](\d{2})[-:/](\d{2})(?:[T ](\d{2}):(\d{2}):(\d{2}))?/);
+    if (dtMatch) {
+      const dt = new Date(
+        Number(dtMatch[1]),
+        Number(dtMatch[2]) - 1,
+        Number(dtMatch[3]),
+        Number(dtMatch[4] || 12),
+        Number(dtMatch[5] || 0),
+        Number(dtMatch[6] || 0)
+      );
+      if (!isNaN(dt.getTime())) lastModMs = dt.getTime();
+    }
+    return new File([bytes], fileName || 'thmod_export.jpg', {
+      type: resolvedMime,
+      lastModified: lastModMs,
+    });
+  }
+
+  /**
+   * Art Framer の出力画像 (thmod_*.jpg 等) を保存・共有・母艦収納キューへ登録する
+   */
+  async function saveArtFramerOutput(params) {
+    const req = params || {};
+    if (
+      isNativeAvailable() &&
+      global.TetheractNative &&
+      typeof global.TetheractNative.phoneCaseSaveArtFramerOutputJson === 'function'
+    ) {
+      try {
+        const res = _safeParseJson(
+          global.TetheractNative.phoneCaseSaveArtFramerOutputJson(JSON.stringify(req)),
+          { ok: false }
+        );
+        return res && typeof res === 'object' ? res : { ok: false, error: 'ネイティブ保存結果の解析に失敗しました' };
+      } catch (err) {
+        return { ok: false, error: String(err) };
+      }
+    }
+
+    try {
+      const file = _dataUrlToFile(req.dataUrl, req.fileName, req.mimeType, req.dateTaken);
+      let uploadedToServer = false;
+      let serverUploadError = '';
+      if (req.isServerMode) {
+        const upRes = await transferBrowserFiles([file], {
+          commonRating: req.rating || 0,
+          commonTags: Array.isArray(req.tags) ? req.tags : [],
+          draftMap: {},
+        });
+        uploadedToServer = Boolean(upRes && upRes.ok && Number(upRes.importedCount || 0) > 0);
+        if (!upRes || !upRes.ok) {
+          serverUploadError = (upRes && upRes.error) || '';
+        }
+      }
+
+      let shareStarted = false;
+      let shareCancelled = false;
+      let needsBrowserDownload = !uploadedToServer;
+      if (req.shareImmediate && global.navigator && typeof global.navigator.share === 'function') {
+        const canShareFiles =
+          typeof global.navigator.canShare !== 'function' || global.navigator.canShare({ files: [file] });
+        if (canShareFiles) {
+          try {
+            await global.navigator.share({ files: [file], title: file.name });
+            shareStarted = true;
+            needsBrowserDownload = false;
+          } catch (shErr) {
+            if (shErr && shErr.name === 'AbortError') {
+              shareCancelled = true;
+              needsBrowserDownload = false;
+            }
+          }
+        }
+      }
+
+      return {
+        ok: true,
+        mode: 'browser',
+        fileName: file.name,
+        fileSize: file.size,
+        uploadedToServer,
+        serverUploadError,
+        shareStarted,
+        shareCancelled,
+        needsBrowserDownload,
+      };
+    } catch (err) {
+      return { ok: false, error: err && err.message ? err.message : String(err) };
+    }
+  }
+
+  /**
+   * スマホ内写真の未取得EXIF・露出設定・撮影地をネイティブ経由でオンデマンド補完する（同期）
+   */
+  function ensurePhotoExif(photoId) {
+    const pid = Number(photoId);
+    if (!pid || !global.TetheractNative || typeof global.TetheractNative.phoneCaseEnsurePhotoExifJson !== 'function') {
+      return null;
+    }
+    try {
+      const res = _safeParseJson(global.TetheractNative.phoneCaseEnsurePhotoExifJson(pid), null);
+      return res && res.ok && res.photo ? res.photo : null;
+    } catch (err) {
+      console.warn('ensurePhotoExif error:', err);
+      return null;
+    }
+  }
+
+  /**
+   * 縮小画像 DataURL から端末オンデバイス (YuNet / LPD-YuNet) で人物顔とプレート候補を非同期検出する
+   */
+  async function detectFacesFromDataUrl(dataUrl) {
+    if (!global.TetheractNative) {
+      return { ok: false, faces: [], plates: [] };
+    }
+    try {
+      if (typeof global.TetheractNative.phoneCaseDetectPrivacyAsyncJson === 'function') {
+        const reqId = `pv_${++scanReqSeq}_${Date.now()}`;
+        let timer = null;
+        const asyncPromise = new Promise((resolve) => {
+          timer = setTimeout(() => {
+            pendingPrivacyResolvers.delete(reqId);
+            resolve({ ok: false, faces: [], plates: [], error: 'timeout' });
+          }, 45000);
+          pendingPrivacyResolvers.set(reqId, (payload) => {
+            clearTimeout(timer);
+            resolve(payload);
+          });
+        });
+        const startRes = _safeParseJson(
+          global.TetheractNative.phoneCaseDetectPrivacyAsyncJson(reqId, String(dataUrl || '')),
+          { ok: false }
+        );
+        if (!startRes || !startRes.ok) {
+          if (timer !== null) clearTimeout(timer);
+          pendingPrivacyResolvers.delete(reqId);
+        } else {
+          const doneRes = await asyncPromise;
+          return {
+            ok: Boolean(doneRes && doneRes.ok),
+            engine: String((doneRes && doneRes.engine) || ''),
+            faces: Array.isArray(doneRes && doneRes.faces) ? doneRes.faces : [],
+            plates: Array.isArray(doneRes && doneRes.plates) ? doneRes.plates : [],
+          };
+        }
+      }
+      if (typeof global.TetheractNative.phoneCaseDetectFacesJson !== 'function') {
+        return { ok: false, faces: [], plates: [] };
+      }
+      const res = _safeParseJson(
+        global.TetheractNative.phoneCaseDetectFacesJson(String(dataUrl || '')),
+        { ok: false, faces: [], plates: [] }
+      );
+      return {
+        ok: Boolean(res && res.ok),
+        engine: String((res && res.engine) || ''),
+        faces: Array.isArray(res && res.faces) ? res.faces : [],
+        plates: Array.isArray(res && res.plates) ? res.plates : [],
+      };
+    } catch (err) {
+      return { ok: false, faces: [], plates: [], error: String(err) };
+    }
+  }
+
   global.TetheractPhoneCaseAdapter = {
     isNativeAvailable,
     listFolders,
     pickFolder,
     launchCameraApp,
     removeFolder,
+    setFolderMode,
     scanPhotos,
     saveDraft,
     getPhotoUrl,
     transferToMotherShip,
     transferBrowserFiles,
+    saveArtFramerOutput,
+    ensurePhotoExif,
+    detectFacesFromDataUrl,
     onFolderScanStarted,
     onFolderPicked,
     onTransferProgress,

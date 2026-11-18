@@ -11,8 +11,8 @@ android {
         applicationId 'com.tetheract.pm'
         minSdk 26
         targetSdk 34
-        versionCode 30203000
-        versionName '2.3.0'
+        versionCode 30204000
+        versionName '2.4.0'
     }
 
     signingConfigs {
@@ -58,6 +58,10 @@ android {
 
     kotlinOptions {
         jvmTarget = '17'
+    }
+
+    androidResources {
+        noCompress 'onnx'
     }
 
     packagingOptions {

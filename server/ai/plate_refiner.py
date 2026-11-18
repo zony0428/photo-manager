@@ -424,8 +424,8 @@ def _has_plate_character_signature(
     dark_ink_lum = float(np.percentile(core_lum, 5))
     dyn_range = base_lum - dark_ink_lum
 
-    min_dyn = 74.0 if extra_strict_surround else 68.0
-    if base_lum < 98.0 or dyn_range < min_dyn:
+    min_dyn = 70.0 if extra_strict_surround else 60.0
+    if base_lum < 95.0 or dyn_range < min_dyn:
         return False, 0.0
 
     # 2. 4辺それぞれの広域外側ストリップ独立チェック (椅子の脚影等を挟んで横に続く段差・縁石・白線も確実に排除)
@@ -435,12 +435,12 @@ def _has_plate_character_signature(
     bot_out_med = float(np.median(lum[-5:, cu0:cu1]))
 
     if require_four_side_isolation:
-        min_side_gap = 38.0 if extra_strict_surround else 32.0
+        min_side_gap = 38.0 if extra_strict_surround else 30.0
         if (base_lum - left_out_med) < min_side_gap or (base_lum - right_out_med) < min_side_gap:
             return False, 0.0
         max_tb_gap = max(base_lum - top_out_med, base_lum - bot_out_med)
         min_tb_gap = min(base_lum - top_out_med, base_lum - bot_out_med)
-        req_min_tb = 30.0 if extra_strict_surround else 18.0
+        req_min_tb = 28.0 if extra_strict_surround else 16.0
         if max_tb_gap < 36.0 or min_tb_gap < req_min_tb:
             return False, 0.0
 
@@ -452,10 +452,10 @@ def _has_plate_character_signature(
             return False, 0.0
 
     # 4. 文字ストローク画素率・上下2段分布・貫通縦影排除チェック
-    ink_thr = base_lum - max(28.0, dyn_range * 0.36)
+    ink_thr = base_lum - max(26.0, dyn_range * 0.35)
     ink_mask = core_lum < ink_thr
     ink_ratio = float(np.mean(ink_mask))
-    if ink_ratio < 0.032 or ink_ratio > 0.38:
+    if ink_ratio < 0.032 or ink_ratio > 0.44:
         return False, 0.0
 
     # 椅子の脚や柵の影のようにコア内部を上端から下端まで真っ黒に貫通する縦棒がある候補を排除（左右端のプレート枠線は除外）
@@ -472,15 +472,18 @@ def _has_plate_character_signature(
 
     # 上段(地名330)と下段(99-09)の間に水平の白地セパレータ隙間が存在すること
     sep_r0, sep_r1 = max(1, int(ch * 0.28)), min(ch - 1, max(2, int(ch * 0.58)))
-    if float(np.min(np.mean(ink_mask[sep_r0:sep_r1, :], axis=1))) > 0.36:
+    sep_min = float(np.min(np.mean(ink_mask[sep_r0:sep_r1, :], axis=1)))
+    if sep_min > 0.36:
         return False, 0.0
 
     # 5. 隣接画素間の急峻な水平文字エッジ（印刷文字の縦ストロークによるステップ変化）
-    step_thr = max(22.0, dyn_range * 0.24)
+    step_thr = max(18.0, dyn_range * 0.22)
     sharp_edges = np.abs(np.diff(core_lum, axis=1)) >= step_thr
     top_sharp = float(np.mean(sharp_edges[:mid_r, :]))
     bot_sharp = float(np.mean(sharp_edges[mid_r:, :]))
-    if top_sharp < 0.028 or bot_sharp < 0.030:
+    if bot_sharp < 0.030:
+        return False, 0.0
+    if top_sharp < 0.022 and not (top_ink >= 0.055 and bot_sharp >= 0.080 and sep_min <= 0.16):
         return False, 0.0
 
     side_gap = min(base_lum - left_out_med, base_lum - right_out_med)

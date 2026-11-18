@@ -1068,6 +1068,7 @@ let _mediaSyncRunning = false;
 let _caseImportDebounceTimer = null;
 let _pendingCaseImportCount = 0;
 let _pendingCaseAppliedCount = 0;
+let _pendingCaseQueuedCount = 0;
 
 /**
  * メディア（SDカード・USBメモリ・外付けSSD）の抜き挿し検知イベントを受け取り、
@@ -1240,11 +1241,16 @@ function initMediaWatcher() {
               refreshAll();
             }
           } else if (payload.type === 'mobile_case_imported') {
-            if (payload.photo_id && payload.imported_count !== 0) {
+            if (typeof payload.imported_count === 'number' && payload.imported_count > 0) {
+              _pendingCaseImportCount += payload.imported_count;
+            } else if (payload.photo_id && payload.imported_count !== 0) {
               _pendingCaseImportCount += 1;
             }
             if (typeof payload.applied_count === 'number' && payload.applied_count > 0) {
               _pendingCaseAppliedCount += payload.applied_count;
+            }
+            if (typeof payload.queued_count === 'number' && payload.queued_count > 0) {
+              _pendingCaseQueuedCount += payload.queued_count;
             }
             if (_caseImportDebounceTimer) {
               clearTimeout(_caseImportDebounceTimer);
@@ -1253,8 +1259,10 @@ function initMediaWatcher() {
               _caseImportDebounceTimer = null;
               const impCount = _pendingCaseImportCount;
               const appCount = _pendingCaseAppliedCount;
+              const qCount = _pendingCaseQueuedCount;
               _pendingCaseImportCount = 0;
               _pendingCaseAppliedCount = 0;
+              _pendingCaseQueuedCount = 0;
               if (typeof refreshAll === 'function') {
                 await refreshAll();
               }
@@ -1262,10 +1270,12 @@ function initMediaWatcher() {
                 updateInspectorView();
               }
               if (typeof showToast === 'function') {
-                if (impCount > 0) {
-                  showToast(`スマホから ${impCount} 枚の写真が母艦 (Loome\\case) に転送されました`, 'success', 4500);
-                } else if (appCount > 0) {
-                  showToast(`スマホから ${appCount} 件の評価・タグ・位置情報が母艦に反映されました`, 'success', 4000);
+                const msgParts = [];
+                if (impCount > 0) msgParts.push(`${impCount}枚の写真を Loome\\case に収納`);
+                if (appCount > 0) msgParts.push(`${appCount}件の評価・タグ・位置情報を既存写真へ反映`);
+                if (qCount > 0) msgParts.push(`${qCount}件の先行信号を待機保存（SD取込時に自動合流）`);
+                if (msgParts.length > 0) {
+                  showToast(`スマホから母艦へ収納完了: ${msgParts.join(' / ')}`, 'success', 4800);
                 }
               }
             }, 1200);

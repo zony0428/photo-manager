@@ -807,8 +807,10 @@ async function batchRetagAiColorSelection() {
     if (typeof fetchTags === 'function') {
       await fetchTags();
     }
-    if (typeof renderPhotoGrid === 'function') {
-      renderPhotoGrid();
+    if (typeof syncGridCardsAfterTagChange === 'function') {
+      await syncGridCardsAfterTagChange(photoIds, { forceAlign: false });
+    } else if (typeof updateCardTagsDirectly === 'function') {
+      photoIds.forEach(pid => updateCardTagsDirectly(pid));
     }
     if (state.currentPhotoIndex >= 0 && state.photos[state.currentPhotoIndex] && typeof renderLightboxTags === 'function') {
       renderLightboxTags(state.photos[state.currentPhotoIndex]);
@@ -850,8 +852,15 @@ window.batchRetagAiColorSelection = batchRetagAiColorSelection;
 async function batchAddTagToSelection(tagName) {
   if (state.selectedPhotoIds.size === 0 || !tagName.trim()) return;
 
-  const photoIds = Array.from(state.selectedPhotoIds);
   const cleanTag = tagName.trim();
+  if (typeof window.batchToggleTag === 'function') {
+    await window.batchToggleTag(cleanTag, true, { keepSelection: false, showSuccessToast: true });
+    return;
+  }
+
+  const photoIds = Array.from(state.selectedPhotoIds);
+  const parts = cleanTag.split('/').map(p => p.trim()).filter(Boolean);
+  const expandedTags = parts.map((_, idx) => parts.slice(0, idx + 1).join('/'));
   try {
     const res = await fetch('/api/photos/batch-tags', {
       method: 'POST',
@@ -865,16 +874,35 @@ async function batchAddTagToSelection(tagName) {
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || '一括タグ付け失敗');
 
+    photoIds.forEach(pid => {
+      const instList = typeof findAllPhotoInstancesById === 'function'
+        ? findAllPhotoInstancesById(pid)
+        : [typeof getPhotoById === 'function' ? getPhotoById(pid) : state.photos.find(p => p.id === pid)].filter(Boolean);
+      instList.forEach(inst => {
+        if (!inst.tags) inst.tags = [];
+        if (!inst.tag_details) inst.tag_details = [];
+        expandedTags.forEach(tPath => {
+          if (!inst.tags.includes(tPath)) inst.tags.push(tPath);
+          if (!inst.tag_details.some(d => d.tag === tPath)) {
+            inst.tag_details.push({ tag: tPath, source: 'manual', confidence: 1.0 });
+          }
+        });
+      });
+    });
+
     if (typeof showToast === 'function') {
       showToast(`${photoIds.length}枚の写真にタグ「${cleanTag}」を付与しました`, 'success', 2500);
     }
     clearSelection();
-    await Promise.all([fetchPhotos(), fetchTags()]);
+    if (typeof syncGridCardsAfterTagChange === 'function') {
+      await syncGridCardsAfterTagChange(photoIds, { forceAlign: true, scrollToNextWhenKept: true });
+    }
+    if (typeof fetchTags === 'function') {
+      await fetchTags();
+    }
   } catch (err) {
     if (typeof showToast === 'function') {
       showToast(`エラー: ${err.message}`, 'error');
-    } else {
-      alert('エラー: ' + err.message);
     }
   }
 }
@@ -939,10 +967,16 @@ async function batchRateSelection(rating) {
       }
     }
 
+    const anchorInfo = idsToRemove.length > 0 && typeof findNextRemainingPhotoAfterTargets === 'function'
+      ? findNextRemainingPhotoAfterTargets(photoIds, idsToRemove)
+      : null;
     clearSelection();
     if (idsToRemove.length > 0) {
       if (typeof removePhotosFromViewBatch === 'function') {
-        removePhotosFromViewBatch(idsToRemove);
+        removePhotosFromViewBatch(idsToRemove, {
+          anchorPhotoId: anchorInfo ? anchorInfo.anchorId : null,
+          forceAlign: true,
+        });
       } else if (typeof removePhotoFromView === 'function') {
         idsToRemove.forEach(pid => removePhotoFromView(pid));
       }

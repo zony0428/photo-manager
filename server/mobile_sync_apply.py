@@ -19,6 +19,10 @@ from .database.tags import (
     resolve_tag_by_key_or_name,
 )
 from .media_watcher import broadcast_app_event
+from .mobile_signals import (
+    find_smart_stem_date_matches,
+    upsert_pending_signal,
+)
 
 logger = logging.getLogger("photo_manager.app")
 
@@ -52,13 +56,25 @@ def _schedule_thumbnail_refresh(photo_ids: List[int]) -> None:
 
 
 def _update_rating_in_tx(cursor: Any, photo_id: int, rating: int) -> None:
-    """トランザクション内で評価を更新し、スタック代表写真を再選出する（commitしない）"""
-    cursor.execute("SELECT stack_id FROM photos WHERE id = ?", (photo_id,))
+    """トランザクション内で評価を更新し、RAW+JPEGペア相手を同期した上でスタック代表写真を再選出する（commitしない）"""
+    cursor.execute("SELECT stack_id, file_path, paired_raw_path FROM photos WHERE id = ?", (photo_id,))
     row = cursor.fetchone()
     stack_id = row["stack_id"] if row else None
+    target_ids = [int(photo_id)]
+    if row:
+        fp = row["file_path"]
+        prp = row["paired_raw_path"]
+        if prp:
+            cursor.execute("SELECT id FROM photos WHERE file_path = ? AND id != ?", (prp, photo_id))
+            target_ids.extend(int(r["id"]) for r in cursor.fetchall())
+        if fp:
+            cursor.execute("SELECT id FROM photos WHERE paired_raw_path = ? AND id != ?", (fp, photo_id))
+            target_ids.extend(int(r["id"]) for r in cursor.fetchall())
+    uniq_ids = list(dict.fromkeys(target_ids))
+    ph = ",".join("?" for _ in uniq_ids)
     cursor.execute(
-        "UPDATE photos SET rating = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-        (rating, photo_id),
+        f"UPDATE photos SET rating = ?, updated_at = CURRENT_TIMESTAMP WHERE id IN ({ph})",
+        [rating] + uniq_ids,
     )
     if stack_id is not None:
         _sync_stack_primary_by_rating(cursor, [stack_id])
@@ -253,29 +269,6 @@ def apply_mobile_sync_changes(
                     target_id = int(rows[0]["id"])
                     matched_file_name = str(rows[0]["file_name"] or "")
 
-            if target_id is None:
-                skipped_count += 1
-                logger.warning(
-                    f"モバイル同期: 該当写真が見つからず変更を適用できませんでした "
-                    f"(photo_id={pid}, file_name={fname}, date_taken={dtaken})"
-                )
-                if len(skipped_items) < 50:
-                    skipped_items.append({
-                        "photo_id": pid,
-                        "content_key": ckey,
-                        "file_name": fname,
-                        "date_taken": dtaken,
-                    })
-                continue
-
-            # 評価の更新 (-1: 棄, 0: 可, 1: 良, 2: 優)
-            rating_val = item.get("rating")
-            applied_rating: Optional[int] = None
-            if rating_val is not None:
-                r_int = max(-1, min(2, int(rating_val)))
-                _update_rating_in_tx(cursor, target_id, r_int)
-                applied_rating = r_int
-
             def _resolve_mobile_tags_list(raw_tags_val: Any, raw_keys_val: Any) -> List[str]:
                 resolved_list: List[str] = []
                 seen = set()
@@ -337,13 +330,88 @@ def apply_mobile_sync_changes(
                 item.get("remove_tags"),
                 item.get("remove_tag_keys"),
             )
-            for clean_r_tag in removed_tags:
-                _remove_tag_in_tx(conn, cursor, target_id, clean_r_tag)
-
             added_tags: List[str] = _resolve_mobile_tags_list(
                 item.get("add_tags"),
                 item.get("add_tag_keys"),
             )
+
+            # 6. スマート一致（2M縮小画像 ⇔ 母艦フルサイズJPEG / RAW 原本のサイズ・拡張子不問照合）
+            if target_id is None and fname and dtaken:
+                smart_hits = find_smart_stem_date_matches(
+                    cursor,
+                    [
+                        {
+                            "key": "item",
+                            "file_name": str(fname),
+                            "date_taken": dtaken,
+                            "camera_model": item.get("camera_model") or "",
+                        }
+                    ],
+                    max_diff_sec=2,
+                )
+                matched_list = smart_hits.get("item") or []
+                if matched_list:
+                    target_id = int(matched_list[0])
+                    cursor.execute("SELECT file_name FROM photos WHERE id = ?", (target_id,))
+                    r_fn = cursor.fetchone()
+                    matched_file_name = str(r_fn["file_name"] or "") if r_fn else str(fname)
+
+            # 7. 未取り込み先行操作時は mobile_pending_signals へ安全に待機保存（SDカードスキャン時に自動合流）
+            if target_id is None:
+                rating_val_p = item.get("rating")
+                r_int_p = max(-1, min(2, int(rating_val_p))) if rating_val_p is not None else None
+                queued_ok = False
+                if fname and dtaken:
+                    queued_ok = upsert_pending_signal(
+                        cursor,
+                        file_name=str(fname),
+                        date_taken=dtaken,
+                        camera_model=str(item.get("camera_model") or ""),
+                        rating=r_int_p,
+                        tags=added_tags,
+                        remove_tags=removed_tags,
+                        latitude=item.get("latitude"),
+                        longitude=item.get("longitude"),
+                        resolve_geo=True,
+                    )
+                if queued_ok:
+                    applied_count += 1
+                    if len(applied_items) < 50:
+                        applied_items.append({
+                            "photo_id": None,
+                            "queued_pending": True,
+                            "file_name": str(fname),
+                            "rating": r_int_p,
+                            "add_tags": added_tags,
+                            "remove_tags": removed_tags,
+                        })
+                    continue
+
+                skipped_count += 1
+                logger.warning(
+                    f"モバイル同期: 該当写真が見つからず変更を適用できませんでした "
+                    f"(photo_id={pid}, file_name={fname}, date_taken={dtaken})"
+                )
+                if len(skipped_items) < 50:
+                    skipped_items.append({
+                        "photo_id": pid,
+                        "content_key": ckey,
+                        "file_name": fname,
+                        "date_taken": dtaken,
+                    })
+                continue
+
+            # 評価の更新 (-1: 棄, 0: 可, 1: 良, 2: 優)
+            rating_val = item.get("rating")
+            applied_rating: Optional[int] = None
+            if rating_val is not None:
+                r_int = max(-1, min(2, int(rating_val)))
+                _update_rating_in_tx(cursor, target_id, r_int)
+                applied_rating = r_int
+
+            for clean_r_tag in removed_tags:
+                _remove_tag_in_tx(conn, cursor, target_id, clean_r_tag)
+
             for clean_a_tag in added_tags:
                 _add_tag_in_tx(conn, cursor, target_id, clean_a_tag, registered_tags_cache)
 

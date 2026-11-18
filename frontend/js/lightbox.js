@@ -762,6 +762,24 @@ function renderLightboxTags(photo) {
 }
 
 /**
+ * ライトボックス内のタグ同期対象写真とスタック関連インスタンスを収集する
+ */
+function _collectLightboxTagSyncTargets(photoId) {
+  const fallbackPhoto = (typeof findPhotoByIdAnywhere === 'function' ? findPhotoByIdAnywhere(photoId) : null)
+    || (typeof getCurrentLightboxPhoto === 'function' ? getCurrentLightboxPhoto() : null)
+    || state.photos[state.currentPhotoIndex];
+  const collected = typeof collectPhotoAndStackInstances === 'function'
+    ? collectPhotoAndStackInstances(photoId, fallbackPhoto)
+    : null;
+  const photo = (collected && collected.photo) || fallbackPhoto;
+  const instances = collected
+    ? collected.instances
+    : (typeof findAllPhotoInstancesById === 'function' ? findAllPhotoInstancesById(photoId) : (photo ? [photo] : []));
+  if (photo && !instances.includes(photo)) instances.push(photo);
+  return { photo, instances };
+}
+
+/**
  * 写真にタグを追加
  */
 async function addTagToCurrentPhoto(photoId, tag) {
@@ -777,13 +795,7 @@ async function addTagToCurrentPhoto(photoId, tag) {
     });
     if (!res.ok) throw new Error('タグ追加失敗');
 
-    const photo = (typeof findPhotoByIdAnywhere === 'function' ? findPhotoByIdAnywhere(photoId) : null)
-      || (typeof getCurrentLightboxPhoto === 'function' ? getCurrentLightboxPhoto() : null)
-      || state.photos[state.currentPhotoIndex];
-    const instances = typeof findAllPhotoInstancesById === 'function'
-      ? findAllPhotoInstancesById(photoId)
-      : (photo ? [photo] : []);
-    if (photo && !instances.includes(photo)) instances.push(photo);
+    const { photo, instances } = _collectLightboxTagSyncTargets(photoId);
 
     instances.forEach(inst => {
       if (!inst.tags) inst.tags = [];
@@ -829,13 +841,7 @@ async function removeTagFromCurrentPhoto(photoId, tag) {
     });
     if (!res.ok) throw new Error('タグ削除失敗');
 
-    const photo = (typeof findPhotoByIdAnywhere === 'function' ? findPhotoByIdAnywhere(photoId) : null)
-      || (typeof getCurrentLightboxPhoto === 'function' ? getCurrentLightboxPhoto() : null)
-      || state.photos[state.currentPhotoIndex];
-    const instances = typeof findAllPhotoInstancesById === 'function'
-      ? findAllPhotoInstancesById(photoId)
-      : (photo ? [photo] : []);
-    if (photo && !instances.includes(photo)) instances.push(photo);
+    const { photo, instances } = _collectLightboxTagSyncTargets(photoId);
 
     instances.forEach(inst => {
       if (inst.tags) {

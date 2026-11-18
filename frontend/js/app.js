@@ -817,33 +817,204 @@ function doesPhotoMatchActiveTagFilter(photo) {
 
   return true;
 }
+window.doesPhotoMatchActiveTagFilter = doesPhotoMatchActiveTagFilter;
+
+function _toNumericPhotoIdSet(ids) {
+  const result = new Set();
+  if (ids === null || ids === undefined) return result;
+  if (typeof ids === 'number' || typeof ids === 'string') {
+    const n = Number(ids);
+    if (n) result.add(n);
+    return result;
+  }
+  if (Array.isArray(ids) || ids instanceof Set) {
+    for (const id of ids) {
+      const n = Number(id);
+      if (n) result.add(n);
+    }
+  }
+  return result;
+}
+
+/**
+ * 処理対象写真の末尾より後方で、除去されずに残る最初の写真IDを返す（末尾まで消える場合は直前の残存写真を返す）
+ */
+function findNextRemainingPhotoAfterTargets(targetPhotoIds, removedPhotoIds = null) {
+  if (!Array.isArray(state.photos) || state.photos.length === 0) return null;
+  const targetSet = _toNumericPhotoIdSet(targetPhotoIds);
+  if (targetSet.size === 0) return null;
+  const removedSet = removedPhotoIds !== null ? _toNumericPhotoIdSet(removedPhotoIds) : targetSet;
+
+  const isTargetCard = (p) => {
+    if (!p) return false;
+    if (targetSet.has(Number(p.id))) return true;
+    return Array.isArray(p.stack_photos) && p.stack_photos.some(sp => sp && targetSet.has(Number(sp.id)));
+  };
+
+  let lastTargetIdx = -1;
+  for (let i = state.photos.length - 1; i >= 0; i--) {
+    if (isTargetCard(state.photos[i])) {
+      lastTargetIdx = i;
+      break;
+    }
+  }
+  if (lastTargetIdx === -1) return null;
+
+  for (let i = lastTargetIdx + 1; i < state.photos.length; i++) {
+    const p = state.photos[i];
+    if (p && !removedSet.has(Number(p.id))) {
+      return { anchorId: p.id, isAfterTail: true };
+    }
+  }
+  for (let i = lastTargetIdx; i >= 0; i--) {
+    const p = state.photos[i];
+    if (p && !removedSet.has(Number(p.id))) {
+      return { anchorId: p.id, isAfterTail: false };
+    }
+  }
+  return null;
+}
+window.findNextRemainingPhotoAfterTargets = findNextRemainingPhotoAfterTargets;
+
+/**
+ * アンカー写真カードが画面上部〜中央の見やすい位置に来るようスクロール位置を同期する
+ */
+function scrollPhotoIntoComfortZone(anchorPhotoId, options = {}) {
+  const numId = Number(anchorPhotoId);
+  if (!numId || state.currentPhotoIndex >= 0 || !elements.photoGrid || !Array.isArray(state.photos) || state.photos.length === 0) {
+    return;
+  }
+  const container = elements.photoGrid.parentElement;
+  if (!container || container.clientHeight <= 0) return;
+
+  const targetIdx = state.photos.findIndex(p => p && p.id === numId);
+  if (targetIdx === -1) return;
+
+  const viewportH = container.clientHeight;
+  const desiredOffset = Math.round(viewportH * 0.22);
+  const comfortMin = Math.round(viewportH * 0.10);
+  const comfortMax = Math.round(viewportH * 0.48);
+  const forceAlign = Boolean(options && options.forceAlign);
+
+  if (_gridVirtualState.enabled) {
+    if (_gridVirtualState.metricsDirty || !_gridVirtualState.cols) {
+      _measureVirtualGridMetrics(false);
+    }
+    const cols = Math.max(1, _gridVirtualState.cols || 4);
+    const rowPitch = Math.max(40, _gridVirtualState.rowPitch || 220);
+    const targetRow = Math.floor(targetIdx / cols);
+    const targetTop = targetRow * rowPitch + 20;
+    const relTop = targetTop - container.scrollTop;
+    if (!forceAlign && relTop >= comfortMin && relTop <= comfortMax) {
+      return;
+    }
+
+    container.scrollTop = Math.max(0, targetTop - desiredOffset);
+    syncVirtualPhotoGrid({ forceRemount: true, includeMinIdx: targetIdx, includeMaxIdx: targetIdx });
+
+    const cardEl = elements.photoGrid.querySelector(`.photo-card[data-photo-id="${numId}"]`);
+    if (cardEl) {
+      const actualRelTop = cardEl.getBoundingClientRect().top - container.getBoundingClientRect().top;
+      if (Math.abs(actualRelTop - desiredOffset) > 16) {
+        const prevTop = container.scrollTop;
+        const nextTop = Math.max(0, Math.round(prevTop + (actualRelTop - desiredOffset)));
+        if (Math.abs(nextTop - prevTop) > 1) {
+          container.scrollTop = nextTop;
+          if (Math.abs(container.scrollTop - prevTop) > 1) {
+            syncVirtualPhotoGrid({ includeMinIdx: targetIdx, includeMaxIdx: targetIdx });
+          }
+        }
+      }
+    }
+    return;
+  }
+
+  if (targetIdx >= renderedGridCount) {
+    ensureCardsRenderedUpTo(targetIdx + 12);
+  }
+  const cardEl = elements.photoGrid.querySelector(`.photo-card[data-photo-id="${numId}"]`);
+  if (!cardEl) return;
+
+  const relTop = cardEl.getBoundingClientRect().top - container.getBoundingClientRect().top;
+  if (!forceAlign && relTop >= comfortMin && relTop <= comfortMax) {
+    return;
+  }
+  container.scrollTop = Math.max(0, Math.round(container.scrollTop + (relTop - desiredOffset)));
+  checkAndAppendGridChunksIfNeeded();
+}
+window.scrollPhotoIntoComfortZone = scrollPhotoIntoComfortZone;
+
+/**
+ * タグ変更後に該当カードの部分更新・タグフィルタ不一致カードのインプレース除去・末尾次写真へのスクロール同期を行う
+ */
+async function syncGridCardsAfterTagChange(photoIds, options = {}) {
+  const idList = [];
+  const idSet = _toNumericPhotoIdSet(photoIds);
+  for (const n of idSet) idList.push(n);
+  if (idList.length === 0 || !Array.isArray(state.photos)) return;
+
+  const targetCards = [];
+  const seenCardIds = new Set();
+  const unresolvedIds = new Set();
+
+  for (const numId of idList) {
+    const directCard = typeof getPhotoById === 'function'
+      ? getPhotoById(numId)
+      : state.photos.find(p => p && p.id === numId);
+    if (directCard) {
+      if (!seenCardIds.has(directCard.id)) {
+        seenCardIds.add(directCard.id);
+        targetCards.push(directCard);
+      }
+    } else {
+      unresolvedIds.add(numId);
+    }
+  }
+
+  if (unresolvedIds.size > 0) {
+    for (const p of state.photos) {
+      if (!p || !Array.isArray(p.stack_photos)) continue;
+      if (p.stack_photos.some(sp => sp && unresolvedIds.has(Number(sp.id)))) {
+        if (!seenCardIds.has(p.id)) {
+          seenCardIds.add(p.id);
+          targetCards.push(p);
+        }
+      }
+    }
+  }
+
+  if (targetCards.length === 0) return;
+
+  const hasTagFilter = Boolean(state.untaggedOnly || (state.tagFilters && state.tagFilters.size > 0));
+  const idsToRemove = [];
+
+  for (const cardPhoto of targetCards) {
+    if (hasTagFilter && !doesPhotoMatchActiveTagFilter(cardPhoto)) {
+      idsToRemove.push(cardPhoto.id);
+    } else {
+      updateCardTagsDirectly(cardPhoto.id);
+    }
+  }
+
+  const anchorInfo = findNextRemainingPhotoAfterTargets(idList, idsToRemove);
+  const anchorPhotoId = anchorInfo ? anchorInfo.anchorId : null;
+
+  if (idsToRemove.length > 0) {
+    removePhotosFromViewBatch(idsToRemove, {
+      anchorPhotoId,
+      forceAlign: idList.length > 1 || idsToRemove.length > 1 || Boolean(options && options.forceAlign),
+    });
+  } else if (options && options.scrollToNextWhenKept && anchorPhotoId) {
+    scrollPhotoIntoComfortZone(anchorPhotoId, { forceAlign: Boolean(options.forceAlign) });
+  }
+}
+window.syncGridCardsAfterTagChange = syncGridCardsAfterTagChange;
 
 /**
  * 単一写真のタグ変更後にカード部分更新とタグフィルタ整合（必要時のみ該当カード除去）を同期する
  */
 async function syncGridCardAfterSingleTagChange(photoId) {
-  const numId = Number(photoId);
-  if (!numId) return;
-  updateCardTagsDirectly(numId);
-  if (!state.untaggedOnly && (!state.tagFilters || state.tagFilters.size === 0)) {
-    return;
-  }
-  let targetCardPhoto = typeof getPhotoById === 'function' ? getPhotoById(numId) : state.photos.find(p => p.id === numId);
-  if (!targetCardPhoto && Array.isArray(state.photos)) {
-    targetCardPhoto = state.photos.find(p => Array.isArray(p.stack_photos) && p.stack_photos.some(sp => sp.id === numId)) || null;
-  }
-  if (!targetCardPhoto) return;
-  const isStacked = isEffectiveStacked() && Boolean(
-    (targetCardPhoto.stack_count && targetCardPhoto.stack_count > 1) ||
-    (Array.isArray(targetCardPhoto.stack_photos) && targetCardPhoto.stack_photos.length > 1)
-  );
-  if (isStacked) {
-    await fetchPhotos();
-    return;
-  }
-  if (!doesPhotoMatchActiveTagFilter(targetCardPhoto)) {
-    removePhotoFromView(targetCardPhoto.id);
-  }
+  await syncGridCardsAfterTagChange([photoId], { forceAlign: false });
 }
 window.syncGridCardAfterSingleTagChange = syncGridCardAfterSingleTagChange;
 
@@ -2210,7 +2381,7 @@ function setFilter(type, value, titleText, options = {}) {
 /**
  * 複数写真を現在の一覧から一括除去する（1パス O(N) で state.photos・Mapインデックス・DOM再採番を完結）。
  */
-function removePhotosFromViewBatch(photoIds) {
+function removePhotosFromViewBatch(photoIds, options = {}) {
   const targetSet = new Set();
   if (Array.isArray(photoIds) || photoIds instanceof Set) {
     for (const id of photoIds) {
@@ -2219,6 +2390,12 @@ function removePhotosFromViewBatch(photoIds) {
     }
   }
   if (targetSet.size === 0 || !Array.isArray(state.photos) || state.photos.length === 0) return;
+
+  const explicitAnchorId = options && options.anchorPhotoId ? Number(options.anchorPhotoId) : null;
+  const autoAnchorInfo = explicitAnchorId
+    ? { anchorId: explicitAnchorId }
+    : findNextRemainingPhotoAfterTargets(targetSet, targetSet);
+  const anchorPhotoId = autoAnchorInfo ? autoAnchorInfo.anchorId : null;
 
   const singleTargetId = targetSet.size === 1 ? targetSet.values().next().value : null;
   const wasSingleFocused = Boolean(
@@ -2370,6 +2547,13 @@ function removePhotosFromViewBatch(photoIds) {
         updateCardSelectionClasses();
         updateSelectionUI();
       }
+    } else if (state.activeInspectorPhotoId && targetSet.has(Number(state.activeInspectorPhotoId))) {
+      state.activeInspectorPhotoId = anchorPhotoId || (state.photos[0] ? state.photos[0].id : null);
+    }
+
+    if (oldLbIdx < 0 && anchorPhotoId && state.photos.length > 0) {
+      const shouldForceAlign = removedCount > 1 || Boolean(options && options.forceAlign);
+      scrollPhotoIntoComfortZone(anchorPhotoId, { forceAlign: shouldForceAlign });
     }
   }
 

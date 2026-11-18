@@ -9,13 +9,13 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#16181b" id="mMetaThemeColor">
   <title>TETHERACT pm</title>
-  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=2.3.0">
-  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png?v=2.3.0">
-  <link rel="apple-touch-icon" href="/icons/icon-192.png?v=2.3.0">
-  <link rel="manifest" href="/manifest_mobile.json?v=2.3.0">
-  <link rel="stylesheet" href="/css/mobile.css?v=2.3.0">
-  <link rel="stylesheet" href="/css/touch-responsive.css?v=2.3.0">
-  <link rel="stylesheet" href="/css/touch-fieldlog.css?v=2.3.0">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=2.4.0">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png?v=2.4.0">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png?v=2.4.0">
+  <link rel="manifest" href="/manifest_mobile.json?v=2.4.0">
+  <link rel="stylesheet" href="/css/mobile.css?v=2.4.0">
+  <link rel="stylesheet" href="/css/touch-responsive.css?v=2.4.0">
+  <link rel="stylesheet" href="/css/touch-fieldlog.css?v=2.4.0">
   <!-- オフラインUSB library.db 直接読み込み用 WebAssembly SQLite (sql.js) -->
   <script src="/vendor/sqljs/sql-wasm.js"></script>
 </head>
@@ -25,7 +25,7 @@
     <header class="m-header">
       <div class="m-header-left">
         <div id="mBrandHeaderBtn" class="m-brand" role="button" tabindex="0" title="タップして同期・バージョン・レイアウト設定を開く" aria-label="TETHERACT 設定・同期メニューを開く">
-          <img class="m-logo-icon" src="/icons/icon-192.png?v=2.3.0" width="24" height="24" alt="" aria-hidden="true">
+          <img class="m-logo-icon" src="/icons/icon-192.png?v=2.4.0" width="24" height="24" alt="" aria-hidden="true">
           <div class="m-brand-titles">
             <div class="m-brand-main">
               <svg id="mBrandWordmarkSvg" class="m-brand-wordmark" viewBox="62 12 246 36" width="94" height="14" fill="none" role="img" aria-label="TETHERACT Rg">
@@ -37,7 +37,7 @@
               <span id="mModeBadge" class="m-mode-badge mode-checking">○ UNLINK</span>
               <span id="mPhotoCount" class="m-photo-count">0枚</span>
               <span id="mPendingBadge" class="m-pending-badge" style="display:none;">0</span>
-              <span id="mAppBuildBadge" class="m-build-badge" style="display:none;">v2.3.0 (11/16 15:30)</span>
+              <span id="mAppBuildBadge" class="m-build-badge" style="display:none;">v2.4.0 (11/18 18:30)</span>
             </div>
           </div>
         </div>
@@ -283,6 +283,10 @@
           <button id="mViewerAutoAdvanceBtn" class="m-viewer-info-btn active" title="評価した直後に次の写真へ自動進行 (ON/OFF)">
             <span>⚡次送</span>
           </button>
+          <button id="mViewerArtFramerBtn" class="m-viewer-info-btn" title="Art Framer（プライバシーマスク・プリント枠・共有）">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="7" y="7" width="10" height="10" rx="1"/><circle cx="15" cy="9" r="0.9"/></svg>
+            <span>枠</span>
+          </button>
           <button id="mViewerAdjustBtn" class="m-viewer-info-btn" title="非破壊調整 (露出・コントラスト・彩度・傾き)">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.75"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/></svg>
             <span>調整</span>
@@ -380,7 +384,7 @@
         <div class="m-sheet-header">
           <div>
             <div class="m-sheet-title"><span class="m-native-only">Wi-Fi同期 &amp; 設定</span><span class="m-browser-only">DB読込 &amp; 選別データの保存</span></div>
-            <div id="mModalAppBuildInfo" style="font-size:0.70rem; color:var(--text-muted, #9ca6b5); margin-top:2px;">TETHERACT pm · v2.2.0 (Build 2026-11-13 07:12)</div>
+            <div id="mModalAppBuildInfo" style="font-size:0.70rem; color:var(--text-muted, #9ca6b5); margin-top:2px;">TETHERACT pm · v2.4.0 (Build 2026-11-18 18:30)</div>
           </div>
           <button id="mCloseDbSyncBtn" class="m-icon-btn">✕</button>
         </div>
@@ -401,7 +405,7 @@
             </div>
             <button id="mRunWifiSyncBtn" class="m-btn m-btn-primary" style="width:100%; padding:11px; margin-bottom:8px;">
               <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
-              <span>今すぐPCとWi-Fi双方向同期</span>
+              <span>今すぐ母艦に収納・Wi-Fi同期</span>
             </button>
             <details style="margin-top:2px;">
               <summary style="font-size:0.74rem; color:var(--text-muted, #9ca6b5); cursor:pointer; padding:4px 0;">接続先URLを手動で入力する場合</summary>
@@ -514,6 +518,7 @@
               <div style="display:flex; gap:6px; width:100%;">
                 <button type="button" id="mNativeUsbPickFolderBtn" class="m-btn m-btn-secondary" style="flex:1; font-size:0.75rem; padding:8px;">Loome USBフォルダを選択</button>
               </div>
+              <button type="button" id="mOpenFieldLogFromSettingsBtn" class="m-btn m-btn-secondary" style="width:100%; font-size:0.75rem; padding:8px;">GPSフィールドログ管理・設定を開く</button>
               <button type="button" id="mNativeClearPendingProxyBtn" class="m-text-btn" style="align-self:flex-end; font-size:0.72rem;">未送信の変更履歴をリセット</button>
             </div>
           </details>
@@ -526,19 +531,21 @@
   </div>
 
   <!-- Layer 2: Core Domain & State -->
-  <script src="/js/core/tree_builder.js?v=2.3.0"></script>
+  <script src="/js/core/tree_builder.js?v=2.4.0"></script>
   <!-- Layer 1: Data Adapter (Android Native / HTTP API / WASM SQLite) -->
-  <script src="/js/adapters/data_adapter.js?v=2.3.0"></script>
-  <script src="/js/adapters/field_log_adapter.js?v=2.3.0"></script>
-  <script src="/js/adapters/phone_case_adapter.js?v=2.3.0"></script>
+  <script src="/js/adapters/data_adapter.js?v=2.4.0"></script>
+  <script src="/js/adapters/field_log_adapter.js?v=2.4.0"></script>
+  <script src="/js/adapters/phone_case_adapter.js?v=2.4.0"></script>
   <!-- Layer 3: Touch & Tablet View / Gesture Controllers -->
-  <script src="/js/views/touch/touch_layout.js?v=2.3.0"></script>
-  <script src="/js/views/touch/touch_gestures.js?v=2.3.0"></script>
-  <script src="/js/views/touch/morph_thumb_bar.js?v=2.3.0"></script>
-  <script src="/js/views/touch/touch_duel.js?v=2.3.0"></script>
-  <script src="/js/views/touch/touch_field_log.js?v=2.3.0"></script>
-  <script src="/js/views/touch/touch_phone_case.js?v=2.3.0"></script>
-  <script src="/js/views/touch/touch_center_dial.js?v=2.3.0"></script>
-  <script src="/js/mobile.js?v=2.3.0"></script>
+  <script src="/js/views/touch/touch_layout.js?v=2.4.0"></script>
+  <script src="/js/views/touch/touch_gestures.js?v=2.4.0"></script>
+  <script src="/js/views/touch/morph_thumb_bar.js?v=2.4.0"></script>
+  <script src="/js/views/touch/touch_duel.js?v=2.4.0"></script>
+  <script src="/js/views/touch/touch_field_log.js?v=2.4.0"></script>
+  <script src="/js/views/touch/touch_phone_case.js?v=2.4.0"></script>
+  <script src="/js/views/touch/touch_center_dial.js?v=2.4.0"></script>
+  <script src="/js/privacy_mask_editor.js?v=2.4.0"></script>
+  <script src="/js/views/touch/touch_art_framer.js?v=2.4.0"></script>
+  <script src="/js/mobile.js?v=2.4.0"></script>
 </body>
 </html>

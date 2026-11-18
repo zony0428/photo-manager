@@ -38,6 +38,14 @@
       innerBorder: 'rgba(255, 255, 255, 0.14)',
       shadowColor: 'rgba(0, 0, 0, 0.65)',
     },
+    charcoal: {
+      bg: '#2A2D34',
+      textMain: '#F1F3F5',
+      textSub: '#A6ADB9',
+      divider: '#464B57',
+      innerBorder: 'rgba(255, 255, 255, 0.14)',
+      shadowColor: 'rgba(0, 0, 0, 0.52)',
+    },
   };
 
   function clamp(val, minVal, maxVal) {
@@ -125,6 +133,7 @@
       this._pinch = null;
       this._activeDrag = null;
       this._loupeFocus = null;
+      this._lastTapInfo = null;
 
       this._bindCanvasEvents();
     }
@@ -147,6 +156,7 @@
         this.selected = null;
       }
       this.render();
+      this._notifyZoom();
     }
 
     setMasks(plates, faces) {
@@ -202,10 +212,17 @@
     }
 
     setDecoratorState({ viewMode, frameConfig, watermarkConfig, artPreset, logoDataUrl }) {
+      const prevViewMode = this.viewMode;
       if (viewMode) this.viewMode = viewMode;
       if (frameConfig) this.frameConfig = frameConfig;
       if (watermarkConfig) this.watermarkConfig = watermarkConfig;
       if (artPreset !== undefined) this.artPreset = artPreset;
+      if (viewMode && prevViewMode !== viewMode) {
+        this.zoom = 1.0;
+        this.panX = 0;
+        this.panY = 0;
+        this._notifyZoom();
+      }
 
       if (logoDataUrl !== undefined) {
         if (!logoDataUrl) {
@@ -406,6 +423,68 @@
       return this._lastFinalDimensions;
     }
 
+    exportFinalDataUrl(mimeType = 'image/jpeg', quality = 0.92) {
+      const src = this.sourceImg;
+      if (!src) return null;
+      const origW = src.naturalWidth || src.width || 1200;
+      const origH = src.naturalHeight || src.height || 800;
+
+      // プリセットに応じた書き出し上限解像度を決定
+      let maxLong = 2400;
+      if (this.artPreset === 'for_insta') maxLong = 1600;
+      else if (this.artPreset === 'full_size') maxLong = 4096;
+
+      this._blurCacheKey = '';
+      const built = this._buildMaskedOffscreen(maxLong);
+      if (!built) return null;
+      this._buildDecoratedOffscreen(built.pw, built.ph, built.pLong);
+
+      const est = this._computeEstimatedFinalSize(origW, origH);
+      let targetCanvas = this._decoratedOff;
+      let targetW = est && est.width > 0 ? est.width : targetCanvas.width;
+      let targetH = est && est.height > 0 ? est.height : targetCanvas.height;
+
+      if (this.artPreset === 'full_size') {
+        const curMax = Math.max(targetW, targetH);
+        if (curMax > 4096) {
+          const ratio = 4096 / curMax;
+          targetW = Math.max(1, Math.round(targetW * ratio));
+          targetH = Math.max(1, Math.round(targetH * ratio));
+        }
+      }
+
+      if (targetCanvas.width !== targetW || targetCanvas.height !== targetH) {
+        const outCanvas = document.createElement('canvas');
+        outCanvas.width = Math.max(1, targetW);
+        outCanvas.height = Math.max(1, targetH);
+        const oCtx = outCanvas.getContext('2d');
+        oCtx.imageSmoothingEnabled = true;
+        oCtx.imageSmoothingQuality = 'high';
+        oCtx.drawImage(
+          targetCanvas,
+          0,
+          0,
+          targetCanvas.width,
+          targetCanvas.height,
+          0,
+          0,
+          outCanvas.width,
+          outCanvas.height
+        );
+        targetCanvas = outCanvas;
+      }
+
+      const safeMime = mimeType === 'image/png' ? 'image/png' : 'image/jpeg';
+      const safeQ = clamp(Number(quality ?? 0.92), 0.1, 1.0);
+      const dataUrl = safeMime === 'image/png'
+        ? targetCanvas.toDataURL('image/png')
+        : targetCanvas.toDataURL('image/jpeg', safeQ);
+
+      this._blurCacheKey = '';
+      this.render();
+      return dataUrl;
+    }
+
     _setZoomAroundPoint(nextZoom, vx, vy) {
       const clamped = clamp(nextZoom, 1.0, 8.0);
       const { fitScale, scale, originX, originY, pw, ph } = this._vp;
@@ -434,9 +513,17 @@
         ? this.canvas.parentElement.getBoundingClientRect()
         : { width: 820, height: 520 };
       const dpr = Math.min(2, window.devicePixelRatio || 1);
-      const cssW = Math.max(300, Math.floor(rect.width || 820));
+      const cssW = Math.max(260, Math.floor(rect.width || 820));
+      const customMaxH = Number((this.canvas.dataset && this.canvas.dataset.maxHeight) || 0);
       const isCompact = cssW < 540;
-      const cssH = isCompact ? Math.min(430, Math.max(300, Math.round(cssW * 0.92))) : 520;
+      let cssH;
+      if (customMaxH > 0) {
+        cssH = isCompact
+          ? Math.min(customMaxH, Math.max(220, Math.round(cssW * 0.76)))
+          : Math.min(customMaxH, 520);
+      } else {
+        cssH = isCompact ? Math.min(340, Math.max(220, Math.round(cssW * 0.76))) : 520;
+      }
 
       const targetW = Math.round(cssW * dpr);
       const targetH = Math.round(cssH * dpr);
@@ -448,20 +535,20 @@
       return dpr;
     }
 
-    _buildMaskedOffscreen() {
+    _buildMaskedOffscreen(maxPreviewLong = 1440) {
       const src = this.sourceImg;
       if (!src) return null;
       const origW = src.naturalWidth || src.width || 1200;
       const origH = src.naturalHeight || src.height || 800;
 
-      const maxPreviewLong = 1440;
+      const limitLong = Math.max(320, Number(maxPreviewLong) || 1440);
       let pw;
       let ph;
       if (origW >= origH) {
-        pw = Math.min(origW, maxPreviewLong);
+        pw = Math.min(origW, limitLong);
         ph = Math.max(1, Math.round(origH * (pw / origW)));
       } else {
-        ph = Math.min(origH, maxPreviewLong);
+        ph = Math.min(origH, limitLong);
         pw = Math.max(1, Math.round(origW * (ph / origH)));
       }
       const pLong = Math.max(pw, ph);
@@ -957,17 +1044,41 @@
       return { x: ox + w - iw - margin, y: oy + h - ih - margin };
     }
 
+    _formatShutterLabel(raw) {
+      const s = String(raw || '').trim();
+      if (!s) return '';
+      if (s.endsWith('s')) return s;
+      let sec = NaN;
+      if (s.includes('/')) {
+        const parts = s.split('/', 2);
+        const num = Number(parts[0]);
+        const den = Number(parts[1]);
+        if (num > 0 && den > 0) {
+          if (Math.abs(num - 1) < 1e-6 && den >= 2) return `1/${Math.round(den)}s`;
+          sec = num / den;
+        }
+      } else {
+        sec = Number(s);
+      }
+      if (!isNaN(sec) && sec > 0) {
+        if (sec < 0.45) return `1/${Math.max(2, Math.round(1 / sec))}s`;
+        const rounded = Math.round(sec * 10) / 10;
+        return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)}s`;
+      }
+      return `${s}s`;
+    }
+
     _buildCaptionStrings(fc) {
       const m = this.photoMeta || {};
       let camera = '';
       if (fc.show_camera !== false) {
-        const rawCam = String(m.camera_model || '').trim();
-        if (rawCam && rawCam !== '不明' && rawCam !== 'RAW写真') camera = rawCam;
+        const rawCam = String(m.camera_model || m.cameraModel || m.camera_make || m.cameraMake || '').trim();
+        if (rawCam && rawCam !== '不明' && rawCam !== 'RAW写真' && rawCam !== 'Unknown') camera = rawCam;
       }
       let lens = '';
       if (fc.show_lens !== false) {
-        const rawLens = String(m.lens_model || '').trim();
-        if (rawLens && rawLens !== '不明' && rawLens !== '----') lens = rawLens;
+        const rawLens = String(m.lens_model || m.lensModel || '').trim();
+        if (rawLens && rawLens !== '不明' && rawLens !== '----' && rawLens !== 'Unknown') lens = rawLens;
       }
       let exposure = '';
       if (fc.show_exposure !== false) {
@@ -980,22 +1091,31 @@
           const fn = Number(m.f_number);
           if (!isNaN(fn) && fn > 0) ex.push(`F${fn.toFixed(1).replace(/\.0$/, '')}`);
         }
-        if (m.shutter_speed) {
-          const ss = String(m.shutter_speed).trim();
-          ex.push(ss.endsWith('s') ? ss : `${ss}s`);
-        }
-        if (m.iso) ex.push(`ISO${m.iso}`);
+        const ssLabel = this._formatShutterLabel(m.shutter_speed);
+        if (ssLabel) ex.push(ssLabel);
+        if (m.iso != null && m.iso !== '' && Number(m.iso) > 0) ex.push(`ISO${m.iso}`);
         exposure = ex.join('  ');
       }
       const extraArr = [];
-      if (fc.show_date && m.date_taken && String(m.date_taken).length >= 10) {
-        extraArr.push(String(m.date_taken).slice(0, 10).replace(/[-:]/g, '.'));
+      const rawDate = String(m.date_taken || m.original_date_taken || m.dateTaken || '').trim();
+      if (fc.show_date && rawDate.length >= 10) {
+        extraArr.push(rawDate.slice(0, 10).replace(/[-:]/g, '.'));
       }
       if (fc.show_location) {
         const locs = [m.city, m.state, m.country]
           .map((v) => String(v || '').trim())
           .filter((v) => v && v !== '不明' && v !== 'Unknown');
-        if (locs.length > 0) extraArr.push(locs.slice(0, 2).join(', '));
+        if (locs.length > 0) {
+          extraArr.push(locs.slice(0, 2).join(', '));
+        } else if (m.latitude != null && m.longitude != null && m.latitude !== '' && m.longitude !== '') {
+          const lat = Number(m.latitude);
+          const lon = Number(m.longitude);
+          if (!isNaN(lat) && !isNaN(lon) && (Math.abs(lat) > 0.0001 || Math.abs(lon) > 0.0001)) {
+            const latStr = `${Math.abs(lat).toFixed(3)}°${lat >= 0 ? 'N' : 'S'}`;
+            const lonStr = `${Math.abs(lon).toFixed(3)}°${lon >= 0 ? 'E' : 'W'}`;
+            extraArr.push(`${latStr}, ${lonStr}`);
+          }
+        }
       }
       if (fc.show_note && (fc.custom_note || '').trim()) {
         extraArr.push(fc.custom_note.trim());
@@ -1007,8 +1127,8 @@
       const parts = this._buildCaptionStrings(fc);
       const baseRef = Math.min(outW, outH);
       const fontScale = clamp(Number(fc.font_scale || 1.0), 0.65, 1.5);
-      const titlePx = Math.max(12, Math.round(baseRef * 0.020 * fontScale));
-      const subPx = Math.max(10, Math.round(baseRef * 0.0145 * fontScale));
+      const titlePx = Math.min(Math.max(12, Math.round(baseRef * 0.020 * fontScale)), Math.max(10, Math.floor(botSpace * 0.44)));
+      const subPx = Math.min(Math.max(10, Math.round(baseRef * 0.0145 * fontScale)), Math.max(9, Math.floor(botSpace * 0.34)));
       const areaCy = oy + ph + Math.round(botSpace * 0.52);
       const layout = fc.layout || 'classic';
 
@@ -1123,7 +1243,8 @@
         return;
       }
 
-      const built = this._buildMaskedOffscreen();
+      const previewMaxLong = this.viewMode === 'decorated' && this.zoom > 1.5 ? 2048 : 1440;
+      const built = this._buildMaskedOffscreen(previewMaxLong);
       if (!built) return;
       const { pw, ph, pLong, origW, origH } = built;
 
@@ -1163,16 +1284,22 @@
         const outW = this._decoratedOff.width;
         const outH = this._decoratedOff.height;
         const margin = Math.round(20 * dpr);
-        const fit = Math.min((vw - margin * 2) / outW, (vh - margin * 2) / outH);
-        const dw = outW * fit;
-        const dh = outH * fit;
-        const dx = (vw - dw) * 0.5;
-        const dy = (vh - dh) * 0.5;
+        const fitScale = Math.min((vw - margin * 2) / outW, (vh - margin * 2) / outH);
+        const scale = fitScale * this.zoom;
+
+        const maxPanX = Math.max(0, (outW * scale - vw * 0.45) * 0.65);
+        const maxPanY = Math.max(0, (outH * scale - vh * 0.45) * 0.65);
+        this.panX = clamp(this.panX, -maxPanX, maxPanX);
+        this.panY = clamp(this.panY, -maxPanY, maxPanY);
+
+        const dx = (vw - outW * scale) * 0.5 + this.panX;
+        const dy = (vh - outH * scale) * 0.5 + this.panY;
+        this._vp = { fitScale, scale, originX: dx, originY: dy, pw: outW, ph: outH, pLong: Math.max(outW, outH), dpr };
 
         ctx.save();
         ctx.shadowColor = 'rgba(0, 0, 0, 0.34)';
         ctx.shadowBlur = 18 * dpr;
-        ctx.drawImage(this._decoratedOff, dx, dy, dw, dh);
+        ctx.drawImage(this._decoratedOff, dx, dy, outW * scale, outH * scale);
         ctx.restore();
       }
     }
@@ -1340,7 +1467,7 @@
 
     _bindCanvasEvents() {
       this.canvas.addEventListener('wheel', (ev) => {
-        if (this.viewMode !== 'mask' || !this.sourceImg) return;
+        if (!this.sourceImg) return;
         ev.preventDefault();
         const { vx, vy } = this._clientToViewport(ev.clientX, ev.clientY);
         const factor = ev.deltaY < 0 ? 1.18 : 1 / 1.18;
@@ -1348,7 +1475,7 @@
       }, { passive: false });
 
       this.canvas.addEventListener('pointerdown', (ev) => {
-        if (this.viewMode !== 'mask' || !this.sourceImg) return;
+        if (!this.sourceImg) return;
         this.canvas.setPointerCapture(ev.pointerId);
         this._pointers.set(ev.pointerId, { clientX: ev.clientX, clientY: ev.clientY });
 
@@ -1356,6 +1483,7 @@
         if (this._pointers.size === 2) {
           this._activeDrag = null;
           this._loupeFocus = null;
+          this._lastTapInfo = null;
           const pts = Array.from(this._pointers.values());
           const dist = Math.max(10, Math.hypot(pts[1].clientX - pts[0].clientX, pts[1].clientY - pts[0].clientY));
           const mid = this._clientToViewport((pts[0].clientX + pts[1].clientX) * 0.5, (pts[0].clientY + pts[1].clientY) * 0.5);
@@ -1367,6 +1495,27 @@
 
         const { vx, vy, nx, ny } = this._clientToViewport(ev.clientX, ev.clientY);
         const dpr = this._vp.dpr || 1;
+
+        if (this.viewMode !== 'mask') {
+          const now = Date.now();
+          if (
+            this._lastTapInfo &&
+            now - this._lastTapInfo.time < 320 &&
+            Math.hypot(vx - this._lastTapInfo.vx, vy - this._lastTapInfo.vy) <= 28 * dpr
+          ) {
+            this._lastTapInfo = null;
+            this._activeDrag = null;
+            if (this.zoom > 1.05) {
+              this.resetZoom();
+            } else {
+              this._setZoomAroundPoint(2.5, vx, vy);
+            }
+            return;
+          }
+          this._lastTapInfo = { time: now, vx, vy };
+          this._activeDrag = { kind: 'pan', startVx: vx, startVy: vy, origPanX: this.panX, origPanY: this.panY };
+          return;
+        }
 
         if (this.toolMode === 'pan' || ev.button === 1) {
           this._activeDrag = { kind: 'pan', startVx: vx, startVy: vy, origPanX: this.panX, origPanY: this.panY };

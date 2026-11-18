@@ -19,7 +19,7 @@
       id: 'uplink',
       label: '母艦に収納',
       recordingLabel: '母艦に収納',
-      ariaHint: 'タップで差分一括収納、長押しで写真を手動選択（上下スワイプで機能切替）',
+      ariaHint: 'タップで母艦に一括収納・同期（上下スワイプで機能切替）',
       svg: '<svg class="t-dial-svg" viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>',
     },
     {
@@ -124,7 +124,7 @@
 
     const dotsHtml = DIAL_MODES.map(
       (m, idx) =>
-        `<span class="t-center-dial-dot ${idx === state.modeIndex ? 'is-active' : ''} ${m.id === 'gps' && state.gpsRecording ? 'is-rec' : ''} ${m.id === 'uplink' && !state.pcLinked ? 'is-offline' : ''}"></span>`
+        `<span class="t-center-dial-dot ${idx === state.modeIndex ? 'is-active' : ''} ${m.id === 'gps' && state.gpsRecording ? 'is-rec' : ''}"></span>`
     ).join('');
 
     return `
@@ -151,13 +151,13 @@
     if (!btn) return;
 
     const mode = _getCurrentModeDef();
-    const isUplinkOffline = mode.id === 'uplink' && !state.pcLinked;
-    const hintText = isUplinkOffline
-      ? '母艦と未接続 — 長押しで手動メニューを開けます（上下スワイプで機能切替）'
+    const isUplinkOffline = false;
+    const hintText = mode.id === 'uplink'
+      ? 'タップで母艦に一括収納・同期（上下スワイプで機能切替）'
       : mode.ariaHint;
     btn.setAttribute('data-dial-mode', mode.id);
     btn.setAttribute('aria-label', `${mode.label} — ${hintText}`);
-    btn.setAttribute('aria-disabled', isUplinkOffline ? 'true' : 'false');
+    btn.setAttribute('aria-disabled', 'false');
     btn.title = hintText;
     btn.classList.toggle('is-uplink-offline', isUplinkOffline);
     btn.classList.toggle('is-gps-recording', Boolean(state.gpsRecording));
@@ -241,12 +241,6 @@
     }
 
     if (mode.id === 'uplink') {
-      _syncLinkState();
-      if (!state.pcLinked) {
-        _showToast('母艦と未接続です（長押しで手動メニューを開けます）', 2600);
-        _renderDialButton('');
-        return;
-      }
       setMode('gps', '', { silent: true });
       global.TetheractTouchUI?.closePerspectiveSheet?.();
       _vibrate(10);
@@ -278,11 +272,7 @@
     if (mode.id === 'uplink') {
       setMode('gps', '', { silent: true });
       global.TetheractTouchUI?.closePerspectiveSheet?.();
-      if (global.TetheractTouchUI && typeof global.TetheractTouchUI.openPhoneCaseModal === 'function') {
-        global.TetheractTouchUI.openPhoneCaseModal('all', 'Uplink — 母艦に収納');
-      } else {
-        document.getElementById('mOpenDbModalBtn')?.click();
-      }
+      document.getElementById('mOpenDbModalBtn')?.click();
       return;
     }
 

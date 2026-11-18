@@ -67,8 +67,9 @@
     expandedFilterNodes: new Set(),
     monthDayCountsCache: new Map(),
 
-    // 複数選択モード & タブレットインスペクタ選択状態
+    // 複数選択モード & Art Framer 1枚タップ待機モード & タブレットインスペクタ選択状態
     selectMode: false,
+    artFramerPickMode: false,
     selectedIds: new Set(),
     inspectedIndex: -1,
     inspectedPhotoId: null,
@@ -691,9 +692,11 @@
     const pushed = Number((res && res.pushedCount) || 0);
     const logDays = Number((res && res.uploadedFieldLogDays) || 0);
     const importedPhotos = Number((quickSum && quickSum.importedCount) || 0);
+    const signalCount = Number((quickSum && quickSum.signalCount) || 0);
     const partialRem = Number((quickSum && quickSum.partialRemaining) || 0);
     const parts = [];
     if (importedPhotos > 0) parts.push(`写真${importedPhotos}枚収納`);
+    if (signalCount > 0) parts.push(`信号${signalCount}件`);
     if (pushed > 0) parts.push(`選別${pushed}件`);
     if (logDays > 0) parts.push(`GPSログ${logDays}日分`);
 
@@ -701,7 +704,7 @@
       return `✓ 母艦と同期完了（${parts.join('・') || '差分同期'} / 未転送残り${partialRem}枚）`;
     }
     if (parts.length > 0) {
-      return importedPhotos > 0
+      return (importedPhotos > 0 || signalCount > 0)
         ? `✓ 母艦に収納完了（${parts.join('・')}）`
         : `✓ 母艦と同期完了（${parts.join('・')}）`;
     }
@@ -1539,10 +1542,54 @@
   }
 
   /**
+   * スマホ内写真の未取得EXIF・露出設定・GPS地名をネイティブ層からオンデマンド補完する
+   */
+  function _hydratePhonePhotoExifIfNeeded(photo) {
+    if (!photo || !photo.id || photo._exifHydrated) return;
+    const isPhoneOrig =
+      Number(photo.id) >= 900000000 ||
+      photo.volume_serial === 'ANDROID_LOCAL' ||
+      Boolean(photo.is_phone_local) ||
+      String(photo.file_path || '').startsWith('phone://');
+    photo._exifHydrated = true;
+    if (!isPhoneOrig) return;
+
+    const missingExif =
+      !photo.camera_model ||
+      !photo.lens_model ||
+      (!photo.f_number && !photo.shutter_speed && !photo.iso && !photo.focal_length) ||
+      (photo.latitude != null && photo.longitude != null && !photo.city && !photo.state && !photo.country);
+    if (!missingExif) return;
+
+    if (
+      window.TetheractPhoneCaseAdapter &&
+      typeof window.TetheractPhoneCaseAdapter.ensurePhotoExif === 'function'
+    ) {
+      const hydrated = window.TetheractPhoneCaseAdapter.ensurePhotoExif(photo.id);
+      if (hydrated) {
+        const fields = [
+          'date_taken', 'camera_model', 'lens_model', 'focal_length',
+          'f_number', 'shutter_speed', 'iso', 'width', 'height',
+          'latitude', 'longitude', 'country', 'state', 'city',
+        ];
+        for (const k of fields) {
+          if (hydrated[k] !== undefined && hydrated[k] !== null && hydrated[k] !== '') {
+            photo[k] = hydrated[k];
+          }
+        }
+      }
+    }
+  }
+
+  /**
    * 単一写真（およびスタック内メンバー）の全メタデータ・タグ一覧・スタック内訳をオンデマンドでロードする
    */
   function ensureLocalPhotoDetails(photo) {
-    if (!photo || mState.mode !== 'localdb' || !mState.localDb || photo._detailsLoaded) {
+    if (!photo || mState.mode !== 'localdb' || !mState.localDb) {
+      return photo;
+    }
+    if (photo._detailsLoaded) {
+      _hydratePhonePhotoExifIfNeeded(photo);
       return photo;
     }
     photo._detailsLoaded = true;
@@ -1553,6 +1600,7 @@
       Object.assign(photo, fullRows[0]);
       if (prevRate !== undefined) photo.rating = prevRate;
     }
+    _hydratePhonePhotoExifIfNeeded(photo);
     photo._bakedAdjust = prevBaked || {
       brightness: Number(photo.brightness || 0),
       contrast: Number(photo.contrast || 0),
@@ -2303,6 +2351,11 @@
         return;
       }
       if (window.__tetheractJustDragSelectedUntil && Date.now() < window.__tetheractJustDragSelectedUntil) {
+        return;
+      }
+      if (mState.artFramerPickMode) {
+        setArtFramerPickMode(false);
+        window.TetheractTouchUI?.artFramer?.open?.([photo.id]);
         return;
       }
       if (mState.selectMode || document.body.classList.contains('m-select-mode')) {
@@ -3142,7 +3195,19 @@
 
   // ==================== 複数選択 & 一括操作 ====================
 
+  function setArtFramerPickMode(enabled) {
+    const next = Boolean(enabled);
+    mState.artFramerPickMode = next;
+    document.body.classList.toggle('is-af-pick-mode', next);
+    document.querySelectorAll('#tPhoneBottomNav [data-bnav="artframer"], #tTabletRail [data-perspective-id="artframer"]').forEach((btn) => {
+      btn.classList.toggle('is-active', next);
+    });
+  }
+
   function setSelectMode(enabled) {
+    if (enabled && mState.artFramerPickMode) {
+      setArtFramerPickMode(false);
+    }
     mState.selectMode = enabled;
     document.body.classList.toggle('m-select-mode', enabled);
     document.getElementById('mSelectModeBtn')?.classList.toggle('active', enabled);
@@ -3281,6 +3346,7 @@
 
   function openViewerAt(index) {
     if (index < 0 || index >= mState.photos.length) return;
+    if (mState.artFramerPickMode) setArtFramerPickMode(false);
     const photo = mState.photos[index];
     mState.viewerIndex = index;
     mState.inspectedIndex = index;
@@ -4964,6 +5030,7 @@
       const selected = Boolean(e?.detail?.selected);
       if (!numId) return;
       if (!mState.selectMode) {
+        if (mState.artFramerPickMode) setArtFramerPickMode(false);
         mState.selectMode = true;
         document.body.classList.add('m-select-mode');
         document.getElementById('mSelectModeBtn')?.classList.add('active');
@@ -4990,6 +5057,13 @@
         return;
       }
       openInfoSheet(true);
+    });
+    document.getElementById('mBatchArtFramerBtn')?.addEventListener('click', () => {
+      if (mState.selectedIds.size === 0) {
+        showToast('Art Framer で仕上げる写真を選択してください');
+        return;
+      }
+      window.TetheractTouchUI?.artFramer?.open?.();
     });
 
     // スクロール連動チャンク描画 ＆ 画面回転・ペイン開閉連動のびっしり行高さ自動再計算
@@ -5041,6 +5115,89 @@
     window.__stepMobileGridCols = stepMobileGridCols;
     window.__onClearSingleSelection = () => {
       clearSingleSelection();
+    };
+    window.__getMobileArtFramerTargets = (explicitIds = null) => {
+      let rawList = [];
+      if (Array.isArray(explicitIds) && explicitIds.length > 0) {
+        const wanted = new Set(explicitIds.map((x) => String(x)));
+        for (const p of mState.photos || []) {
+          if (wanted.has(String(p.id))) {
+            rawList.push(p);
+          } else if (Array.isArray(p.stack_photos)) {
+            for (const sp of p.stack_photos) {
+              if (wanted.has(String(sp.id))) rawList.push(sp);
+            }
+          }
+        }
+      } else if (mState.viewerOpen) {
+        const vp = getActiveViewerPhoto();
+        if (vp) rawList = [vp];
+      } else if (mState.selectMode && mState.selectedIds.size > 0) {
+        for (const id of mState.selectedIds) {
+          const hit = (mState.photos || []).find((p) => String(p.id) === String(id));
+          if (hit) rawList.push(hit);
+        }
+      } else if (mState.inspectedIndex >= 0 && mState.photos[mState.inspectedIndex]) {
+        rawList = [mState.photos[mState.inspectedIndex]];
+      }
+
+      return rawList
+        .map((rawP) => {
+          const p = ensureLocalPhotoDetails(rawP) || rawP;
+          if (!p || !p.id) return null;
+          return {
+            ...p,
+            tags: Array.isArray(p.tags) ? [...p.tags] : [],
+            thumbUrl: getMobileThumbnailUrl(p),
+            hdUrl: getMobileFullPhotoUrl(p),
+            isServerMode: mState.mode === 'server',
+          };
+        })
+        .filter(Boolean);
+    };
+    window.__refreshMobileAfterArtFramerSave = async () => {
+      if (mState.mode === 'server') {
+        await refreshAllData();
+        return;
+      }
+      if (typeof window.__onTetheractPhoneCatalogSynced === 'function') {
+        await window.__onTetheractPhoneCatalogSynced();
+      } else if (mState.mode === 'localdb' && mState.localDb) {
+        mState.stackCountsMap = null;
+        await refreshAllData();
+      }
+    };
+    window.__openOrSelectForMobileArtFramer = () => {
+      if (mState.artFramerPickMode) {
+        setArtFramerPickMode(false);
+        showToast('Art Framer 選択モードを解除しました', 1800);
+        return false;
+      }
+      const hasReadyTarget = Boolean(
+        mState.viewerOpen ||
+        (mState.selectMode && mState.selectedIds.size > 0) ||
+        (isTabletMode() && mState.inspectedIndex >= 0 && mState.photos[mState.inspectedIndex])
+      );
+      if (hasReadyTarget) {
+        setArtFramerPickMode(false);
+        const targets = typeof window.__getMobileArtFramerTargets === 'function'
+          ? window.__getMobileArtFramerTargets()
+          : [];
+        if (targets.length > 0) {
+          window.TetheractTouchUI?.artFramer?.open?.();
+          return true;
+        }
+      }
+      if (!mState.photos || mState.photos.length === 0) {
+        showToast('仕上げる写真がありません');
+        return false;
+      }
+      if (mState.selectMode && mState.selectedIds.size === 0) {
+        setSelectMode(false);
+      }
+      setArtFramerPickMode(true);
+      showToast('仕上げる写真を1枚タップすると Art Framer が開きます（もう一度タップで解除）', 2600);
+      return false;
     };
     window.__onStartContextualDuel = () => {
       if (!window.TetheractTouchUI || !window.TetheractTouchUI.duel) return;
@@ -5143,7 +5300,7 @@
           ? mState.folderList
           : _queryLocalFolderSummaries();
         // M-2: 上部カード（touch_phone_case.js）にスマホ管理下フォルダが表示されている場合は、下部ツリーとの二重表示を防ぐ
-        const hasTopPhoneCard = Boolean(window.TetheractTouchUI && typeof window.TetheractTouchUI.openPhoneCaseModal === 'function' && window.TetheractNative);
+        const hasTopPhoneCard = Boolean(window.TetheractTouchUI && typeof window.TetheractTouchUI.triggerQuickDeltaUplink === 'function' && window.TetheractNative);
         const folderSource = hasTopPhoneCard
           ? rawFolderSource.filter((f) => !String(f.directory_path || f.path || f.name || '').startsWith('📱'))
           : rawFolderSource;
@@ -5284,17 +5441,6 @@
             renderDrawerFilters();
             fetchPhotosData();
           });
-        });
-        return true;
-      } else if (perspectiveId === 'lab') {
-        container.innerHTML = `
-          <div style="display:flex;flex-direction:column;gap:10px;padding:6px 4px;">
-            <div style="font-size:12px;color:var(--text-muted);line-height:1.5;">専用ロッカー（library.db）のWi-Fi / USB同期や差分エクスポートを行えます。</div>
-            <button type="button" class="m-btn m-btn-primary" id="tStageOpenDbSyncBtn" style="width:100%;">DB読込・Wi-Fi/USB同期を開く</button>
-          </div>
-        `;
-        container.querySelector('#tStageOpenDbSyncBtn')?.addEventListener('click', () => {
-          document.getElementById('mOpenDbModalBtn')?.click();
         });
         return true;
       }
@@ -5446,6 +5592,9 @@
     document.getElementById('mViewerCloseBtn')?.addEventListener('click', closeViewer);
     document.getElementById('mViewerPrevBtn')?.addEventListener('click', () => stepViewer(-1));
     document.getElementById('mViewerNextBtn')?.addEventListener('click', () => stepViewer(1));
+    document.getElementById('mViewerArtFramerBtn')?.addEventListener('click', () => {
+      window.TetheractTouchUI?.artFramer?.open?.();
+    });
     document.getElementById('mViewerAdjustBtn')?.addEventListener('click', () => {
       if (!window.TetheractTouchUI || typeof window.TetheractTouchUI.setThumbBarMode !== 'function') return;
       const curMode = typeof window.TetheractTouchUI.getThumbBarMode === 'function'
@@ -5529,6 +5678,10 @@
     };
     document.getElementById('mOpenDbModalBtn')?.addEventListener('click', openDbModal);
     document.getElementById('mCloseDbSyncBtn')?.addEventListener('click', closeDbModal);
+    document.getElementById('mOpenFieldLogFromSettingsBtn')?.addEventListener('click', () => {
+      closeDbModal();
+      window.TetheractTouchUI?.openFieldLogScreen?.();
+    });
     dbOverlay?.addEventListener('click', (e) => {
       if (e.target === dbOverlay) closeDbModal();
     });
@@ -5543,13 +5696,29 @@
       }
       dbFileInput?.click();
     });
+    const runUnifiedUplink = async (rawUrlInput = '') => {
+      if (rawUrlInput && window.TetheractNative && typeof window.TetheractNative.saveWifiPairingJson === 'function') {
+        const saveRes = JSON.parse(window.TetheractNative.saveWifiPairingJson(rawUrlInput) || '{}');
+        if (!saveRes.ok) {
+          showToast(saveRes.error || '接続URLの形式が正しくありません', 4000);
+          return;
+        }
+        _refreshWifiStatusBox();
+      }
+      closeDbModal();
+      if (window.TetheractTouchUI && typeof window.TetheractTouchUI.triggerQuickDeltaUplink === 'function') {
+        await window.TetheractTouchUI.triggerQuickDeltaUplink();
+      } else {
+        await _triggerAndroidWifiLockerSync('');
+      }
+    };
     document.getElementById('mWelcomeWifiSyncBtn')?.addEventListener('click', () => {
-      _triggerAndroidWifiLockerSync('');
+      runUnifiedUplink('');
     });
     document.getElementById('mRunWifiSyncBtn')?.addEventListener('click', () => {
       const inp = document.getElementById('mWifiUrlInput');
       const val = inp ? inp.value.trim() : '';
-      _triggerAndroidWifiLockerSync(val);
+      runUnifiedUplink(val);
     });
     document.getElementById('mSaveWifiUrlBtn')?.addEventListener('click', () => {
       const inp = document.getElementById('mWifiUrlInput');
@@ -5559,7 +5728,7 @@
         inp?.focus();
         return;
       }
-      _triggerAndroidWifiLockerSync(val);
+      runUnifiedUplink(val);
     });
     document.getElementById('mWelcomeLoadDbBtn')?.addEventListener('click', () => {
       if (window.TetheractNative && typeof window.TetheractNative.selectUsbFolderAndSync === 'function') {
@@ -5656,6 +5825,10 @@
       const drawer = document.getElementById('mDrawer');
       if (drawer && drawer.classList.contains('open')) {
         closeDrawer();
+        return 'handled';
+      }
+      if (mState.artFramerPickMode) {
+        setArtFramerPickMode(false);
         return 'handled';
       }
       if (mState.selectMode) {

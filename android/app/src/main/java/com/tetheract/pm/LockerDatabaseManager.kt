@@ -599,7 +599,7 @@ class LockerDatabaseManager(private val context: Context) {
                     val ph = chunk.joinToString(",") { "?" }
                     val args = chunk.map { it.toString() }.toTypedArray()
                     db.rawQuery(
-                        "SELECT id, content_key, file_path, file_name, file_size, date_taken FROM photos WHERE id IN ($ph)",
+                        "SELECT id, content_key, file_path, file_name, file_size, date_taken, COALESCE(camera_model, '') FROM photos WHERE id IN ($ph)",
                         args
                     ).use { c ->
                         while (c.moveToNext()) {
@@ -609,7 +609,8 @@ class LockerDatabaseManager(private val context: Context) {
                                 filePath = c.getString(2) ?: "",
                                 fileName = c.getString(3) ?: "",
                                 fileSize = c.getLong(4),
-                                dateTaken = c.getString(5) ?: ""
+                                dateTaken = c.getString(5) ?: "",
+                                cameraModel = c.getString(6) ?: ""
                             )
                         }
                     }
@@ -633,7 +634,8 @@ class LockerDatabaseManager(private val context: Context) {
                     filePath = merged.optString("file_path", "").trim().ifEmpty { fallback?.filePath ?: "" },
                     fileName = merged.optString("file_name", "").trim().ifEmpty { fallback?.fileName ?: "" },
                     fileSize = merged.optLong("file_size", 0L).let { if (it > 0L) it else (fallback?.fileSize ?: 0L) },
-                    dateTaken = merged.optString("date_taken", "").trim().ifEmpty { fallback?.dateTaken ?: "" }
+                    dateTaken = merged.optString("date_taken", "").trim().ifEmpty { fallback?.dateTaken ?: "" },
+                    cameraModel = merged.optString("camera_model", "").trim().ifEmpty { fallback?.cameraModel ?: "" }
                 )
                 journal.record(pid, identity, merged)
             }
@@ -733,10 +735,11 @@ class LockerDatabaseManager(private val context: Context) {
         var fileName = payload.optString("file_name", "").trim()
         var fileSize = payload.optLong("file_size", 0L)
         var dateTaken = payload.optString("date_taken", "").trim()
+        var cameraModel = payload.optString("camera_model", "").trim()
 
-        if (libDb != null && (contentKey.isEmpty() || fileName.isEmpty() || dateTaken.isEmpty() || fileSize <= 0L)) {
+        if (libDb != null && (contentKey.isEmpty() || fileName.isEmpty() || dateTaken.isEmpty() || fileSize <= 0L || cameraModel.isEmpty())) {
             libDb.rawQuery(
-                "SELECT content_key, file_path, file_name, file_size, date_taken FROM photos WHERE id = ? LIMIT 1",
+                "SELECT content_key, file_path, file_name, file_size, date_taken, COALESCE(camera_model, '') FROM photos WHERE id = ? LIMIT 1",
                 arrayOf(photoId.toString())
             ).use { c ->
                 if (c.moveToFirst()) {
@@ -745,10 +748,11 @@ class LockerDatabaseManager(private val context: Context) {
                     if (fileName.isEmpty()) fileName = c.getString(2) ?: ""
                     if (fileSize <= 0L) fileSize = c.getLong(3)
                     if (dateTaken.isEmpty()) dateTaken = c.getString(4) ?: ""
+                    if (cameraModel.isEmpty()) cameraModel = c.getString(5) ?: ""
                 }
             }
         }
-        journal.record(photoId, JournalPhotoIdentity(contentKey, filePath, fileName, fileSize, dateTaken), payload)
+        journal.record(photoId, JournalPhotoIdentity(contentKey, filePath, fileName, fileSize, dateTaken, cameraModel), payload)
     }
 
     /** USBやWi-Fiで新しい library.db をロッカーに反映した際、未同期ジャーナルを content_key / 撮影日時+サイズ優先で再適用する */

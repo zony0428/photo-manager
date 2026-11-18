@@ -1104,6 +1104,8 @@ body.m-select-mode .m-card-check {
 }
 
 .m-viewer-title-wrap {
+  flex: 1 1 0%;
+  min-width: 0;
   text-align: center;
   overflow: hidden;
   padding: 0 6px;
@@ -1115,12 +1117,18 @@ body.m-select-mode .m-card-check {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 48vw;
+  max-width: 100%;
 }
 
 .m-viewer-counter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
   font-size: 11px;
   color: #9ca6b5;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .m-viewer-stage {
@@ -1244,14 +1252,14 @@ body.m-select-mode .m-card-check {
 
 .m-viewer-source-badge {
   display: inline-block;
-  margin-left: 6px;
+  flex-shrink: 0;
+  white-space: nowrap;
   padding: 1px 6px;
   border-radius: 8px;
   font-size: 10px;
   font-weight: 700;
   background-color: rgba(255, 255, 255, 0.1);
   color: #9ca6b5;
-  vertical-align: 1px;
 }
 
 .m-viewer-source-badge.is-hd {

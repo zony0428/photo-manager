@@ -492,7 +492,12 @@ def _sanitize_photo_data(photo_data: Dict[str, Any]) -> Dict[str, Any]:
     return clean_data
 
 
-def _upsert_single_photo_in_tx(cursor: Any, clean_data: Dict[str, Any]) -> int:
+def _upsert_single_photo_in_tx(
+    cursor: Any,
+    clean_data: Dict[str, Any],
+    pending_signals_map: Optional[Dict[str, List[Dict[str, Any]]]] = None,
+    registered_tags_cache: Optional[set] = None,
+) -> int:
     """
     1トランザクション内で写真エンティティ (photos) と所在リンク (photo_links) を挿入・更新する。
     - 同一リンク (volume_serial, rel_path) が既にあれば更新
@@ -815,6 +820,9 @@ def _upsert_single_photo_in_tx(cursor: Any, clean_data: Dict[str, Any]) -> int:
                 copy_metadata_to_duplicate(pair_row["id"], pid, cursor=cursor)
 
         _sync_photo_links_state(cursor, pid, preferred_link_id=(new_link_id if not has_existing_links else None))
+        if int(target_photo["is_unlinked"] or 0) == 1 and pending_signals_map:
+            from ..mobile_signals import apply_pending_signals_to_photo_in_tx
+            apply_pending_signals_to_photo_in_tx(cursor, pid, clean_data, pending_signals_map, registered_tags_cache)
         return pid
 
     # 3. 完全新規のユニーク写真として photos と photo_links に登録
@@ -868,6 +876,9 @@ def _upsert_single_photo_in_tx(cursor: Any, clean_data: Dict[str, Any]) -> int:
             clean_data.get("paired_raw_path"),
         ),
     )
+    if pending_signals_map:
+        from ..mobile_signals import apply_pending_signals_to_photo_in_tx
+        apply_pending_signals_to_photo_in_tx(cursor, pid, clean_data, pending_signals_map, registered_tags_cache)
     return pid
 
 
@@ -876,7 +887,14 @@ def upsert_photo(photo_data: Dict[str, Any]) -> int:
     clean_data = _sanitize_photo_data(photo_data)
     with get_connection() as conn:
         cursor = conn.cursor()
-        pid = _upsert_single_photo_in_tx(cursor, clean_data)
+        from ..mobile_signals import load_active_pending_signals_map
+        pending_map = load_active_pending_signals_map(cursor)
+        pid = _upsert_single_photo_in_tx(
+            cursor,
+            clean_data,
+            pending_signals_map=pending_map or None,
+            registered_tags_cache=set(),
+        )
         conn.commit()
         return pid
 
@@ -888,8 +906,16 @@ def upsert_photos_batch(list_of_meta: List[Dict[str, Any]]) -> None:
     cleaned_batch = [_sanitize_photo_data(m) for m in list_of_meta]
     with get_connection() as conn:
         cursor = conn.cursor()
+        from ..mobile_signals import load_active_pending_signals_map
+        pending_map = load_active_pending_signals_map(cursor)
+        tags_cache: set = set()
         for item in cleaned_batch:
-            _upsert_single_photo_in_tx(cursor, item)
+            _upsert_single_photo_in_tx(
+                cursor,
+                item,
+                pending_signals_map=pending_map or None,
+                registered_tags_cache=tags_cache,
+            )
         conn.commit()
 
 
@@ -1785,7 +1811,7 @@ def _sync_stack_primary_by_rating(cursor, stack_ids: List[int]) -> None:
     for sid in unique_sids:
         cursor.execute(
             """
-            SELECT id, rating, exposure_bias, stack_type, is_raw, paired_raw_path
+            SELECT id, file_name, rating, exposure_bias, stack_type, is_raw, paired_raw_path
             FROM photos
             WHERE stack_id = ? AND IFNULL(is_unlinked, 0) = 0
             ORDER BY date_taken ASC, subsec_time ASC, id ASC
@@ -1803,12 +1829,21 @@ def _sync_stack_primary_by_rating(cursor, stack_ids: List[int]) -> None:
         if stack_type == "bracket":
             best = min(
                 enumerate(candidates),
-                key=lambda kv: (-int(kv[1].get("rating") or 0), abs(float(kv[1].get("exposure_bias") or 0.0)), kv[0]),
+                key=lambda kv: (
+                    -int(kv[1].get("rating") or 0),
+                    1 if str(kv[1].get("file_name") or "").lower().startswith("thmod_") else 0,
+                    abs(float(kv[1].get("exposure_bias") or 0.0)),
+                    kv[0],
+                ),
             )[1]
         else:
             best = max(
                 enumerate(candidates),
-                key=lambda kv: (int(kv[1].get("rating") or 0), -kv[0]),
+                key=lambda kv: (
+                    int(kv[1].get("rating") or 0),
+                    0 if str(kv[1].get("file_name") or "").lower().startswith("thmod_") else 1,
+                    -kv[0],
+                ),
             )[1]
         new_pri_id = best["id"]
         cursor.execute(
@@ -2021,15 +2056,27 @@ def get_duplicate_photos_count() -> int:
 
 
 def update_rating(photo_id: int, rating: int) -> bool:
-    """評価を更新する（-1:棄, 0:可, 1:良, 2:優）。スタック所属時は評価優先で代表写真を自動再選出する。"""
+    """評価を更新する（-1:棄, 0:可, 1:良, 2:優）。スタック所属時は評価優先で代表写真を自動再選出、RAW+JPEGペア相手も同時更新する。"""
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT stack_id FROM photos WHERE id = ?", (photo_id,))
+        cursor.execute("SELECT stack_id, file_path, paired_raw_path FROM photos WHERE id = ?", (photo_id,))
         row = cursor.fetchone()
         stack_id = row["stack_id"] if row else None
+        target_ids = [int(photo_id)]
+        if row:
+            fp = row["file_path"]
+            prp = row["paired_raw_path"]
+            if prp:
+                cursor.execute("SELECT id FROM photos WHERE file_path = ? AND id != ?", (prp, photo_id))
+                target_ids.extend(int(r["id"]) for r in cursor.fetchall())
+            if fp:
+                cursor.execute("SELECT id FROM photos WHERE paired_raw_path = ? AND id != ?", (fp, photo_id))
+                target_ids.extend(int(r["id"]) for r in cursor.fetchall())
+        uniq_ids = list(dict.fromkeys(target_ids))
+        ph = ",".join("?" for _ in uniq_ids)
         cursor.execute(
-            "UPDATE photos SET rating = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-            (rating, photo_id),
+            f"UPDATE photos SET rating = ?, updated_at = CURRENT_TIMESTAMP WHERE id IN ({ph})",
+            [rating] + uniq_ids,
         )
         changed = cursor.rowcount > 0
         if stack_id is not None:

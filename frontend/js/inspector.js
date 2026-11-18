@@ -2482,7 +2482,12 @@ function collectPhotoAndStackInstances(photoId, photoObj = null) {
   }
 
   const stackGroupId = basePhoto && basePhoto.stack_group_id ? basePhoto.stack_group_id : null;
-  if (Array.isArray(state.photos)) {
+  const mayBeInAnyStack = Boolean(
+    stackGroupId ||
+    (basePhoto && (basePhoto.stack_id || (Array.isArray(basePhoto.stack_photos) && basePhoto.stack_photos.length > 0))) ||
+    (state.stackPhotoById && state.stackPhotoById.has(numId))
+  );
+  if (mayBeInAnyStack && Array.isArray(state.photos)) {
     for (const top of state.photos) {
       if (!top) continue;
       const topHasMember = Array.isArray(top.stack_photos) && top.stack_photos.some(sp => sp && sp.id === numId);
@@ -2504,6 +2509,7 @@ function collectPhotoAndStackInstances(photoId, photoObj = null) {
   }
   return { photo: basePhoto, instances, cardPhotoIds: Array.from(cardPhotoIds) };
 }
+window.collectPhotoAndStackInstances = collectPhotoAndStackInstances;
 
 async function addTagToPhoto(photoId, tag, photoObj = null) {
   if (!tag || !tag.trim()) return;
@@ -2584,7 +2590,7 @@ async function addTagToPhoto(photoId, tag, photoObj = null) {
 
 /**
  * 選択中写真に一括でタグを追加または削除する (カラーパレット一括操作・クイックツリー・新規タグ用)
- * 設定完了後に選択を解除し、現在のフィルタを再適用する (v2.02)
+ * 全件再取得せずローカル状態とカードDOMを部分更新し、フィルタ不一致カードのみインプレース除去する
  */
 async function batchToggleTag(tagName, shouldAdd, options = {}) {
   if (state.selectedPhotoIds.size === 0 || !tagName) return;
@@ -2594,50 +2600,60 @@ async function batchToggleTag(tagName, shouldAdd, options = {}) {
   const parts = cleanTagName.split('/').map(p => p.trim()).filter(Boolean);
   const allExpandedTags = parts.map((_, idx) => parts.slice(0, idx + 1).join('/'));
   const normalizedTag = parts.join('/');
+  if (!normalizedTag) return;
   const photoIds = Array.from(state.selectedPhotoIds);
 
-  // Optimistic UI: キャッシュのタグを即時更新（階層タグ時は祖先展開・削除時は子孫も除去）
+  // Optimistic UI: キャッシュのタグを即時更新（階層タグ時は祖先展開・削除時は子孫も除去、スタックメンバー含む全インスタンス同期）
+  const allInstances = [];
+  const seenInst = new Set();
+  const allCardPhotoIds = new Set();
+
   photoIds.forEach(id => {
-    const photo = (typeof findPhotoByIdAnywhere === 'function' ? findPhotoByIdAnywhere(id) : null) || state.photos.find(p => p.id === id);
-    if (photo) {
-      if (shouldAdd) {
-        if (!photo.tags) photo.tags = [];
-        if (!photo.tag_details) photo.tag_details = [];
-        allExpandedTags.forEach(tPath => {
-          if (!photo.tags.includes(tPath)) photo.tags.push(tPath);
-          if (!photo.tag_details.some(d => d.tag === tPath)) {
-            photo.tag_details.push({ tag: tPath, source: 'manual', confidence: 1.0 });
-          }
-        });
-      } else {
-        if (photo.tags) {
-          photo.tags = typeof pruneRemovedTagFromArray === 'function'
-            ? pruneRemovedTagFromArray(photo.tags, normalizedTag)
-            : photo.tags.filter(t => t !== normalizedTag && !t.startsWith(normalizedTag + '/'));
-        }
-        if (photo.tag_details) {
-          photo.tag_details = typeof pruneRemovedTagDetailsFromArray === 'function'
-            ? pruneRemovedTagDetailsFromArray(photo.tag_details, normalizedTag)
-            : photo.tag_details.filter(d => d.tag !== normalizedTag && !d.tag.startsWith(normalizedTag + '/'));
-        }
+    const { instances, cardPhotoIds } = collectPhotoAndStackInstances(id);
+    instances.forEach(inst => {
+      if (inst && !seenInst.has(inst)) {
+        seenInst.add(inst);
+        allInstances.push(inst);
       }
-      // スタックメンバーのキャッシュも同期
-      if (photo.stack_photos && Array.isArray(photo.stack_photos)) {
-        photo.stack_photos.forEach(sp => {
-          if (shouldAdd) {
-            if (!sp.tags) sp.tags = [];
-            allExpandedTags.forEach(tPath => {
-              if (!sp.tags.includes(tPath)) sp.tags.push(tPath);
-            });
-          } else if (sp.tags) {
-            sp.tags = typeof pruneRemovedTagFromArray === 'function'
-              ? pruneRemovedTagFromArray(sp.tags, normalizedTag)
-              : sp.tags.filter(t => t !== normalizedTag && !t.startsWith(normalizedTag + '/'));
-          }
-        });
+    });
+    cardPhotoIds.forEach(cid => allCardPhotoIds.add(cid));
+  });
+
+  allInstances.forEach(inst => {
+    if (shouldAdd) {
+      if (!inst.tags) inst.tags = [];
+      if (!inst.tag_details) inst.tag_details = [];
+      allExpandedTags.forEach(tPath => {
+        if (!inst.tags.includes(tPath)) inst.tags.push(tPath);
+        if (!inst.tag_details.some(d => d.tag === tPath)) {
+          inst.tag_details.push({ tag: tPath, source: 'manual', confidence: 1.0 });
+        }
+      });
+    } else {
+      if (inst.tags) {
+        inst.tags = typeof pruneRemovedTagFromArray === 'function'
+          ? pruneRemovedTagFromArray(inst.tags, normalizedTag)
+          : inst.tags.filter(t => t !== normalizedTag && !t.startsWith(normalizedTag + '/'));
+      }
+      if (inst.tag_details) {
+        inst.tag_details = typeof pruneRemovedTagDetailsFromArray === 'function'
+          ? pruneRemovedTagDetailsFromArray(inst.tag_details, normalizedTag)
+          : inst.tag_details.filter(d => d.tag !== normalizedTag && !d.tag.startsWith(normalizedTag + '/'));
       }
     }
   });
+
+  if (shouldAdd && Array.isArray(state.availableTags)) {
+    allExpandedTags.forEach(curPath => {
+      if (!state.availableTags.some(item => item.tag === curPath)) {
+        state.availableTags.push({ tag: curPath, count: photoIds.length, source: 'manual' });
+      }
+    });
+  }
+
+  if (typeof updateCardTagsDirectly === 'function') {
+    allCardPhotoIds.forEach(cid => updateCardTagsDirectly(cid));
+  }
 
   try {
     const res = await fetch('/api/photos/batch-tags', {
@@ -2651,41 +2667,62 @@ async function batchToggleTag(tagName, shouldAdd, options = {}) {
     });
     if (!res.ok) throw new Error('一括タグ処理に失敗しました');
 
-    if (keepSelection) {
-      await Promise.all([fetchPhotos(), fetchTags()]);
-      // フィルタ再適用後も表示一覧に残っている選択IDを維持して連続削除を可能にする
-      const visibleIds = new Set((state.photos || []).map(p => p.id));
-      Array.from(state.selectedPhotoIds).forEach(id => {
-        if (!visibleIds.has(id) && !(typeof findPhotoByIdAnywhere === 'function' && findPhotoByIdAnywhere(id))) {
-          state.selectedPhotoIds.delete(id);
-        }
+    if (!keepSelection && typeof clearSelection === 'function') {
+      clearSelection();
+    }
+
+    if (typeof syncGridCardsAfterTagChange === 'function') {
+      await syncGridCardsAfterTagChange(photoIds, {
+        forceAlign: true,
+        scrollToNextWhenKept: !keepSelection,
       });
-      if (state.selectedPhotoIds.size === 0) {
-        clearSelection();
+    }
+
+    if (keepSelection) {
+      const remainingIds = Array.from(state.selectedPhotoIds).filter(id =>
+        typeof findPhotoByIdAnywhere === 'function'
+          ? Boolean(findPhotoByIdAnywhere(id))
+          : state.photos.some(p => p.id === id)
+      );
+      if (remainingIds.length === 0) {
+        if (typeof clearSelection === 'function') clearSelection();
       } else {
         if (typeof updateCardSelectionClasses === 'function') updateCardSelectionClasses();
         if (typeof updateSelectionUI === 'function') updateSelectionUI();
       }
-      if (typeof showToast === 'function') {
-        showToast(
-          shouldAdd
-            ? `${photoIds.length}枚の写真にタグ「${normalizedTag}」を追加しました`
-            : `${photoIds.length}枚の写真からタグ「${normalizedTag}」を一括削除しました`,
-          'info',
-          2400
-        );
-      }
-    } else {
-      // 設定完了後、選択を解除し、現在のフィルタ条件を再適用してグリッドとタグツリーを最新化
-      clearSelection();
-      await Promise.all([fetchPhotos(), fetchTags()]);
     }
+
+    if (typeof updateViewHeader === 'function') {
+      updateViewHeader();
+    }
+    if (typeof updateInspectorView === 'function') {
+      updateInspectorView();
+    }
+    const curLight = typeof getCurrentLightboxPhoto === 'function'
+      ? getCurrentLightboxPhoto()
+      : (state.currentPhotoIndex >= 0 ? state.photos[state.currentPhotoIndex] : null);
+    if (curLight && allInstances.includes(curLight) && typeof renderLightboxTags === 'function') {
+      renderLightboxTags(curLight);
+    }
+
+    if ((keepSelection || (options && options.showSuccessToast)) && typeof showToast === 'function') {
+      showToast(
+        shouldAdd
+          ? `${photoIds.length}枚の写真にタグ「${normalizedTag}」を追加しました`
+          : `${photoIds.length}枚の写真からタグ「${normalizedTag}」を一括削除しました`,
+        shouldAdd && options && options.showSuccessToast ? 'success' : 'info',
+        2400
+      );
+    }
+
+    await fetchTags();
   } catch (err) {
     console.error('一括タグ更新エラー:', err);
     if (typeof showToast === 'function') showToast('エラー: ' + err.message, 'error');
-    await Promise.all([fetchPhotos(), fetchTags()]);
+    await fetchTags();
   }
 }
+window.batchToggleTag = batchToggleTag;
 
 /**
  * 単一写真からタグを削除 (即時DOM反映 ＆ キャッシュ即時同期)

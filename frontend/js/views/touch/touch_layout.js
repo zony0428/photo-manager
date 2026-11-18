@@ -1,7 +1,7 @@
 /**
  * Tetheract Touch & Tablet Layout Controller (Layer 3)
  * スマホ（phone）⇄ タブレット（tablet）可変モード制御、PC版と完全統一された左垂直レール
- * （Folder / Binder / Tag / Historia / Place / Gear / Lab / Search）＆右インスペクタを担う。
+ * （Folder / Binder / Tag / Historia / Place / Gear / Art Framer / Search）＆右インスペクタを担う。
  */
 (function (global) {
   'use strict';
@@ -17,7 +17,7 @@
     { id: 'historia', label: 'Historia', subLabel: '撮影年月', group: 'main', svg: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>' },
     { id: 'place', label: 'Place', subLabel: '撮影地', group: 'main', svg: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M19.5 9.5c0 5.5-7.5 10.5-7.5 10.5S4.5 15 4.5 9.5a7.5 7.5 0 0 1 15 0z"/><circle cx="12" cy="9.5" r="2.6"/><path d="M17.9 19a7.5 2 0 1 1-11.8 0"/></svg>' },
     { id: 'gear', label: 'Gear', subLabel: 'カメラ・レンズ', group: 'main', svg: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>' },
-    { id: 'lab', label: 'Lab', subLabel: '採取・再会', group: 'bottom', svg: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v7.31"/><path d="M14 9.3V1.99"/><path d="M8.5 2h7"/><path d="M14 9.3a6.5 6.5 0 1 1-4 0"/><path d="M5.52 16h12.96"/></svg>' },
+    { id: 'artframer', label: 'Framer', subLabel: 'マスク・プリント枠', group: 'bottom', svg: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="7" y="7" width="10" height="10" rx="1"/><circle cx="15" cy="9" r="0.9"/></svg>' },
     { id: 'search', label: 'Search', subLabel: 'ファイル名検索', group: 'bottom', svg: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>' },
   ];
 
@@ -130,9 +130,8 @@
     if (document.body) {
       document.body.classList.toggle('has-open-nav-sheet', Boolean(state.sheetOpen));
     }
-    const activeTab = state.sheetOpen
-      ? (state.activePerspective === 'lab' ? 'lab' : 'filter')
-      : '';
+    const isAfPick = Boolean(document.body && document.body.classList.contains('is-af-pick-mode'));
+    const activeTab = state.sheetOpen ? 'filter' : (isAfPick ? 'artframer' : '');
     document.querySelectorAll('#tPhoneBottomNav [data-bnav]').forEach((btn) => {
       btn.classList.toggle('is-active', Boolean(activeTab) && btn.getAttribute('data-bnav') === activeTab);
     });
@@ -211,7 +210,7 @@
     PERSPECTIVES.forEach((p, idx) => {
       if (idx === 1) html += '<div class="t-rail-divider" aria-hidden="true"></div>';
       if (idx === 2) html += '<div class="t-rail-gap" aria-hidden="true"></div>';
-      if (p.id === 'lab') html += '<div class="t-rail-spacer" aria-hidden="true"></div>';
+      if (p.id === 'artframer') html += '<div class="t-rail-spacer" aria-hidden="true"></div>';
       const active = p.id === state.activePerspective && state.tabletStageOpen ? 'is-active' : '';
       html += `
         <button type="button" class="t-rail-btn ${active}" data-perspective-id="${_escAttr(p.id)}" title="${_escAttr(p.label)} — ${_escAttr(p.subLabel)}">
@@ -274,6 +273,10 @@
             <button type="button" class="t-inspector-rate-btn is-normal" data-inspector-rate="0">可</button>
             <button type="button" class="t-inspector-rate-btn is-discard" data-inspector-rate="-1">棄</button>
           </div>
+          <button type="button" id="tInspectorArtFramerBtn" class="t-inspector-af-btn" style="display:none;" title="Art Framer（プライバシーマスク・プリント枠・共有）">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="7" y="7" width="10" height="10" rx="1"/><circle cx="15" cy="9" r="1"/></svg>
+            <span>Art Framer で仕上げる</span>
+          </button>
           <div id="tInspectorQuickExif" class="t-inspector-quick-exif"></div>
           <div class="t-inspector-section-head">
             <span class="t-inspector-section-label">付与タグ</span>
@@ -294,14 +297,14 @@
       _bindTabletInspectorEvents(inspector);
     }
 
-    // 2. Phone用 統合ボトムシート（絞り込み7視点 ＆ Lab［採取・再会］パネル共用）
+    // 2. Phone用 統合ボトムシート（絞り込み7視点）
     if (!document.getElementById('tTouchNavSheet')) {
       const sheetOverlay = document.createElement('div');
       sheetOverlay.id = 'tTouchNavSheetOverlay';
       sheetOverlay.className = 't-nav-sheet-overlay';
       sheetOverlay.style.display = 'none';
 
-      const sheetTabs = PERSPECTIVES.filter((p) => p.id !== 'lab');
+      const sheetTabs = PERSPECTIVES.filter((p) => p.id !== 'artframer');
       const shortJpMap = { folder: 'フォルダ', binder: '条件', tag: 'タグ', historia: '年月', place: '場所', gear: '機材', search: '検索' };
       const sheet = document.createElement('section');
       sheet.id = 'tTouchNavSheet';
@@ -341,7 +344,7 @@
       _bindPerspectiveSheetEvents(sheetOverlay, sheet);
     }
 
-    // 3. Phone用 3カラム親指ボトムナビゲーションバー（左: フィルタ / 中央: 丸型GPSダイヤル / 右: ラボ）
+    // 3. Phone用 3カラム親指ボトムナビゲーションバー（左: フィルタ / 中央: 丸型GPSダイヤル / 右: ArtFramer）
     if (!document.getElementById('tPhoneBottomNav')) {
       const bnav = document.createElement('nav');
       bnav.id = 'tPhoneBottomNav';
@@ -354,9 +357,9 @@
           <span id="tBnavFilterDot" class="t-bnav-dot" style="display:none;"></span>
         </button>
         <div id="tCenterDialSlot" class="t-center-dial-slot"></div>
-        <button type="button" class="t-bnav-btn" data-bnav="lab" title="ラボ — GPSフィールドログ管理・再会">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v7.31"/><path d="M14 9.3V1.99"/><path d="M8.5 2h7"/><path d="M14 9.3a6.5 6.5 0 1 1-4 0"/><path d="M5.52 16h12.96"/></svg>
-          <span>ラボ</span>
+        <button type="button" class="t-bnav-btn" data-bnav="artframer" title="Art Framer — プライバシーマスク・プリント枠・SNS共有">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="7" y="7" width="10" height="10" rx="1"/><circle cx="15" cy="9" r="0.9"/></svg>
+          <span>ArtFramer</span>
         </button>
       `;
       appRoot.appendChild(bnav);
@@ -367,13 +370,15 @@
         if (!btn) return;
         const tab = btn.getAttribute('data-bnav');
         if (tab === 'filter') {
-          global.TetheractTouchUI?.closePhoneCaseModal?.();
-          if (state.sheetOpen && state.activePerspective !== 'lab') closePerspectiveSheet();
+          if (state.sheetOpen) closePerspectiveSheet();
           else openPerspectiveSheet();
-        } else if (tab === 'lab') {
-          global.TetheractTouchUI?.closePhoneCaseModal?.();
-          if (state.sheetOpen && state.activePerspective === 'lab') closePerspectiveSheet();
-          else openPerspectiveSheet('lab');
+        } else if (tab === 'artframer') {
+          closePerspectiveSheet();
+          if (typeof global.__openOrSelectForMobileArtFramer === 'function') {
+            global.__openOrSelectForMobileArtFramer();
+          } else {
+            global.TetheractTouchUI?.artFramer?.open?.();
+          }
         }
       });
     }
@@ -416,7 +421,7 @@
         _safeSetStorage(STORAGE_KEY_SHEET_PIN, state.sheetPinned ? '1' : '0');
         pinBtn.classList.toggle('is-pinned', state.sheetPinned);
         const hint = sheet.querySelector('#tNavSheetDismissHint');
-        if (hint && state.activePerspective !== 'lab') {
+        if (hint) {
           hint.textContent = state.sheetPinned ? 'ピン留め中（連続選択）' : '条件タップで自動収納';
         }
       });
@@ -430,7 +435,6 @@
     const body = sheet.querySelector('#tNavSheetBody');
     if (body) {
       body.addEventListener('click', (e) => {
-        if (state.activePerspective === 'lab') return;
         if (e.target.closest('.m-tree-arrow, .m-tree-toggle-btn, .m-tree-tool-btn, .m-mini-cal-wrap, .t-tree-toggle, .t-perspective-ext-slot, input, select, button[data-no-dismiss]')) return;
         const condRow = e.target.closest('.m-filter-item, .t-filter-row, [data-filter-value]');
         if (!condRow || condRow.dataset.justSwiped === '1') return;
@@ -444,6 +448,14 @@
       const btn = e.target.closest('[data-perspective-id]');
       if (!btn) return;
       const pId = btn.getAttribute('data-perspective-id');
+      if (pId === 'artframer') {
+        if (typeof global.__openOrSelectForMobileArtFramer === 'function') {
+          global.__openOrSelectForMobileArtFramer();
+        } else {
+          global.TetheractTouchUI?.artFramer?.open?.();
+        }
+        return;
+      }
       if (state.activePerspective === pId && state.tabletStageOpen) {
         state.tabletStageOpen = false;
         stage.classList.remove('is-open');
@@ -462,26 +474,23 @@
     });
   }
 
-  function _syncSheetHeaderForPerspective(perspectiveId) {
-    const isLab = perspectiveId === 'lab';
+  function _syncSheetHeaderForPerspective() {
     const tabBar = document.getElementById('tPerspectiveTabBar');
     const resetBtn = document.getElementById('tTouchNavResetBtn');
     const pinBtn = document.getElementById('tTouchNavPinBtn');
     const hint = document.getElementById('tNavSheetDismissHint');
-    if (tabBar) tabBar.style.display = isLab ? 'none' : '';
-    if (resetBtn) resetBtn.style.display = isLab ? 'none' : '';
-    if (pinBtn) pinBtn.style.display = isLab ? 'none' : '';
+    if (tabBar) tabBar.style.display = '';
+    if (resetBtn) resetBtn.style.display = '';
+    if (pinBtn) pinBtn.style.display = '';
     if (hint) {
-      hint.textContent = isLab
-        ? 'フィールドログの記録・管理と過去の写真との再会'
-        : (state.sheetPinned ? 'ピン留め中（連続選択）' : '条件タップで自動収納');
+      hint.textContent = state.sheetPinned ? 'ピン留め中（連続選択）' : '条件タップで自動収納';
     }
   }
 
   function selectPerspective(perspectiveId) {
-    const found = PERSPECTIVES.find((p) => p.id === perspectiveId) || PERSPECTIVES[2];
+    const found = PERSPECTIVES.find((p) => p.id === perspectiveId && p.id !== 'artframer') || PERSPECTIVES[2];
     state.activePerspective = found.id;
-    if (found.id !== 'lab') state.lastFilterPerspective = found.id;
+    state.lastFilterPerspective = found.id;
 
     document.querySelectorAll('[data-perspective-id]').forEach((el) => {
       const isRailBtn = el.classList.contains('t-rail-btn');
@@ -494,7 +503,7 @@
     if (stageTitle) stageTitle.textContent = `${found.label} / ${found.subLabel}`;
     const sheetTitle = document.getElementById('tNavSheetActiveTitle');
     if (sheetTitle) sheetTitle.textContent = `${found.label} — ${found.subLabel}`;
-    _syncSheetHeaderForPerspective(found.id);
+    _syncSheetHeaderForPerspective();
     _syncBottomNavActive();
 
     _populatePerspectiveContent(found.id);
@@ -608,7 +617,7 @@
       return;
     }
 
-    const nextId = perspectiveId || (state.activePerspective === 'lab' ? (state.lastFilterPerspective || 'tag') : state.activePerspective);
+    const nextId = perspectiveId || state.activePerspective || state.lastFilterPerspective || 'tag';
     const overlay = document.getElementById('tTouchNavSheetOverlay');
     const sheet = document.getElementById('tTouchNavSheet');
     if (!overlay || !sheet) return;
@@ -655,6 +664,12 @@
       if (typeof global.__onTabletInspectorOpenTagSheet === 'function') global.__onTabletInspectorOpenTagSheet();
     });
 
+    inspector.querySelector('#tInspectorArtFramerBtn')?.addEventListener('click', () => {
+      if (global.TetheractTouchUI && global.TetheractTouchUI.artFramer && typeof global.TetheractTouchUI.artFramer.open === 'function') {
+        global.TetheractTouchUI.artFramer.open();
+      }
+    });
+
     inspector.querySelector('#tInspectorTags')?.addEventListener('click', (e) => {
       const delBtn = e.target.closest('[data-inspector-remove-tag]');
       if (!delBtn) return;
@@ -687,6 +702,7 @@
     const titleEl = document.getElementById('tInspectorFileTitle');
     const subMetaEl = document.getElementById('tInspectorSubMeta');
     const rateBarEl = document.getElementById('tInspectorRateBar');
+    const afBtnEl = document.getElementById('tInspectorArtFramerBtn');
     const exifEl = document.getElementById('tInspectorQuickExif');
     const tagsEl = document.getElementById('tInspectorTags');
     if (!titleEl) return;
@@ -695,6 +711,7 @@
     if (!photo && !isBatch) {
       if (imgEl) imgEl.style.display = 'none';
       if (openViewerBtn) openViewerBtn.style.display = 'none';
+      if (afBtnEl) afBtnEl.style.display = 'none';
       if (emptyEl) emptyEl.style.display = 'flex';
       titleEl.textContent = '-';
       if (subMetaEl) subMetaEl.textContent = '';
@@ -703,6 +720,7 @@
       if (tagsEl) tagsEl.innerHTML = '';
       return;
     }
+    if (afBtnEl) afBtnEl.style.display = 'flex';
 
     if (imgEl && photo && photo.thumbUrl) {
       imgEl.src = photo.thumbUrl;

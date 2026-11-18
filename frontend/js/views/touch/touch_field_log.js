@@ -1,6 +1,6 @@
 /**
  * Tetheract Touch & Tablet Field Log View (Layer 3)
- * Labパネル内「採取」カード・専用フルスクリーン管理画面・タイル長押し/通知起動・戻る操作階層を担う。
+ * GPSフィールドログ専用フルスクリーン管理画面・タイル長押し/通知起動・戻る操作階層を担う。
  */
 
 (function (global) {
@@ -46,7 +46,6 @@
     },
     days: [],
     selectedDates: new Set(),
-    activeLabSlot: null,
     tickTimer: null,
     lastPollMs: 0,
   };
@@ -130,7 +129,6 @@
     toastEl._flTimer = setTimeout(() => { toastEl.style.display = 'none'; }, durationMs);
   }
 
-  const _isLabCardVisible = () => Boolean(state.activeLabSlot && state.activeLabSlot.isConnected);
   const _hasCenterDialMounted = () => Boolean(document.getElementById('tCenterDialBtn'));
 
   function _emitFieldLogUiState() {
@@ -149,10 +147,6 @@
     const elapsedText = _formatElapsed(state.status.startedAt);
     const heroElapsed = document.getElementById('tFieldLogStatElapsed');
     if (heroElapsed) heroElapsed.textContent = elapsedText;
-    if (_isLabCardVisible()) {
-      const labElapsed = state.activeLabSlot.querySelector('[data-fl-lab-elapsed]');
-      if (labElapsed) labElapsed.textContent = elapsedText;
-    }
   }
 
   function _syncElapsedTicker() {
@@ -161,7 +155,7 @@
       state.tickTimer = setInterval(() => {
         _updateElapsedTextOnly();
         const now = Date.now();
-        if (now - state.lastPollMs >= 15000 && (state.screenOpen || _isLabCardVisible() || _hasCenterDialMounted())) {
+        if (now - state.lastPollMs >= 15000 && (state.screenOpen || _hasCenterDialMounted())) {
           state.lastPollMs = now;
           refreshStatusAndDays({ includeDays: state.screenOpen });
         }
@@ -177,7 +171,6 @@
     const available = Boolean(adapter && adapter.isAvailable());
     if (!adapter) {
       state.status.available = false;
-      _renderLabCardSlot();
       if (state.screenOpen) _renderModalState();
       _emitFieldLogUiState();
       return state.status;
@@ -196,7 +189,6 @@
     }
 
     _syncElapsedTicker();
-    _renderLabCardSlot();
     if (state.screenOpen) {
       _renderModalState();
       if (options && options.includeDays) _renderDaysSection();
@@ -209,7 +201,6 @@
     const adapter = _getAdapter();
     if (!adapter || !adapter.isAvailable() || state.busyToggle) return;
     state.busyToggle = true;
-    _renderLabCardSlot();
     if (state.screenOpen) _renderModalState();
     _emitFieldLogUiState();
 
@@ -232,63 +223,7 @@
     }
   }
 
-  /* ==================== 1. Lab パネル「採取」カード ==================== */
-
-  function _renderLabCardSlot() {
-    const slotEl = state.activeLabSlot;
-    if (!slotEl || !slotEl.isConnected) return;
-
-    const st = state.status;
-    const isAvail = Boolean(st.available);
-    const isRec = Boolean(isAvail && st.recording);
-    const pts = Number(st.todayPoints || 0);
-
-    let badgeHtml = '<span class="t-fl-badge">停止中</span>';
-    if (isRec) {
-      badgeHtml = `<span class="t-fl-badge is-recording"><span class="t-fl-pulse-dot"></span>記録中 · <span data-fl-lab-elapsed>${_escHtml(_formatElapsed(st.startedAt))}</span> · ${pts.toLocaleString()}点</span>`;
-    } else if (isAvail && pts > 0) {
-      badgeHtml = `<span class="t-fl-badge">停止中 · 本日 ${pts.toLocaleString()}点</span>`;
-    }
-
-    const summaryHtml = isRec
-      ? `本日の記録: <strong>${pts.toLocaleString()} 点</strong>（開始 ${_escHtml(_formatStartedAt(st.startedAt))}）`
-      : 'カメラ撮影中の足跡をオフライン記録し、PCで写真に位置情報を結びます。';
-    const interruptHtml = isAvail && st.interrupted ? '<div class="t-fl-lab-interrupt">前回のGPSログ記録がOSにより中断されました</div>' : '';
-    const browserNoteHtml = !isAvail ? '<div class="t-fl-lab-browser-note">Android 専用アプリ（APK）で利用できる機能です</div>' : '';
-    const toggleBtnClass = isRec ? 't-fl-btn t-fl-btn-stop' : 't-fl-btn t-fl-btn-primary';
-    const toggleLabel = isRec ? '記録を停止する' : 'GPSログ記録を開始';
-
-    slotEl.innerHTML = `
-      <div class="t-fl-lab-card ${isRec ? 'is-recording' : ''}">
-        <div class="t-fl-lab-head">
-          <span class="t-fl-lab-title-row">
-            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19.5 9.5c0 5.5-7.5 10.5-7.5 10.5S4.5 15 4.5 9.5a7.5 7.5 0 0 1 15 0z"/><circle cx="12" cy="9.5" r="2.6"/></svg>
-            <span>採取（GPSフィールドログ）</span>
-          </span>
-          ${badgeHtml}
-        </div>
-        <div class="t-fl-lab-summary">${summaryHtml}</div>
-        ${interruptHtml}
-        ${browserNoteHtml}
-        <div class="t-fl-lab-actions">
-          <button type="button" class="${toggleBtnClass}" data-fl-lab-toggle ${!isAvail || state.busyToggle ? 'disabled' : ''}><span>${_escHtml(toggleLabel)}</span></button>
-          <button type="button" class="t-fl-btn t-fl-btn-secondary" data-fl-lab-open><span>フィールドログ管理・設定を開く</span></button>
-        </div>
-      </div>`;
-
-    slotEl.querySelector('[data-fl-lab-toggle]')?.addEventListener('click', (e) => { e.stopPropagation(); handleToggleRecording(); });
-    slotEl.querySelector('[data-fl-lab-open]')?.addEventListener('click', (e) => { e.stopPropagation(); openFieldLogScreen(); });
-  }
-
-  function renderLabPerspectiveCard(slotEl) {
-    state.activeLabSlot = slotEl;
-    const adapter = _getAdapter();
-    state.status.available = Boolean(adapter && adapter.isAvailable());
-    _renderLabCardSlot();
-    refreshStatusAndDays({ includeDays: false });
-  }
-
-  /* ==================== 2. フルスクリーン管理画面 ==================== */
+  /* ==================== 1. フルスクリーン管理画面 ==================== */
 
   function _buildOptionListHtml(options, currentVal, suffixUnit) {
     const numCur = Number(currentVal);
@@ -638,10 +573,6 @@
   }
 
   function _initTouchFieldLog() {
-    if (global.TetheractTouchUI && typeof global.TetheractTouchUI.registerPerspectiveRenderer === 'function') {
-      global.TetheractTouchUI.registerPerspectiveRenderer('lab', renderLabPerspectiveCard);
-    }
-
     global.__extraBackHandlers = global.__extraBackHandlers || [];
     global.__extraBackHandlers.push(function handleFieldLogBack() {
       if (state.confirmOpen) { closeTouchConfirmModal(); return 'handled'; }
@@ -654,7 +585,6 @@
       adapter.onStatusChanged((nextStatus) => {
         state.status = { ...state.status, ...nextStatus, available: adapter.isAvailable() };
         _syncElapsedTicker();
-        _renderLabCardSlot();
         _emitFieldLogUiState();
         if (state.screenOpen) {
           _renderModalState();
@@ -670,7 +600,7 @@
     }
 
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible' && (state.screenOpen || _isLabCardVisible() || _hasCenterDialMounted())) {
+      if (document.visibilityState === 'visible' && (state.screenOpen || _hasCenterDialMounted())) {
         refreshStatusAndDays({ includeDays: state.screenOpen });
       }
     });

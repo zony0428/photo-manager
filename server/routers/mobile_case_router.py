@@ -30,7 +30,13 @@ from ..database import (
 )
 from ..database.connection import bump_db_commit_seq
 from ..database.folders import clear_folders_fs_cache, normalize_folder_path
+from ..database.stacks import stack_cross_folder_thmod_derivatives
 from ..media_watcher import broadcast_app_event
+from ..mobile_signals import (
+    find_smart_stem_date_matches,
+    is_thmod_filename,
+    upsert_pending_signal,
+)
 from ..mobile_sync_apply import _sanitize_mobile_tag
 from ..scanner import (
     SUPPORTED_EXTENSIONS,
@@ -108,6 +114,18 @@ def _flush_case_post_import_events() -> None:
         _pending_case_need_heavy_clear = False
         _pending_case_flush_timer = None
 
+    if imp_cnt > 0:
+        try:
+            with get_connection() as conn:
+                cur = conn.cursor()
+                stacked = stack_cross_folder_thmod_derivatives(cur)
+                if stacked > 0:
+                    conn.commit()
+                    bump_db_commit_seq(("photos", "tags"))
+                    clear_api_photos_cache()
+        except Exception as st_err:
+            logger.warning(f"case転送後のクロスフォルダthmodスタック結合警告: {st_err}")
+
     if need_heavy:
         clear_folders_fs_cache()
         clear_online_cache()
@@ -170,6 +188,7 @@ class CasePreflightItem(BaseModel):
     longitude: Optional[float] = None
     rating: Optional[int] = None
     tags: Optional[List[str]] = None
+    folder_mode: Optional[str] = "case"
 
 
 class CasePreflightRequest(BaseModel):
@@ -247,13 +266,18 @@ def _apply_initial_rating_and_tags(
     return changed
 
 
-_DUP_SUFFIX_RE = re.compile(r"(?:_\d+|\s*\(\d+\))$")
+_PAREN_DUP_SUFFIX_RE = re.compile(r"\s*\(\d+\)$")
+_NUM_DUP_SUFFIX_RE = re.compile(r"^(.+)_([1-9]\d?)$")
+_CAMERA_BASE_NUM_RE = re.compile(r"(?:[a-z]+\d{3,}|_\d{3,}|\d{6,})$")
 
 
 def _normalize_dup_filename(fn_low: str) -> str:
-    """連番サフィックス (_1, (1) 等) を除いた正規化小文字ファイル名を返す"""
+    """カメラ本体番号(IMG_1234等)を保護しつつ、OSコピー枝番 (_1, (1) 等) のみを除いた正規化小文字ファイル名を返す"""
     base, ext = os.path.splitext(str(fn_low or "").strip().lower())
-    norm_base = _DUP_SUFFIX_RE.sub("", base).strip()
+    norm_base = _PAREN_DUP_SUFFIX_RE.sub("", base).strip()
+    m = _NUM_DUP_SUFFIX_RE.match(norm_base)
+    if m and _CAMERA_BASE_NUM_RE.search(m.group(1)):
+        norm_base = m.group(1)
     return f"{norm_base or base}{ext}"
 
 
@@ -442,8 +466,23 @@ def _update_existing_photo_gps_if_missing(
         logger.warning(f"既存写真GPS補完時の逆ジオコーディング警告 (photo_id={photo_id}): {e}")
 
     with get_connection() as conn:
-        conn.execute(
-            """
+        cur = conn.cursor()
+        cur.execute("SELECT file_path, paired_raw_path FROM photos WHERE id = ?", (int(photo_id),))
+        row = cur.fetchone()
+        target_ids = [int(photo_id)]
+        if row:
+            fp = row["file_path"]
+            prp = row["paired_raw_path"]
+            if prp:
+                cur.execute("SELECT id FROM photos WHERE file_path = ? AND id != ?", (prp, int(photo_id)))
+                target_ids.extend(int(r["id"]) for r in cur.fetchall())
+            if fp:
+                cur.execute("SELECT id FROM photos WHERE paired_raw_path = ? AND id != ?", (fp, int(photo_id)))
+                target_ids.extend(int(r["id"]) for r in cur.fetchall())
+        uniq_ids = list(dict.fromkeys(target_ids))
+        ph = ",".join("?" for _ in uniq_ids)
+        cur.execute(
+            f"""
             UPDATE photos
             SET latitude = COALESCE(latitude, ?),
                 longitude = COALESCE(longitude, ?),
@@ -452,9 +491,9 @@ def _update_existing_photo_gps_if_missing(
                 state = COALESCE(state, ?),
                 city = COALESCE(city, ?),
                 updated_at = CURRENT_TIMESTAMP
-            WHERE id = ? AND (latitude IS NULL OR longitude IS NULL)
+            WHERE id IN ({ph}) AND (latitude IS NULL OR longitude IS NULL)
             """,
-            (lat_f, lon_f, country, state, city, int(photo_id)),
+            (lat_f, lon_f, country, state, city, *uniq_ids),
         )
         conn.commit()
     return {
@@ -471,7 +510,8 @@ def api_mobile_case_preflight(req: CasePreflightRequest):
     """
     スマホから母艦 Loome\\case へ写真を送る前のプリフライト重複照合エンドポイント。
     Loome内外を問わず母艦DBに既存の写真は本体転送をスキップさせ、
-    スマホ側で付けた評価・タグがあればその既存写真へ即座に反映する。
+    サイズが異なる2M縮小転送画像も「ステム＋撮影日時＋カメラ機種」でスマート一致させる。
+    workingモード時は非thmod_ファイルの本体送信を抑止し、未取り込み分を待機シグナルへ保存する。
     """
     if is_app_locked():
         raise HTTPException(status_code=423, detail="アプリケーションはロックされています")
@@ -483,7 +523,9 @@ def api_mobile_case_preflight(req: CasePreflightRequest):
             "upload_client_ids": [],
             "skipped_client_ids": [],
             "existing_photo_map": {},
+            "existing_geo_map": {},
             "applied_to_existing": 0,
+            "queued_pending_signals": 0,
         }
 
     lookup_pairs: List[Tuple[str, int]] = []
@@ -500,12 +542,57 @@ def api_mobile_case_preflight(req: CasePreflightRequest):
     existing_map, existing_date_map, existing_dt_cam_map, existing_hash_map = (
         _find_existing_photos_by_name_and_size(lookup_pairs, date_pairs)
     )
-    all_matched_pids = (
-        set(existing_map.values())
-        | set(existing_date_map.values())
-        | set(existing_dt_cam_map.values())
-        | set(existing_hash_map.values())
-    )
+
+    # サイズ完全一致で見つからなかった非thmod_アイテム向けにスマート一致（2M縮小 ⇔ フルサイズJPEG/RAW）候補を抽出
+    prelim_matches: Dict[str, int] = {}
+    smart_candidates: List[Dict[str, Any]] = []
+    for it in items:
+        cid = str(it.client_id or "").strip()
+        clean_name = _sanitize_case_filename(it.file_name)
+        sz = int(it.file_size or 0)
+        ext = os.path.splitext(clean_name)[1].lower()
+        if not cid or not clean_name or sz <= 0 or ext not in SUPPORTED_EXTENSIONS:
+            continue
+
+        matched_pid: Optional[int] = None
+        dt_norm = _norm_exif_dt(it.date_taken)
+        cam_norm = str(it.camera_model or "").strip().lower()
+        chash_norm = str(it.content_hash or "").strip()
+
+        if dt_norm and cam_norm:
+            matched_pid = existing_dt_cam_map.get((dt_norm, cam_norm, sz))
+        if not matched_pid and dt_norm:
+            matched_pid = existing_date_map.get((dt_norm, sz))
+        if not matched_pid and chash_norm:
+            matched_pid = existing_hash_map.get((chash_norm, sz))
+        if not matched_pid:
+            fn_low = clean_name.lower()
+            matched_pid = (
+                existing_map.get((fn_low, sz))
+                or existing_map.get((_normalize_dup_filename(fn_low), sz))
+            )
+
+        if matched_pid:
+            prelim_matches[cid] = matched_pid
+        elif dt_norm and not is_thmod_filename(clean_name):
+            smart_candidates.append(
+                {
+                    "key": cid,
+                    "file_name": clean_name,
+                    "date_taken": dt_norm,
+                    "camera_model": str(it.camera_model or "").strip(),
+                }
+            )
+
+    smart_matches: Dict[str, List[int]] = {}
+    if smart_candidates:
+        with get_connection() as conn:
+            smart_matches = find_smart_stem_date_matches(conn.cursor(), smart_candidates, max_diff_sec=2)
+
+    all_matched_pids = set(prelim_matches.values())
+    for pids in smart_matches.values():
+        if pids:
+            all_matched_pids.add(int(pids[0]))
     geo_info_map = _get_existing_photos_geo_info(all_matched_pids)
 
     upload_client_ids: List[str] = []
@@ -513,6 +600,8 @@ def api_mobile_case_preflight(req: CasePreflightRequest):
     existing_photo_map: Dict[str, int] = {}
     existing_geo_map: Dict[str, Dict[str, Any]] = {}
     applied_count = 0
+    queued_pending_signals = 0
+    pending_signal_items: List[Tuple[CasePreflightItem, str]] = []
 
     for it in items:
         cid = str(it.client_id or "").strip()
@@ -523,35 +612,20 @@ def api_mobile_case_preflight(req: CasePreflightRequest):
             skipped_client_ids.append(cid)
             continue
 
-        matched_pid: Optional[int] = None
-        dt_norm = _norm_exif_dt(it.date_taken)
-        cam_norm = str(it.camera_model or "").strip().lower()
-        chash_norm = str(it.content_hash or "").strip()
-
-        # 1. 最優先: 撮影日時 + 機材 + ファイルサイズ（ファイル名不問）
-        if dt_norm and cam_norm:
-            matched_pid = existing_dt_cam_map.get((dt_norm, cam_norm, sz))
-        # 2. 撮影日時 + ファイルサイズ（メーカー名表記揺れ吸収・ファイル名不問）
-        if not matched_pid and dt_norm:
-            matched_pid = existing_date_map.get((dt_norm, sz))
-        # 3. Exifなし画像の中間バイトサンプリングハッシュ + ファイルサイズ（ファイル名不問）
-        if not matched_pid and chash_norm:
-            matched_pid = existing_hash_map.get((chash_norm, sz))
-        # 4. フォールバック: ファイル名 + ファイルサイズ
-        if not matched_pid:
-            fn_low = clean_name.lower()
-            matched_pid = (
-                existing_map.get((fn_low, sz))
-                or existing_map.get((_normalize_dup_filename(fn_low), sz))
-            )
+        matched_pid = prelim_matches.get(cid)
+        is_exact_match = matched_pid is not None
+        if matched_pid is None:
+            s_pids = smart_matches.get(cid)
+            if s_pids:
+                matched_pid = int(s_pids[0])
 
         if matched_pid:
             existing_photo_map[cid] = matched_pid
             ginfo = geo_info_map.get(matched_pid) or {}
             client_has_gps = it.latitude is not None and it.longitude is not None
 
-            # 以前GPSがOSによりストリップされた状態で case に保存された写真は、スマホ側にGPSがある場合に再アップロードして原本ファイル・DB双方を修復する
-            if not ginfo.get("has_gps") and client_has_gps and ginfo.get("in_case_dir"):
+            # 完全サイズ一致かつ case 内ファイルのGPS修復のみ再アップロードを要求し、2Mスマート一致時は重複転送しない
+            if is_exact_match and not ginfo.get("has_gps") and client_has_gps and ginfo.get("in_case_dir"):
                 if _apply_initial_rating_and_tags(matched_pid, it.rating, it.tags):
                     applied_count += 1
                 upload_client_ids.append(cid)
@@ -575,18 +649,53 @@ def api_mobile_case_preflight(req: CasePreflightRequest):
                 if _apply_initial_rating_and_tags(matched_pid, it.rating, it.tags):
                     applied_count += 1
         else:
-            upload_client_ids.append(cid)
+            is_working = str(it.folder_mode or "case").strip().lower() == "working"
+            if is_working and not is_thmod_filename(clean_name):
+                # ワーキングエリアの非thmod_ファイルは本体転送せず、評価・タグ・GPSの待機シグナルのみ預かる
+                skipped_client_ids.append(cid)
+                pending_signal_items.append((it, clean_name))
+            else:
+                upload_client_ids.append(cid)
+
+    if pending_signal_items:
+        with get_connection() as conn:
+            cur = conn.cursor()
+            for p_item, p_clean_name in pending_signal_items:
+                clean_tags = [
+                    _sanitize_mobile_tag(t) for t in (p_item.tags or []) if _sanitize_mobile_tag(t)
+                ]
+                dt_raw = _norm_exif_dt(p_item.date_taken)
+                if not dt_raw and p_item.last_modified_ms:
+                    _, dt_raw = _resolve_date_folder_and_taken_str(None, p_item.last_modified_ms)
+                if upsert_pending_signal(
+                    cur,
+                    file_name=p_clean_name,
+                    date_taken=dt_raw,
+                    camera_model=str(p_item.camera_model or "").strip(),
+                    rating=p_item.rating,
+                    tags=clean_tags,
+                    latitude=p_item.latitude,
+                    longitude=p_item.longitude,
+                    resolve_geo=True,
+                ):
+                    queued_pending_signals += 1
+            if queued_pending_signals > 0:
+                conn.commit()
 
     if upload_client_ids:
         _mark_case_upload_activity()
 
-    if applied_count > 0:
+    if applied_count > 0 or queued_pending_signals > 0:
         bump_db_commit_seq()
         clear_api_photos_cache()
         if not upload_client_ids:
             broadcast_app_event(
                 "mobile_case_imported",
-                {"applied_count": applied_count, "imported_count": 0},
+                {
+                    "applied_count": applied_count,
+                    "queued_count": queued_pending_signals,
+                    "imported_count": 0,
+                },
             )
 
     return {
@@ -596,6 +705,7 @@ def api_mobile_case_preflight(req: CasePreflightRequest):
         "existing_photo_map": existing_photo_map,
         "existing_geo_map": existing_geo_map,
         "applied_to_existing": applied_count,
+        "queued_pending_signals": queued_pending_signals,
     }
 
 

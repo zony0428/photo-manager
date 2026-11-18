@@ -13,7 +13,8 @@ data class JournalPhotoIdentity(
     val filePath: String,
     val fileName: String,
     val fileSize: Long,
-    val dateTaken: String
+    val dateTaken: String,
+    val cameraModel: String = ""
 )
 
 /**
@@ -72,7 +73,8 @@ class PendingJournalStore(
         val required = linkedMapOf(
             "rev" to "INTEGER DEFAULT 0",
             "add_tag_keys_json" to "TEXT DEFAULT '{}'",
-            "remove_tag_keys_json" to "TEXT DEFAULT '{}'"
+            "remove_tag_keys_json" to "TEXT DEFAULT '{}'",
+            "camera_model" to "TEXT DEFAULT ''"
         )
         for ((col, def) in required) {
             if (col !in existing) {
@@ -148,6 +150,7 @@ class PendingJournalStore(
             put("journal_key", journalKey); put("photo_id", photoId); put("content_key", identity.contentKey)
             put("file_path", identity.filePath); put("file_name", identity.fileName)
             put("file_size", identity.fileSize); put("date_taken", identity.dateTaken)
+            put("camera_model", identity.cameraModel)
             if (mergedRating != null) put("rating", mergedRating) else putNull("rating")
             if (mergedFavorite != null) put("is_favorite", mergedFavorite) else putNull("is_favorite")
             put("add_tags_json", JSONArray(addSet.toList()).toString())
@@ -206,6 +209,7 @@ class PendingJournalStore(
                     .put("file_name", row.optString("file_name", ""))
                     .put("file_size", row.optLong("file_size", 0L))
                     .put("date_taken", row.optString("date_taken", ""))
+                    .put("camera_model", row.optString("camera_model", ""))
                     .put("add_tags", JSONArray(row.optString("add_tags_json", "[]")))
                     .put("remove_tags", JSONArray(row.optString("remove_tags_json", "[]")))
                 if (row.has("rating") && !row.isNull("rating")) item.put("rating", row.optInt("rating"))

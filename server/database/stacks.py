@@ -148,6 +148,7 @@ def recalculate_stacks_for_directories(
         total_stacks_created = 0
         cleared_paired_counterparts: set = set()
         tag_sync_groups: List[List[int]] = []
+        pair_meta_sync_groups: List[List[int]] = []
 
         for d in dirs:
             cursor.execute(
@@ -156,6 +157,7 @@ def recalculate_stacks_for_directories(
                        p.date_taken, p.subsec_time, p.exposure_bias,
                        p.f_number, p.focal_length, p.shutter_speed, p.camera_model,
                        p.stack_id, p.is_stack_primary, p.stack_type, p.rating,
+                       p.latitude, p.longitude, p.gps_source, p.country, p.state, p.city,
                        COALESCE(pl.paired_raw_path, p.paired_raw_path) AS paired_raw_path,
                        p.is_raw, p.raw_format, pl.volume_serial, COALESCE(p.has_xmp, 0) AS has_xmp
                 FROM photo_links pl
@@ -165,7 +167,9 @@ def recalculate_stacks_for_directories(
                 SELECT p.id, NULL AS link_id, p.file_name, p.file_path, p.file_size,
                        p.date_taken, p.subsec_time, p.exposure_bias,
                        p.f_number, p.focal_length, p.shutter_speed, p.camera_model,
-                       p.stack_id, p.is_stack_primary, p.stack_type, p.rating, p.paired_raw_path,
+                       p.stack_id, p.is_stack_primary, p.stack_type, p.rating,
+                       p.latitude, p.longitude, p.gps_source, p.country, p.state, p.city,
+                       p.paired_raw_path,
                        p.is_raw, p.raw_format, p.volume_serial, COALESCE(p.has_xmp, 0) AS has_xmp
                 FROM photos p
                 WHERE p.directory_path = ? COLLATE NOCASE AND IFNULL(p.is_unlinked, 0) = 0
@@ -449,9 +453,13 @@ def recalculate_stacks_for_directories(
                                 is_pri = 1 if rep["id"] == primary_id else 0
                                 queue_update(rep["id"], stack_id, is_pri, stack_type, rep.get("paired_raw_path"))
                                 grp_member_ids.append(rep["id"])
+                                pair_ids_here = [rep["id"]]
                                 for raw_it in rep.get("attached_raws", []):
                                     queue_update(raw_it["id"], stack_id, 0, stack_type, raw_it.get("paired_raw_path"))
                                     grp_member_ids.append(raw_it["id"])
+                                    pair_ids_here.append(raw_it["id"])
+                                if len(pair_ids_here) >= 2:
+                                    pair_meta_sync_groups.append(pair_ids_here)
                             tag_sync_groups.append(grp_member_ids)
 
                             total_stacks_created += 1
@@ -468,6 +476,7 @@ def recalculate_stacks_for_directories(
                                 survivor_pair_ids.append(raw_it["id"])
                             if len(survivor_pair_ids) >= 2:
                                 tag_sync_groups.append(survivor_pair_ids)
+                                pair_meta_sync_groups.append(survivor_pair_ids)
 
                             # 実在しない他メンバー（およびその付随RAW）は代表にせず非表示化（paired_raw_path は変更しない）
                             for rep in group:
@@ -518,6 +527,7 @@ def recalculate_stacks_for_directories(
                             pair_member_ids.append(raw_it["id"])
                         if len(pair_member_ids) >= 2:
                             tag_sync_groups.append(pair_member_ids)
+                            pair_meta_sync_groups.append(pair_member_ids)
                         i += 1
 
                     # 完全な単独写真（ペアなし、ブラケットなし）
@@ -582,8 +592,11 @@ def recalculate_stacks_for_directories(
 
         if tag_sync_groups:
             _sync_tags_across_groups(cursor, tag_sync_groups)
+        if pair_meta_sync_groups:
+            _sync_rating_and_gps_across_pairs(cursor, pair_meta_sync_groups)
 
         pair_cross_folder_raw_jpeg(cursor)
+        total_stacks_created += stack_cross_folder_thmod_derivatives(cursor)
         conn.commit()
 
         # ============================================================
@@ -596,6 +609,198 @@ def recalculate_stacks_for_directories(
 
         invalidate_fast_cache()
         return total_stacks_created
+
+
+def _sync_rating_and_gps_across_pairs(cursor: Any, pair_groups: List[List[int]]) -> None:
+    """同一コマの RAW+JPEG ペア間で評価（非0優先）およびGPS位置情報を相互補完する"""
+    all_ids = sorted({int(pid) for grp in pair_groups for pid in grp if pid})
+    if not all_ids:
+        return
+    rows_by_id: Dict[int, Dict[str, Any]] = {}
+    for i in range(0, len(all_ids), 450):
+        chunk = all_ids[i : i + 450]
+        ph = ",".join("?" for _ in chunk)
+        cursor.execute(
+            f"SELECT id, rating, latitude, longitude, gps_source, country, state, city FROM photos WHERE id IN ({ph})",
+            chunk,
+        )
+        for r in cursor.fetchall():
+            rows_by_id[int(r["id"])] = dict(r)
+
+    rating_updates: List[tuple] = []
+    gps_updates: List[tuple] = []
+    for grp in pair_groups:
+        uniq = [int(pid) for pid in dict.fromkeys(grp) if int(pid) in rows_by_id]
+        if len(uniq) < 2:
+            continue
+        members = [rows_by_id[pid] for pid in uniq]
+        ratings = [int(m.get("rating") or 0) for m in members]
+        non_zero = [r for r in ratings if r != 0]
+        target_rating = max(non_zero) if non_zero else 0
+        if non_zero and len(set(ratings)) > 1:
+            for m in members:
+                if int(m.get("rating") or 0) == 0:
+                    rating_updates.append((target_rating, m["id"]))
+
+        geo_donor = next(
+            (m for m in members if m.get("latitude") is not None and m.get("longitude") is not None),
+            None,
+        )
+        if geo_donor:
+            for m in members:
+                if m.get("latitude") is None or m.get("longitude") is None:
+                    gps_updates.append(
+                        (
+                            geo_donor["latitude"],
+                            geo_donor["longitude"],
+                            geo_donor.get("gps_source") or "exif",
+                            geo_donor.get("country"),
+                            geo_donor.get("state"),
+                            geo_donor.get("city"),
+                            m["id"],
+                        )
+                    )
+
+    if rating_updates:
+        cursor.executemany("UPDATE photos SET rating = ? WHERE id = ?", rating_updates)
+    if gps_updates:
+        cursor.executemany(
+            """
+            UPDATE photos
+            SET latitude = ?, longitude = ?, gps_source = ?, country = ?, state = ?, city = ?
+            WHERE id = ?
+            """,
+            gps_updates,
+        )
+
+
+def stack_cross_folder_thmod_derivatives(cursor: Any) -> int:
+    """
+    別フォルダ（Loome\\case 等）に保存された thmod_ 派生画像を、
+    ライブラリ内の対応する非 thmod_ オリジナル写真（RAW+JPEG含む）とクロスフォルダでスタック結合し、
+    オリジナルを代表（is_stack_primary = 1）に保ったままタグを同期する。
+    """
+    cursor.execute(
+        """
+        SELECT id, file_name, file_path, directory_path, date_taken, original_date_taken,
+               camera_model, rating, stack_id, is_stack_primary, stack_type, is_raw, paired_raw_path
+        FROM photos
+        WHERE IFNULL(is_unlinked, 0) = 0
+          AND LOWER(file_name) LIKE 'thmod_%'
+        """
+    )
+    thmod_rows = [dict(r) for r in cursor.fetchall()]
+    if not thmod_rows:
+        return 0
+
+    from ..mobile_signals import (
+        camera_models_compatible,
+        dates_within_tolerance,
+        normalize_camera_stem,
+        normalize_exif_dt_str,
+    )
+
+    thmod_stems = {normalize_camera_stem(r["file_name"]) for r in thmod_rows}
+    thmod_stems.discard("")
+    if not thmod_stems:
+        return 0
+
+    cursor.execute(
+        """
+        SELECT id, file_name, file_path, directory_path, date_taken, original_date_taken,
+               camera_model, rating, stack_id, is_stack_primary, stack_type, is_raw, paired_raw_path
+        FROM photos
+        WHERE IFNULL(is_unlinked, 0) = 0
+          AND LOWER(file_name) NOT LIKE 'thmod_%'
+        """
+    )
+    parents_by_stem: Dict[str, List[Dict[str, Any]]] = {}
+    for row in cursor.fetchall():
+        d = dict(row)
+        st = normalize_camera_stem(d["file_name"])
+        if st in thmod_stems:
+            parents_by_stem.setdefault(st, []).append(d)
+
+    if not parents_by_stem:
+        return 0
+
+    affected_stack_ids: List[int] = []
+    tag_sync_groups: List[List[int]] = []
+    stacked_count = 0
+
+    for th in thmod_rows:
+        st = normalize_camera_stem(th["file_name"])
+        cands = parents_by_stem.get(st)
+        if not cands:
+            continue
+
+        th_dt = normalize_exif_dt_str(th.get("original_date_taken") or th.get("date_taken"))
+        th_cam = str(th.get("camera_model") or "")
+        matched_cands: List[Dict[str, Any]] = []
+
+        if th_dt:
+            for cand in cands:
+                if not camera_models_compatible(th_cam, cand.get("camera_model")):
+                    continue
+                c_dt1 = cand.get("date_taken")
+                c_dt2 = cand.get("original_date_taken")
+                if dates_within_tolerance(th_dt, c_dt1, 2) or dates_within_tolerance(th_dt, c_dt2, 2):
+                    matched_cands.append(cand)
+        else:
+            # EXIF消去済みの thmod_ は、元写真候補が実質1コマ（同一秒・ペア）しかない場合のみ誤爆せず結合
+            distinct_shots = {
+                normalize_exif_dt_str(c.get("original_date_taken") or c.get("date_taken")) or str(c["id"])
+                for c in cands
+            }
+            if len(distinct_shots) == 1:
+                matched_cands = list(cands)
+
+        if not matched_cands:
+            continue
+
+        # 代表親候補: ペア従属RAWでないオリジナル（JPEG優先）を選ぶ
+        matched_cands.sort(
+            key=lambda c: (
+                1 if (c.get("is_raw") and c.get("paired_raw_path")) else 0,
+                int(c.get("is_raw") or 0),
+                -int(c.get("is_stack_primary") or 0),
+                int(c["id"]),
+            )
+        )
+        rep_parent = matched_cands[0]
+        target_stack_id = int(rep_parent.get("stack_id") or rep_parent["id"])
+        target_stack_type = rep_parent.get("stack_type") or "burst"
+
+        if int(th.get("stack_id") or 0) == target_stack_id:
+            continue
+
+        # 親が未スタックなら親グループも stack_id = target_stack_id へ昇格させる
+        grp_ids: List[int] = [int(th["id"])]
+        for mc in matched_cands:
+            grp_ids.append(int(mc["id"]))
+        if rep_parent.get("stack_id") is None:
+            for mc in matched_cands:
+                is_pri = 1 if int(mc["id"]) == int(rep_parent["id"]) else 0
+                cursor.execute(
+                    "UPDATE photos SET stack_id = ?, is_stack_primary = ?, stack_type = ? WHERE id = ?",
+                    (target_stack_id, is_pri, target_stack_type, int(mc["id"])),
+                )
+        cursor.execute(
+            "UPDATE photos SET stack_id = ?, is_stack_primary = 0, stack_type = ? WHERE id = ?",
+            (target_stack_id, target_stack_type, int(th["id"])),
+        )
+        affected_stack_ids.append(target_stack_id)
+        tag_sync_groups.append(grp_ids)
+        stacked_count += 1
+
+    if tag_sync_groups:
+        _sync_tags_across_groups(cursor, tag_sync_groups)
+    if affected_stack_ids:
+        from .photos import _sync_stack_primary_by_rating
+
+        _sync_stack_primary_by_rating(cursor, affected_stack_ids)
+
+    return stacked_count
 
 
 def pair_cross_folder_raw_jpeg(cursor: Any) -> int:

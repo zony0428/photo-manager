@@ -9,18 +9,16 @@
 (function (global) {
   'use strict';
 
-  const RATE_LABELS = { 2: '優', 1: '良', 0: '可', '-1': '棄' };
-  const GRID_BATCH_SIZE = 120;
-
   const state = {
-    folders: [], folderCounts: {}, rescanningFolders: false, autoScannedOnce: false,
-    modalOpen: false, previewOpen: false, previewIndex: 0, tagPickerOpen: false,
-    activeFolderId: 'all', activeFolderName: 'スマホ内フォルダ', filterMode: 'unstored',
-    items: [], renderLimit: GRID_BATCH_SIZE, selectedKeys: new Set(), commonTagText: '',
-    availableMotherTags: [], loadingScan: false, transferring: false,
-    quickUplinkRunning: false, quickUplinkResolver: null,
-    transferProgress: { current: 0, total: 0, fileName: '', importedCount: 0, skippedCount: 0 },
-    browserFilesMap: new Map(), browserDrafts: {}, activeSlotEl: null,
+    folders: [],
+    folderCounts: {},
+    rescanningFolders: false,
+    autoScannedOnce: false,
+    transferring: false,
+    quickUplinkRunning: false,
+    quickUplinkResolver: null,
+    transferProgress: { current: 0, total: 0, fileName: '', importedCount: 0, skippedCount: 0, errorCount: 0 },
+    activeSlotEl: null,
   };
 
   function _escHtml(val) {
@@ -46,11 +44,44 @@
     return txt === '● Wi-Fi接続' || txt === '● LINK';
   }
 
-  function _formatSubmitButtonLabel(selCount, isLinked) {
-    if (!isLinked) {
-      return '母艦に収納（母艦と未接続）';
+  function _getFolderById(folderId) {
+    if (!folderId || folderId === 'all' || folderId === 'browser' || !Array.isArray(state.folders)) return null;
+    return state.folders.find((f) => f && f.id === folderId) || null;
+  }
+
+  function _isWorkingFolder(folder) {
+    return Boolean(folder && folder.mode === 'working');
+  }
+
+  function _hasAnyWorkingFolder() {
+    return Array.isArray(state.folders) && state.folders.some((f) => _isWorkingFolder(f));
+  }
+
+  function _isThmodItem(it) {
+    return Boolean(it && (it.isThmod || /^thmod_/i.test(String(it.fileName || ''))));
+  }
+
+  function _getItemFolderMode(it) {
+    if (it && it.folderMode) return String(it.folderMode) === 'working' ? 'working' : 'case';
+    const f = _getFolderById(it && it.folderId);
+    return _isWorkingFolder(f) ? 'working' : 'case';
+  }
+
+  function _isWorkingOnlyItem(it) {
+    return _getItemFolderMode(it) === 'working' && !_isThmodItem(it);
+  }
+
+  function _isPendingUplink(it) {
+    if (!it) return false;
+    if (typeof it.pendingUplink === 'boolean') return it.pendingUplink;
+    if (_isWorkingOnlyItem(it)) {
+      if (it.inMotherShip) return false;
+      if (typeof it.needsSignalUplink === 'boolean') return it.needsSignalUplink;
+      const hasRating = Number(it.rating || 0) !== 0;
+      const hasTags = Array.isArray(it.tags) && it.tags.length > 0;
+      return hasRating || hasTags;
     }
-    return `Uplink — 母艦に収納 (${selCount}枚 · 重複スキップ)`;
+    return !it.inMotherShip;
   }
 
   function _showToast(msg, durationMs = 2600) {
@@ -63,32 +94,32 @@
     _showToast._timer = setTimeout(() => { toast.style.display = 'none'; }, durationMs);
   }
 
-  function _formatSize(bytes) {
-    const b = Number(bytes || 0);
-    if (b <= 0) return '0 KB';
-    return b >= 1024 * 1024 ? `${(b / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`;
-  }
-
-  function _formatLocalDate(ms) {
-    const n = Number(ms || 0);
-    if (!n || n <= 0) return '';
-    const d = new Date(n);
-    if (Number.isNaN(d.getTime())) return '';
-    const p2 = (v) => String(v).padStart(2, '0');
-    return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
-  }
-
-  function _getFilteredItems() {
-    return state.filterMode === 'unstored' ? state.items.filter((it) => !it.inMotherShip) : state.items;
-  }
-
-  async function _loadMotherTagSuggestions() {
-    try {
-      const trees = await global.TetheractDataAdapter?.getFilterTrees?.();
-      if (trees && Array.isArray(trees.tags)) {
-        state.availableMotherTags = trees.tags.map((t) => String((t && (t.tag || t.name)) || '').trim()).filter(Boolean).slice(0, 60);
-      }
-    } catch (e) {}
+  async function _toggleFolderMode(folderId, nextMode, slotEl) {
+    const adapter = _getAdapter();
+    if (!adapter || typeof adapter.setFolderMode !== 'function' || !folderId) return false;
+    const res = await adapter.setFolderMode(folderId, nextMode);
+    if (!res || !res.ok) {
+      _showToast((res && res.error) || 'モードの切り替えに失敗しました', 2600);
+      return false;
+    }
+    const resolvedMode = res.mode === 'working' ? 'working' : 'case';
+    if (Array.isArray(res.folders) && res.folders.length > 0) {
+      state.folders = res.folders;
+    } else {
+      state.folders = state.folders.map((f) => (f && f.id === folderId ? Object.assign({}, f, { mode: resolvedMode }) : f));
+    }
+    const targetSlot = slotEl || state.activeSlotEl;
+    if (targetSlot && document.body.contains(targetSlot)) {
+      _renderFolderCardInner(targetSlot);
+    }
+    await _rescanFoldersAndSyncCatalog({ folderId, silent: true });
+    _showToast(
+      resolvedMode === 'working'
+        ? '「信号+加工」に切替: 評価・タグ信号と thmod_ 加工画のみ母艦へ送信します'
+        : '「本体収納」に切替: 未収納写真を母艦 Loome\\case へ収納します',
+      2800
+    );
+    return true;
   }
 
   function _updateFolderCountsFromScanResult(scanRes, targetFolderId = 'all') {
@@ -188,14 +219,23 @@
     }
 
     const hasFolders = state.folders.length > 0;
-    const isLinked = _isMotherShipLinked();
     const activeFp = typeof global.__getActiveMobileFolderPath === 'function' ? global.__getActiveMobileFolderPath() : '';
+    const workingNoticeHtml = _hasAnyWorkingFolder()
+      ? `<div class="t-pcase-working-notice">「信号+加工」フォルダ内の元写真は母艦へコピーされません。評価・タグ（信号）と <code>thmod_</code> 加工画のみ母艦へ送られ、SDカード取り込み時に自動合流します。</div>`
+      : '';
     const folderRowsHtml = hasFolders
       ? state.folders.map((f) => {
           const fp = `📱 ${f.name}`;
           const count = _getFolderPhotoCount(f);
           const isSel = activeFp === fp;
+          const isWorking = _isWorkingFolder(f);
+          const nextMode = isWorking ? 'case' : 'working';
+          const isVirtual = Boolean(f.isVirtual);
           const countLabel = state.rescanningFolders && count === 0 ? '走査中...' : `${count}枚`;
+          const actionsHtml = isVirtual
+            ? '<span class="t-pcase-mode-pill" title="Art Framerで作成した速報画像は母艦収納キューへ自動登録されます">自動収納</span>'
+            : `<button type="button" class="t-pcase-mode-pill ${isWorking ? 'is-working' : ''}" data-pcase-toggle-mode="${_escAttr(f.id)}" data-pcase-next-mode="${nextMode}" data-no-dismiss="1" title="${isWorking ? '現在: 信号+加工（タップで本体収納へ切替）' : '現在: 本体収納（タップで信号+加工へ切替）'}">${isWorking ? '信号+加工' : '本体収納'}</button>
+              <button type="button" class="t-pcase-unlink-btn" data-pcase-unlink="${_escAttr(f.id)}" data-no-dismiss="1" title="管理下から解除（ファイルは消えません）">✕</button>`;
           return `<div class="t-pcase-folder-row ${isSel ? 'active-include' : ''}" data-pcase-filter-folder="${_escAttr(fp)}" data-pcase-folder-id="${_escAttr(f.id)}" data-no-dismiss="1" style="${isSel ? 'border-color:var(--accent-primary);' : ''}">
             <div class="t-pcase-folder-row-main" title="タップしてギャラリーにこのフォルダの写真を表示">
               <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" style="flex-shrink:0;color:var(--accent-primary);"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
@@ -203,21 +243,18 @@
               <span class="m-filter-count" style="margin-left:6px;flex-shrink:0;">${_escHtml(countLabel)}</span>
             </div>
             <div class="t-pcase-folder-row-actions">
-              <button type="button" class="t-pcase-open-pill ${!isLinked ? 'is-unlinked' : ''}" data-pcase-open-folder="${_escAttr(f.id)}" data-pcase-folder-name="${_escAttr(f.name)}" data-no-dismiss="1" style="cursor:pointer;">母艦に収納</button>
-              <button type="button" class="t-pcase-unlink-btn" data-pcase-unlink="${_escAttr(f.id)}" data-no-dismiss="1" title="管理下から解除（ファイルは消えません）">✕</button>
+              ${actionsHtml}
             </div>
           </div>`;
-        }).join('') + (state.folders.length > 1
-          ? `<div class="t-pcase-folder-row" data-pcase-open-folder="all" data-pcase-folder-name="Uplink — 全スマホフォルダ" data-no-dismiss="1"><div class="t-pcase-folder-row-main"><span>📱 全スマホフォルダの未収納写真をまとめて母艦に収納</span></div><div class="t-pcase-folder-row-actions"><span class="t-pcase-open-pill ${!isLinked ? 'is-unlinked' : ''}">Uplink</span></div></div>`
-          : '')
-      : `<div class="t-pcase-card-sub">スマホ内のカメラフォルダ（<code>DCIM/Camera</code> や <code>Pictures</code> 等）を追加すると、起動時に自動スキャンしてTetheractのギャラリー管理下に表示し、手動で <code>\\Loome\\case\\YYYY-MM-DD</code> へ転送できます。</div>`;
+        }).join('') + workingNoticeHtml
+      : `<div class="t-pcase-card-sub">スマホ内のカメラフォルダ（<code>DCIM/Camera</code> や <code>Pictures</code> 等）を追加すると、自動スキャンしてTetheractのギャラリー管理下に表示し、下の「母艦に収納」から一括送信できます。</div>`;
 
     slotEl.innerHTML = `<div class="t-pcase-folder-card" data-no-dismiss="1">
       <div class="t-pcase-card-head">
-        <span class="t-pcase-card-title"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg><span>スマホ管理下フォルダ (自動スキャン / 手動転送)</span></span>
-        <div style="display:inline-flex;gap:5px;align-items:center;">
-          ${hasFolders ? `<button type="button" class="t-pcase-add-folder-btn" data-pcase-action="rescan-folders" data-no-dismiss="1" ${state.rescanningFolders ? 'disabled' : ''}><span>${state.rescanningFolders ? '走査中...' : '↻ 再スキャン'}</span></button>` : ''}
-          <button type="button" class="t-pcase-add-folder-btn" data-pcase-action="pick-folder" data-no-dismiss="1"><span>＋ フォルダ追加</span></button>
+        <span class="t-pcase-card-title"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg><span>スマホ管理下フォルダ</span></span>
+        <div style="display:inline-flex;gap:5px;align-items:center;flex-shrink:0;">
+          ${hasFolders ? `<button type="button" class="t-pcase-add-folder-btn" data-pcase-action="rescan-folders" data-no-dismiss="1" ${state.rescanningFolders ? 'disabled' : ''}><span>${state.rescanningFolders ? '走査中...' : '↻ 更新'}</span></button>` : ''}
+          <button type="button" class="t-pcase-add-folder-btn" data-pcase-action="pick-folder" data-no-dismiss="1"><span>＋ 追加</span></button>
         </div>
       </div>
       <div class="t-pcase-folder-list">${folderRowsHtml}</div>
@@ -253,15 +290,19 @@
         return;
       }
 
+      const modeBtn = e.target.closest('[data-pcase-toggle-mode]');
+      if (modeBtn) {
+        await _toggleFolderMode(
+          modeBtn.getAttribute('data-pcase-toggle-mode') || '',
+          modeBtn.getAttribute('data-pcase-next-mode') || 'case',
+          slotEl
+        );
+        return;
+      }
+
       if (e.target.closest('[data-pcase-action="rescan-folders"]')) { await _rescanFoldersAndSyncCatalog({ folderId: 'all', silent: false }); return; }
       if (e.target.closest('[data-pcase-action="pick-folder"]')) { await adapter.pickFolder(); return; }
       if (e.target.closest('[data-pcase-action="browser-pick"]')) { _triggerBrowserFileInput(); return; }
-
-      const openRow = e.target.closest('[data-pcase-open-folder]');
-      if (openRow) {
-        openPhoneCaseModal(openRow.getAttribute('data-pcase-open-folder') || 'all', openRow.getAttribute('data-pcase-folder-name') || 'スマホ内フォルダ');
-        return;
-      }
 
       const filterRow = e.target.closest('[data-pcase-filter-folder]');
       if (filterRow && typeof global.__filterMobileGalleryByFolder === 'function') {
@@ -287,7 +328,7 @@
       document.body.appendChild(inp);
       inp.addEventListener('change', () => {
         const files = Array.from(inp.files || []);
-        if (files.length) _openBrowserFilesModal(files);
+        if (files.length) _transferSelectedBrowserFiles(files);
         inp.value = '';
       });
     }
@@ -305,7 +346,7 @@
       document.body.appendChild(inp);
       inp.addEventListener('change', () => {
         const files = Array.from(inp.files || []);
-        if (files.length) _openBrowserFilesModal(files);
+        if (files.length) _transferSelectedBrowserFiles(files);
         inp.value = '';
       });
     }
@@ -398,15 +439,16 @@
       _renderFolderCardInner(state.activeSlotEl);
     }
 
-    const unstored = (Array.isArray(scanRes && scanRes.items) ? scanRes.items : []).filter((it) => !it.inMotherShip);
+    const unstored = (Array.isArray(scanRes && scanRes.items) ? scanRes.items : []).filter((it) => _isPendingUplink(it));
     if (unstored.length === 0) {
       _hideQuickUplinkOverlay();
-      return { ok: true, unstoredCount: 0, importedCount: 0 };
+      return { ok: true, unstoredCount: 0, importedCount: 0, appliedToExisting: 0, queuedPendingSignals: 0, signalSyncedCount: 0 };
     }
 
+    const allSignalOnly = unstored.every((it) => _isWorkingOnlyItem(it));
     _showQuickUplinkOverlay(
-      '母艦 \\Loome\\case へ未収納写真を転送中...',
-      `0 / ${unstored.length} 枚 · 母艦DBと照合中...`,
+      allSignalOnly ? '母艦へ評価・タグ信号を送信中...' : '母艦 \\Loome\\case へ未収納写真・信号を送信中...',
+      `0 / ${unstored.length} 件 · 母艦DBと照合中...`,
       '新規収納: 0枚 / 重複スキップ: 0枚',
       12
     );
@@ -461,10 +503,6 @@
    */
   async function triggerQuickDeltaUplink() {
     global.TetheractTouchUI?.closePerspectiveSheet?.();
-    if (!_isMotherShipLinked()) {
-      _showToast('母艦とLINKしていないため収納できません');
-      return false;
-    }
     if (state.transferring || state.quickUplinkRunning) {
       _showToast('現在すでに母艦への収納を実行中です');
       return false;
@@ -491,8 +529,8 @@
         st = {};
       }
 
-      if (!st.wifiConfigured) {
-        // 初回未ペアリング時はPC自動検出＆承認ペアリングを含むWi-Fi同期を先行し、成功後に未収納写真を自動転送する
+      if (!st.wifiConfigured || !st.hasLockerDb) {
+        // 初回未ペアリング・DB未取得時はPC自動検出＆同期を先行し、成功後に未収納写真・信号を自動送信する
         const onPairedSyncDone = async (ev) => {
           global.removeEventListener('tetheract:usb-sync-completed', onPairedSyncDone);
           clearTimeout(cleanupTimer);
@@ -504,10 +542,30 @@
             if (followRes && followRes.unstoredCount > 0) {
               const imp = Number(followRes.importedCount || 0);
               const skp = Number(followRes.skippedCount || 0);
+              const app = Number(followRes.appliedToExisting || 0);
+              const qSig = Number(followRes.queuedPendingSignals || 0);
+              const sigOk = Number(followRes.signalSyncedCount || 0);
+              const totalSignalSynced = app + qSig + sigOk;
               const rem = Number(followRes.remainingCount || 0);
-              if (imp > 0) {
-                global.__pendingQuickUplinkSummary = { importedCount: imp, skippedCount: skp, partialRemaining: rem };
-                _showToast(`未収納写真 ${imp}枚を収納完了 — 最新DBを反映中...`, 2400);
+              if (imp > 0 || totalSignalSynced > 0) {
+                global.__pendingQuickUplinkSummary = {
+                  importedCount: imp,
+                  skippedCount: skp,
+                  queuedPendingSignals: qSig,
+                  signalSyncedCount: sigOk,
+                  signalCount: totalSignalSynced,
+                  partialRemaining: rem,
+                };
+                if (typeof global.__onTetheractPhoneCatalogSynced === 'function') {
+                  global.__onTetheractPhoneCatalogSynced();
+                }
+                if (imp > 0 && totalSignalSynced > 0) {
+                  _showToast(`収納 ${imp}枚 / 信号送信 ${totalSignalSynced}件完了 — 続けてDB差分を同期中...`, 2400);
+                } else if (imp > 0) {
+                  _showToast(`未収納写真 ${imp}枚を収納完了 — 最新DBを反映中...`, 2400);
+                } else {
+                  _showToast(`評価・タグ信号 ${totalSignalSynced}件を母艦へ送信完了 — 最新DBを反映中...`, 2400);
+                }
               } else if (!followRes.ok && followRes.error) {
                 _showToast(followRes.error, 4200);
               }
@@ -530,19 +588,29 @@
         const imp = Number(upRes.importedCount || 0);
         const skp = Number(upRes.skippedCount || 0);
         const app = Number(upRes.appliedToExisting || 0);
+        const qSig = Number(upRes.queuedPendingSignals || 0);
+        const sigOk = Number(upRes.signalSyncedCount || 0);
+        const totalSignalSynced = app + qSig + sigOk;
         const errCnt = Number(upRes.errorCount || 0);
         const rem = Number(upRes.remainingCount || 0);
 
-        if (!upRes.ok && imp === 0 && skp === 0) {
+        if (!upRes.ok && imp === 0 && skp === 0 && totalSignalSynced === 0) {
           _showToast(upRes.error || '母艦PCへの接続に失敗しました', 4500);
           return false;
         }
         if (upRes.aborted) {
-          if (imp > 0 || app > 0) {
-            global.__pendingQuickUplinkSummary = { importedCount: imp, skippedCount: skp, partialRemaining: rem };
+          if (imp > 0 || totalSignalSynced > 0) {
+            global.__pendingQuickUplinkSummary = {
+              importedCount: imp,
+              skippedCount: skp,
+              queuedPendingSignals: qSig,
+              signalSyncedCount: sigOk,
+              signalCount: totalSignalSynced,
+              partialRemaining: rem,
+            };
           }
           _showToast(
-            `一部未完了: ${imp}枚収納・${skp}枚重複スキップ / 残り${rem}枚が未転送です${upRes.error ? ` (${upRes.error})` : ''}`,
+            `一部未完了: ${imp}枚収納・信号${totalSignalSynced}件・${skp}枚重複スキップ / 残り${rem}件が未送信です${upRes.error ? ` (${upRes.error})` : ''}`,
             5500
           );
           return false;
@@ -551,11 +619,20 @@
         global.__pendingQuickUplinkSummary = {
           importedCount: imp,
           skippedCount: skp,
+          queuedPendingSignals: qSig,
+          signalSyncedCount: sigOk,
+          signalCount: totalSignalSynced,
           partialRemaining: errCnt > 0 ? rem : 0,
         };
-        if (imp > 0 || app > 0) {
+        if (imp > 0 || totalSignalSynced > 0) {
           // ネイティブ側で転送完了後に自動でWi-Fi差分同期（GPSログ送信＋DB取得）が直列実行される
-          _showToast(`未収納写真 ${imp}枚を収納完了 — 続けてGPSログ・DB差分を同期中...`, 2400);
+          if (imp > 0 && totalSignalSynced > 0) {
+            _showToast(`収納 ${imp}枚 / 信号送信 ${totalSignalSynced}件完了 — 続けてGPSログ・DB差分を同期中...`, 2400);
+          } else if (imp > 0) {
+            _showToast(`未収納写真 ${imp}枚を収納完了 — 続けてGPSログ・DB差分を同期中...`, 2400);
+          } else {
+            _showToast(`評価・タグ信号 ${totalSignalSynced}件を母艦へ送信完了 — 続けてDB差分を同期中...`, 2400);
+          }
           return true;
         }
       }
@@ -570,444 +647,20 @@
     }
   }
 
-  function _openBrowserFilesModal(files) {
-    state.browserFilesMap.clear();
-    const items = files.map((f, idx) => {
-      const docKey = `bf_${idx}_${f.name}_${f.size}`;
-      const blobUrl = URL.createObjectURL(f);
-      state.browserFilesMap.set(docKey, { file: f, blobUrl });
-      const draft = state.browserDrafts[docKey] || {};
-      return {
-        docKey, folderId: 'browser', folderName: '選択したスマホ写真', fileName: f.name, fileSize: f.size,
-        lastModifiedMs: Number(f.lastModified || Date.now()), dateStr: _formatLocalDate(f.lastModified || Date.now()),
-        mimeType: f.type || 'image/jpeg', inMotherShip: false, rating: Number(draft.rating || 0),
-        tags: Array.isArray(draft.tags) ? [...draft.tags] : [], thumbUrl: blobUrl, fullUrl: blobUrl,
-      };
-    });
-    state.activeFolderId = 'browser';
-    state.activeFolderName = `選択した写真 (${items.length}枚)`;
-    state.filterMode = 'all';
-    state.items = items;
-    state.renderLimit = GRID_BATCH_SIZE;
-    state.selectedKeys = new Set(items.map((it) => it.docKey));
-    _showModalAndRender();
-  }
-
-  async function openPhoneCaseModal(folderId = 'all', folderName = 'スマホ内フォルダ', forceRescan = false) {
-    state.activeFolderId = folderId;
-    state.activeFolderName = folderName;
-    state.filterMode = 'unstored';
-    state.renderLimit = GRID_BATCH_SIZE;
-    state.selectedKeys.clear();
-    state.loadingScan = true;
-    _showModalAndRender();
-    _loadMotherTagSuggestions();
-
+  async function _transferSelectedBrowserFiles(files) {
     const adapter = _getAdapter();
-    if (!adapter) return;
-    const res = await adapter.scanPhotos(folderId, { includeItems: true, force: Boolean(forceRescan) });
-    _updateFolderCountsFromScanResult(res, folderId);
-    if (res && res.catalogChanged && typeof global.__onTetheractPhoneCatalogSynced === 'function') {
-      await global.__onTetheractPhoneCatalogSynced();
-    }
-    state.loadingScan = false;
-    state.items = (Array.isArray(res.items) ? res.items : []).map((it) => ({
-      ...it,
-      rating: Number(it.rating || 0),
-      tags: Array.isArray(it.tags) ? it.tags : [],
-      thumbUrl: adapter.getPhotoUrl(it.docKey, true),
-      fullUrl: adapter.getPhotoUrl(it.docKey, false),
-    }));
-
-    const unstored = state.items.filter((it) => !it.inMotherShip);
-    if (unstored.length === 0 && state.items.length > 0) state.filterMode = 'all';
-    else unstored.forEach((it) => state.selectedKeys.add(it.docKey));
-    _renderModalContent();
-    if (state.activeSlotEl && document.body.contains(state.activeSlotEl)) _renderFolderCardInner(state.activeSlotEl);
-  }
-
-  function _showModalAndRender() {
-    if (global.TetheractTouchUI && typeof global.TetheractTouchUI.closePerspectiveSheet === 'function') {
-      global.TetheractTouchUI.closePerspectiveSheet();
-    }
-    const modal = _ensurePhoneCaseModal();
-    state.modalOpen = true;
-    modal.style.display = 'flex';
-    _renderModalContent();
-  }
-
-  function closePhoneCaseModal() {
-    state.modalOpen = false;
-    state.previewOpen = false;
-    state.tagPickerOpen = false;
-    const modal = document.getElementById('tPhoneCaseModal');
-    if (modal) modal.style.display = 'none';
-  }
-
-  function _ensurePhoneCaseModal() {
-    let modal = document.getElementById('tPhoneCaseModal');
-    if (modal) return modal;
-    modal = document.createElement('div');
-    modal.id = 'tPhoneCaseModal';
-    modal.className = 't-pcase-modal';
-    modal.style.display = 'none';
-    document.body.appendChild(modal);
-    modal.addEventListener('click', (e) => _handleModalClick(e));
-    modal.addEventListener('input', (e) => {
-      if (e.target && e.target.id === 'tPcaseCommonTagInput') state.commonTagText = e.target.value;
-    });
-    modal.addEventListener('scroll', (e) => {
-      const sc = e.target;
-      if (!sc || !sc.classList || !sc.classList.contains('t-pcase-scroll') || state.loadingScan) return;
-      if (sc.scrollTop + sc.clientHeight >= sc.scrollHeight - 420) _appendMoreGridCells(sc);
-    }, { capture: true, passive: true });
-    return modal;
-  }
-
-  function _buildCellHtml(it, idx) {
-    const isSel = state.selectedKeys.has(it.docKey);
-    const rateLabel = it.rating && RATE_LABELS[String(it.rating)] ? RATE_LABELS[String(it.rating)] : '';
-    const tagCount = Array.isArray(it.tags) ? it.tags.length : 0;
-    return `<div class="t-pcase-cell ${isSel ? 'is-selected' : ''} ${it.inMotherShip ? 'is-stored' : ''}" data-pcase-cell="${_escAttr(it.docKey)}" data-pcase-idx="${idx}">
-      <img src="${_escAttr(it.thumbUrl)}" alt="${_escAttr(it.fileName)}" loading="lazy" decoding="async">
-      <span class="t-pcase-check" data-pcase-toggle="${_escAttr(it.docKey)}">${isSel ? '✓' : ''}</span>
-      <div class="t-pcase-badge-top-right">
-        ${it.inMotherShip ? '<span class="t-pcase-stored-badge">✓ 収納済</span>' : ''}
-        ${rateLabel ? `<span class="t-pcase-rate-badge">${_escHtml(rateLabel)}</span>` : ''}
-        ${tagCount > 0 ? `<span class="t-pcase-tag-badge">#${tagCount}</span>` : ''}
-      </div>
-      <div class="t-pcase-cell-foot" data-pcase-preview="${idx}">
-        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_escHtml(it.dateStr || it.fileName)}</span>
-        <span style="flex-shrink:0;opacity:0.88;">🔍 拡大</span>
-      </div>
-    </div>`;
-  }
-
-  function _appendMoreGridCells(scrollEl) {
-    const visibleItems = _getFilteredItems();
-    if (state.renderLimit >= visibleItems.length) return;
-    const gridEl = scrollEl.querySelector('.t-pcase-grid');
-    if (!gridEl) return;
-    const prevLimit = state.renderLimit;
-    state.renderLimit = Math.min(visibleItems.length, prevLimit + GRID_BATCH_SIZE);
-    const moreHtml = visibleItems.slice(prevLimit, state.renderLimit).map((it, i) => _buildCellHtml(it, prevLimit + i)).join('');
-    if (moreHtml) gridEl.insertAdjacentHTML('beforeend', moreHtml);
-  }
-
-  function _renderModalContent() {
-    const modal = document.getElementById('tPhoneCaseModal');
-    if (!modal || !state.modalOpen) return;
-    const prevScrollEl = modal.querySelector('.t-pcase-scroll');
-    const prevScrollTop = prevScrollEl ? prevScrollEl.scrollTop : 0;
-    const unstoredCount = state.items.filter((it) => !it.inMotherShip).length;
-    const totalCount = state.items.length;
-    const visibleItems = _getFilteredItems();
-    const selCount = state.selectedKeys.size;
-    const sliceLimit = Math.max(GRID_BATCH_SIZE, state.renderLimit);
-    const renderedSlice = visibleItems.slice(0, sliceLimit);
-
-    const isNative = Boolean(_getAdapter()?.isNativeAvailable());
-    const emptyMsg = !isNative
-      ? `<div>スマホ内の写真を選んで母艦に収納 (Uplink) できます</div><button type="button" class="t-pcase-add-folder-btn" data-pcase-action="browser-pick" style="margin:12px auto 0;">＋ スマホの写真を選択</button>`
-      : state.folders.length === 0
-      ? `<div>まだスマホ内フォルダが登録されていません</div><button type="button" class="t-pcase-add-folder-btn" data-pcase-action="pick-folder" style="margin:12px auto 0;">＋ カメラフォルダ (DCIM等) を追加</button>`
-      : (state.filterMode === 'unstored' ? '未収納の新着写真はありません（すべて母艦に収納済みです）' : 'フォルダ内に画像が見つかりません');
-    const gridHtml = state.loadingScan
-      ? `<div style="grid-column:1/-1;padding:48px 16px;text-align:center;color:var(--text-muted);font-size:13px;">スマホ内フォルダをスキャンし、母艦DBと照合しています...</div>`
-      : visibleItems.length === 0
-      ? `<div style="grid-column:1/-1;padding:48px 16px;text-align:center;color:var(--text-muted);font-size:13px;">${emptyMsg}</div>`
-      : renderedSlice.map((it, idx) => _buildCellHtml(it, idx)).join('');
-
-    const progressOverlayHtml = state.transferring
-      ? `<div id="tPcaseProgressOverlay" style="position:fixed;inset:0;z-index:160;background:rgba(12,13,16,0.82);display:flex;align-items:center;justify-content:center;padding:20px;">
-           <div style="width:100%;max-width:340px;background:var(--surface-card);border:1px solid var(--border-color);border-radius:10px;padding:18px;display:flex;flex-direction:column;gap:10px;">
-             <div style="font-size:14px;font-weight:700;">母艦 \\Loome\\case へ転送中...</div>
-             <div id="tPcaseProgText" style="font-size:12px;color:var(--text-muted);word-break:break-all;">${state.transferProgress.current} / ${state.transferProgress.total} 枚 · ${_escHtml(state.transferProgress.fileName || '照合中...')}</div>
-             <div style="height:6px;border-radius:3px;background:var(--bg-tertiary);overflow:hidden;">
-               <div id="tPcaseProgBar" style="height:100%;background:var(--accent-primary);width:${state.transferProgress.total > 0 ? Math.round((state.transferProgress.current / state.transferProgress.total) * 100) : 15}%;transition:width 0.12s ease;"></div>
-             </div>
-             <div id="tPcaseProgSub" style="font-size:11px;color:var(--text-muted);">新規収納: ${state.transferProgress.importedCount}枚 / 重複スキップ: ${state.transferProgress.skippedCount}枚${state.transferProgress.errorCount > 0 ? ` / リトライ失敗: ${state.transferProgress.errorCount}枚` : ''}</div>
-           </div>
-         </div>`
-      : '';
-
-    const previewHtml = state.previewOpen ? _buildPreviewOverlayHtml(visibleItems) : '';
-    const tagPickerHtml = state.tagPickerOpen ? _buildTagPickerOverlayHtml() : '';
-
-    modal.innerHTML = `
-      <div class="t-pcase-topbar">
-        <button type="button" class="t-locker-action-btn" data-pcase-action="close-modal"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg><span>戻る</span></button>
-        <div style="flex:1;min-width:0;text-align:center;">
-          <div style="font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">📱 ${_escHtml(state.activeFolderName)}</div>
-          <div style="font-size:10.5px;color:var(--text-muted);">Uplink先: 母艦 <code>\\Loome\\case\\YYYY-MM-DD</code></div>
-        </div>
-        <div style="display:inline-flex;gap:4px;"><button type="button" class="t-locker-action-btn" data-pcase-action="rescan" title="スマホ内フォルダを再スキャンし、母艦DBの最新状態と照合します">🔄 再照合</button></div>
-      </div>
-      <div class="t-pcase-toolbar">
-        <div style="display:inline-flex;gap:4px;">
-          <button type="button" class="t-mode-switch-btn ${state.filterMode === 'unstored' ? 'is-active' : ''}" data-pcase-filter="unstored">未収納のみ (${unstoredCount})</button>
-          <button type="button" class="t-mode-switch-btn ${state.filterMode === 'all' ? 'is-active' : ''}" data-pcase-filter="all">すべて (${totalCount})</button>
-        </div>
-        <div style="display:inline-flex;gap:6px;">
-          <button type="button" class="m-text-btn" data-pcase-action="select-visible" style="font-size:11px;">表示中を全選択</button>
-          <button type="button" class="m-text-btn" data-pcase-action="clear-selection" style="font-size:11px;">選択解除</button>
-        </div>
-      </div>
-      <div class="t-pcase-scroll"><div class="t-pcase-grid">${gridHtml}</div></div>
-      <div class="t-pcase-bottom-panel">
-        <div class="t-pcase-curation-row">
-          <span id="tPcaseSelCountLabel" style="font-size:11px;font-weight:700;color:var(--text-muted);flex-shrink:0;">選択${selCount}枚に付与:</span>
-          <button type="button" class="t-inspector-rate-btn is-excellent" data-pcase-rate="2" style="padding:0 10px;height:28px;">優</button>
-          <button type="button" class="t-inspector-rate-btn is-good" data-pcase-rate="1" style="padding:0 10px;height:28px;">良</button>
-          <button type="button" class="t-inspector-rate-btn is-normal" data-pcase-rate="0" style="padding:0 10px;height:28px;">可</button>
-          <button type="button" class="t-inspector-rate-btn is-discard" data-pcase-rate="-1" style="padding:0 10px;height:28px;">棄</button>
-          <button type="button" class="t-pcase-add-folder-btn" data-pcase-action="open-tag-picker" style="height:28px;">＋ タグ選択</button>
-        </div>
-        <div style="display:flex;gap:6px;align-items:center;"><input type="text" id="tPcaseCommonTagInput" class="t-inspector-tag-input" value="${_escAttr(state.commonTagText)}" placeholder="転送分すべてに付ける共通タグ (カンマ区切り可: ロケハン, スナップ)..." autocomplete="off"></div>
-        ${(() => {
-          const isLinked = _isMotherShipLinked();
-          const canSubmit = isLinked && selCount > 0 && !state.transferring;
-          const submitLabel = _formatSubmitButtonLabel(selCount, isLinked);
-          return `<button type="button" id="tPcaseSubmitBtn" class="t-pcase-submit-btn ${!isLinked ? 'is-unlinked' : ''}" data-pcase-action="submit-transfer" ${!canSubmit ? 'disabled' : ''}><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg><span id="tPcaseSubmitBtnLabel">${_escHtml(submitLabel)}</span></button>`;
-        })()}
-      </div>
-      ${previewHtml}${tagPickerHtml}${progressOverlayHtml}`;
-    const nextScrollEl = modal.querySelector('.t-pcase-scroll');
-    if (nextScrollEl && prevScrollTop > 0) nextScrollEl.scrollTop = prevScrollTop;
-  }
-
-  function _buildPreviewOverlayHtml(visibleItems) {
-    const item = visibleItems[state.previewIndex];
-    if (!item) return '';
-    const rate = Number(item.rating || 0);
-    const tags = Array.isArray(item.tags) ? item.tags : [];
-    return `<div style="position:fixed;inset:0;z-index:145;background:rgba(10,11,14,0.96);display:flex;flex-direction:column;">
-      <div class="t-pcase-topbar" style="background:rgba(20,22,26,0.9);">
-        <button type="button" class="m-viewer-back-btn" data-pcase-action="close-preview">✕ 閉じる</button>
-        <div style="flex:1;min-width:0;text-align:center;">
-          <div style="font-size:12px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_escHtml(item.fileName)}</div>
-          <div style="font-size:10.5px;color:var(--text-muted);">${state.previewIndex + 1} / ${visibleItems.length} · ${_escHtml(item.dateStr)} (${_formatSize(item.fileSize)})</div>
-        </div>
-        <button type="button" class="t-locker-action-btn" data-pcase-toggle="${_escAttr(item.docKey)}">${state.selectedKeys.has(item.docKey) ? '✓ 転送対象' : '＋ 選択する'}</button>
-      </div>
-      <div style="flex:1;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden;">
-        ${state.previewIndex > 0 ? '<button type="button" class="m-viewer-nav prev" data-pcase-action="prev-preview">‹</button>' : ''}
-        <img src="${_escAttr(item.fullUrl)}" alt="${_escAttr(item.fileName)}" style="max-width:100%;max-height:100%;object-fit:contain;">
-        ${state.previewIndex < visibleItems.length - 1 ? '<button type="button" class="m-viewer-nav next" data-pcase-action="next-preview">›</button>' : ''}
-      </div>
-      <div style="padding:10px 12px calc(12px + env(safe-area-inset-bottom,0px));background:var(--surface-card);border-top:1px solid var(--border-color);display:flex;flex-direction:column;gap:8px;">
-        <div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center;">
-          <span style="font-size:11px;color:var(--text-muted);">タグ:</span>
-          ${tags.length ? tags.map((t) => `<span class="t-tag-pill">#${_escHtml(t)} <button type="button" class="t-tag-pill-del" data-pcase-del-single-tag="${_escAttr(t)}" data-pcase-target-key="${_escAttr(item.docKey)}">✕</button></span>`).join('') : '<span style="font-size:11px;color:var(--text-muted);">未付与</span>'}
-          <button type="button" class="t-inspector-link-btn" data-pcase-action="open-tag-picker" data-pcase-single-key="${_escAttr(item.docKey)}">＋ タグ追加</button>
-        </div>
-        <div class="t-inspector-rate-bar">
-          <button type="button" class="t-inspector-rate-btn is-excellent ${rate === 2 ? 'is-active' : ''}" data-pcase-single-rate="2" data-pcase-target-key="${_escAttr(item.docKey)}">優</button>
-          <button type="button" class="t-inspector-rate-btn is-good ${rate === 1 ? 'is-active' : ''}" data-pcase-single-rate="1" data-pcase-target-key="${_escAttr(item.docKey)}">良</button>
-          <button type="button" class="t-inspector-rate-btn is-normal ${rate === 0 ? 'is-active' : ''}" data-pcase-single-rate="0" data-pcase-target-key="${_escAttr(item.docKey)}">可</button>
-          <button type="button" class="t-inspector-rate-btn is-discard ${rate === -1 ? 'is-active' : ''}" data-pcase-single-rate="-1" data-pcase-target-key="${_escAttr(item.docKey)}">棄</button>
-        </div>
-      </div>
-    </div>`;
-  }
-
-  function _buildTagPickerOverlayHtml() {
-    const targetKeys = state._tagTargetKeys || Array.from(state.selectedKeys);
-    const pillsHtml = state.availableMotherTags.length
-      ? state.availableMotherTags.map((t) => `<button type="button" class="t-tag-pill" data-pcase-pick-tag="${_escAttr(t)}" style="cursor:pointer;padding:5px 10px;font-size:12px;">＋ ${_escHtml(t)}</button>`).join('')
-      : '<span style="font-size:11px;color:var(--text-muted);">母艦タグ候補がありません（下から直接入力できます）</span>';
-    return `<div style="position:fixed;inset:0;z-index:155;background:rgba(10,11,14,0.76);display:flex;align-items:flex-end;justify-content:center;">
-      <div style="width:100%;max-width:520px;max-height:75vh;background:var(--surface-card);border-top:1px solid var(--border-color);border-radius:14px 14px 0 0;padding:14px;display:flex;flex-direction:column;gap:10px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;"><span style="font-size:13px;font-weight:700;">タグを付与 (${targetKeys.length}枚対象)</span><button type="button" class="t-icon-close-btn" data-pcase-action="close-tag-picker">✕</button></div>
-        <div style="display:flex;gap:6px;"><input type="text" id="tPcaseCustomTagInput" class="t-inspector-tag-input" placeholder="新しいタグ名 (階層は 親/子)..." autocomplete="off"><button type="button" class="t-inspector-tag-add-btn" data-pcase-action="add-custom-tag">追加</button></div>
-        <div style="font-size:11px;color:var(--text-muted);">母艦の既存タグからタップして追加:</div>
-        <div style="flex:1;overflow-y:auto;display:flex;flex-wrap:wrap;gap:6px;padding:4px 0;">${pillsHtml}</div>
-      </div>
-    </div>`;
-  }
-
-  async function _applyDraftToKeys(docKeys, { rating, addTags, removeTags }) {
-    if (!docKeys || !docKeys.length) return;
-    const keySet = new Set(docKeys);
-    state.items.forEach((it) => {
-      if (!keySet.has(it.docKey)) return;
-      if (rating !== undefined && rating !== null) it.rating = Number(rating);
-      const tSet = new Set(Array.isArray(it.tags) ? it.tags : []);
-      if (Array.isArray(removeTags)) removeTags.forEach((rt) => tSet.delete(rt));
-      if (Array.isArray(addTags)) addTags.forEach((at) => { if (at) tSet.add(at); });
-      it.tags = Array.from(tSet);
-
-      if (state.activeFolderId === 'browser') state.browserDrafts[it.docKey] = { rating: it.rating, tags: [...it.tags] };
-    });
-    const adapter = _getAdapter();
-    if (adapter && adapter.isNativeAvailable()) await adapter.saveDraft({ docKeys, rating, addTags, removeTags });
-    _renderModalContent();
-  }
-
-  async function _handleModalClick(e) {
-    const actionBtn = e.target.closest('[data-pcase-action]');
-    if (actionBtn) {
-      const act = actionBtn.getAttribute('data-pcase-action');
-      if (act === 'close-modal') { closePhoneCaseModal(); return; }
-      if (act === 'open-wifi-sync') { closePhoneCaseModal(); document.getElementById('mHeaderWifiSyncBtn')?.click(); return; }
-      if (act === 'pick-folder') { await _getAdapter()?.pickFolder(); return; }
-      if (act === 'browser-pick') { _triggerBrowserFileInput(); return; }
-      if (act === 'rescan') {
-        if (state.activeFolderId === 'browser') _triggerBrowserFileInput();
-        else await openPhoneCaseModal(state.activeFolderId, state.activeFolderName, true);
-        return;
-      }
-      if (act === 'select-visible') { _getFilteredItems().forEach((it) => state.selectedKeys.add(it.docKey)); _renderModalContent(); return; }
-      if (act === 'clear-selection') { state.selectedKeys.clear(); _renderModalContent(); return; }
-      if (act === 'close-preview') { state.previewOpen = false; _renderModalContent(); return; }
-      if (act === 'prev-preview') { state.previewIndex = Math.max(0, state.previewIndex - 1); _renderModalContent(); return; }
-      if (act === 'next-preview') { state.previewIndex = Math.min(_getFilteredItems().length - 1, state.previewIndex + 1); _renderModalContent(); return; }
-      if (act === 'open-tag-picker') {
-        const singleKey = actionBtn.getAttribute('data-pcase-single-key');
-        state._tagTargetKeys = singleKey ? [singleKey] : Array.from(state.selectedKeys);
-        if (!state._tagTargetKeys.length) { _showToast('先に写真を選択してください'); return; }
-        state.tagPickerOpen = true;
-        _renderModalContent();
-        return;
-      }
-      if (act === 'close-tag-picker') { state.tagPickerOpen = false; _renderModalContent(); return; }
-      if (act === 'add-custom-tag') {
-        const inp = document.getElementById('tPcaseCustomTagInput');
-        const val = inp ? inp.value.trim() : '';
-        if (!val) return;
-        const tags = val.split(',').map((s) => s.trim()).filter(Boolean);
-        await _applyDraftToKeys(state._tagTargetKeys || Array.from(state.selectedKeys), { addTags: tags });
-        _showToast(`タグ「${tags.join(', ')}」を付与しました`);
-        return;
-      }
-      if (act === 'submit-transfer') { await _executeTransfer(); return; }
-    }
-
-    const filterBtn = e.target.closest('[data-pcase-filter]');
-    if (filterBtn) {
-      state.filterMode = filterBtn.getAttribute('data-pcase-filter') || 'unstored';
-      state.renderLimit = GRID_BATCH_SIZE;
-      _renderModalContent();
-      return;
-    }
-
-    const pickTagBtn = e.target.closest('[data-pcase-pick-tag]');
-    if (pickTagBtn) {
-      const tag = pickTagBtn.getAttribute('data-pcase-pick-tag');
-      if (tag) {
-        await _applyDraftToKeys(state._tagTargetKeys || Array.from(state.selectedKeys), { addTags: [tag] });
-        _showToast(`タグ「#${tag}」を付与しました`);
-      }
-      return;
-    }
-
-    const delSingleTagBtn = e.target.closest('[data-pcase-del-single-tag]');
-    if (delSingleTagBtn) {
-      const tag = delSingleTagBtn.getAttribute('data-pcase-del-single-tag');
-      const key = delSingleTagBtn.getAttribute('data-pcase-target-key');
-      if (tag && key) await _applyDraftToKeys([key], { removeTags: [tag] });
-      return;
-    }
-
-    const singleRateBtn = e.target.closest('[data-pcase-single-rate]');
-    if (singleRateBtn) {
-      const rate = Number(singleRateBtn.getAttribute('data-pcase-single-rate'));
-      const key = singleRateBtn.getAttribute('data-pcase-target-key');
-      if (key) await _applyDraftToKeys([key], { rating: rate });
-      return;
-    }
-
-    const batchRateBtn = e.target.closest('[data-pcase-rate]');
-    if (batchRateBtn) {
-      const keys = Array.from(state.selectedKeys);
-      if (!keys.length) { _showToast('評価を付ける写真を選択してください'); return; }
-      const rate = Number(batchRateBtn.getAttribute('data-pcase-rate'));
-      await _applyDraftToKeys(keys, { rating: rate });
-      _showToast(`選択中の ${keys.length} 枚を「${RATE_LABELS[String(rate)] || ''}」に設定しました`);
-      return;
-    }
-
-    const previewTrigger = e.target.closest('[data-pcase-preview]');
-    if (previewTrigger) {
-      state.previewIndex = Number(previewTrigger.getAttribute('data-pcase-preview') || 0);
-      state.previewOpen = true;
-      _renderModalContent();
-      return;
-    }
-
-    const toggleEl = e.target.closest('[data-pcase-toggle], [data-pcase-cell]');
-    if (toggleEl) {
-      const key = toggleEl.getAttribute('data-pcase-toggle') || toggleEl.getAttribute('data-pcase-cell');
-      if (!key) return;
-      const nowSel = !state.selectedKeys.has(key);
-      if (nowSel) state.selectedKeys.add(key); else state.selectedKeys.delete(key);
-      if (state.previewOpen) { _renderModalContent(); return; }
-      const cellEl = toggleEl.closest('[data-pcase-cell]');
-      if (cellEl) {
-        cellEl.classList.toggle('is-selected', nowSel);
-        const chk = cellEl.querySelector('.t-pcase-check');
-        if (chk) chk.textContent = nowSel ? '✓' : '';
-      }
-      const selCount = state.selectedKeys.size;
-      const isLinked = _isMotherShipLinked();
-      const cntLbl = document.getElementById('tPcaseSelCountLabel');
-      const subBtn = document.getElementById('tPcaseSubmitBtn');
-      const subLbl = document.getElementById('tPcaseSubmitBtnLabel');
-      if (cntLbl) cntLbl.textContent = `選択${selCount}枚に付与:`;
-      if (subBtn) {
-        subBtn.disabled = !isLinked || selCount === 0 || state.transferring;
-        subBtn.classList.toggle('is-unlinked', !isLinked);
-      }
-      if (subLbl) subLbl.textContent = _formatSubmitButtonLabel(selCount, isLinked);
-    }
-  }
-
-  function _updateProgressOverlayInPlace() {
-    const overlay = document.getElementById('tPcaseProgressOverlay');
-    if (!overlay) return false;
-    const p = state.transferProgress;
-    const txtEl = document.getElementById('tPcaseProgText');
-    const barEl = document.getElementById('tPcaseProgBar');
-    const subEl = document.getElementById('tPcaseProgSub');
-    if (txtEl) txtEl.textContent = `${p.current} / ${p.total} 枚 · ${p.fileName || '照合中...'}`;
-    if (barEl) barEl.style.width = `${p.total > 0 ? Math.min(100, Math.round((p.current / p.total) * 100)) : 15}%`;
-    if (subEl) {
-      subEl.textContent = `新規収納: ${p.importedCount}枚 / 重複スキップ: ${p.skippedCount}枚${p.errorCount > 0 ? ` / リトライ失敗: ${p.errorCount}枚` : ''}`;
-    }
-    return true;
-  }
-
-  async function _executeTransfer() {
-    const adapter = _getAdapter();
-    if (!adapter || state.transferring) return;
-    if (!_isMotherShipLinked()) {
-      _showToast('母艦とLINKしていないため収納できません');
-      _renderModalContent();
-      return;
-    }
-
-    const selectedItems = state.items.filter((it) => state.selectedKeys.has(it.docKey));
-    if (!selectedItems.length) { _showToast('転送する写真を選択してください'); return; }
-
-    const commonTags = String(state.commonTagText || '').split(',').map((s) => s.trim()).filter(Boolean);
+    if (!adapter || !files || !files.length || state.transferring) return;
     state.transferring = true;
-    state.transferProgress = { current: 0, total: selectedItems.length, fileName: '母艦DBと照合中...', importedCount: 0, skippedCount: 0, errorCount: 0 };
-    _renderModalContent();
-
-    if (state.activeFolderId === 'browser') {
-      const validPairs = selectedItems.map((it) => ({ docKey: it.docKey, file: state.browserFilesMap.get(it.docKey)?.file })).filter((p) => Boolean(p.file));
-      await adapter.transferBrowserFiles(
-        validPairs.map((p) => p.file),
-        { commonTags, draftMap: state.browserDrafts, docKeys: validPairs.map((p) => p.docKey) }
-      );
-      return;
-    }
-
-    const startRes = await adapter.transferToMotherShip({ items: selectedItems, commonTags });
-    if (!startRes || !startRes.ok) {
+    state.quickUplinkRunning = true;
+    state.transferProgress = { current: 0, total: files.length, fileName: '母艦DBと照合中...', importedCount: 0, skippedCount: 0, errorCount: 0 };
+    _showQuickUplinkOverlay('母艦 \\Loome\\case へ写真を転送中...', `0 / ${files.length} 枚 · 準備中...`, '新規収納: 0枚 / 重複スキップ: 0枚', 12);
+    try {
+      const docKeys = files.map((f, idx) => `bf_${idx}_${f.name}_${f.size}`);
+      await adapter.transferBrowserFiles(files, { commonTags: [], draftMap: {}, docKeys });
+    } finally {
+      _hideQuickUplinkOverlay();
       state.transferring = false;
-      _renderModalContent();
-      _showToast((startRes && startRes.error) || '転送の開始に失敗しました');
+      state.quickUplinkRunning = false;
     }
   }
 
@@ -1016,28 +669,7 @@
       global.TetheractTouchUI.registerPerspectiveRenderer('folder', renderFolderPerspectiveCard);
     }
 
-    global.__extraBackHandlers = global.__extraBackHandlers || [];
-    global.__extraBackHandlers.push(function handlePhoneCaseBack() {
-      if (state.tagPickerOpen) { state.tagPickerOpen = false; _renderModalContent(); return 'handled'; }
-      if (state.previewOpen) { state.previewOpen = false; _renderModalContent(); return 'handled'; }
-      if (state.modalOpen && !state.transferring) { closePhoneCaseModal(); return 'handled'; }
-      return undefined;
-    });
-
     global.addEventListener('tetheract:link-state-changed', () => {
-      if (state.modalOpen && !state.transferring) {
-        const isLinked = _isMotherShipLinked();
-        const selCount = state.selectedKeys.size;
-        const subBtn = document.getElementById('tPcaseSubmitBtn');
-        const subLbl = document.getElementById('tPcaseSubmitBtnLabel');
-        if (subBtn) {
-          subBtn.disabled = !isLinked || selCount === 0 || state.transferring;
-          subBtn.classList.toggle('is-unlinked', !isLinked);
-        }
-        if (subLbl) {
-          subLbl.textContent = _formatSubmitButtonLabel(selCount, isLinked);
-        }
-      }
       if (state.activeSlotEl && document.body.contains(state.activeSlotEl)) {
         _renderFolderCardInner(state.activeSlotEl);
       }
@@ -1068,7 +700,6 @@
         if (res.folderId) state.folderCounts[res.folderId] = cnt;
         if (typeof global.__onTetheractPhoneCatalogSynced === 'function') await global.__onTetheractPhoneCatalogSynced();
         if (state.activeSlotEl && document.body.contains(state.activeSlotEl)) _renderFolderCardInner(state.activeSlotEl);
-        if (state.modalOpen) await openPhoneCaseModal(res.folderId || 'all', res.folderName || 'Uplink — 母艦に収納');
         const err = res.scanError || '';
         _showToast(err ? `⚠️ フォルダ「${res.folderName || 'Camera'}」登録時エラー: ${err}` : `✓ スマホフォルダ「${res.folderName || 'Camera'}」を管理下に登録しました (${cnt}枚)`, 3600);
       });
@@ -1080,7 +711,7 @@
           fileName: String(prog.fileName || ''), importedCount: Number(prog.importedCount || 0),
           skippedCount: Number(prog.skippedCount || 0), errorCount: Number(prog.errorCount || 0),
         };
-        if (state.quickUplinkRunning && !state.modalOpen) {
+        if (state.quickUplinkRunning) {
           const p = state.transferProgress;
           const pct = p.total > 0 ? Math.min(100, Math.round((p.current / p.total) * 100)) : 20;
           const sub = `新規収納: ${p.importedCount}枚 / 重複スキップ: ${p.skippedCount}枚${p.errorCount > 0 ? ` / リトライ失敗: ${p.errorCount}枚` : ''}`;
@@ -1090,49 +721,49 @@
             sub,
             pct
           );
-          return;
         }
-        if (state.modalOpen && !_updateProgressOverlayInPlace()) _renderModalContent();
       });
 
       adapter.onTransferCompleted((res) => {
         state.transferring = false;
-        const imp = Number((res && res.importedCount) || 0);
-        const skp = Number((res && res.skippedCount) || 0);
-        const errCnt = Number((res && res.errorCount) || 0);
-        const succeededList = Array.isArray(res && res.succeededDocKeys) ? res.succeededDocKeys : null;
-        if (succeededList && succeededList.length > 0) {
-          const okSet = new Set(succeededList);
-          state.items.forEach((it) => { if (okSet.has(it.docKey)) { it.inMotherShip = true; state.selectedKeys.delete(it.docKey); } });
-        } else if (res && res.ok && errCnt === 0) {
-          state.items.forEach((it) => { if (state.selectedKeys.has(it.docKey)) it.inMotherShip = true; });
-          state.selectedKeys.clear();
-        }
         if (typeof state.quickUplinkResolver === 'function') {
           const resolveFn = state.quickUplinkResolver;
           state.quickUplinkResolver = null;
-          if (state.modalOpen) _renderModalContent();
           resolveFn(res || { ok: false });
           return;
         }
-        _renderModalContent();
-        if ((imp > 0 || Number((res && res.appliedToExisting) || 0) > 0) && typeof global.__onTetheractPhoneCatalogSynced === 'function') {
+        _hideQuickUplinkOverlay();
+        const imp = Number((res && res.importedCount) || 0);
+        const skp = Number((res && res.skippedCount) || 0);
+        const app = Number((res && res.appliedToExisting) || 0);
+        const qSig = Number((res && res.queuedPendingSignals) || 0);
+        const sigOk = Number((res && res.signalSyncedCount) || 0);
+        const totalSignalSynced = app + qSig + sigOk;
+        const errCnt = Number((res && res.errorCount) || 0);
+        if ((imp > 0 || totalSignalSynced > 0) && typeof global.__onTetheractPhoneCatalogSynced === 'function') {
           global.__onTetheractPhoneCatalogSynced();
         }
-        if (!res || (!res.ok && imp === 0 && skp === 0)) { _showToast((res && res.error) || '母艦への転送中にエラーが発生しました', 4500); return; }
-        if (!res.ok || errCnt > 0) {
-          const rem = Number(res.remainingCount || Math.max(0, state.selectedKeys.size));
-          _showToast(`⚠️ 一部未完了: ${imp}枚収納・${skp}枚重複スキップ / 残り${rem}枚が未転送です${res.error ? ` (${res.error})` : ''}。再度押すと続きから再開できます`, 5500);
+        if (!res || (!res.ok && imp === 0 && skp === 0 && totalSignalSynced === 0)) {
+          _showToast((res && res.error) || '母艦への転送中にエラーが発生しました', 4500);
           return;
         }
-        _showToast(`完了: ${imp}枚を母艦 \\Loome\\case へ収納しました（重複スキップ: ${skp}枚）`, 3800);
+        if (!res.ok || errCnt > 0) {
+          const rem = Number(res.remainingCount || 0);
+          _showToast(`一部未完了: ${imp}枚収納・信号${totalSignalSynced}件・${skp}枚重複スキップ / 残り${rem}件が未送信です${res.error ? ` (${res.error})` : ''}。再度押すと続きから再開できます`, 5500);
+          return;
+        }
+        if (imp > 0 && totalSignalSynced > 0) {
+          _showToast(`完了: ${imp}枚を母艦 \\Loome\\case へ収納・信号 ${totalSignalSynced}件を同期しました（重複スキップ: ${skp}枚）`, 4000);
+        } else if (imp === 0 && totalSignalSynced > 0) {
+          _showToast(`完了: 評価・タグ信号 ${totalSignalSynced}件を母艦へ同期しました（重複スキップ: ${skp}枚）`, 3800);
+        } else {
+          _showToast(`完了: ${imp}枚を母艦 \\Loome\\case へ収納しました（重複スキップ: ${skp}枚）`, 3800);
+        }
       });
     }
   }
 
   global.TetheractTouchUI = Object.assign(global.TetheractTouchUI || {}, {
-    openPhoneCaseModal,
-    closePhoneCaseModal,
     openCameraCapture,
     triggerQuickDeltaUplink,
   });

@@ -578,6 +578,11 @@ class TetheractNativeBridge(
     }
 
     @JavascriptInterface
+    fun phoneCaseSetFolderModeJson(folderId: String, mode: String): String {
+        return phoneCaseManager.setFolderModeJson(folderId, mode)
+    }
+
+    @JavascriptInterface
     fun phoneCaseScanPhotosJson(folderId: String): String {
         return phoneCaseManager.scanFolderPhotosJson(
             folderId = folderId, includeItems = true, allowLiveReconcile = false, minFreshMs = 3000L
@@ -623,6 +628,45 @@ class TetheractNativeBridge(
     }
 
     @JavascriptInterface
+    fun phoneCaseSaveArtFramerOutputJson(payloadJson: String): String {
+        return phoneCaseManager.saveArtFramerOutputJson(payloadJson)
+    }
+
+    @JavascriptInterface
+    fun phoneCaseEnsurePhotoExifJson(photoId: Long): String {
+        return phoneCaseManager.ensurePhotoExifJson(photoId)
+    }
+
+    @JavascriptInterface
+    fun phoneCaseDetectFacesJson(dataUrl: String): String {
+        return phoneCaseManager.detectFacesFromDataUrlJson(dataUrl)
+    }
+
+    @JavascriptInterface
+    fun phoneCaseDetectPrivacyAsyncJson(requestId: String, dataUrl: String): String {
+        return try {
+            Thread({
+                val outObj = try {
+                    val raw = phoneCaseManager.detectFacesFromDataUrlJson(dataUrl)
+                    JSONObject(raw).put("requestId", requestId)
+                } catch (e: Exception) {
+                    Log.e(TAG, "phoneCaseDetectPrivacyAsync スレッドエラー", e)
+                    JSONObject().put("ok", false).put("requestId", requestId)
+                        .put("error", e.message ?: "Detect thread error")
+                        .put("faces", JSONArray())
+                        .put("plates", JSONArray())
+                }
+                val esc = JSONObject.quote(outObj.toString())
+                onEvalJs("if(window.__onTetheractPrivacyDetectCompleted){window.__onTetheractPrivacyDetectCompleted(JSON.parse($esc));}")
+            }, "PrivacyDetectAsync").apply { isDaemon = true; start() }
+            JSONObject().put("ok", true).put("status", "detect_started").put("requestId", requestId).toString()
+        } catch (e: Exception) {
+            Log.e(TAG, "phoneCaseDetectPrivacyAsyncJson 起動エラー", e)
+            JSONObject().put("ok", false).put("requestId", requestId).put("error", e.message ?: "Failed to start detect").toString()
+        }
+    }
+
+    @JavascriptInterface
     fun phoneCaseTransferAsyncJson(payloadJson: String): String {
         return try {
             Thread {
@@ -634,7 +678,7 @@ class TetheractNativeBridge(
                     }
                     val escRes = JSONObject.quote(res.toString())
                     onEvalJs("if(window.__onTetheractCaseTransferCompleted){window.__onTetheractCaseTransferCompleted(JSON.parse($escRes));}")
-                    if (!res.optBoolean("aborted", false) && (res.optInt("importedCount", 0) > 0 || res.optInt("appliedToExisting", 0) > 0)) {
+                    if (!res.optBoolean("aborted", false) && (res.optInt("importedCount", 0) > 0 || res.optInt("appliedToExisting", 0) > 0 || res.optInt("queuedPendingSignals", 0) > 0 || res.optInt("signalSyncedCount", 0) > 0)) {
                         // 転送完了直後のWebView側ローカルSQLite再集計とDB差し替えが衝突しないよう遅延後に直列実行する
                         onTriggerWifiSyncAsync.invoke(false, 1500L)
                     }

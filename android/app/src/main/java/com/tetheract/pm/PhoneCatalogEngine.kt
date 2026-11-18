@@ -4,6 +4,7 @@ import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
+import android.location.Geocoder
 import android.media.ExifInterface
 import android.net.Uri
 import android.os.Build
@@ -12,11 +13,16 @@ import android.provider.MediaStore
 import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
+import java.io.FileInputStream
 import java.io.InputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlin.math.abs
 
 /**
  * スマホ機内フォルダの写真をロッカー内 library.db（管理下）へ自動スキャン統合し、
@@ -31,20 +37,119 @@ class PhoneCatalogEngine(
         private const val TAG = "PhoneCatalogEngine"
         const val PHONE_LOCAL_ID_BASE = 900_000_000L
         const val ANDROID_LOCAL_VSN = "ANDROID_LOCAL"
-        private const val MAX_PRE_SYNC_EXIF_READS = 16
-        private val DUP_SUFFIX_REGEX = Regex("(?:_\\d+|\\s*\\(\\d+\\))$")
+        const val THMOD_LOCAL_SCHEME = "thmod_local"
+        private const val MAX_PRE_SYNC_EXIF_READS = 64
+        private val PAREN_DUP_SUFFIX_REGEX = Regex("\\s*\\(\\d+\\)$")
+        private val NUM_DUP_SUFFIX_REGEX = Regex("^(.+)_([1-9]\\d?)$")
+        private val CAMERA_BASE_NUM_REGEX = Regex("(?:[a-z]+\\d{3,}|_\\d{3,}|\\d{6,})$")
         private val EXIF_DATE_PREFIX_REGEX = Regex("^(\\d{4}):(\\d{2}):(\\d{2})(.*)$")
+        private val EXIF_FLEX_DATE_REGEX = Regex("^(\\d{4})[-:/](\\d{2})[-:/](\\d{2})(?:[T ](\\d{2}):(\\d{2}):(\\d{2}))?")
         private val FILENAME_DATE_REGEX = Regex("(20\\d{2})[-_]?([01]\\d)[-_]?([0-3]\\d)(?:[-_T ]?([0-2]\\d)([0-5]\\d)([0-5]\\d))?")
+        private val NON_ALNUM_REGEX = Regex("[^a-z0-9]+")
+        private val INVALID_CAMERAS = setOf("", "不明", "raw写真", "unknown")
 
-        /** 連番サフィックス (_1, (1) 等) を除いた正規化小文字ファイル名を返す */
+        /** カメラ本体番号(IMG_1234等)を保護しつつ、OSコピー枝番 (_1, (1) 等) のみを除いた正規化小文字ファイル名を返す */
         fun normalizeDupFileName(fileName: String): String {
             val lower = fileName.trim().lowercase(Locale.US)
             val dotIdx = lower.lastIndexOf('.')
             if (dotIdx <= 0) return lower
             val stem = lower.substring(0, dotIdx)
             val ext = lower.substring(dotIdx)
-            val cleanStem = DUP_SUFFIX_REGEX.replace(stem, "").trim().ifEmpty { stem }
-            return "$cleanStem$ext"
+            var cleanStem = PAREN_DUP_SUFFIX_REGEX.replace(stem, "").trim()
+            val m = NUM_DUP_SUFFIX_REGEX.matchEntire(cleanStem)
+            if (m != null && CAMERA_BASE_NUM_REGEX.containsMatchIn(m.groupValues[1])) {
+                cleanStem = m.groupValues[1]
+            }
+            return "${cleanStem.ifEmpty { stem }}$ext"
+        }
+
+        /** 先頭 thmod_ と拡張子・コピー枝番を除去した比較用正規化ステムを返す */
+        fun normalizeCameraStem(fileName: String?): String {
+            if (fileName.isNullOrBlank()) return ""
+            val base = fileName.substringAfterLast('/').substringAfterLast('\\').trim()
+            if (base.isEmpty()) return ""
+            val dotIdx = base.lastIndexOf('.')
+            var stem = (if (dotIdx > 0) base.substring(0, dotIdx) else base).trim().lowercase(Locale.US)
+            if (stem.startsWith("thmod_")) stem = stem.removePrefix("thmod_").trim()
+            stem = PAREN_DUP_SUFFIX_REGEX.replace(stem, "").trim()
+            val m = NUM_DUP_SUFFIX_REGEX.matchEntire(stem)
+            if (m != null && CAMERA_BASE_NUM_REGEX.containsMatchIn(m.groupValues[1])) {
+                stem = m.groupValues[1]
+            }
+            return stem
+        }
+
+        private fun normalizeDateEpochSec(raw: String?): Long? {
+            val s = (raw ?: "").trim()
+            val m = EXIF_FLEX_DATE_REGEX.find(s) ?: return null
+            val yyyy = m.groupValues[1].toIntOrNull() ?: return null
+            val mm = m.groupValues[2].toIntOrNull() ?: return null
+            val dd = m.groupValues[3].toIntOrNull() ?: return null
+            val hh = m.groupValues[4].toIntOrNull() ?: 0
+            val mi = m.groupValues[5].toIntOrNull() ?: 0
+            val ss = m.groupValues[6].toIntOrNull() ?: 0
+            if (yyyy !in 1970..2100 || mm !in 1..12 || dd !in 1..31) return null
+            return try {
+                val cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"), Locale.US)
+                cal.set(yyyy, mm - 1, dd, hh, mi, ss)
+                cal.set(java.util.Calendar.MILLISECOND, 0)
+                cal.timeInMillis / 1000L
+            } catch (_: Exception) {
+                null
+            }
+        }
+
+        private fun cameraModelsCompatible(camA: String?, camB: String?): Boolean {
+            val kA = NON_ALNUM_REGEX.replace((camA ?: "").trim().lowercase(Locale.US), "")
+            val kB = NON_ALNUM_REGEX.replace((camB ?: "").trim().lowercase(Locale.US), "")
+            if (kA.isEmpty() || kB.isEmpty()) return true
+            if ((camA ?: "").trim().lowercase(Locale.US) in INVALID_CAMERAS || (camB ?: "").trim().lowercase(Locale.US) in INVALID_CAMERAS) {
+                return true
+            }
+            return kA == kB || kA in kB || kB in kA
+        }
+
+        /** EXIF ExposureTime（小数・分数表記）をカメラ標準表記（例: 1/250, 0.5, 2）へ整形する */
+        internal fun formatExposureTime(raw: String?): String {
+            val s = (raw ?: "").trim()
+            if (s.isEmpty()) return ""
+            val sec: Double = if ('/' in s) {
+                val parts = s.split('/', limit = 2)
+                val num = parts.getOrNull(0)?.trim()?.toDoubleOrNull() ?: return s
+                val den = parts.getOrNull(1)?.trim()?.toDoubleOrNull() ?: return s
+                if (den <= 0.0 || num <= 0.0) return s
+                if (abs(num - 1.0) < 1e-6 && den >= 2.0) return "1/${Math.round(den)}"
+                num / den
+            } else {
+                s.toDoubleOrNull() ?: return s
+            }
+            if (sec <= 0.0) return ""
+            if (sec < 0.45) {
+                val inv = Math.round(1.0 / sec).coerceAtLeast(2L)
+                return "1/$inv"
+            }
+            val rounded = Math.round(sec * 10.0) / 10.0
+            return if (abs(rounded - Math.round(rounded)) < 1e-6) {
+                Math.round(rounded).toString()
+            } else {
+                String.format(Locale.US, "%.1f", rounded)
+            }
+        }
+    }
+
+    val thmodExportsDir: File = File(lockerDbManager.lockerDir, "thmod_exports")
+
+    /** treeUriStr ("thmod_local" または SAF tree URI) と docId から実アクセス可能な Uri を構築する */
+    fun buildLocalOrDocumentUri(treeUriStr: String, docId: String): Uri? {
+        if (treeUriStr == THMOD_LOCAL_SCHEME) {
+            val safeName = File(docId).name
+            if (safeName.isEmpty() || safeName == "." || safeName == "..") return null
+            return Uri.fromFile(File(thmodExportsDir, safeName))
+        }
+        return try {
+            DocumentsContract.buildDocumentUriUsingTree(Uri.parse(treeUriStr), docId)
+        } catch (_: Exception) {
+            null
         }
     }
 
@@ -52,7 +157,8 @@ class PhoneCatalogEngine(
 
     private data class ExistingPhoneRow(
         val id: Long, val fileSize: Long, val rating: Int, val directoryPath: String,
-        val dateTaken: String, val cameraModel: String, val width: Int, val height: Int
+        val dateTaken: String, val cameraModel: String, val width: Int, val height: Int,
+        val hasLens: Boolean, val hasExposure: Boolean, val hasGps: Boolean
     )
 
     private data class FastMediaMeta(val dateTaken: String, val width: Int, val height: Int)
@@ -98,7 +204,7 @@ class PhoneCatalogEngine(
                         exposure_bias REAL DEFAULT 0.0, iso INTEGER, latitude REAL, longitude REAL,
                         country TEXT, state TEXT, city TEXT, rating INTEGER DEFAULT 0, is_favorite INTEGER DEFAULT 0,
                         is_raw INTEGER DEFAULT 0, paired_raw_path TEXT, volume_serial TEXT, is_unlinked INTEGER DEFAULT 0,
-                        content_key TEXT, stack_id INTEGER, is_stack_primary INTEGER DEFAULT 1,
+                        content_key TEXT, stack_id INTEGER, is_stack_primary INTEGER DEFAULT 1, stack_type TEXT,
                         rotation INTEGER DEFAULT 0, brightness INTEGER DEFAULT 0, contrast INTEGER DEFAULT 0,
                         saturation INTEGER DEFAULT 0, fine_angle REAL DEFAULT 0.0,
                         crop_x REAL DEFAULT 0.0, crop_y REAL DEFAULT 0.0, crop_w REAL DEFAULT 1.0, crop_h REAL DEFAULT 1.0
@@ -258,20 +364,48 @@ class PhoneCatalogEngine(
             return CatalogSyncOutcome(0, 0, "library.db のスキーマ初期化に失敗しました")
         }
 
-        // 1. DBロックの外側で MediaStore から撮影日時・縦横寸法を一括取得（1クエリのみ・ファイルストリームオープンなし）
+        // 1. DBロックの外側で MediaStore と既存スマホ行情報を取得（並列読み取り・I/O分離）
         val mediaFastMap = if (rawItems.isNotEmpty()) loadMediaStoreFastMetaMap() else emptyMap()
+        val knownExifStateByPath = HashMap<String, Boolean>()
+        if (lockerDbManager.hasLockerDatabase() && rawItems.isNotEmpty()) {
+            try {
+                val arr = JSONArray(
+                    lockerDbManager.rawQuerySafeJson(
+                        "SELECT file_path, COALESCE(camera_model, '') AS cam, f_number, COALESCE(shutter_speed, '') AS ss, iso, focal_length FROM photos WHERE id >= $PHONE_LOCAL_ID_BASE OR IFNULL(volume_serial, '') = '$ANDROID_LOCAL_VSN'",
+                        "[]"
+                    )
+                )
+                for (i in 0 until arr.length()) {
+                    val o = arr.optJSONObject(i) ?: continue
+                    val fp = o.optString("file_path", "")
+                    if (fp.isEmpty()) continue
+                    val cam = o.optString("cam", "").trim()
+                    val hasExp = !o.isNull("f_number") || o.optString("ss", "").trim().isNotEmpty() || !o.isNull("iso") || !o.isNull("focal_length")
+                    knownExifStateByPath[fp] = cam.isNotEmpty() && hasExp
+                }
+            } catch (_: Exception) {}
+        }
+
         val preExifMap = HashMap<String, PhoneExifMeta>()
         var preExifCount = 0
-        for (item in rawItems) {
+        for (pass in 0..1) {
             if (preExifCount >= MAX_PRE_SYNC_EXIF_READS) break
-            val fileSize = item.optLong("fileSize", 0L)
-            if (fileSize <= 0L || fileSize !in lookup.motherSizes) continue
-            val fileName = item.optString("fileName", "")
-            val docKey = item.optString("docKey", "")
-            val fastMeta = mediaFastMap["${fileName.lowercase(Locale.US)}|$fileSize"]
-            if (docKey.isNotEmpty() && fileName.isNotEmpty() && fastMeta == null && item.optString("dateTaken", "").isEmpty()) {
-                preExifCount++
-                preExifMap[docKey] = extractPhoneExifMeta(docKey, fileName, item.optLong("lastModifiedMs", 0L), decodeDocKeyFn)
+            for (item in rawItems) {
+                if (preExifCount >= MAX_PRE_SYNC_EXIF_READS) break
+                val fileSize = item.optLong("fileSize", 0L)
+                if (fileSize <= 0L) continue
+                val fileName = item.optString("fileName", "")
+                val docKey = item.optString("docKey", "")
+                if (docKey.isEmpty() || fileName.isEmpty() || docKey in preExifMap) continue
+                val hasState = knownExifStateByPath["phone://$docKey"]
+                val inMotherSizes = fileSize in lookup.motherSizes
+                val isThmod = item.optBoolean("isThmod", false) || fileName.lowercase(Locale.US).startsWith("thmod_")
+                val isPriority = hasState == null || inMotherSizes || isThmod
+                val shouldRead = if (pass == 0) isPriority else (hasState == false)
+                if (shouldRead) {
+                    preExifCount++
+                    preExifMap[docKey] = extractPhoneExifMeta(docKey, fileName, item.optLong("lastModifiedMs", 0L), decodeDocKeyFn, fileSize)
+                }
             }
         }
 
@@ -289,13 +423,23 @@ class PhoneCatalogEngine(
 
                 val existingPhoneRows = HashMap<String, ExistingPhoneRow>()
                 var maxPhoneId = PHONE_LOCAL_ID_BASE
+                val hasLensCol = "lens_model" in photoCols
+                val hasExpCols = "f_number" in photoCols && "shutter_speed" in photoCols && "iso" in photoCols
+                val hasGpsCols = "latitude" in photoCols && "longitude" in photoCols
+                val lensExpr = if (hasLensCol) "CASE WHEN COALESCE(lens_model, '') != '' THEN 1 ELSE 0 END" else "1"
+                val expExpr = if (hasExpCols) "CASE WHEN f_number IS NOT NULL OR COALESCE(shutter_speed, '') != '' OR iso IS NOT NULL THEN 1 ELSE 0 END" else "1"
+                val gpsExpr = if (hasGpsCols) "CASE WHEN latitude IS NOT NULL AND longitude IS NOT NULL THEN 1 ELSE 0 END" else "1"
                 db.rawQuery(
-                    "SELECT id, file_path, COALESCE(file_size, 0), COALESCE(rating, 0), COALESCE(directory_path, ''), COALESCE(date_taken, ''), COALESCE(camera_model, ''), COALESCE(width, 0), COALESCE(height, 0) FROM photos WHERE id >= $PHONE_LOCAL_ID_BASE OR IFNULL(volume_serial, '') = '$ANDROID_LOCAL_VSN'",
+                    "SELECT id, file_path, COALESCE(file_size, 0), COALESCE(rating, 0), COALESCE(directory_path, ''), COALESCE(date_taken, ''), COALESCE(camera_model, ''), COALESCE(width, 0), COALESCE(height, 0), $lensExpr, $expExpr, $gpsExpr FROM photos WHERE id >= $PHONE_LOCAL_ID_BASE OR IFNULL(volume_serial, '') = '$ANDROID_LOCAL_VSN'",
                     null
                 ).use { c ->
                     while (c.moveToNext()) {
                         val pid = c.getLong(0); val fp = c.getString(1) ?: continue
-                        existingPhoneRows[fp] = ExistingPhoneRow(pid, c.getLong(2), c.getInt(3), c.getString(4) ?: "", c.getString(5) ?: "", c.getString(6) ?: "", c.getInt(7), c.getInt(8))
+                        existingPhoneRows[fp] = ExistingPhoneRow(
+                            pid, c.getLong(2), c.getInt(3), c.getString(4) ?: "",
+                            c.getString(5) ?: "", c.getString(6) ?: "", c.getInt(7), c.getInt(8),
+                            c.getInt(9) == 1, c.getInt(10) == 1, c.getInt(11) == 1
+                        )
                         if (pid > maxPhoneId) maxPhoneId = pid
                     }
                 }
@@ -395,16 +539,57 @@ class PhoneCatalogEngine(
                         val targetId: Long
                         if (existing != null) {
                             targetId = existing.id
-                            val patchW = if (existing.width <= 0 && (fastMeta?.width ?: 0) > 0) fastMeta!!.width else 0
-                            val patchH = if (existing.height <= 0 && (fastMeta?.height ?: 0) > 0) fastMeta!!.height else 0
-                            if (existing.fileSize != fileSize || existing.directoryPath != phoneDirPath || patchW > 0) {
+                            val patchW = if (existing.width <= 0) {
+                                if ((preExif?.width ?: 0) > 0) preExif!!.width
+                                else if ((fastMeta?.width ?: 0) > 0) fastMeta!!.width else 0
+                            } else 0
+                            val patchH = if (existing.height <= 0) {
+                                if ((preExif?.height ?: 0) > 0) preExif!!.height
+                                else if ((fastMeta?.height ?: 0) > 0) fastMeta!!.height else 0
+                            } else 0
+                            val preCam = preExif?.let { it.cameraModel.ifEmpty { it.cameraMake } }?.trim() ?: ""
+                            val patchCam = if (existing.cameraModel.isEmpty() && preCam.isNotEmpty()) preCam else ""
+                            val patchDt = if (existing.cameraModel.isEmpty() && (preExif?.dateTaken?.length ?: 0) >= 19) preExif!!.dateTaken else ""
+                            val patchLens = if (!existing.hasLens && !(preExif?.lensModel.isNullOrEmpty())) preExif!!.lensModel else ""
+                            val needsExpPatch = !existing.hasExposure && preExif != null && (
+                                preExif.fNumber != null || preExif.shutterSpeed.isNotEmpty() || preExif.iso != null || preExif.focalLength != null
+                            )
+                            val needsGpsPatch = !existing.hasGps && preExif?.latitude != null && preExif.longitude != null
+                            if (existing.fileSize != fileSize || existing.directoryPath != phoneDirPath || patchW > 0 || patchCam.isNotEmpty() || patchDt.isNotEmpty() || patchLens.isNotEmpty() || needsExpPatch || needsGpsPatch) {
                                 val cv = ContentValues().apply {
                                     put("file_size", fileSize); put("file_mtime", lastModMs / 1000.0); put("directory_path", phoneDirPath)
                                     if ("is_unlinked" in photoCols) put("is_unlinked", 0)
                                     if (patchW > 0 && "width" in photoCols) put("width", patchW)
                                     if (patchH > 0 && "height" in photoCols) put("height", patchH)
+                                    if (patchCam.isNotEmpty() && "camera_model" in photoCols) put("camera_model", patchCam)
+                                    if (patchDt.isNotEmpty() && "date_taken" in photoCols) {
+                                        put("date_taken", patchDt)
+                                        if ("original_date_taken" in photoCols) put("original_date_taken", patchDt)
+                                        if ("year_month" in photoCols) put("year_month", patchDt.take(7))
+                                    }
+                                    if (patchLens.isNotEmpty() && "lens_model" in photoCols) put("lens_model", patchLens)
+                                    if (needsExpPatch && preExif != null) {
+                                        if (preExif.focalLength != null && "focal_length" in photoCols) put("focal_length", preExif.focalLength)
+                                        if (preExif.fNumber != null && "f_number" in photoCols) put("f_number", preExif.fNumber)
+                                        if (preExif.shutterSpeed.isNotEmpty() && "shutter_speed" in photoCols) put("shutter_speed", preExif.shutterSpeed)
+                                        if (preExif.iso != null && "iso" in photoCols) put("iso", preExif.iso)
+                                    }
+                                    if (needsGpsPatch && preExif != null) {
+                                        if ("latitude" in photoCols) put("latitude", preExif.latitude)
+                                        if ("longitude" in photoCols) put("longitude", preExif.longitude)
+                                    }
                                 }
                                 db.update("photos", cv, "id = ?", arrayOf(targetId.toString()))
+                                if (patchCam.isNotEmpty() || patchDt.isNotEmpty() || needsGpsPatch) {
+                                    dbCurationMap[targetId]?.let { cur ->
+                                        dbCurationMap[targetId] = cur.copy(
+                                            dateTaken = patchDt.ifEmpty { cur.dateTaken },
+                                            cameraModel = patchCam.ifEmpty { cur.cameraModel },
+                                            lat = if (needsGpsPatch) preExif?.latitude else cur.lat,
+                                            lon = if (needsGpsPatch) preExif?.longitude else cur.lon
+                                        )
+                                    }
+                                }
                                 changedRows++
                             }
                         } else {
@@ -493,6 +678,7 @@ class PhoneCatalogEngine(
                         }
                     }
                     if ("paired_raw_path" in photoCols) pairPhoneLocalRawJpeg(db)
+                    stackPhoneLocalThmodDerivatives(db, photoCols)
 
                     db.setTransactionSuccessful()
                 } finally {
@@ -655,8 +841,17 @@ class PhoneCatalogEngine(
         item.put("tags", outTags)
     }
 
-    /** Android 10+ のGPS黒塗り(Redaction)を回避し、MediaStore.setRequireOriginal 経由で原本ストリームを開く */
+    /** Android 10+ のGPS黒塗り(Redaction)を回避し、MediaStore.setRequireOriginal 経由またはローカルfile://で原本ストリームを開く */
     fun openOriginalPhotoStream(docUri: Uri, fileName: String = "", fileSize: Long = 0L): InputStream? {
+        if (docUri.scheme == "file") {
+            val localPath = docUri.path ?: return null
+            return try {
+                val f = File(localPath)
+                if (f.isFile) FileInputStream(f) else null
+            } catch (_: Exception) {
+                null
+            }
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             if (fileName.isNotEmpty() && fileSize > 0L) {
                 try {
@@ -705,6 +900,71 @@ class PhoneCatalogEngine(
         }
     } catch (_: Exception) { null }
 
+    /** 原本ストリームのEXIFから撮影日時(YYYY-MM-DD HH:MM:SS)とカメラ機種名を直接読み取る */
+    fun extractExifDateAndCamera(docUri: Uri, fileName: String, lastModMs: Long): Pair<String, String> {
+        var dateTaken = ""
+        var cameraModel = ""
+        try {
+            openOriginalPhotoStream(docUri, fileName, 0L)?.use { ins ->
+                val exif = ExifInterface(ins)
+                val rawDt = (exif.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL)
+                    ?: exif.getAttribute(ExifInterface.TAG_DATETIME) ?: "").trim()
+                val m = EXIF_DATE_PREFIX_REGEX.matchEntire(rawDt)
+                if (m != null) {
+                    dateTaken = "${m.groupValues[1]}-${m.groupValues[2]}-${m.groupValues[3]}${m.groupValues[4]}"
+                }
+                val mk = (exif.getAttribute(ExifInterface.TAG_MAKE) ?: "").trim()
+                val md = (exif.getAttribute(ExifInterface.TAG_MODEL) ?: "").trim()
+                cameraModel = md.ifEmpty { mk }
+            }
+        } catch (_: Exception) {}
+        if (dateTaken.isEmpty()) {
+            dateTaken = buildFallbackExifMeta(fileName, lastModMs).dateTaken
+        }
+        return dateTaken to cameraModel
+    }
+
+    /** ロッカーDB上のスマホ写真(phone:// スキーム)に付けられた最新の評価・タグマップを一括ロードする */
+    fun loadPhoneLocalCurations(): Map<String, Pair<Int, List<String>>> {
+        val out = HashMap<String, Pair<Int, List<String>>>()
+        if (!lockerDbManager.hasLockerDatabase()) return out
+        try {
+            val rowsJson = lockerDbManager.rawQuerySafeJson(
+                "SELECT id, file_path, COALESCE(rating, 0) AS rating FROM photos WHERE file_path LIKE 'phone://%' AND IFNULL(is_unlinked, 0) = 0",
+                "[]"
+            )
+            val tagsJson = lockerDbManager.rawQuerySafeJson(
+                "SELECT pt.photo_id, pt.tag FROM photo_tags pt JOIN photos p ON p.id = pt.photo_id WHERE p.file_path LIKE 'phone://%' AND IFNULL(p.is_unlinked, 0) = 0 ORDER BY pt.tag ASC",
+                "[]"
+            )
+            val tagsByPid = HashMap<Long, MutableList<String>>()
+            val tArr = JSONArray(tagsJson)
+            for (i in 0 until tArr.length()) {
+                val o = tArr.optJSONObject(i) ?: continue
+                val pid = o.optLong("photo_id", 0L)
+                val tag = (o.optString("tag", "")).trim()
+                if (pid > 0L && tag.isNotEmpty()) {
+                    tagsByPid.getOrPut(pid) { mutableListOf() }.add(tag)
+                }
+            }
+            val pArr = JSONArray(rowsJson)
+            for (i in 0 until pArr.length()) {
+                val o = pArr.optJSONObject(i) ?: continue
+                val pid = o.optLong("id", 0L)
+                val fp = o.optString("file_path", "")
+                if (!fp.startsWith("phone://")) continue
+                val dk = fp.removePrefix("phone://").trim()
+                if (dk.isEmpty()) continue
+                val rate = o.optInt("rating", 0)
+                val tList = tagsByPid[pid] ?: emptyList()
+                out[dk] = rate to tList
+            }
+        } catch (e: Exception) {
+            Log.d(TAG, "ローカルキュレーション読込スキップ: ${e.message}")
+        }
+        return out
+    }
+
     private data class PhoneExifMeta(
         val dateTaken: String, val yearMonth: String, val cameraMake: String, val cameraModel: String,
         val lensModel: String, val focalLength: Double?, val fNumber: Double?, val shutterSpeed: String,
@@ -720,7 +980,11 @@ class PhoneCatalogEngine(
     }
 
     private fun extractPhoneExifMeta(
-        docKey: String, fileName: String, lastModMs: Long, decodeDocKeyFn: (String) -> Pair<String, String>?
+        docKey: String,
+        fileName: String,
+        lastModMs: Long,
+        decodeDocKeyFn: (String) -> Pair<String, String>?,
+        fileSize: Long = 0L
     ): PhoneExifMeta {
         val base = buildFallbackExifMeta(fileName, lastModMs)
         var dateTaken = base.dateTaken
@@ -731,29 +995,205 @@ class PhoneCatalogEngine(
         val pair = decodeDocKeyFn(docKey)
         if (pair != null) {
             try {
-                val docUri = DocumentsContract.buildDocumentUriUsingTree(Uri.parse(pair.first), pair.second)
-                openOriginalPhotoStream(docUri, fileName, 0L)?.use { ins ->
-                    val exif = ExifInterface(ins)
-                    val rawDt = (exif.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL) ?: exif.getAttribute(ExifInterface.TAG_DATETIME) ?: "").trim()
-                    val m = EXIF_DATE_PREFIX_REGEX.matchEntire(rawDt)
-                    if (m != null) dateTaken = "${m.groupValues[1]}-${m.groupValues[2]}-${m.groupValues[3]}${m.groupValues[4]}"
-                    cameraMake = (exif.getAttribute(ExifInterface.TAG_MAKE) ?: "").trim()
-                    cameraModel = (exif.getAttribute(ExifInterface.TAG_MODEL) ?: "").trim()
-                    lensModel = (exif.getAttribute("LensModel") ?: "").trim()
-                    focalLength = exif.getAttributeDouble(ExifInterface.TAG_FOCAL_LENGTH, -1.0).takeIf { it > 0.0 }
-                    fNumber = exif.getAttributeDouble(ExifInterface.TAG_F_NUMBER, -1.0).takeIf { it > 0.0 }
-                    shutterSpeed = (exif.getAttribute(ExifInterface.TAG_EXPOSURE_TIME) ?: "").trim()
-                    iso = (exif.getAttribute("PhotographicSensitivity") ?: exif.getAttribute(ExifInterface.TAG_ISO_SPEED_RATINGS))?.trim()?.toIntOrNull()?.takeIf { it > 0 }
-                    width = exif.getAttributeInt(ExifInterface.TAG_IMAGE_WIDTH, 0)
-                    height = exif.getAttributeInt(ExifInterface.TAG_IMAGE_LENGTH, 0)
-                    val latLong = FloatArray(2)
-                    if (exif.getLatLong(latLong)) { lat = latLong[0].toDouble(); lon = latLong[1].toDouble() }
+                val docUri = buildLocalOrDocumentUri(pair.first, pair.second)
+                if (docUri != null) {
+                    openOriginalPhotoStream(docUri, fileName, fileSize)?.use { ins ->
+                        val exif = ExifInterface(ins)
+                        val rawDt = (exif.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL) ?: exif.getAttribute(ExifInterface.TAG_DATETIME) ?: "").trim()
+                        val m = EXIF_DATE_PREFIX_REGEX.matchEntire(rawDt)
+                        if (m != null) dateTaken = "${m.groupValues[1]}-${m.groupValues[2]}-${m.groupValues[3]}${m.groupValues[4]}"
+                        cameraMake = (exif.getAttribute(ExifInterface.TAG_MAKE) ?: "").trim()
+                        cameraModel = (exif.getAttribute(ExifInterface.TAG_MODEL) ?: "").trim()
+                        if (cameraModel.isEmpty() && cameraMake.isNotEmpty()) cameraModel = cameraMake
+                        val rawLens = (exif.getAttribute("LensModel")
+                            ?: exif.getAttribute("LensSpecification")
+                            ?: exif.getAttribute("LensMake")
+                            ?: "").trim()
+                        lensModel = if (rawLens != "----" && rawLens != "不明") rawLens else ""
+                        focalLength = exif.getAttributeDouble(ExifInterface.TAG_FOCAL_LENGTH, -1.0).takeIf { it > 0.0 }
+                            ?: exif.getAttributeDouble("FocalLengthIn35mmFilm", -1.0).takeIf { it > 0.0 }
+                        val rawF = exif.getAttributeDouble(ExifInterface.TAG_F_NUMBER, -1.0).takeIf { it > 0.0 }
+                        fNumber = rawF ?: exif.getAttributeDouble(ExifInterface.TAG_APERTURE_VALUE, -1.0).takeIf { it > 0.0 }?.let { apex ->
+                            Math.round(Math.pow(2.0, apex / 2.0) * 100.0) / 100.0
+                        }
+                        shutterSpeed = formatExposureTime(exif.getAttribute(ExifInterface.TAG_EXPOSURE_TIME))
+                        val rawIso = (exif.getAttribute("PhotographicSensitivity")
+                            ?: exif.getAttribute(ExifInterface.TAG_ISO_SPEED_RATINGS)
+                            ?: exif.getAttribute("ISOSpeed")
+                            ?: exif.getAttribute("RecommendedExposureIndex")
+                            ?: "").trim()
+                        iso = rawIso.split(',', ' ').firstOrNull { it.isNotBlank() }?.trim()?.toIntOrNull()?.takeIf { it > 0 }
+                        width = exif.getAttributeInt(ExifInterface.TAG_IMAGE_WIDTH, 0)
+                        height = exif.getAttributeInt(ExifInterface.TAG_IMAGE_LENGTH, 0)
+                        val latLong = FloatArray(2)
+                        if (exif.getLatLong(latLong)) { lat = latLong[0].toDouble(); lon = latLong[1].toDouble() }
+                    }
                 }
             } catch (_: Exception) {}
         }
 
         val ym = if (dateTaken.length >= 7) dateTaken.substring(0, 7) else base.yearMonth
         return PhoneExifMeta(dateTaken, ym, cameraMake, cameraModel, lensModel, focalLength, fNumber, shutterSpeed, iso, width, height, lat, lon)
+    }
+
+    /** GPS座標から国・都道府県・市区町村を短時間タイムアウト付きで逆ジオコーディングする */
+    @Suppress("DEPRECATION")
+    private fun reverseGeocodeQuick(lat: Double, lon: Double): Triple<String, String, String>? {
+        if (!Geocoder.isPresent()) return null
+        if (abs(lat) < 0.0001 && abs(lon) < 0.0001) return null
+        var result: Triple<String, String, String>? = null
+        val latch = CountDownLatch(1)
+        Thread({
+            try {
+                val geocoder = Geocoder(context, Locale.getDefault())
+                val list = geocoder.getFromLocation(lat, lon, 1)
+                val addr = list?.firstOrNull()
+                if (addr != null) {
+                    val country = (addr.countryName ?: "").trim()
+                    val state = (addr.adminArea ?: "").trim()
+                    val city = (addr.locality ?: addr.subAdminArea ?: addr.featureName ?: "").trim()
+                    if (country.isNotEmpty() || state.isNotEmpty() || city.isNotEmpty()) {
+                        result = Triple(country, state, city)
+                    }
+                }
+            } catch (_: Exception) {
+            } finally {
+                latch.countDown()
+            }
+        }, "PhoneGeoQuick").apply { isDaemon = true; start() }
+        try {
+            latch.await(600, TimeUnit.MILLISECONDS)
+        } catch (_: InterruptedException) {}
+        return result
+    }
+
+    /** スマホ内写真(および紐付け写真)の未取得EXIF・露出設定・GPS地名を実ファイルからオンデマンド補完しDBへ保存する */
+    fun ensurePhotoExifHydratedJson(photoId: Long, decodeDocKeyFn: (String) -> Pair<String, String>?): String {
+        if (photoId <= 0L || !lockerDbManager.hasLockerDatabase()) {
+            return JSONObject().put("ok", false).put("error", "invalid_photo_id").toString()
+        }
+        try {
+            val arr = JSONArray(
+                lockerDbManager.rawQuerySafeJson(
+                    "SELECT id, file_path, file_name, COALESCE(file_size, 0) AS file_size, COALESCE(file_mtime, 0) AS file_mtime, " +
+                        "COALESCE(date_taken, '') AS date_taken, COALESCE(camera_model, '') AS camera_model, COALESCE(lens_model, '') AS lens_model, " +
+                        "focal_length, f_number, COALESCE(shutter_speed, '') AS shutter_speed, iso, COALESCE(width, 0) AS width, COALESCE(height, 0) AS height, " +
+                        "latitude, longitude, COALESCE(country, '') AS country, COALESCE(state, '') AS state, COALESCE(city, '') AS city " +
+                        "FROM photos WHERE id = ? LIMIT 1",
+                    JSONArray().put(photoId.toString()).toString()
+                )
+            )
+            val row = arr.optJSONObject(0)
+                ?: return JSONObject().put("ok", false).put("error", "not_found").toString()
+
+            val fileName = row.optString("file_name", "").trim()
+            val fileSize = row.optLong("file_size", 0L)
+            val lastModMs = (row.optDouble("file_mtime", 0.0) * 1000.0).toLong()
+            var dateTaken = row.optString("date_taken", "").trim()
+            var cameraModel = row.optString("camera_model", "").trim()
+            var lensModel = row.optString("lens_model", "").trim()
+            var focalLength: Double? = if (!row.isNull("focal_length")) row.optDouble("focal_length").takeIf { it > 0.0 } else null
+            var fNumber: Double? = if (!row.isNull("f_number")) row.optDouble("f_number").takeIf { it > 0.0 } else null
+            val rawShutter = row.optString("shutter_speed", "").trim()
+            var shutterSpeed = formatExposureTime(rawShutter)
+            var iso: Int? = if (!row.isNull("iso")) row.optInt("iso").takeIf { it > 0 } else null
+            var width = row.optInt("width", 0)
+            var height = row.optInt("height", 0)
+            var lat: Double? = if (!row.isNull("latitude")) row.optDouble("latitude") else null
+            var lon: Double? = if (!row.isNull("longitude")) row.optDouble("longitude") else null
+            var country = row.optString("country", "").trim()
+            var state = row.optString("state", "").trim()
+            var city = row.optString("city", "").trim()
+
+            val needsFileExif = cameraModel.isEmpty() || lensModel.isEmpty() ||
+                (fNumber == null && shutterSpeed.isEmpty() && iso == null && focalLength == null) ||
+                lat == null || lon == null || width <= 0 || height <= 0
+            var changed = shutterSpeed.isNotEmpty() && shutterSpeed != rawShutter
+
+            if (needsFileExif) {
+                val docKey = resolveDocKeyForPhotoId(photoId)
+                if (!docKey.isNullOrEmpty() && fileName.isNotEmpty()) {
+                    val meta = extractPhoneExifMeta(docKey, fileName, lastModMs, decodeDocKeyFn, fileSize)
+                    val effCam = meta.cameraModel.ifEmpty { meta.cameraMake }.trim()
+                    if (cameraModel.isEmpty() && effCam.isNotEmpty()) { cameraModel = effCam; changed = true }
+                    if (lensModel.isEmpty() && meta.lensModel.isNotEmpty()) { lensModel = meta.lensModel; changed = true }
+                    if (focalLength == null && meta.focalLength != null) { focalLength = meta.focalLength; changed = true }
+                    if (fNumber == null && meta.fNumber != null) { fNumber = meta.fNumber; changed = true }
+                    if (shutterSpeed.isEmpty() && meta.shutterSpeed.isNotEmpty()) { shutterSpeed = meta.shutterSpeed; changed = true }
+                    if (iso == null && meta.iso != null) { iso = meta.iso; changed = true }
+                    if (width <= 0 && meta.width > 0) { width = meta.width; changed = true }
+                    if (height <= 0 && meta.height > 0) { height = meta.height; changed = true }
+                    if ((lat == null || lon == null) && meta.latitude != null && meta.longitude != null) {
+                        lat = meta.latitude; lon = meta.longitude; changed = true
+                    }
+                    if (dateTaken.isEmpty() && meta.dateTaken.isNotEmpty()) {
+                        dateTaken = meta.dateTaken; changed = true
+                    } else if (cameraModel.isNotEmpty() && row.optString("camera_model", "").isEmpty() && meta.dateTaken.length >= 19) {
+                        if (dateTaken != meta.dateTaken) { dateTaken = meta.dateTaken; changed = true }
+                    }
+                }
+            }
+
+            if (lat != null && lon != null && country.isEmpty() && state.isEmpty() && city.isEmpty()) {
+                val geo = reverseGeocodeQuick(lat, lon)
+                if (geo != null) {
+                    country = geo.first; state = geo.second; city = geo.third
+                    changed = true
+                }
+            }
+
+            if (changed) {
+                lockerDbManager.withWritableDatabase(createIfMissing = false) { db ->
+                    val cols = HashSet<String>()
+                    db.rawQuery("PRAGMA table_info(photos)", null).use { c ->
+                        while (c.moveToNext()) cols.add(c.getString(1) ?: "")
+                    }
+                    val cv = ContentValues().apply {
+                        if (cameraModel.isNotEmpty() && "camera_model" in cols) put("camera_model", cameraModel)
+                        if (lensModel.isNotEmpty() && "lens_model" in cols) put("lens_model", lensModel)
+                        if (focalLength != null && "focal_length" in cols) put("focal_length", focalLength)
+                        if (fNumber != null && "f_number" in cols) put("f_number", fNumber)
+                        if (shutterSpeed.isNotEmpty() && "shutter_speed" in cols) put("shutter_speed", shutterSpeed)
+                        if (iso != null && "iso" in cols) put("iso", iso)
+                        if (width > 0 && "width" in cols) put("width", width)
+                        if (height > 0 && "height" in cols) put("height", height)
+                        if (lat != null && lon != null && "latitude" in cols && "longitude" in cols) {
+                            put("latitude", lat); put("longitude", lon)
+                        }
+                        if (dateTaken.isNotEmpty() && "date_taken" in cols) {
+                            put("date_taken", dateTaken)
+                            if ("original_date_taken" in cols) put("original_date_taken", dateTaken)
+                            if ("year_month" in cols && dateTaken.length >= 7) put("year_month", dateTaken.take(7))
+                        }
+                        if (country.isNotEmpty() && "country" in cols) put("country", country)
+                        if (state.isNotEmpty() && "state" in cols) put("state", state)
+                        if (city.isNotEmpty() && "city" in cols) put("city", city)
+                    }
+                    if (cv.size() > 0) db.update("photos", cv, "id = ?", arrayOf(photoId.toString()))
+                }
+            }
+
+            val outPhoto = JSONObject()
+                .put("id", photoId)
+                .put("date_taken", dateTaken)
+                .put("camera_model", cameraModel)
+                .put("lens_model", lensModel)
+                .put("shutter_speed", shutterSpeed)
+                .put("width", width)
+                .put("height", height)
+                .put("country", country)
+                .put("state", state)
+                .put("city", city)
+            if (focalLength != null) outPhoto.put("focal_length", focalLength)
+            if (fNumber != null) outPhoto.put("f_number", fNumber)
+            if (iso != null) outPhoto.put("iso", iso)
+            if (lat != null && lon != null) outPhoto.put("latitude", lat).put("longitude", lon)
+
+            return JSONObject().put("ok", true).put("updated", changed).put("photo", outPhoto).toString()
+        } catch (e: Exception) {
+            Log.w(TAG, "EXIFオンデマンド補完警告 (id=$photoId): ${e.message}")
+            return JSONObject().put("ok", false).put("error", e.message ?: "exif_hydrate_error").toString()
+        }
     }
 
     private fun pairPhoneLocalRawJpeg(db: SQLiteDatabase) {
@@ -771,6 +1211,128 @@ class PhoneCatalogEngine(
                 if (jpg.curPair != raws[0].fp) db.execSQL("UPDATE photos SET paired_raw_path = ? WHERE id = ?", arrayOf(raws[0].fp, jpg.id))
                 for (r in raws) if (r.curPair != jpg.fp) db.execSQL("UPDATE photos SET paired_raw_path = ? WHERE id = ?", arrayOf(jpg.fp, r.id))
             } else for (it in list) if (it.curPair.isNotEmpty()) db.execSQL("UPDATE photos SET paired_raw_path = NULL WHERE id = ?", arrayOf(it.id))
+        }
+    }
+
+    /** スマホ内 library.db 上で thmod_<stem> 派生画像を対応する元写真へスタック結合する（元写真を常に代表保護） */
+    private fun stackPhoneLocalThmodDerivatives(db: SQLiteDatabase, photoCols: Set<String>) {
+        if ("stack_id" !in photoCols || "is_stack_primary" !in photoCols) return
+        val hasStackType = "stack_type" in photoCols
+        val hasOrigDt = "original_date_taken" in photoCols
+        val origDtSel = if (hasOrigDt) "COALESCE(original_date_taken, '')" else "''"
+        val stackTypeSel = if (hasStackType) "COALESCE(stack_type, '')" else "''"
+        val pairedSel = if ("paired_raw_path" in photoCols) "COALESCE(paired_raw_path, '')" else "''"
+
+        data class StackRow(
+            val id: Long,
+            val fileName: String,
+            val dateTaken: String,
+            val cameraModel: String,
+            val stackId: Long?,
+            val isPrimary: Int,
+            val stackType: String,
+            val isRaw: Int,
+            val pairedRaw: String
+        )
+
+        val thmodRows = ArrayList<StackRow>()
+        val parentsByStem = HashMap<String, ArrayList<StackRow>>()
+
+        try {
+            db.rawQuery(
+                "SELECT id, file_name, COALESCE(date_taken, ''), $origDtSel, COALESCE(camera_model, ''), stack_id, COALESCE(is_stack_primary, 1), $stackTypeSel, COALESCE(is_raw, 0), $pairedSel FROM photos WHERE IFNULL(is_unlinked, 0) = 0",
+                null
+            ).use { c ->
+                while (c.moveToNext()) {
+                    val fn = (c.getString(1) ?: "").trim()
+                    if (fn.isEmpty()) continue
+                    val dt = (c.getString(3) ?: "").trim().ifEmpty { (c.getString(2) ?: "").trim() }
+                    val row = StackRow(
+                        id = c.getLong(0),
+                        fileName = fn,
+                        dateTaken = dt,
+                        cameraModel = (c.getString(4) ?: "").trim(),
+                        stackId = if (c.isNull(5)) null else c.getLong(5),
+                        isPrimary = c.getInt(6),
+                        stackType = (c.getString(7) ?: "").trim(),
+                        isRaw = c.getInt(8),
+                        pairedRaw = (c.getString(9) ?: "").trim()
+                    )
+                    if (fn.lowercase(Locale.US).startsWith("thmod_")) {
+                        thmodRows.add(row)
+                    } else {
+                        val stem = normalizeCameraStem(fn)
+                        if (stem.isNotEmpty()) parentsByStem.getOrPut(stem) { ArrayList() }.add(row)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.d(TAG, "thmodスタック結合走査スキップ: ${e.message}")
+            return
+        }
+
+        if (thmodRows.isEmpty() || parentsByStem.isEmpty()) return
+
+        for (th in thmodRows) {
+            val st = normalizeCameraStem(th.fileName)
+            val cands = parentsByStem[st] ?: continue
+            val thEpoch = normalizeDateEpochSec(th.dateTaken)
+            val matched = ArrayList<StackRow>()
+
+            if (thEpoch != null) {
+                for (cand in cands) {
+                    if (!cameraModelsCompatible(th.cameraModel, cand.cameraModel)) continue
+                    val cEpoch = normalizeDateEpochSec(cand.dateTaken)
+                    if (cEpoch != null && abs(thEpoch - cEpoch) <= 2L) matched.add(cand)
+                }
+            }
+            if (matched.isEmpty()) {
+                // EXIF消去等で日時比較できない場合でも、元写真候補が実質1コマ（同一秒または単一ペア）なら結合
+                val distinctShots = cands.map { it.dateTaken.ifEmpty { it.id.toString() } }.toSet()
+                if (distinctShots.size == 1) matched.addAll(cands)
+            }
+            if (matched.isEmpty()) continue
+
+            matched.sortWith(
+                compareBy<StackRow>(
+                    { if (it.isRaw == 1 && it.pairedRaw.isNotEmpty()) 1 else 0 },
+                    { it.isRaw },
+                    { -it.isPrimary },
+                    { it.id }
+                )
+            )
+            val repParent = matched[0]
+            val targetStackId = repParent.stackId ?: repParent.id
+            val targetStackType = repParent.stackType.ifEmpty { "burst" }
+            if (th.stackId == targetStackId) continue
+
+            if (repParent.stackId == null) {
+                for (mc in matched) {
+                    val isPri = if (mc.id == repParent.id) 1 else 0
+                    if (hasStackType) {
+                        db.execSQL(
+                            "UPDATE photos SET stack_id = ?, is_stack_primary = ?, stack_type = ? WHERE id = ?",
+                            arrayOf(targetStackId, isPri, targetStackType, mc.id)
+                        )
+                    } else {
+                        db.execSQL(
+                            "UPDATE photos SET stack_id = ?, is_stack_primary = ? WHERE id = ?",
+                            arrayOf(targetStackId, isPri, mc.id)
+                        )
+                    }
+                }
+            }
+            if (hasStackType) {
+                db.execSQL(
+                    "UPDATE photos SET stack_id = ?, is_stack_primary = 0, stack_type = ? WHERE id = ?",
+                    arrayOf(targetStackId, targetStackType, th.id)
+                )
+            } else {
+                db.execSQL(
+                    "UPDATE photos SET stack_id = ?, is_stack_primary = 0 WHERE id = ?",
+                    arrayOf(targetStackId, th.id)
+                )
+            }
         }
     }
 }

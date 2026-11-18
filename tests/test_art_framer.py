@@ -667,6 +667,360 @@ class TestArtFramerSuite(unittest.TestCase):
         self.assertEqual(worker.total_count, 2)
         self.assertEqual(fake_tagger.predict_from_bytes.call_count, 2)
 
+    def test_normalize_camera_stem_preserves_img_numbers(self) -> None:
+        """IMG_1234 / IMG_5678 / 20261117_001 の末尾番号を誤切除せず、コピー枝番と thmod_ のみ除去すること"""
+        from server.mobile_signals import find_smart_stem_date_matches, normalize_camera_stem
+        from server.routers.mobile_case_router import _normalize_dup_filename
+
+        self.assertEqual(normalize_camera_stem("IMG_1234.JPG"), "img_1234")
+        self.assertEqual(normalize_camera_stem("IMG_5678.JPG"), "img_5678")
+        self.assertNotEqual(normalize_camera_stem("IMG_1234.JPG"), normalize_camera_stem("IMG_5678.JPG"))
+        self.assertEqual(normalize_camera_stem("20261117_001.jpg"), "20261117_001")
+        self.assertEqual(normalize_camera_stem("IMG_1234_1.JPG"), "img_1234")
+        self.assertEqual(normalize_camera_stem("DSC01234 (1).JPG"), "dsc01234")
+        self.assertEqual(normalize_camera_stem("thmod_DSC01234.jpg"), "dsc01234")
+
+        self.assertEqual(_normalize_dup_filename("IMG_1234.JPG"), "img_1234.jpg")
+        self.assertEqual(_normalize_dup_filename("IMG_1234_1.JPG"), "img_1234.jpg")
+
+        # 同じ撮影日時（同秒連写想定）・同じカメラ機種でも IMG_1234 と IMG_5678 は別コマとして区別されること
+        seq_dir = self.tmp_root / "seq_preserve_dir"
+        seq_dir.mkdir(parents=True, exist_ok=True)
+        f_1234 = seq_dir / "IMG_1234.JPG"
+        f_1234.write_bytes(b"img1234")
+        pid_1234 = upsert_photo({
+            "file_path": str(f_1234),
+            "file_name": f_1234.name,
+            "directory_path": str(seq_dir),
+            "file_size": 4_200_000,
+            "date_taken": "2027-01-10 11:22:33",
+            "camera_model": "Canon EOS R6m2",
+        })
+        conn = db_conn_mod.get_connection()
+        hits = find_smart_stem_date_matches(
+            conn.cursor(),
+            [
+                {"key": "same", "file_name": "IMG_1234.JPG", "date_taken": "2027-01-10 11:22:33", "camera_model": "EOS R6m2"},
+                {"key": "other", "file_name": "IMG_5678.JPG", "date_taken": "2027-01-10 11:22:33", "camera_model": "EOS R6m2"},
+            ],
+        )
+        self.assertEqual(hits.get("same"), [pid_1234])
+        self.assertNotIn("other", hits)
+
+    def test_smart_stem_date_matching_and_raw_jpeg_sync(self) -> None:
+        """2MP縮小画像と母艦フルサイズJPEG/RAWのスマート一致および評価・タグ・GPSペア連動検証"""
+        from server.database import get_photo_by_id, get_photo_tags_details, upsert_photos_batch
+        from server.database.stacks import recalculate_stacks_for_directories
+        from server.mobile_sync_apply import apply_mobile_sync_changes
+
+        sd_dir = self.tmp_root / "sd_smart_match"
+        sd_dir.mkdir(parents=True, exist_ok=True)
+        jpg_path = sd_dir / "DSC04567.JPG"
+        arw_path = sd_dir / "DSC04567.ARW"
+        solo_raw_path = sd_dir / "DSC04568.ARW"
+        for p, sz in ((jpg_path, b"jpg_full"), (arw_path, b"arw_full"), (solo_raw_path, b"arw_solo")):
+            p.write_bytes(sz)
+
+        upsert_photos_batch([
+            {
+                "file_path": str(arw_path),
+                "file_name": arw_path.name,
+                "directory_path": str(sd_dir),
+                "file_size": 34_000_000,
+                "date_taken": "2027-02-14 10:15:30",
+                "camera_model": "ILCE-7M4",
+                "is_raw": 1,
+                "raw_format": "ARW",
+            },
+            {
+                "file_path": str(jpg_path),
+                "file_name": jpg_path.name,
+                "directory_path": str(sd_dir),
+                "file_size": 12_000_000,
+                "date_taken": "2027-02-14 10:15:30",
+                "camera_model": "ILCE-7M4",
+                "is_raw": 0,
+                "paired_raw_path": str(arw_path),
+            },
+            {
+                "file_path": str(solo_raw_path),
+                "file_name": solo_raw_path.name,
+                "directory_path": str(sd_dir),
+                "file_size": 35_000_000,
+                "date_taken": "2027-02-14 10:16:00",
+                "camera_model": "ILCE-7M4",
+                "is_raw": 1,
+                "raw_format": "ARW",
+            },
+        ])
+        recalculate_stacks_for_directories([str(sd_dir)], recursive=False)
+
+        # 1. workingモードで1秒差・別サイズ(2M)のスマホ画像を preflight 送信 → 本体送信スキップ＆ペア両方へ信号適用
+        preflight_res = self.client.post(
+            "/api/mobile/case-preflight",
+            json={
+                "items": [
+                    {
+                        "client_id": "phone_4567",
+                        "file_name": "DSC04567.JPG",
+                        "file_size": 1_850_000,
+                        "date_taken": "2027-02-14 10:15:31",
+                        "camera_model": "SONY ILCE-7M4",
+                        "folder_mode": "working",
+                        "rating": 2,
+                        "tags": ["野鳥", "速報/カワセミ"],
+                        "latitude": 35.6812,
+                        "longitude": 139.7671,
+                    }
+                ]
+            },
+        )
+        self.assertEqual(preflight_res.status_code, 200)
+        body = preflight_res.json()
+        self.assertEqual(body["upload_client_ids"], [])
+        self.assertIn("phone_4567", body["skipped_client_ids"])
+        self.assertGreater(body["applied_to_existing"], 0)
+        self.assertEqual(body["queued_pending_signals"], 0)
+
+        conn = db_conn_mod.get_connection()
+        rows = {
+            r["file_name"]: int(r["id"])
+            for r in conn.execute("SELECT id, file_name FROM photos WHERE directory_path = ?", (str(sd_dir),)).fetchall()
+        }
+        p_jpg = get_photo_by_id(rows["DSC04567.JPG"])
+        p_arw = get_photo_by_id(rows["DSC04567.ARW"])
+        self.assertEqual(int(p_jpg["rating"]), 2)
+        self.assertEqual(int(p_arw["rating"]), 2)
+        self.assertAlmostEqual(float(p_jpg["latitude"]), 35.6812, places=3)
+        self.assertAlmostEqual(float(p_arw["latitude"]), 35.6812, places=3)
+        jpg_tags = {t["tag"] for t in get_photo_tags_details(p_jpg["id"])}
+        arw_tags = {t["tag"] for t in get_photo_tags_details(p_arw["id"])}
+        self.assertTrue({"野鳥", "速報", "速報/カワセミ"}.issubset(jpg_tags))
+        self.assertTrue({"野鳥", "速報", "速報/カワセミ"}.issubset(arw_tags))
+
+        # 2. apply_mobile_sync_changes でも拡張子違い (JPG→ARW) をスマート照合して反映できること
+        sync_res = apply_mobile_sync_changes(
+            [
+                {
+                    "photo_id": 900_004_568,
+                    "file_name": "DSC04568.JPG",
+                    "file_size": 950_000,
+                    "date_taken": "2027-02-14 10:16:00",
+                    "camera_model": "ILCE-7M4",
+                    "rating": 1,
+                    "add_tags": ["ギャラリー同期"],
+                }
+            ]
+        )
+        self.assertEqual(sync_res["applied_count"], 1)
+        self.assertEqual(sync_res["skipped_count"], 0)
+        p_solo = get_photo_by_id(rows["DSC04568.ARW"])
+        self.assertEqual(int(p_solo["rating"]), 1)
+        self.assertIn("ギャラリー同期", {t["tag"] for t in get_photo_tags_details(p_solo["id"])})
+
+    def test_pending_signals_auto_applied_on_later_sd_import(self) -> None:
+        """SDカード取り込み前の先行信号(preflight / sync-import両経路)が後続スキャン時にRAW+JPEGへ自動合流すること"""
+        from server.database import get_photo_by_id, get_photo_tags_details, upsert_photos_batch
+        from server.database.stacks import recalculate_stacks_for_directories
+        from server.mobile_sync_apply import apply_mobile_sync_changes
+
+        # 1a. PC未登録状態で working フォルダから preflight 信号送信
+        pre_res = self.client.post(
+            "/api/mobile/case-preflight",
+            json={
+                "items": [
+                    {
+                        "client_id": "pending_8899",
+                        "file_name": "R0008899.JPG",
+                        "file_size": 1_400_000,
+                        "date_taken": "2027-03-20 14:05:10",
+                        "camera_model": "RICOH GR IIIx",
+                        "folder_mode": "working",
+                        "rating": 2,
+                        "tags": ["スナップ/夜景"],
+                        "latitude": 35.6581,
+                        "longitude": 139.7017,
+                    }
+                ]
+            },
+        )
+        self.assertEqual(pre_res.status_code, 200)
+        pre_body = pre_res.json()
+        self.assertEqual(pre_body["upload_client_ids"], [])
+        self.assertIn("pending_8899", pre_body["skipped_client_ids"])
+        self.assertEqual(pre_body["queued_pending_signals"], 1)
+
+        # 1b. gallery側 sync-import ルートでも未登録写真の変更がドロップされず待機シグナルへ積まれること
+        sync_pre = apply_mobile_sync_changes(
+            [
+                {
+                    "photo_id": 900_008_900,
+                    "file_name": "R0008900.JPG",
+                    "file_size": 1_300_000,
+                    "date_taken": "2027-03-20 14:06:00",
+                    "camera_model": "RICOH GR IIIx",
+                    "rating": 1,
+                    "add_tags": ["先行タグ"],
+                }
+            ]
+        )
+        self.assertEqual(sync_pre["applied_count"], 1)
+        self.assertTrue(sync_pre["applied_items"][0].get("queued_pending"))
+
+        # 2. 帰宅後、SDカードから RAW+JPEG と単体RAW を PC へ取り込み
+        later_dir = self.tmp_root / "later_sd_import"
+        later_dir.mkdir(parents=True, exist_ok=True)
+        dng_8899 = later_dir / "R0008899.DNG"
+        jpg_8899 = later_dir / "R0008899.JPG"
+        dng_8900 = later_dir / "R0008900.DNG"
+        for p in (dng_8899, jpg_8899, dng_8900):
+            p.write_bytes(b"sd_file")
+
+        upsert_photos_batch([
+            {
+                "file_path": str(dng_8899),
+                "file_name": dng_8899.name,
+                "directory_path": str(later_dir),
+                "file_size": 25_000_000,
+                "date_taken": "2027-03-20 14:05:10",
+                "camera_model": "RICOH GR IIIx",
+                "is_raw": 1,
+                "raw_format": "DNG",
+            },
+            {
+                "file_path": str(jpg_8899),
+                "file_name": jpg_8899.name,
+                "directory_path": str(later_dir),
+                "file_size": 8_500_000,
+                "date_taken": "2027-03-20 14:05:10",
+                "camera_model": "RICOH GR IIIx",
+                "is_raw": 0,
+                "paired_raw_path": str(dng_8899),
+            },
+            {
+                "file_path": str(dng_8900),
+                "file_name": dng_8900.name,
+                "directory_path": str(later_dir),
+                "file_size": 24_800_000,
+                "date_taken": "2027-03-20 14:06:00",
+                "camera_model": "RICOH GR IIIx",
+                "is_raw": 1,
+                "raw_format": "DNG",
+            },
+        ])
+        recalculate_stacks_for_directories([str(later_dir)], recursive=False)
+
+        conn = db_conn_mod.get_connection()
+        rows = {
+            r["file_name"]: int(r["id"])
+            for r in conn.execute("SELECT id, file_name FROM photos WHERE directory_path = ?", (str(later_dir),)).fetchall()
+        }
+        r_jpg = get_photo_by_id(rows["R0008899.JPG"])
+        r_dng = get_photo_by_id(rows["R0008899.DNG"])
+        r_dng2 = get_photo_by_id(rows["R0008900.DNG"])
+
+        self.assertEqual(int(r_jpg["rating"]), 2)
+        self.assertEqual(int(r_dng["rating"]), 2)
+        self.assertAlmostEqual(float(r_jpg["latitude"]), 35.6581, places=3)
+        self.assertAlmostEqual(float(r_dng["latitude"]), 35.6581, places=3)
+        self.assertTrue({"スナップ", "スナップ/夜景"}.issubset({t["tag"] for t in get_photo_tags_details(r_jpg["id"])}))
+        self.assertTrue({"スナップ", "スナップ/夜景"}.issubset({t["tag"] for t in get_photo_tags_details(r_dng["id"])}))
+        self.assertEqual(int(r_dng2["rating"]), 1)
+        self.assertIn("先行タグ", {t["tag"] for t in get_photo_tags_details(r_dng2["id"])})
+
+    def test_cross_folder_thmod_auto_stacking_preserves_original_primary(self) -> None:
+        """Loome/case へ入った thmod_ 加工画が別フォルダの元写真と自動スタックされ、元写真が代表を維持・タグ同期されること"""
+        from server.database import add_tag_to_photo, get_photo_by_id, get_photo_tags_details
+        from server.database.stacks import stack_cross_folder_thmod_derivatives
+
+        orig_dir = self.tmp_root / "cross_thmod_orig"
+        case_dir = self.tmp_root / "cross_thmod_case"
+        orig_dir.mkdir(parents=True, exist_ok=True)
+        case_dir.mkdir(parents=True, exist_ok=True)
+
+        # ASCII順で thmod_ より後ろになるファイル名かつ thmod_ より後のID登録でも元写真が代表を保つことを検証
+        thmod_file = case_dir / "thmod_z_DSC09001.jpg"
+        orig_file = orig_dir / "z_DSC09001.JPG"
+        thmod_file.write_bytes(b"thmod_out")
+        orig_file.write_bytes(b"orig_src")
+
+        thmod_id = upsert_photo({
+            "file_path": str(thmod_file),
+            "file_name": thmod_file.name,
+            "directory_path": str(case_dir),
+            "file_size": 780_000,
+            "date_taken": "2027-04-05 09:00:00",
+            "camera_model": "ILCE-7RV",
+            "rating": 2,
+        })
+        orig_id = upsert_photo({
+            "file_path": str(orig_file),
+            "file_name": orig_file.name,
+            "directory_path": str(orig_dir),
+            "file_size": 18_500_000,
+            "date_taken": "2027-04-05 09:00:00",
+            "camera_model": "ILCE-7RV",
+            "rating": 2,
+        })
+        add_tag_to_photo(orig_id, "春/桜")
+
+        conn = db_conn_mod.get_connection()
+        stacked = stack_cross_folder_thmod_derivatives(conn.cursor())
+        conn.commit()
+        self.assertGreaterEqual(stacked, 1)
+
+        p_orig = get_photo_by_id(orig_id)
+        p_thmod = get_photo_by_id(thmod_id)
+        self.assertIsNotNone(p_orig["stack_id"])
+        self.assertEqual(p_orig["stack_id"], p_thmod["stack_id"])
+        self.assertEqual(int(p_orig["is_stack_primary"]), 1)
+        self.assertEqual(int(p_thmod["is_stack_primary"]), 0)
+        thmod_tags = {t["tag"] for t in get_photo_tags_details(thmod_id)}
+        self.assertTrue({"春", "春/桜"}.issubset(thmod_tags))
+
+    def test_night_dual_roadsters_bold_plate_and_road_sign_non_face(self) -> None:
+        """夜間照明下の黒車+白車2台(54-33 / 太字99-09)の両方を検出し、左上の丸い道路標識を顔と誤検出しないこと"""
+        from PIL import ImageFont
+
+        from server.ai.privacy_detector import get_privacy_detector
+        from server.export_decorator import BUNDLED_INTER_FONT
+
+        im = Image.new("RGB", (1600, 1200), (22, 24, 28))
+        d = ImageDraw.Draw(im)
+
+        # 左上の丸い道路標識トラップ (目のような2黒点を持つ青白い円盤)
+        d.ellipse([70, 290, 140, 360], fill=(175, 185, 195), outline=(45, 70, 120), width=5)
+        d.ellipse([88, 314, 98, 326], fill=(28, 32, 38))
+        d.ellipse([112, 314, 122, 326], fill=(28, 32, 38))
+
+        # 左車: 暗いフロントノーズ＋黒グリル＋やや暗めの夜間白プレート (54-33)
+        d.polygon([(210, 560), (680, 560), (650, 760), (240, 760)], fill=(12, 13, 16))
+        d.rectangle([380, 610, 504, 674], fill=(154, 158, 156), outline=(14, 14, 16), width=3)
+
+        # 右車: 白ボディ＋黒グリル＋白いリップ密着＋太字ナンバー (99-09)
+        d.polygon([(920, 530), (1440, 530), (1410, 760), (950, 760)], fill=(215, 218, 222))
+        d.polygon([(990, 598), (1360, 598), (1330, 710), (1020, 710)], fill=(14, 15, 18))
+        d.rectangle([1114, 616, 1236, 678], fill=(160, 164, 162), outline=(14, 14, 16), width=3)
+
+        try:
+            f1 = ImageFont.truetype(str(BUNDLED_INTER_FONT), 15)
+            f2 = ImageFont.truetype(str(BUNDLED_INTER_FONT), 34)
+        except Exception:
+            f1 = ImageFont.load_default()
+            f2 = ImageFont.load_default()
+
+        d.text((406, 619), "TKT 502", fill=(28, 52, 36), font=f1)
+        d.text((390, 636), "54-33", fill=(22, 46, 30), font=f2)
+        d.text((1140, 625), "UTO 330", fill=(28, 52, 36), font=f1)
+        d.text((1122, 642), "99-09", fill=(20, 44, 28), font=f2)
+
+        res = get_privacy_detector().detect_all(im)
+        self.assertEqual(len(res["faces"]), 0)
+        self.assertEqual(len(res["plates"]), 2)
+        cx_sorted = sorted(sum(pt["x"] for pt in p["pts"]) * 0.25 * 1600 for p in res["plates"])
+        self.assertAlmostEqual(cx_sorted[0], 442.0, delta=12.0)
+        self.assertAlmostEqual(cx_sorted[1], 1175.0, delta=12.0)
+
 
 if __name__ == "__main__":
     unittest.main()

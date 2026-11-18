@@ -20,6 +20,7 @@
     callbacks: {
       onRate: null,
       onOpenTag: null,
+      onOpenArtFramer: null,
       onStartDuel: null,
       onClearSelection: null,
       onDuelKeepA: null,
@@ -127,7 +128,7 @@
       `;
     }
 
-    // 'cull'（単一写真選択時）: [優] [良] [可] [棄] | [タグ] [Duel比較(スタック時のみ)] [解除]
+    // 'cull'（単一写真選択時）: [優] [良] [可] [棄] | [タグ] [枠(ArtFramer)] [Duel比較(スタック時のみ)] [解除]
     const r = state.activeRating;
     const duelBtnHtml = state.canDuel
       ? `<button type="button" class="t-thumb-btn is-primary-btn" data-thumb-action="start-duel" title="スタック内写真を2枚比較（Duel）"><span>Duel比較</span></button>`
@@ -149,6 +150,9 @@
         <div class="t-thumb-divider"></div>
         <button type="button" class="t-thumb-btn" data-thumb-action="open-tag" title="選択中の写真のタグを編集">
           <span>タグ</span>
+        </button>
+        <button type="button" class="t-thumb-btn" data-thumb-action="open-art-framer" title="Art Framer（プライバシーマスク・プリント枠・共有）">
+          <span>枠</span>
         </button>
         ${duelBtnHtml}
         <button type="button" class="t-thumb-btn is-exit-btn" data-thumb-action="clear-selection" title="選択を解除">
@@ -208,6 +212,15 @@
             state.callbacks.onOpenTag();
           } else if (typeof global.__onTabletInspectorOpenTagSheet === 'function') {
             global.__onTabletInspectorOpenTagSheet();
+          }
+          break;
+        }
+
+        case 'open-art-framer': {
+          if (typeof state.callbacks.onOpenArtFramer === 'function') {
+            state.callbacks.onOpenArtFramer();
+          } else if (global.TetheractTouchUI && global.TetheractTouchUI.artFramer && typeof global.TetheractTouchUI.artFramer.open === 'function') {
+            global.TetheractTouchUI.artFramer.open();
           }
           break;
         }

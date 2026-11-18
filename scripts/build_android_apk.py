@@ -71,6 +71,7 @@ REQUIRED_ANDROID_FILES = [
     JAVA_PKG_DIR / "PhoneCaseManager.kt",
     JAVA_PKG_DIR / "PhoneCaseTransferRunner.kt",
     JAVA_PKG_DIR / "PhoneCatalogEngine.kt",
+    JAVA_PKG_DIR / "OnnxPrivacyEngine.kt",
     MAIN_SRC_DIR / "res" / "drawable" / "ic_tile_fieldlog.xml",
     ADAPTER_JS_PATH,
     ADAPTERS_DIR / "field_log_adapter.js",
@@ -88,6 +89,7 @@ FRONTEND_SYNC_TARGETS = [
     "js/core",
     "js/adapters",
     "js/views/touch",
+    "js/privacy_mask_editor.js",
     "js/mobile.js",
     "icons",
     "vendor/sqljs",
@@ -244,6 +246,19 @@ def sync_web_assets_to_android(dry_run: bool = False) -> Tuple[int, int]:
             dest.write_text(stamped_html, encoding="utf-8")
         else:
             shutil.copy2(src, dest)
+
+    # オンデバイスAI検出 (YuNet / LPD-YuNet) 用 ONNX モデルアセットを同期
+    privacy_models_dir = BASE_DIR / "models" / "privacy"
+    onnx_names = (
+        "face_detection_yunet_2023mar.onnx",
+        "license_plate_detection_lpd_yunet_2023mar.onnx",
+    )
+    for model_name in onnx_names:
+        m_src = privacy_models_dir / model_name
+        if m_src.is_file() and m_src.stat().st_size >= 10_000:
+            m_dest = ASSETS_DIR / "models" / "privacy" / model_name
+            m_dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(m_src, m_dest)
 
     return len(files), total_bytes
 

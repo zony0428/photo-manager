@@ -6,7 +6,6 @@ import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.PowerManager
 import android.os.SystemClock
-import android.provider.DocumentsContract
 import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
@@ -51,6 +50,7 @@ class PhoneCaseTransferRunner(
         drafts: JSONObject,
         uploadedHistory: Set<String>,
         onRecordUploadedKeys: (List<String>) -> Unit,
+        onRecordSentSignals: (Map<String, String>) -> Unit = {},
         onRescanAfterTransfer: () -> Unit,
         onProgress: (JSONObject) -> Unit
     ): JSONObject {
@@ -92,6 +92,7 @@ class PhoneCaseTransferRunner(
             }
 
             val motherSizes = catalogEngine.loadMotherShipLookup(uploadedHistory).motherSizes
+            val localCurations = catalogEngine.loadPhoneLocalCurations()
             val candidates = mutableListOf<JSONObject>()
             val preflightItems = mutableListOf<JSONObject>()
             var lastProgEmitMs = 0L
@@ -114,41 +115,72 @@ class PhoneCaseTransferRunner(
                 val fileName = it.optString("fileName", "").trim()
                 val fileSize = it.optLong("fileSize", 0L)
                 val lastMod = it.optLong("lastModifiedMs", 0L)
-                val dateTaken = it.optString("dateTaken", "").trim()
-                val cameraModel = it.optString("cameraModel", "").trim()
+                var dateTaken = it.optString("dateTaken", "").trim()
+                var cameraModel = it.optString("cameraModel", "").trim()
+                val folderMode = PhoneCaseManager.normalizeFolderMode(it.optString("folderMode", PhoneCaseManager.FOLDER_MODE_CASE))
+                val isThmod = PhoneCaseManager.isThmodFileName(fileName)
                 if (docKey.isEmpty() || fileName.isEmpty() || fileSize <= 0L) continue
 
                 val draft = drafts.optJSONObject(docKey)
                 val draftRating = draft?.optInt("rating", 0) ?: 0
                 val rawItemRating = if (!it.isNull("rating")) it.optInt("rating", 0) else 0
+                val dbCur = localCurations[docKey]
+                val dbRating = dbCur?.first ?: 0
                 val itemRating = if (commonRating != null && commonRating != 0) {
                     commonRating
                 } else if (rawItemRating != 0) {
                     rawItemRating
+                } else if (dbRating != 0) {
+                    dbRating
                 } else {
                     draftRating
                 }
 
                 val mergedTags = linkedSetOf<String>()
                 val rawItTags = it.optJSONArray("tags")
-                val itTags = if (rawItTags != null && rawItTags.length() > 0) rawItTags else (draft?.optJSONArray("tags") ?: rawItTags)
-                if (itTags != null) {
-                    for (j in 0 until itTags.length()) {
-                        val t = (itTags.optString(j) ?: "").trim()
+                if (rawItTags != null) {
+                    for (j in 0 until rawItTags.length()) {
+                        val t = (rawItTags.optString(j) ?: "").trim()
                         if (t.isNotEmpty()) mergedTags.add(t)
                     }
+                }
+                val draftTagsArr = draft?.optJSONArray("tags")
+                if (draftTagsArr != null) {
+                    for (j in 0 until draftTagsArr.length()) {
+                        val t = (draftTagsArr.optString(j) ?: "").trim()
+                        if (t.isNotEmpty()) mergedTags.add(t)
+                    }
+                }
+                dbCur?.second?.forEach { t ->
+                    val cleanT = t.trim()
+                    if (cleanT.isNotEmpty()) mergedTags.add(cleanT)
                 }
                 mergedTags.addAll(commonTags)
                 val tagsJsonArr = JSONArray()
                 mergedTags.forEach { t -> tagsJsonArr.put(t) }
+                val signalSig = PhoneCaseManager.computeSignalSignature(itemRating, tagsJsonArr)
+
+                // 2M縮小転送画像やギャラリー連携済み写真のスマート照合精度を確保するため、EXIF撮影日時/機種名が未抽出なら補完する
+                if ((dateTaken.length < 19 || cameraModel.isEmpty()) && (folderMode == PhoneCaseManager.FOLDER_MODE_WORKING || fileSize !in motherSizes)) {
+                    decodeDocKey(docKey)?.let { (tUri, dId) ->
+                        val dUri = catalogEngine.buildLocalOrDocumentUri(tUri, dId)
+                        if (dUri != null) {
+                            val (exifDt, exifCam) = catalogEngine.extractExifDateAndCamera(dUri, fileName, lastMod)
+                            if (dateTaken.length < 19 && exifDt.isNotEmpty()) dateTaken = exifDt
+                            if (cameraModel.isEmpty() && exifCam.isNotEmpty()) cameraModel = exifCam
+                        }
+                    }
+                }
 
                 val cand = JSONObject()
                     .put("docKey", docKey).put("fileName", fileName).put("fileSize", fileSize)
                     .put("lastModifiedMs", lastMod).put("dateTaken", dateTaken).put("cameraModel", cameraModel)
+                    .put("folderMode", folderMode).put("isThmod", isThmod).put("signalSig", signalSig)
                     .put("rating", itemRating).put("tags", tagsJsonArr)
                 val pfItem = JSONObject()
                     .put("client_id", docKey).put("file_name", fileName).put("file_size", fileSize)
                     .put("last_modified_ms", lastMod).put("date_taken", dateTaken).put("camera_model", cameraModel)
+                    .put("folder_mode", folderMode)
                     .put("rating", itemRating).put("tags", tagsJsonArr)
 
                 var lat = if (!it.isNull("latitude")) it.optDouble("latitude", Double.NaN) else Double.NaN
@@ -157,7 +189,7 @@ class PhoneCaseTransferRunner(
                 if ((lat.isNaN() || lon.isNaN()) && fileSize in motherSizes) {
                     emitProgress(0, rawTotal, "母艦DBと照合準備中 (${i + 1}/$rawTotal)...", 0, 0)
                     decodeDocKey(docKey)?.let { (tUri, dId) ->
-                        val dUri = try { DocumentsContract.buildDocumentUriUsingTree(Uri.parse(tUri), dId) } catch (_: Exception) { null }
+                        val dUri = catalogEngine.buildLocalOrDocumentUri(tUri, dId)
                         if (dUri != null) catalogEngine.readOriginalLatLon(dUri, fileName, fileSize)?.let { (la, lo) -> lat = la; lon = lo }
                     }
                 }
@@ -177,7 +209,9 @@ class PhoneCaseTransferRunner(
             emitProgress(0, total, "母艦DBと重複照合中...", 0, 0, force = true)
 
             val skipSet = HashSet<String>()
+            val existingMatchedSet = HashSet<String>()
             var appliedToExisting = 0
+            var queuedPendingSignals = 0
 
             for (chunk in preflightItems.chunked(PREFLIGHT_CHUNK_SIZE)) {
                 val chunkArr = JSONArray().apply { chunk.forEach { put(it) } }
@@ -211,6 +245,10 @@ class PhoneCaseTransferRunner(
                 preflightRes.optJSONArray("skipped_client_ids")?.let { arr ->
                     for (i in 0 until arr.length()) skipSet.add(arr.optString(i, ""))
                 }
+                preflightRes.optJSONObject("existing_photo_map")?.let { emap ->
+                    val eks = emap.keys()
+                    while (eks.hasNext()) existingMatchedSet.add(eks.next())
+                }
                 preflightRes.optJSONObject("existing_geo_map")?.let { gmap ->
                     val keys = gmap.keys()
                     while (keys.hasNext()) {
@@ -219,12 +257,15 @@ class PhoneCaseTransferRunner(
                     }
                 }
                 appliedToExisting += preflightRes.optInt("applied_to_existing", 0)
+                queuedPendingSignals += preflightRes.optInt("queued_pending_signals", 0)
             }
 
             val newlyUploadedKeys = mutableListOf<String>()
+            val sentSignalsToRecord = LinkedHashMap<String, String>()
             val succeededDocKeys = JSONArray()
             var importedCount = 0
             var skippedCount = 0
+            var signalSyncedCount = 0
             var errorCount = 0
             var consecutiveFailures = 0
             var aborted = false
@@ -234,6 +275,9 @@ class PhoneCaseTransferRunner(
                 val docKey = cand.optString("docKey")
                 val fileName = cand.optString("fileName")
                 val fileSize = cand.optLong("fileSize", 0L)
+                val folderMode = cand.optString("folderMode", PhoneCaseManager.FOLDER_MODE_CASE)
+                val isThmod = cand.optBoolean("isThmod", false)
+                val signalSig = cand.optString("signalSig", "")
                 val matchKey = "${fileName.lowercase(Locale.US)}|$fileSize"
                 val normKey = "${PhoneCatalogEngine.normalizeDupFileName(fileName)}|$fileSize"
                 val isSkip = docKey in skipSet
@@ -241,9 +285,18 @@ class PhoneCaseTransferRunner(
                 emitProgress(idx + 1, total, fileName, importedCount, skippedCount, errorCount, force = idx == 0 || idx == total - 1 || !isSkip)
 
                 if (isSkip) {
-                    skippedCount += 1
-                    newlyUploadedKeys.add(matchKey)
-                    newlyUploadedKeys.add(normKey)
+                    if (folderMode == PhoneCaseManager.FOLDER_MODE_WORKING && !isThmod) {
+                        signalSyncedCount += 1
+                        sentSignalsToRecord[docKey] = signalSig
+                        if (docKey in existingMatchedSet) {
+                            newlyUploadedKeys.add(matchKey)
+                            newlyUploadedKeys.add(normKey)
+                        }
+                    } else {
+                        skippedCount += 1
+                        newlyUploadedKeys.add(matchKey)
+                        newlyUploadedKeys.add(normKey)
+                    }
                     succeededDocKeys.put(docKey)
                     continue
                 }
@@ -285,20 +338,23 @@ class PhoneCaseTransferRunner(
                 force = true
             )
 
-            if (newlyUploadedKeys.isNotEmpty()) {
-                onRecordUploadedKeys(newlyUploadedKeys)
+            if (newlyUploadedKeys.isNotEmpty() || sentSignalsToRecord.isNotEmpty()) {
+                if (newlyUploadedKeys.isNotEmpty()) onRecordUploadedKeys(newlyUploadedKeys)
+                if (sentSignalsToRecord.isNotEmpty()) onRecordSentSignals(sentSignalsToRecord)
                 onRescanAfterTransfer()
             }
 
-            val remainingCount = maxOf(0, total - importedCount - skippedCount)
+            val remainingCount = maxOf(0, total - importedCount - skippedCount - signalSyncedCount)
             val allSucceeded = !aborted && errorCount == 0
             val resObj = JSONObject()
                 .put("ok", allSucceeded)
-                .put("partial", !allSucceeded && (importedCount > 0 || skippedCount > 0))
+                .put("partial", !allSucceeded && (importedCount > 0 || skippedCount > 0 || signalSyncedCount > 0))
                 .put("aborted", aborted)
                 .put("totalCount", total)
                 .put("importedCount", importedCount)
                 .put("skippedCount", skippedCount)
+                .put("signalSyncedCount", signalSyncedCount)
+                .put("queuedPendingSignals", queuedPendingSignals)
                 .put("errorCount", errorCount)
                 .put("remainingCount", remainingCount)
                 .put("appliedToExisting", appliedToExisting)
@@ -412,7 +468,8 @@ class PhoneCaseTransferRunner(
         val docKey = cand.optString("docKey")
         val (treeUriStr, docId) = decodeDocKey(docKey)
             ?: return JSONObject().put("ok", false).put("error", "Invalid docKey") to null
-        val docUri = DocumentsContract.buildDocumentUriUsingTree(Uri.parse(treeUriStr), docId)
+        val docUri = catalogEngine.buildLocalOrDocumentUri(treeUriStr, docId)
+            ?: return JSONObject().put("ok", false).put("error", "ファイルURIを解決できませんでした") to null
         val fileName = cand.optString("fileName")
         val fileSize = cand.optLong("fileSize", 0L)
 

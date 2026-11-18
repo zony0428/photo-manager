@@ -179,7 +179,37 @@ _FAST_BOOT_REQUIRED_MIGRATIONS = frozenset({
     "cross_volume_raw_jpeg_pair_v1",
     "exifless_content_hash_v1",
     "schema_fast_init_v183",
+    "mobile_pending_signals_v1",
 })
+
+
+def _ensure_mobile_pending_signals_table(cursor) -> None:
+    """スマホ側からの先行評価・タグ・GPS待機シグナルテーブルを作成する"""
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS mobile_pending_signals (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            norm_stem TEXT NOT NULL COLLATE NOCASE,
+            file_name TEXT NOT NULL,
+            date_taken TEXT NOT NULL,
+            camera_model TEXT DEFAULT '',
+            rating INTEGER DEFAULT 0,
+            tags_json TEXT DEFAULT '[]',
+            latitude REAL,
+            longitude REAL,
+            country TEXT,
+            state TEXT,
+            city TEXT,
+            matched_at TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(norm_stem, date_taken)
+        )
+        """
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_mobile_pending_signals_stem ON mobile_pending_signals(norm_stem)"
+    )
 
 
 def initialize_database(fast_boot: bool = False) -> None:
@@ -203,15 +233,17 @@ def initialize_database(fast_boot: bool = False) -> None:
                         if "has_xmp" not in fb_cols:
                             cursor.execute("ALTER TABLE photos ADD COLUMN has_xmp INTEGER DEFAULT 0")
                             fb_dirty = True
-                        cursor.execute(
-                            "SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_photos_unlinked_date_fname'"
-                        )
+                        cursor.execute("SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_photos_unlinked_date_fname'")
                         if not cursor.fetchone():
                             cursor.execute("UPDATE photos SET is_unlinked = 0 WHERE is_unlinked IS NULL")
                             cursor.execute(
                                 "CREATE INDEX IF NOT EXISTS idx_photos_unlinked_date_fname "
                                 "ON photos(is_unlinked, date_taken DESC, file_name ASC)"
                             )
+                            fb_dirty = True
+                        cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='mobile_pending_signals'")
+                        if not cursor.fetchone():
+                            _ensure_mobile_pending_signals_table(cursor)
                             fb_dirty = True
                         if fb_dirty:
                             conn.commit()
@@ -501,6 +533,9 @@ def initialize_database(fast_boot: bool = False) -> None:
             """
         )
 
+        # モバイル待機シグナル管理テーブル（SDカード取り込み前の先行評価・タグ・GPS保管）
+        _ensure_mobile_pending_signals_table(cursor)
+
         _create_photos_indexes(cursor)
         conn.commit()
 
@@ -579,6 +614,13 @@ def initialize_database(fast_boot: bool = False) -> None:
             conn.commit()
             if paired_cnt > 0:
                 print(f"[MIGRATE] cross_volume_raw_jpeg_pair_v1: {paired_cnt} 組の別ドライブ/別フォルダ RAW+JPEG ペアを結合・タグ同期しました")
+
+        # --- マイグレーション: モバイル待機シグナルテーブルの確実な登録 ---
+        cursor.execute("SELECT 1 FROM migrations WHERE name = 'mobile_pending_signals_v1'")
+        if not cursor.fetchone():
+            _ensure_mobile_pending_signals_table(cursor)
+            cursor.execute("INSERT INTO migrations (name) VALUES ('mobile_pending_signals_v1')")
+            conn.commit()
 
         # 起動時の高速整合性チェック: 階層タグの親・祖先レコード欠落があれば自動補完（カバリングインデックス使用）
         repaired_anc_count = repair_missing_ancestor_tags(cursor)
