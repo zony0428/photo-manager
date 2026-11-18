@@ -4,6 +4,7 @@ FastAPI バックエンドメインアプリケーション
 """
 
 import base64
+import concurrent.futures
 import hashlib
 import json
 import logging
@@ -88,6 +89,8 @@ from .database import (
     get_startup_status,
     set_startup_status,
     get_db_commit_seq,
+    invalidate_fast_cache,
+    close_thread_connection,
 )
 from .database.connection import get_connection, get_links_seq, get_photos_seq, get_tags_seq
 from .scanner import (
@@ -1874,7 +1877,7 @@ def api_get_photo_view(photo_id: int, request: Request, raw: int = Query(default
 
             # フルサイズプレビューが取得できなかった場合のフォールバック: DBサムネイル
             try:
-                thumb_data = ensure_thumbnail(photo["id"], photo["file_path"])
+                thumb_data = ensure_thumbnail(photo["id"], photo["file_path"], allow_cloud_download=True)
                 return Response(
                     content=thumb_data,
                     media_type="image/webp",
@@ -1997,7 +2000,7 @@ def api_refresh_thumbnails(req: RefreshThumbnailsRequest):
             res = render_thumbnail_webp(
                 target_path,
                 max_size=360,
-                allow_cloud_download=False,
+                allow_cloud_download=True,
                 rotation=photo_brief.get("rotation") or 0,
                 fine_angle=photo_brief.get("fine_angle") or 0.0,
                 crop_box=crop_box,
@@ -2012,10 +2015,38 @@ def api_refresh_thumbnails(req: RefreshThumbnailsRequest):
             thumb_data, thumb_w, thumb_h = res
             file_hash = compute_thumbnail_hash(str(target_path))
             save_thumbnail(pid, thumb_data, thumb_w, thumb_h, file_hash)
+
+            if (
+                is_raw_file(target_path)
+                and (
+                    int(photo_brief.get("width") or 0) <= 0
+                    or int(photo_brief.get("height") or 0) <= 0
+                    or (photo_brief.get("camera_model") or "") in ("", "不明", "RAW写真")
+                )
+            ):
+                try:
+                    meta = extract_metadata(target_path)
+                    meta["volume_serial"] = photo_brief.get("volume_serial")
+                    if not photo_brief.get("volume_serial") and file_path_str and meta.get("file_path") != file_path_str:
+                        meta["file_path"] = file_path_str
+                        meta["directory_path"] = os.path.dirname(file_path_str)
+                    upsert_photo(meta)
+                except Exception as meta_err:
+                    logger.warning(f"RAWメタデータ補完スキップ (ID: {pid}): {meta_err}")
+
             return pid, True
         except Exception as e:
             logger.error(f"サムネイル再生成エラー (ID: {pid}): {e}")
             return pid, False
+
+    def _process_one_worker(photo_brief: Dict[str, Any]) -> Tuple[int, bool]:
+        try:
+            return _process_one(photo_brief)
+        finally:
+            try:
+                close_thread_connection()
+            except Exception as close_err:
+                logger.debug(f"スレッドDB接続クローズ警告: {close_err}")
 
     target_briefs = [brief_map[pid] for pid in unique_ids if pid in brief_map]
 
@@ -2034,7 +2065,7 @@ def api_refresh_thumbnails(req: RefreshThumbnailsRequest):
     elif len(target_briefs) > 1:
         max_workers = min(4, os.cpu_count() or 2)
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_id = {executor.submit(_process_one, b): b["id"] for b in target_briefs}
+            future_to_id = {executor.submit(_process_one_worker, b): b["id"] for b in target_briefs}
             for future in concurrent.futures.as_completed(future_to_id):
                 pid = future_to_id[future]
                 try:
@@ -2047,7 +2078,7 @@ def api_refresh_thumbnails(req: RefreshThumbnailsRequest):
                     logger.error(f"サムネイル並列ワーカー例外 (ID: {pid}): {e}")
                     failed_ids.append(pid)
 
-    clear_api_photos_cache()
+    invalidate_fast_cache()
     return {
         "status": "ok",
         "success_ids": success_ids,
@@ -2987,6 +3018,7 @@ from .routers.security_router import (
     router as _security_router,
 )
 from .routers.field_log_router import router as _field_log_router
+from .routers.updater_router import router as _updater_router
 from .routers.storage_volumes_router import (
     DuplicatesResolveRequest,
     EnableVolumeLoomeRequest,
@@ -3029,6 +3061,7 @@ app.include_router(_export_import_router)
 app.include_router(_mobile_router)
 app.include_router(_security_router)
 app.include_router(_field_log_router)
+app.include_router(_updater_router)
 
 
 # favicon

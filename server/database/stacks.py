@@ -808,9 +808,11 @@ def pair_cross_folder_raw_jpeg(cursor: Any) -> int:
     未ペアRAWに対して、全スキャン済みフォルダ・全ドライブを横断して
     対応するJPEGを探索・ペアリングし、タグと評価を双方向同期する。
     """
+    from ..mobile_signals import dates_within_tolerance
+
     cursor.execute(
         """
-        SELECT id, file_name, file_path, date_taken, camera_model, volume_serial, rating,
+        SELECT id, file_name, file_path, directory_path, date_taken, camera_model, volume_serial, rating,
                COALESCE(has_xmp, 0) AS has_xmp
         FROM photos
         WHERE is_raw = 1 AND paired_raw_path IS NULL AND IFNULL(is_unlinked, 0) = 0
@@ -822,7 +824,7 @@ def pair_cross_folder_raw_jpeg(cursor: Any) -> int:
 
     cursor.execute(
         """
-        SELECT id, file_name, file_path, date_taken, camera_model, volume_serial, rating,
+        SELECT id, file_name, file_path, directory_path, date_taken, camera_model, volume_serial, rating,
                COALESCE(has_xmp, 0) AS has_xmp
         FROM photos
         WHERE is_raw = 0 AND paired_raw_path IS NULL AND IFNULL(is_unlinked, 0) = 0
@@ -833,6 +835,33 @@ def pair_cross_folder_raw_jpeg(cursor: Any) -> int:
         jpeg = dict(row)
         stem = Path(jpeg["file_name"]).stem.lower()
         jpeg_stem_map.setdefault(stem, []).append(jpeg)
+
+    def _norm_dir(path_str: Optional[str]) -> str:
+        if not path_str:
+            return ""
+        return os.path.normcase(os.path.normpath(_strip_vsn_prefix_raw(path_str))).rstrip("\\/")
+
+    def _is_near_directory(dir_a: str, dir_b: str) -> bool:
+        if not dir_a or not dir_b:
+            return False
+        if dir_a == dir_b:
+            return True
+        parent_a = os.path.dirname(dir_a).rstrip("\\/")
+        parent_b = os.path.dirname(dir_b).rstrip("\\/")
+        if parent_a == dir_b or parent_b == dir_a:
+            return True
+        return bool(parent_a and parent_b and parent_a == parent_b)
+
+    def _find_date_match(cands: List[Dict[str, Any]], target_dt: str) -> Optional[Dict[str, Any]]:
+        if not target_dt:
+            return None
+        for cand in cands:
+            if (cand.get("date_taken") or "").strip() == target_dt:
+                return cand
+        for cand in cands:
+            if dates_within_tolerance(target_dt, cand.get("date_taken"), 2):
+                return cand
+        return None
 
     cross_pairs_found = 0
     cross_pair_updates = []
@@ -847,6 +876,7 @@ def pair_cross_folder_raw_jpeg(cursor: Any) -> int:
         raw_cam = (raw_photo.get("camera_model") or "").strip()
         raw_cam_valid = raw_cam.lower() not in invalid_cams
         raw_vsn = (raw_photo.get("volume_serial") or "").strip().upper()
+        raw_dir = _norm_dir(raw_photo.get("directory_path"))
 
         all_candidates = jpeg_stem_map.get(raw_stem, [])
         if not all_candidates:
@@ -859,13 +889,18 @@ def pair_cross_folder_raw_jpeg(cursor: Any) -> int:
         ]
         matched = None
         if same_vsn_candidates:
-            if raw_date:
-                for cand in same_vsn_candidates:
-                    if (cand.get("date_taken") or "").strip() == raw_date:
-                        matched = cand
-                        break
-            if not matched and len(same_vsn_candidates) == 1:
-                matched = same_vsn_candidates[0]
+            near_candidates = [
+                c for c in same_vsn_candidates
+                if _is_near_directory(raw_dir, _norm_dir(c.get("directory_path")))
+            ]
+            if near_candidates:
+                matched = _find_date_match(near_candidates, raw_date)
+                if not matched and len(near_candidates) == 1:
+                    matched = near_candidates[0]
+            if not matched:
+                matched = _find_date_match(same_vsn_candidates, raw_date)
+                if not matched and len(same_vsn_candidates) == 1:
+                    matched = same_vsn_candidates[0]
 
         # 2. 別ドライブ・別ボリューム間でも、ステム名 + 撮影日時 + カメラ機種 が完全一致する場合はペアリング
         #    （別カメラ・別SDカードの同名ファイル誤ペアリングを防ぐため撮影日時と有効なカメラ機種の一致を必須とする）

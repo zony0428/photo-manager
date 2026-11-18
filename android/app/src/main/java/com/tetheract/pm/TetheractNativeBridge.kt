@@ -113,6 +113,8 @@ class TetheractNativeBridge(
                 .put("lastCachedAt", meta.optString("last_cached_at", ""))
                 .put("pendingChangeCount", lockerDbManager.getPendingChangeCount())
                 .put("availableUpdate", updateObj)
+                .put("nativeApkUpdateRequired", wifiSyncManager.isNativeApkUpdateAvailable())
+                .put("apkDownloadUrl", wifiSyncManager.getRemoteApkDownloadUrl())
                 .toString()
         } catch (e: Exception) {
             Log.e(TAG, "getLockerStatusJson エラー", e)
@@ -128,6 +130,36 @@ class TetheractNativeBridge(
     /** キャッシュ済みのPC母艦ライブ接続スナップショットJSONを返す */
     @JavascriptInterface
     fun getPcConnectionStatusJson(): String = wifiSyncManager.pcConnStatusJson
+
+    /**
+     * PC母艦が配信する最新 Android APK (/api/mobile/apk) を端末の標準ブラウザでダウンロード開始する
+     */
+    @JavascriptInterface
+    fun openPcApkDownloadInBrowserJson(): String {
+        val apkUrl = wifiSyncManager.getRemoteApkDownloadUrl()
+        if (apkUrl.isEmpty()) {
+            return JSONObject()
+                .put("ok", false)
+                .put("error", "PC母艦の接続設定が見つかりません")
+                .toString()
+        }
+        return try {
+            val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(apkUrl)).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            appContext.startActivity(intent)
+            JSONObject()
+                .put("ok", true)
+                .put("url", apkUrl)
+                .toString()
+        } catch (e: Exception) {
+            Log.e(TAG, "APKブラウザダウンロード起動エラー", e)
+            JSONObject()
+                .put("ok", false)
+                .put("error", e.message ?: "ブラウザの起動に失敗しました")
+                .toString()
+        }
+    }
 
     /**
      * PCのQRコードURL (http://192.168.x.x:8088/m?t=...) またはディープリンクを保存する

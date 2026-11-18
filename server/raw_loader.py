@@ -230,17 +230,23 @@ def _extract_tiff_preview_and_info(file_path: Path) -> Tuple[Optional[Image.Imag
     (最大解像度の埋め込みプレビューImage, IFD0 Orientation, センサー幅, センサー高さ) を返す。
     Sony αのロスレス圧縮RAW (M/S/L) や新型ボディ等、LibRawが未対応のRAWでも1ms未満で確実に抽出できる。
     """
-    from .security import open_loome_decrypted_stream
+    from .security import get_logical_file_size, open_loome_decrypted_stream
 
     ifd0_orient: Optional[int] = None
     sensor_w = 0
     sensor_h = 0
     candidates: List[Tuple[int, int]] = []  # (offset, length)
+    raw_strip_candidates: List[Tuple[int, int]] = []
 
     try:
+        try:
+            fsize = get_logical_file_size(file_path)
+        except Exception:
+            fsize = 0
         with open_loome_decrypted_stream(file_path) as f:
-            f.seek(0, os.SEEK_END)
-            fsize = f.tell()
+            if fsize <= 0:
+                f.seek(0, os.SEEK_END)
+                fsize = f.tell()
             if fsize < 64:
                 return None, None, 0, 0
 
@@ -306,6 +312,7 @@ def _extract_tiff_preview_and_info(file_path: Path) -> Tuple[Optional[Image.Imag
                 jpeg_len = 0
                 strip_off = 0
                 strip_len = 0
+                compression_val = 0
                 ifd_w = 0
                 ifd_h = 0
 
@@ -326,6 +333,10 @@ def _extract_tiff_preview_and_info(file_path: Path) -> Tuple[Optional[Image.Imag
                         vals = _read_u32_list(typ, 1, val_bytes)
                         if vals:
                             ifd_h = vals[0]
+                    elif tag == 0x0103:
+                        vals = _read_u32_list(typ, 1, val_bytes)
+                        if vals:
+                            compression_val = vals[0]
                     elif tag == 0x0201:
                         vals = _read_u32_list(typ, 1, val_bytes)
                         if vals:
@@ -360,14 +371,18 @@ def _extract_tiff_preview_and_info(file_path: Path) -> Tuple[Optional[Image.Imag
                 if jpeg_off > 0 and jpeg_len > 1024 and jpeg_off + jpeg_len <= fsize:
                     candidates.append((jpeg_off, jpeg_len))
                 if strip_off > 0 and strip_len > 1024 and strip_off + strip_len <= fsize:
-                    candidates.append((strip_off, strip_len))
+                    if compression_val in (6, 7):
+                        candidates.append((strip_off, strip_len))
+                    else:
+                        raw_strip_candidates.append((strip_off, strip_len))
 
             # 候補をバイトサイズの大きい順に検証し、最大ピクセル面積の有効なJPEGを選択
             best_img: Optional[Image.Image] = None
             best_area = 0
             seen_ranges = set()
+            eval_candidates = candidates if candidates else raw_strip_candidates
 
-            for off, length in sorted(candidates, key=lambda x: x[1], reverse=True):
+            for off, length in sorted(eval_candidates, key=lambda x: x[1], reverse=True):
                 if (off, length) in seen_ranges:
                     continue
                 seen_ranges.add((off, length))
@@ -538,14 +553,13 @@ def extract_raw_thumbnail_image(file_path: Union[str, Path]) -> Optional[Image.I
     )
     is_encrypted = is_vault_encrypted_file(path_obj)
 
-    # Lv.2 カプセル化済み TIFF 系 RAW は 64KB 復号ストリームの IFD 直接シークで全量メモリ展開を回避
-    if is_encrypted:
-        try:
-            tiff_fast_img, _, _, _ = _extract_tiff_preview_and_info(path_obj)
-            if tiff_fast_img is not None and max(tiff_fast_img.width, tiff_fast_img.height) >= 400:
-                return tiff_fast_img
-        except Exception as e:
-            logger.debug(f"Lv.2 TIFFプレビュー高速抽出スキップ ({path_obj.name}): {e}")
+    # まず TIFF IFD ツリーの直接シークで埋め込みプレビューを抽出（全量読み込み回避・高速化）
+    try:
+        tiff_fast_img, _, _, _ = _extract_tiff_preview_and_info(path_obj)
+        if tiff_fast_img is not None and max(tiff_fast_img.width, tiff_fast_img.height) >= 400:
+            return tiff_fast_img
+    except Exception as e:
+        logger.debug(f"TIFFプレビュー高速抽出スキップ ({path_obj.name}): {e}")
 
     # 1. rawpy (LibRaw) による埋め込みサムネイル抽出（%TEMP% 一時ファイル不使用・オンメモリ対応）
     if rawpy is not None:

@@ -151,6 +151,7 @@ _LAN_API_EXACT: Dict[str, set] = {
         "/api/mobile/locker-sync",
         "/api/mobile/discover",
         "/api/mobile/connection-status",
+        "/api/mobile/ui-bundle",
     },
     "POST": {
         "/api/photos/batch-rate",

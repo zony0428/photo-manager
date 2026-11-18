@@ -9,13 +9,13 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#16181b" id="mMetaThemeColor">
   <title>TETHERACT pm</title>
-  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=2.4.0">
-  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png?v=2.4.0">
-  <link rel="apple-touch-icon" href="/icons/icon-192.png?v=2.4.0">
-  <link rel="manifest" href="/manifest_mobile.json?v=2.4.0">
-  <link rel="stylesheet" href="/css/mobile.css?v=2.4.0">
-  <link rel="stylesheet" href="/css/touch-responsive.css?v=2.4.0">
-  <link rel="stylesheet" href="/css/touch-fieldlog.css?v=2.4.0">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=2.5.0">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png?v=2.5.0">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png?v=2.5.0">
+  <link rel="manifest" href="/manifest_mobile.json?v=2.5.0">
+  <link rel="stylesheet" href="/css/mobile.css?v=2.5.0">
+  <link rel="stylesheet" href="/css/touch-responsive.css?v=2.5.0">
+  <link rel="stylesheet" href="/css/touch-fieldlog.css?v=2.5.0">
   <!-- オフラインUSB library.db 直接読み込み用 WebAssembly SQLite (sql.js) -->
   <script src="/vendor/sqljs/sql-wasm.js"></script>
 </head>
@@ -25,7 +25,7 @@
     <header class="m-header">
       <div class="m-header-left">
         <div id="mBrandHeaderBtn" class="m-brand" role="button" tabindex="0" title="タップして同期・バージョン・レイアウト設定を開く" aria-label="TETHERACT 設定・同期メニューを開く">
-          <img class="m-logo-icon" src="/icons/icon-192.png?v=2.4.0" width="24" height="24" alt="" aria-hidden="true">
+          <img class="m-logo-icon" src="/icons/icon-192.png?v=2.5.0" width="24" height="24" alt="" aria-hidden="true">
           <div class="m-brand-titles">
             <div class="m-brand-main">
               <svg id="mBrandWordmarkSvg" class="m-brand-wordmark" viewBox="62 12 246 36" width="94" height="14" fill="none" role="img" aria-label="TETHERACT Rg">
@@ -37,7 +37,7 @@
               <span id="mModeBadge" class="m-mode-badge mode-checking">○ UNLINK</span>
               <span id="mPhotoCount" class="m-photo-count">0枚</span>
               <span id="mPendingBadge" class="m-pending-badge" style="display:none;">0</span>
-              <span id="mAppBuildBadge" class="m-build-badge" style="display:none;">v2.4.0 (11/18 18:30)</span>
+              <span id="mAppBuildBadge" class="m-build-badge" style="display:none;">v2.5.0 (11/18 23:35)</span>
             </div>
           </div>
         </div>
@@ -384,7 +384,7 @@
         <div class="m-sheet-header">
           <div>
             <div class="m-sheet-title"><span class="m-native-only">Wi-Fi同期 &amp; 設定</span><span class="m-browser-only">DB読込 &amp; 選別データの保存</span></div>
-            <div id="mModalAppBuildInfo" style="font-size:0.70rem; color:var(--text-muted, #9ca6b5); margin-top:2px;">TETHERACT pm · v2.4.0 (Build 2026-11-18 18:30)</div>
+            <div id="mModalAppBuildInfo" style="font-size:0.70rem; color:var(--text-muted, #9ca6b5); margin-top:2px;">TETHERACT pm · v2.5.0 (Build 2026-11-18 23:35)</div>
           </div>
           <button id="mCloseDbSyncBtn" class="m-icon-btn">✕</button>
         </div>
@@ -402,6 +402,18 @@
             </p>
             <div id="mWifiPairStatusBox" class="m-sync-status-box" style="margin-bottom:8px;">
               PCのQRコードをスマホカメラで読み取って「アプリでWi-Fi同期」を押すか、下にPCの接続URLを貼り付けてください。
+            </div>
+            <div id="mNativeApkUpdateBox" style="display:none; margin-bottom:8px; padding:10px 11px; border-radius:8px; border:1px solid rgba(245, 158, 11, 0.5); background:rgba(245, 158, 11, 0.10);">
+              <div style="display:flex; align-items:center; gap:6px; font-size:0.78rem; font-weight:700; color:#fbbf24; margin-bottom:4px;">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;"><path d="M12 3v12"/><polyline points="7 10 12 15 17 10"/><path d="M5 20h14"/></svg>
+                <span>本体アプリ (APK) のネイティブ更新があります</span>
+              </div>
+              <div style="font-size:0.72rem; color:var(--text-muted, #9ca6b5); line-height:1.45; margin-bottom:8px;">
+                Androidネイティブ側（Kotlin / 権限等）に更新が含まれるため、母艦から最新APKを取得して上書きインストールしてください。
+              </div>
+              <button id="mDownloadNativeApkBtn" class="m-btn m-btn-secondary" style="width:100%; padding:8px 10px; font-size:0.76rem; border-color:rgba(245, 158, 11, 0.55); color:#fbbf24;">
+                母艦から最新 APK をダウンロード
+              </button>
             </div>
             <button id="mRunWifiSyncBtn" class="m-btn m-btn-primary" style="width:100%; padding:11px; margin-bottom:8px;">
               <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
@@ -531,21 +543,21 @@
   </div>
 
   <!-- Layer 2: Core Domain & State -->
-  <script src="/js/core/tree_builder.js?v=2.4.0"></script>
+  <script src="/js/core/tree_builder.js?v=2.5.0"></script>
   <!-- Layer 1: Data Adapter (Android Native / HTTP API / WASM SQLite) -->
-  <script src="/js/adapters/data_adapter.js?v=2.4.0"></script>
-  <script src="/js/adapters/field_log_adapter.js?v=2.4.0"></script>
-  <script src="/js/adapters/phone_case_adapter.js?v=2.4.0"></script>
+  <script src="/js/adapters/data_adapter.js?v=2.5.0"></script>
+  <script src="/js/adapters/field_log_adapter.js?v=2.5.0"></script>
+  <script src="/js/adapters/phone_case_adapter.js?v=2.5.0"></script>
   <!-- Layer 3: Touch & Tablet View / Gesture Controllers -->
-  <script src="/js/views/touch/touch_layout.js?v=2.4.0"></script>
-  <script src="/js/views/touch/touch_gestures.js?v=2.4.0"></script>
-  <script src="/js/views/touch/morph_thumb_bar.js?v=2.4.0"></script>
-  <script src="/js/views/touch/touch_duel.js?v=2.4.0"></script>
-  <script src="/js/views/touch/touch_field_log.js?v=2.4.0"></script>
-  <script src="/js/views/touch/touch_phone_case.js?v=2.4.0"></script>
-  <script src="/js/views/touch/touch_center_dial.js?v=2.4.0"></script>
-  <script src="/js/privacy_mask_editor.js?v=2.4.0"></script>
-  <script src="/js/views/touch/touch_art_framer.js?v=2.4.0"></script>
-  <script src="/js/mobile.js?v=2.4.0"></script>
+  <script src="/js/views/touch/touch_layout.js?v=2.5.0"></script>
+  <script src="/js/views/touch/touch_gestures.js?v=2.5.0"></script>
+  <script src="/js/views/touch/morph_thumb_bar.js?v=2.5.0"></script>
+  <script src="/js/views/touch/touch_duel.js?v=2.5.0"></script>
+  <script src="/js/views/touch/touch_field_log.js?v=2.5.0"></script>
+  <script src="/js/views/touch/touch_phone_case.js?v=2.5.0"></script>
+  <script src="/js/views/touch/touch_center_dial.js?v=2.5.0"></script>
+  <script src="/js/privacy_mask_editor.js?v=2.5.0"></script>
+  <script src="/js/views/touch/touch_art_framer.js?v=2.5.0"></script>
+  <script src="/js/mobile.js?v=2.5.0"></script>
 </body>
 </html>

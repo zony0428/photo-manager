@@ -7,7 +7,9 @@ import org.json.JSONObject
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.io.InputStream
 import java.util.zip.ZipInputStream
 
 /**
@@ -44,7 +46,9 @@ class UsbOfflineUpdater(
             val prevApkTime = meta.optLong("apk_update_time", 0L)
             val prevApkVer = meta.optLong("apk_version_code", 0L)
             val bundleMtime = meta.optLong("ui_mtime", 0L)
-            if (pkgTime > prevApkTime || pkgVer > prevApkVer || (bundleMtime in 1L..pkgTime)) {
+            val hasUiRevision = meta.optString("ui_revision", "").isNotEmpty()
+            val isStaleUsbBundle = !hasUiRevision && (bundleMtime in 1L..pkgTime)
+            if (pkgTime > prevApkTime || pkgVer > prevApkVer || isStaleUsbBundle) {
                 if (uiBundleCurrentDir.exists()) uiBundleCurrentDir.deleteRecursively()
                 uiBundleCurrentDir.mkdirs()
                 writeBundleMeta(
@@ -142,6 +146,146 @@ class UsbOfflineUpdater(
         return null
     }
 
+    private fun readBuiltInAssetMeta(): JSONObject {
+        return try {
+            context.assets.open("ui_bundle_meta.json").bufferedReader(Charsets.UTF_8).use { reader ->
+                JSONObject(reader.readText())
+            }
+        } catch (_: Exception) {
+            JSONObject()
+        }
+    }
+
+    /**
+     * 現在有効な UI リビジョンハッシュを返す（ホット更新メタ優先、未更新時は APK 内蔵メタを参照）
+     */
+    fun getCurrentUiRevision(): String {
+        val hotRev = readBundleMeta().optString("ui_revision", "").trim()
+        if (hotRev.isNotEmpty()) return hotRev
+        return readBuiltInAssetMeta().optString("ui_revision", "").trim()
+    }
+
+    /**
+     * インストール済み APK 本体に刻印されたネイティブ層リビジョンを返す（ホット更新では変化しない）
+     */
+    fun getInstalledApkNativeRevision(): String {
+        return readBuiltInAssetMeta().optString("native_revision", "").trim()
+    }
+
+    /**
+     * 母艦側のネイティブ層リビジョンが APK 本体の内蔵値と異なる場合に再インストールが必要と判定する
+     */
+    fun needsNativeApkUpdate(remoteNativeRevision: String): Boolean {
+        val cleanRemote = remoteNativeRevision.trim()
+        val installed = getInstalledApkNativeRevision()
+        return cleanRemote.isNotEmpty() && installed.isNotEmpty() && cleanRemote != installed
+    }
+
+    /**
+     * リモート母艦の UI リビジョンと現在の UI リビジョンが異なる場合に更新が必要と判定する
+     */
+    fun needsWifiUiUpdate(remoteRevision: String): Boolean {
+        val clean = remoteRevision.trim()
+        return clean.isNotEmpty() && clean != getCurrentUiRevision()
+    }
+
+    /**
+     * Wi-Fi 経由で取得した UI バンドル ZIP を内部ロッカーへ安全に展開・適用する
+     */
+    fun applyUiBundleFromZipFile(
+        zipFile: File,
+        uiRevision: String,
+        uiMtime: Long,
+        uiVersion: String,
+        triggerReload: Boolean = false
+    ): Boolean {
+        if (!zipFile.exists() || zipFile.length() <= 0L) return false
+        val stagingDir = File(uiBundleRootDir, "staging")
+        return try {
+            if (stagingDir.exists()) stagingDir.deleteRecursively()
+            stagingDir.mkdirs()
+
+            FileInputStream(zipFile).use { fis ->
+                extractZipInputStreamToDir(fis, stagingDir)
+            }
+            if (!File(stagingDir, "mobile.html").exists()) {
+                stagingDir.deleteRecursively()
+                return false
+            }
+            promoteStagingToCurrent(stagingDir)
+
+            val (pkgTime, pkgVer) = readCurrentApkStamp()
+            writeBundleMeta(
+                JSONObject()
+                    .put("apk_update_time", pkgTime)
+                    .put("apk_version_code", pkgVer)
+                    .put("ui_revision", uiRevision.trim())
+                    .put("ui_mtime", uiMtime)
+                    .put("ui_size", zipFile.length())
+                    .put("ui_version", uiVersion.trim())
+                    .put("ui_source", "wifi")
+                    .put("ui_name", "tetheract_ui_bundle.zip")
+            )
+            if (triggerReload) {
+                onReloadWebViewRequested?.invoke()
+            }
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Wi-Fi UIバンドル展開エラー", e)
+            stagingDir.deleteRecursively()
+            false
+        }
+    }
+
+    private fun extractZipInputStreamToDir(input: InputStream, stagingDir: File) {
+        val canonicalStaging = stagingDir.canonicalPath
+        ZipInputStream(BufferedInputStream(input, BUFFER_SIZE)).use { zis ->
+            var entry = zis.nextEntry
+            while (entry != null) {
+                val entryName = entry.name.replace('\\', '/').trimStart('/')
+                if (entryName.isNotEmpty() && !entryName.contains("..")) {
+                    val outFile = File(stagingDir, entryName)
+                    if (!outFile.canonicalPath.startsWith(canonicalStaging)) {
+                        throw SecurityException("Zip Slip 検出: $entryName")
+                    }
+                    if (entry.isDirectory) {
+                        outFile.mkdirs()
+                    } else {
+                        outFile.parentFile?.mkdirs()
+                        BufferedOutputStream(FileOutputStream(outFile), BUFFER_SIZE).use { bos ->
+                            val buf = ByteArray(BUFFER_SIZE)
+                            var len: Int
+                            while (zis.read(buf).also { len = it } != -1) {
+                                bos.write(buf, 0, len)
+                            }
+                            bos.flush()
+                        }
+                    }
+                }
+                zis.closeEntry()
+                entry = zis.nextEntry
+            }
+        }
+    }
+
+    private fun promoteStagingToCurrent(stagingDir: File) {
+        if (uiBundleCurrentDir.exists()) uiBundleCurrentDir.deleteRecursively()
+        if (!stagingDir.renameTo(uiBundleCurrentDir)) {
+            stagingDir.copyRecursively(uiBundleCurrentDir, overwrite = true)
+            stagingDir.deleteRecursively()
+        }
+    }
+
+    private fun readCurrentApkStamp(): Pair<Long, Long> {
+        val pkgInfo = try { context.packageManager.getPackageInfo(context.packageName, 0) } catch (_: Exception) { null }
+        val pkgTime = pkgInfo?.lastUpdateTime ?: 0L
+        @Suppress("DEPRECATION")
+        val pkgVer = if (pkgInfo != null) {
+            if (android.os.Build.VERSION.SDK_INT >= 28) pkgInfo.longVersionCode else pkgInfo.versionCode.toLong()
+        } else 0L
+        return Pair(pkgTime, pkgVer)
+    }
+
     /**
      * USB内の tetheract_ui_bundle.zip または Tetheract_Mobile.html を内部ロッカーへ展開する
      */
@@ -155,34 +299,7 @@ class UsbOfflineUpdater(
             val input = context.contentResolver.openInputStream(uiDoc.uri) ?: return false
 
             if (name.endsWith(".zip")) {
-                val canonicalStaging = stagingDir.canonicalPath
-                ZipInputStream(BufferedInputStream(input, BUFFER_SIZE)).use { zis ->
-                    var entry = zis.nextEntry
-                    while (entry != null) {
-                        val entryName = entry.name.replace('\\', '/').trimStart('/')
-                        if (entryName.isNotEmpty() && !entryName.contains("..")) {
-                            val outFile = File(stagingDir, entryName)
-                            if (!outFile.canonicalPath.startsWith(canonicalStaging)) {
-                                throw SecurityException("Zip Slip 検出: $entryName")
-                            }
-                            if (entry.isDirectory) {
-                                outFile.mkdirs()
-                            } else {
-                                outFile.parentFile?.mkdirs()
-                                BufferedOutputStream(FileOutputStream(outFile), BUFFER_SIZE).use { bos ->
-                                    val buf = ByteArray(BUFFER_SIZE)
-                                    var len: Int
-                                    while (zis.read(buf).also { len = it } != -1) {
-                                        bos.write(buf, 0, len)
-                                    }
-                                    bos.flush()
-                                }
-                            }
-                        }
-                        zis.closeEntry()
-                        entry = zis.nextEntry
-                    }
-                }
+                extractZipInputStreamToDir(input, stagingDir)
             } else {
                 val outFile = File(stagingDir, "mobile.html")
                 BufferedInputStream(input, BUFFER_SIZE).use { bis ->
@@ -197,27 +314,27 @@ class UsbOfflineUpdater(
                 }
             }
 
-            if (uiBundleCurrentDir.exists()) uiBundleCurrentDir.deleteRecursively()
-            if (!stagingDir.renameTo(uiBundleCurrentDir)) {
-                stagingDir.copyRecursively(uiBundleCurrentDir, overwrite = true)
-                stagingDir.deleteRecursively()
+            promoteStagingToCurrent(stagingDir)
+
+            val (pkgTime, pkgVer) = readCurrentApkStamp()
+            val embeddedMetaFile = File(uiBundleCurrentDir, "ui_bundle_meta.json")
+            val embeddedMeta = if (embeddedMetaFile.exists()) {
+                try { JSONObject(embeddedMetaFile.readText(Charsets.UTF_8)) } catch (_: Exception) { null }
+            } else null
+
+            val nextMeta = JSONObject()
+                .put("apk_update_time", pkgTime)
+                .put("apk_version_code", pkgVer)
+                .put("ui_mtime", mtime)
+                .put("ui_size", size)
+                .put("ui_source", "usb")
+                .put("ui_name", uiDoc.name ?: "")
+            val embRev = embeddedMeta?.optString("ui_revision", "")?.trim().orEmpty()
+            if (embRev.isNotEmpty()) {
+                nextMeta.put("ui_revision", embRev)
+                nextMeta.put("ui_version", embeddedMeta?.optString("ui_version", "")?.trim().orEmpty())
             }
-
-            val pkgInfo = try { context.packageManager.getPackageInfo(context.packageName, 0) } catch (_: Exception) { null }
-            val pkgTime = pkgInfo?.lastUpdateTime ?: 0L
-            @Suppress("DEPRECATION")
-            val pkgVer = if (pkgInfo != null) {
-                if (android.os.Build.VERSION.SDK_INT >= 28) pkgInfo.longVersionCode else pkgInfo.versionCode.toLong()
-            } else 0L
-
-            writeBundleMeta(
-                JSONObject()
-                    .put("apk_update_time", pkgTime)
-                    .put("apk_version_code", pkgVer)
-                    .put("ui_mtime", mtime)
-                    .put("ui_size", size)
-                    .put("ui_name", uiDoc.name ?: "")
-            )
+            writeBundleMeta(nextMeta)
             true
         } catch (e: Exception) {
             Log.e(TAG, "UIバンドル展開エラー", e)

@@ -4601,7 +4601,7 @@ else if (typeof exports === 'object'){
               <span id="mModeBadge" class="m-mode-badge mode-checking">○ UNLINK</span>
               <span id="mPhotoCount" class="m-photo-count">0枚</span>
               <span id="mPendingBadge" class="m-pending-badge" style="display:none;">0</span>
-              <span id="mAppBuildBadge" class="m-build-badge" style="display:none;">v2.4.0 (11/18 18:30)</span>
+              <span id="mAppBuildBadge" class="m-build-badge" style="display:none;">v2.5.0 (11/18 23:35)</span>
             </div>
           </div>
         </div>
@@ -4948,7 +4948,7 @@ else if (typeof exports === 'object'){
         <div class="m-sheet-header">
           <div>
             <div class="m-sheet-title"><span class="m-native-only">Wi-Fi同期 &amp; 設定</span><span class="m-browser-only">DB読込 &amp; 選別データの保存</span></div>
-            <div id="mModalAppBuildInfo" style="font-size:0.70rem; color:var(--text-muted, #9ca6b5); margin-top:2px;">TETHERACT pm · v2.4.0 (Build 2026-11-18 18:30)</div>
+            <div id="mModalAppBuildInfo" style="font-size:0.70rem; color:var(--text-muted, #9ca6b5); margin-top:2px;">TETHERACT pm · v2.5.0 (Build 2026-11-18 23:35)</div>
           </div>
           <button id="mCloseDbSyncBtn" class="m-icon-btn">✕</button>
         </div>
@@ -4966,6 +4966,18 @@ else if (typeof exports === 'object'){
             </p>
             <div id="mWifiPairStatusBox" class="m-sync-status-box" style="margin-bottom:8px;">
               PCのQRコードをスマホカメラで読み取って「アプリでWi-Fi同期」を押すか、下にPCの接続URLを貼り付けてください。
+            </div>
+            <div id="mNativeApkUpdateBox" style="display:none; margin-bottom:8px; padding:10px 11px; border-radius:8px; border:1px solid rgba(245, 158, 11, 0.5); background:rgba(245, 158, 11, 0.10);">
+              <div style="display:flex; align-items:center; gap:6px; font-size:0.78rem; font-weight:700; color:#fbbf24; margin-bottom:4px;">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;"><path d="M12 3v12"/><polyline points="7 10 12 15 17 10"/><path d="M5 20h14"/></svg>
+                <span>本体アプリ (APK) のネイティブ更新があります</span>
+              </div>
+              <div style="font-size:0.72rem; color:var(--text-muted, #9ca6b5); line-height:1.45; margin-bottom:8px;">
+                Androidネイティブ側（Kotlin / 権限等）に更新が含まれるため、母艦から最新APKを取得して上書きインストールしてください。
+              </div>
+              <button id="mDownloadNativeApkBtn" class="m-btn m-btn-secondary" style="width:100%; padding:8px 10px; font-size:0.76rem; border-color:rgba(245, 158, 11, 0.55); color:#fbbf24;">
+                母艦から最新 APK をダウンロード
+              </button>
             </div>
             <button id="mRunWifiSyncBtn" class="m-btn m-btn-primary" style="width:100%; padding:11px; margin-bottom:8px;">
               <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
@@ -6034,6 +6046,8 @@ else if (typeof exports === 'object'){
         lastCachedAt: String(p.lastCachedAt || ''),
         pendingChangeCount: Number(p.pendingChangeCount || 0),
         availableUpdate: p.availableUpdate || null,
+        nativeApkUpdateRequired: Boolean(p.nativeApkUpdateRequired),
+        apkDownloadUrl: String(p.apkDownloadUrl || ''),
       };
     }
     if (mode === 'http_api') {
@@ -6702,6 +6716,14 @@ else if (typeof exports === 'object'){
     return { ok: false, mode };
   }
 
+  async function openPcApkDownloadInBrowser() {
+    const mode = await detectRuntimeMode();
+    if (mode === 'android_native' && typeof global.TetheractNative.openPcApkDownloadInBrowserJson === 'function') {
+      return _safeParseJson(global.TetheractNative.openPcApkDownloadInBrowserJson(), { ok: false });
+    }
+    return { ok: false, mode };
+  }
+
   const TetheractAdapter = {
     detectRuntimeMode,
     getRuntimeModeSync,
@@ -6710,6 +6732,7 @@ else if (typeof exports === 'object'){
     refreshLockerFromUsbIfUpdated,
     saveWifiPairing,
     syncLockerOverWifi,
+    openPcApkDownloadInBrowser,
     queryPhotos,
     getFilterTrees,
     getThumbnailUrl,
@@ -16969,6 +16992,7 @@ else if (typeof exports === 'object'){
       el.style.display = 'none';
     }, durationMs);
   }
+  window.__showTetheractToast = showToast;
 
   /**
    * モバイル・タッチUI用の確認モーダル（window.confirm 禁止規約対応）
@@ -17477,6 +17501,10 @@ else if (typeof exports === 'object'){
         wifiBox.innerHTML = '「今すぐWi-Fi同期」を押すと同一Wi-Fi内のPC母艦を自動検出して接続します（PC側で「許可する」を押すかQRコード読み取りでも接続できます）。';
       }
     }
+    const nativeBox = document.getElementById('mNativeApkUpdateBox');
+    if (nativeBox) {
+      nativeBox.style.display = Boolean(st && st.nativeApkUpdateRequired) ? 'block' : 'none';
+    }
   }
 
   async function _triggerAndroidWifiLockerSync(rawUrlInput = '') {
@@ -17603,6 +17631,11 @@ else if (typeof exports === 'object'){
         welcomeBtnSpan.textContent = `検出したPC (${disc.hostname}) とWi-Fiで同期`;
       }
       showToast(`● 同一Wi-Fi上にPC母艦「${disc.hostname || disc.serverUrl}」を検出しました`, 3000);
+    };
+    window.__onTetheractNativeApkUpdateRequired = (info) => {
+      _refreshWifiStatusBox();
+      const verLabel = info && info.uiVersion ? ` (v${info.uiVersion})` : '';
+      showToast(`! 本体アプリ(APK)${verLabel}のネイティブ更新があります。「DB/同期」から最新APKを取得できます`, 5500);
     };
     if (!_nativeUsbSyncEventBound) {
       _nativeUsbSyncEventBound = true;
@@ -22542,6 +22575,18 @@ else if (typeof exports === 'object'){
       const inp = document.getElementById('mWifiUrlInput');
       const val = inp ? inp.value.trim() : '';
       runUnifiedUplink(val);
+    });
+    document.getElementById('mDownloadNativeApkBtn')?.addEventListener('click', async () => {
+      if (!window.TetheractAdapter || typeof window.TetheractAdapter.openPcApkDownloadInBrowser !== 'function') {
+        showToast('この環境ではAPKの直接ダウンロードに対応していません');
+        return;
+      }
+      const res = await window.TetheractAdapter.openPcApkDownloadInBrowser();
+      if (res && res.ok) {
+        showToast('ブラウザで最新APKのダウンロードを開始しました', 4000);
+      } else {
+        showToast((res && res.error) || 'APKダウンロードの起動に失敗しました', 4000);
+      }
     });
     document.getElementById('mSaveWifiUrlBtn')?.addEventListener('click', () => {
       const inp = document.getElementById('mWifiUrlInput');

@@ -33,7 +33,10 @@ from ..lan_access import (
 from ..media_watcher import broadcast_app_event
 from ..mobile_bundle import (
     STANDALONE_HTML_FILENAME,
+    ensure_mobile_ui_bundle_zip,
     ensure_standalone_mobile_html,
+    find_prebuilt_android_apk,
+    get_mobile_ui_bundle_info,
 )
 from ..mobile_sync_apply import (
     _sanitize_mobile_tag,
@@ -149,22 +152,17 @@ def api_mobile_standalone():
 @router.get("/api/mobile/apk", include_in_schema=False)
 def api_mobile_apk():
     """Android専用ネイティブアプリ (Tetheract_Android.apk) をWi-Fi経由で直接配信する"""
-    candidates = [
-        BASE_DIR / "android" / "Tetheract_Android.apk",
-        BASE_DIR / "dist_v2" / "android" / "Tetheract_Android.apk",
-        BASE_DIR / "dist" / "android" / "Tetheract_Android.apk",
-    ]
-    for p in candidates:
-        if p.exists() and p.is_file():
-            return FileResponse(
-                p,
-                media_type="application/vnd.android.package-archive",
-                filename="Tetheract_Android.apk",
-                headers={
-                    "Content-Disposition": 'attachment; filename="Tetheract_Android.apk"',
-                    "Cache-Control": "no-cache, no-store, must-revalidate",
-                },
-            )
+    apk_path = find_prebuilt_android_apk()
+    if apk_path:
+        return FileResponse(
+            apk_path,
+            media_type="application/vnd.android.package-archive",
+            filename="Tetheract_Android.apk",
+            headers={
+                "Content-Disposition": 'attachment; filename="Tetheract_Android.apk"',
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+            },
+        )
     raise HTTPException(status_code=404, detail="Tetheract_Android.apk が見つかりません")
 
 
@@ -484,6 +482,7 @@ def api_mobile_locker_sync(
         eff_mtime = max(st.st_mtime, wal_st.st_mtime if wal_st else 0.0)
         eff_size = st.st_size + (wal_st.st_size if wal_st else 0)
         sec_st = get_security_status()
+        ui_info = get_mobile_ui_bundle_info()
         return {
             "ok": True,
             "library_id": get_or_create_library_id(),
@@ -491,6 +490,11 @@ def api_mobile_locker_sync(
             "db_mtime": int(eff_mtime * 1000),
             "db_size": eff_size,
             "photo_count": get_total_photos_count(),
+            "ui_revision": ui_info["ui_revision"],
+            "native_revision": ui_info["native_revision"],
+            "ui_mtime": ui_info["ui_mtime"],
+            "ui_version": ui_info["ui_version"],
+            "apk_available": bool(find_prebuilt_android_apk() is not None),
         }
 
     if clean_mode == "delta":
@@ -629,6 +633,7 @@ def api_mobile_connection_status():
     ).encode("utf-8")
     revision = hashlib.sha1(rev_src).hexdigest()[:12]
 
+    ui_info = get_mobile_ui_bundle_info()
     return {
         "ok": True,
         "library_id": library_id,
@@ -639,7 +644,36 @@ def api_mobile_connection_status():
         "total_count": len(online_ids) + len(offline_ids),
         "online_count": len(online_ids),
         "offline_count": len(offline_ids),
+        "ui_revision": ui_info["ui_revision"],
+        "native_revision": ui_info["native_revision"],
+        "ui_mtime": ui_info["ui_mtime"],
+        "ui_version": ui_info["ui_version"],
+        "apk_available": bool(find_prebuilt_android_apk() is not None),
     }
+
+
+@router.get("/api/mobile/ui-bundle", include_in_schema=False)
+def api_mobile_ui_bundle():
+    """Androidアプリ向けのモバイルUIホットアップデート用バンドル (tetheract_ui_bundle.zip) を配信する"""
+    from ..security import is_app_locked
+
+    if is_app_locked():
+        raise HTTPException(status_code=423, detail="アプリケーションはロックされています")
+
+    bundle_path, ui_info = ensure_mobile_ui_bundle_zip()
+    if not bundle_path or not bundle_path.exists():
+        raise HTTPException(status_code=500, detail="UIバンドルの生成に失敗しました")
+
+    return FileResponse(
+        bundle_path,
+        media_type="application/zip",
+        filename="tetheract_ui_bundle.zip",
+        headers={
+            "Content-Disposition": 'attachment; filename="tetheract_ui_bundle.zip"',
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "X-Tetheract-Ui-Revision": str(ui_info.get("ui_revision") or ""),
+        },
+    )
 
 
 from .mobile_case_router import router as _mobile_case_router

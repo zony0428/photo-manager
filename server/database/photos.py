@@ -3322,12 +3322,13 @@ def get_photos_brief_batch(photo_ids: List[int]) -> List[Dict[str, Any]]:
             chunk = photo_ids[i:i + 500]
             placeholders = ",".join(["?"] * len(chunk))
             cursor.execute(
-                f"SELECT id, file_name, file_path, volume_serial, file_size, file_mtime, date_taken, rotation, fine_angle, crop_x, crop_y, crop_w, crop_h, crop_aspect, brightness, contrast, saturation FROM photos WHERE id IN ({placeholders})",
+                f"SELECT id, file_name, file_path, volume_serial, file_size, file_mtime, date_taken, is_raw, width, height, camera_model, is_unlinked, rotation, fine_angle, crop_x, crop_y, crop_w, crop_h, crop_aspect, brightness, contrast, saturation FROM photos WHERE id IN ({placeholders})",
                 chunk,
             )
             for r in cursor.fetchall():
                 d = dict(r)
                 d["file_path"] = _strip_vsn_prefix_raw(d.get("file_path"))
+                _supplement_online_link_for_single_photo(cursor, d)
                 results.append(d)
         return results
 

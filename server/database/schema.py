@@ -245,6 +245,16 @@ def initialize_database(fast_boot: bool = False) -> None:
                         if not cursor.fetchone():
                             _ensure_mobile_pending_signals_table(cursor)
                             fb_dirty = True
+                        cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='scan_roots'")
+                        if cursor.fetchone():
+                            cursor.execute("PRAGMA table_info(scan_roots)")
+                            sr_cols = {r["name"] for r in cursor.fetchall()}
+                            if "fingerprint" not in sr_cols:
+                                cursor.execute("ALTER TABLE scan_roots ADD COLUMN fingerprint TEXT")
+                                fb_dirty = True
+                            if "is_recursive" not in sr_cols:
+                                cursor.execute("ALTER TABLE scan_roots ADD COLUMN is_recursive INTEGER")
+                                fb_dirty = True
                         if fb_dirty:
                             conn.commit()
                         try:

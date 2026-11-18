@@ -13,6 +13,8 @@ Gradle 8.5 を自動構築し、フロントエンド Web アセットを同期�
 """
 
 import argparse
+import datetime
+import json
 import os
 import re
 import shutil
@@ -25,6 +27,18 @@ from pathlib import Path
 from typing import List, Set, Tuple
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
+
+from server.mobile_bundle import (  # noqa: E402
+    UI_BUNDLE_SYNC_TARGETS,
+    collect_mobile_ui_asset_files,
+    get_mobile_ui_bundle_info,
+    read_app_version,
+    render_stamped_mobile_html,
+    write_mobile_ui_bundle_zip,
+)
+
 ANDROID_DIR = BASE_DIR / "android"
 APP_DIR = ANDROID_DIR / "app"
 MAIN_SRC_DIR = APP_DIR / "src" / "main"
@@ -78,32 +92,12 @@ REQUIRED_ANDROID_FILES = [
     ADAPTERS_DIR / "phone_case_adapter.js",
 ]
 
-FRONTEND_SYNC_TARGETS = [
-    "mobile.html",
-    "manifest_mobile.json",
-    "sw_mobile.js",
-    "favicon.ico",
-    "css/mobile.css",
-    "css/touch-responsive.css",
-    "css/touch-fieldlog.css",
-    "js/core",
-    "js/adapters",
-    "js/views/touch",
-    "js/privacy_mask_editor.js",
-    "js/mobile.js",
-    "icons",
-    "vendor/sqljs",
-]
+FRONTEND_SYNC_TARGETS = UI_BUNDLE_SYNC_TARGETS
 
 
 def _read_version() -> Tuple[str, int]:
     """VERSION ファイルから決定論的にバージョン文字列と Android versionCode を算出する"""
-    ver_file = BASE_DIR / "VERSION"
-    ver_str = "2.0.0"
-    if ver_file.exists():
-        lines = ver_file.read_text(encoding="utf-8").splitlines()
-        if lines and lines[0].strip():
-            ver_str = lines[0].strip()
+    ver_str = read_app_version()
     m = re.match(r"^(\d+)\.(\d+)\.(\d+)", ver_str)
     if m:
         major, minor, patch = int(m.group(1)), int(m.group(2)), int(m.group(3))
@@ -115,32 +109,17 @@ def _read_version() -> Tuple[str, int]:
 
 def _render_stamped_mobile_html(mh_txt: str) -> str:
     """コピー先の assets/mobile.html 用にビルド実行時刻スタンプを注入した文字列を返す（原紙は変更しない）"""
-    from datetime import datetime
-    ver_str, _ = _read_version()
-    now = datetime.now()
-    now_str = now.strftime("%Y-%m-%d %H:%M")
-    short_ts = now.strftime("%m/%d %H:%M")
-    full_ver_name = f"{ver_str} (Build {now_str})"
-    short_badge = f"v{ver_str} ({short_ts})"
-
-    stamped = re.sub(
-        r'(<span id="mAppBuildBadge"[^>]*>)[^<]*(</span>)',
-        f"\\g<1>{short_badge}\\g<2>",
-        mh_txt,
-    )
-    stamped = re.sub(
-        r'(<div id="mModalAppBuildInfo"[^>]*>)[^<]*(</div>)',
-        f"\\g<1>TETHERACT pm · v{full_ver_name}\\g<2>",
-        stamped,
-    )
-    return stamped
+    info = get_mobile_ui_bundle_info()
+    ver_str = str(info.get("ui_version") or read_app_version())
+    stamp_ms = int(info.get("ui_mtime") or 0)
+    stamp_dt = datetime.datetime.fromtimestamp(stamp_ms / 1000.0) if stamp_ms > 0 else datetime.datetime.now()
+    return render_stamped_mobile_html(mh_txt, ver_str, stamp_dt)
 
 
 def stamp_build_version_and_timestamp() -> str:
     """VERSION から算出した versionCode / versionName が未反映の場合のみ android/app/build.gradle を更新する"""
-    from datetime import datetime
     ver_str, ver_code = _read_version()
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
 
     gradle_path = APP_DIR / "build.gradle"
     if gradle_path.exists():
@@ -158,19 +137,7 @@ def stamp_build_version_and_timestamp() -> str:
 
 def collect_web_asset_files() -> List[Tuple[Path, str]]:
     """android/app/src/main/assets/ へ同期すべきフロントエンド資産一覧を収集する"""
-    collected: List[Tuple[Path, str]] = []
-    for rel_name in FRONTEND_SYNC_TARGETS:
-        src = FRONTEND_DIR / rel_name
-        if not src.exists():
-            continue
-        if src.is_file():
-            collected.append((src, rel_name))
-        elif src.is_dir():
-            for child in sorted(src.rglob("*")):
-                if child.is_file() and not child.name.endswith((".pyc", ".tmp")):
-                    rel_path = child.relative_to(FRONTEND_DIR).as_posix()
-                    collected.append((child, rel_path))
-    return collected
+    return collect_mobile_ui_asset_files()
 
 
 def sync_launcher_icons_to_android() -> None:
@@ -247,6 +214,13 @@ def sync_web_assets_to_android(dry_run: bool = False) -> Tuple[int, int]:
         else:
             shutil.copy2(src, dest)
 
+    # APK内蔵UIのリビジョン照合用メタデータ (ui_bundle_meta.json) を出力
+    ui_info = get_mobile_ui_bundle_info()
+    (ASSETS_DIR / "ui_bundle_meta.json").write_text(
+        json.dumps(ui_info, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
     # オンデバイスAI検出 (YuNet / LPD-YuNet) 用 ONNX モデルアセットを同期
     privacy_models_dir = BASE_DIR / "models" / "privacy"
     onnx_names = (
@@ -264,17 +238,9 @@ def sync_web_assets_to_android(dry_run: bool = False) -> Tuple[int, int]:
 
 
 def build_ui_bundle_zip(output_zip: Path) -> int:
-    """Stage 1 USB ホットアップデート用の tetheract_ui_bundle.zip を生成する"""
-    files = collect_web_asset_files()
-    output_zip.parent.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(output_zip, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        for src, rel_posix in files:
-            if rel_posix == "mobile.html":
-                stamped_html = _render_stamped_mobile_html(src.read_text(encoding="utf-8"))
-                zf.writestr(rel_posix, stamped_html.encode("utf-8"))
-            else:
-                zf.write(src, arcname=rel_posix)
-    return len(files)
+    """Stage 1 USB/Wi-Fi ホットアップデート用の tetheract_ui_bundle.zip を生成する"""
+    write_mobile_ui_bundle_zip(output_zip)
+    return len(collect_web_asset_files())
 
 
 def verify_project_integrity(sync_assets: bool = False) -> bool:

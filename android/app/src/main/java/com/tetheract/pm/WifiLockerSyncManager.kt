@@ -34,7 +34,8 @@ import java.util.concurrent.TimeUnit
  */
 class WifiLockerSyncManager(
     private val context: Context,
-    private val lockerDbManager: LockerDatabaseManager
+    private val lockerDbManager: LockerDatabaseManager,
+    private val usbOfflineUpdater: UsbOfflineUpdater? = null
 ) {
 
     companion object {
@@ -49,10 +50,27 @@ class WifiLockerSyncManager(
     }
 
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val uiDownloadLock = Any()
     @Volatile private var backupBeforeSwitch: Pair<String, String>? = null
     @Volatile var isPcOnline: Boolean = false
     @Volatile var pcConnStatusJson: String = ""
     @Volatile var pcConnRevision: String = ""
+    @Volatile var remoteUiRevision: String = ""
+    @Volatile var remoteUiVersion: String = ""
+    @Volatile var remoteUiMtime: Long = 0L
+    @Volatile var remoteNativeRevision: String = ""
+    @Volatile var remoteApkAvailable: Boolean = false
+
+    private fun clearPcLinkState() {
+        isPcOnline = false
+        pcConnStatusJson = ""
+        pcConnRevision = ""
+        remoteUiRevision = ""
+        remoteUiVersion = ""
+        remoteUiMtime = 0L
+        remoteNativeRevision = ""
+        remoteApkAvailable = false
+    }
 
     fun rollbackPendingSwitch() {
         val bak = backupBeforeSwitch ?: return
@@ -231,6 +249,20 @@ class WifiLockerSyncManager(
             if (!statusRes.optBoolean("ok", false)) {
                 return statusRes
             }
+            val statusUiRev = statusRes.optString("ui_revision", "").trim()
+            val statusUiVer = statusRes.optString("ui_version", "").trim()
+            val statusUiMtime = statusRes.optLong("ui_mtime", 0L)
+            val statusNativeRev = statusRes.optString("native_revision", "").trim()
+            val statusApkAvail = statusRes.optBoolean("apk_available", false)
+            if (statusUiRev.isNotEmpty()) {
+                remoteUiRevision = statusUiRev
+                remoteUiVersion = statusUiVer
+                remoteUiMtime = statusUiMtime
+            }
+            if (statusNativeRev.isNotEmpty()) {
+                remoteNativeRevision = statusNativeRev
+                remoteApkAvailable = statusApkAvail
+            }
             val remoteLibId = statusRes.optString("library_id", "").trim()
             val remoteOwnerId = statusRes.optString("owner_id", "").trim()
             val localLibId = lockerDbManager.readLocalLibraryId()
@@ -353,6 +385,13 @@ class WifiLockerSyncManager(
             prefs.edit().putString(KEY_LAST_SYNC_AT, nowStr).apply()
             isPcOnline = true
             refreshPcConnectionStatus(serverUrl, token)
+            val effectiveUiRev = remoteUiRevision.ifEmpty { statusUiRev }
+            val effectiveUiVer = remoteUiVersion.ifEmpty { statusUiVer }
+            val effectiveUiMtime = if (remoteUiMtime > 0L) remoteUiMtime else statusUiMtime
+            val uiApplied = syncAndApplyWifiUiBundleIfNeeded(
+                serverUrl, token, effectiveUiRev, effectiveUiMtime, effectiveUiVer, triggerReload = false
+            )
+            val nativeUpdateRequired = isNativeApkUpdateAvailable()
 
             JSONObject()
                 .put("ok", true)
@@ -365,11 +404,13 @@ class WifiLockerSyncManager(
                 .put("pendingChangeCount", lockerDbManager.getPendingChangeCount())
                 .put("lastCachedAt", nowStr)
                 .put("serverUrl", serverUrl)
+                .put("uiBundleApplied", uiApplied)
+                .put("uiVersion", effectiveUiVer)
+                .put("nativeApkUpdateRequired", nativeUpdateRequired)
+                .put("apkDownloadUrl", if (nativeUpdateRequired) getRemoteApkDownloadUrl() else "")
         } catch (e: Exception) {
             Log.e(TAG, "Wi-Fiロッカー同期エラー", e)
-            isPcOnline = false
-            pcConnStatusJson = ""
-            pcConnRevision = ""
+            clearPcLinkState()
             JSONObject()
                 .put("ok", false)
                 .put("reason", "network_error")
@@ -742,6 +783,85 @@ class WifiLockerSyncManager(
         }
     }
 
+    /**
+     * 母艦から取得した ui_revision を現在UIと比較し、更新があれば tetheract_ui_bundle.zip を取得・展開する
+     */
+    fun syncAndApplyWifiUiBundleIfNeeded(
+        serverUrl: String,
+        token: String,
+        remoteRev: String,
+        remoteMtime: Long,
+        remoteVer: String,
+        triggerReload: Boolean = false
+    ): Boolean {
+        val updater = usbOfflineUpdater ?: return false
+        val cleanRev = remoteRev.trim()
+        val cleanUrl = serverUrl.trim().trimEnd('/')
+        if (cleanUrl.isEmpty() || token.isEmpty() || !updater.needsWifiUiUpdate(cleanRev)) {
+            return false
+        }
+        synchronized(uiDownloadLock) {
+            if (!updater.needsWifiUiUpdate(cleanRev)) return false
+            val tmpZip = File(context.cacheDir, "tetheract_ui_bundle.wifi.tmp")
+            return try {
+                val encTok = URLEncoder.encode(token, "UTF-8")
+                val bundleUrl = "$cleanUrl/api/mobile/ui-bundle?t=$encTok"
+                if (downloadFileFromHttp(bundleUrl, token, tmpZip, readTimeoutMs = 20000)) {
+                    updater.applyUiBundleFromZipFile(
+                        tmpZip,
+                        cleanRev,
+                        remoteMtime,
+                        remoteVer,
+                        triggerReload = triggerReload
+                    )
+                } else {
+                    false
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Wi-Fi UIバンドル取得・適用失敗", e)
+                false
+            } finally {
+                if (tmpZip.exists()) tmpZip.delete()
+            }
+        }
+    }
+
+    /**
+     * キャッシュ済みの母艦 UI リビジョンに基づき、必要時のみ Wi-Fi 経由で UI バンドルを適用する
+     */
+    fun checkAndApplyRemoteUiUpdateIfNeeded(triggerReload: Boolean = false): JSONObject {
+        val serverUrl = getConfiguredServerUrl().trimEnd('/')
+        val token = getConfiguredToken()
+        val rev = remoteUiRevision
+        val ver = remoteUiVersion
+        val mtime = remoteUiMtime
+        if (serverUrl.isEmpty() || token.isEmpty() || rev.isEmpty()) {
+            return JSONObject().put("ok", true).put("uiBundleApplied", false)
+        }
+        val applied = syncAndApplyWifiUiBundleIfNeeded(
+            serverUrl, token, rev, mtime, ver, triggerReload = triggerReload
+        )
+        return JSONObject()
+            .put("ok", true)
+            .put("uiBundleApplied", applied)
+            .put("uiRevision", rev)
+            .put("uiVersion", ver)
+    }
+
+    /** 母艦のネイティブ変更により APK 本体の再インストールが必要かつ配信可能か判定する */
+    fun isNativeApkUpdateAvailable(): Boolean {
+        val updater = usbOfflineUpdater ?: return false
+        return isPcOnline && remoteApkAvailable && updater.needsNativeApkUpdate(remoteNativeRevision)
+    }
+
+    /** 母艦から最新 Android APK をダウンロードするための認証付きURLを返す */
+    fun getRemoteApkDownloadUrl(): String {
+        val url = getConfiguredServerUrl().trimEnd('/')
+        val tok = getConfiguredToken()
+        if (url.isEmpty() || tok.isEmpty()) return ""
+        return "$url/api/mobile/apk?t=${URLEncoder.encode(tok, "UTF-8")}"
+    }
+
     /** 設定済みPC母艦のライブ接続状態（ドライブ/写真ごとのオンライン状態）を取得してキャッシュする */
     fun refreshPcConnectionStatus(
         serverUrl: String = getConfiguredServerUrl().trimEnd('/'),
@@ -749,9 +869,7 @@ class WifiLockerSyncManager(
     ): Boolean {
         val cleanUrl = serverUrl.trim().trimEnd('/')
         if (cleanUrl.isEmpty()) {
-            isPcOnline = false
-            pcConnStatusJson = ""
-            pcConnRevision = ""
+            clearPcLinkState()
             return false
         }
         var conn: HttpURLConnection? = null
@@ -767,6 +885,11 @@ class WifiLockerSyncManager(
                 val json = JSONObject(body)
                 pcConnStatusJson = body
                 pcConnRevision = json.optString("revision", "")
+                remoteUiRevision = json.optString("ui_revision", "").trim()
+                remoteUiVersion = json.optString("ui_version", "").trim()
+                remoteUiMtime = json.optLong("ui_mtime", 0L)
+                remoteNativeRevision = json.optString("native_revision", "").trim()
+                remoteApkAvailable = json.optBoolean("apk_available", false)
                 isPcOnline = true
                 return true
             }
@@ -778,21 +901,17 @@ class WifiLockerSyncManager(
                     attachAuthCookieAndSaveResponseCookie(this, token)
                 }
                 val ok = conn.responseCode in 200..299
-                isPcOnline = ok
-                if (!ok) {
-                    pcConnStatusJson = ""
-                    pcConnRevision = ""
+                if (ok) {
+                    isPcOnline = true
+                } else {
+                    clearPcLinkState()
                 }
                 return ok
             }
-            isPcOnline = false
-            pcConnStatusJson = ""
-            pcConnRevision = ""
+            clearPcLinkState()
             false
         } catch (_: Exception) {
-            isPcOnline = false
-            pcConnStatusJson = ""
-            pcConnRevision = ""
+            clearPcLinkState()
             false
         } finally {
             try { conn?.disconnect() } catch (_: Exception) {}

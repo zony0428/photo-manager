@@ -79,6 +79,10 @@ class MainActivity : Activity() {
     @Volatile private var lastNotifiedPcConnRev: String = ""
     @Volatile private var lastNotifiedUsbVsn: String = ""
     @Volatile private var suppressAutoScanUntilMs: Long = 0L
+    @Volatile private var pendingPostReloadToast: String? = null
+    private val wifiUiUpdateInProgress = java.util.concurrent.atomic.AtomicBoolean(false)
+    @Volatile private var lastFailedWifiUiRevision: String = ""
+    @Volatile private var lastNotifiedNativeRevision: String = ""
     private val linkWatchExecutor = Executors.newSingleThreadScheduledExecutor()
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -91,10 +95,10 @@ class MainActivity : Activity() {
         try {
             lockerDbManager = LockerDatabaseManager(applicationContext)
             safUsbManager = SafUsbManager(applicationContext, lockerDbManager)
-            wifiSyncManager = WifiLockerSyncManager(applicationContext, lockerDbManager)
             usbOfflineUpdater = UsbOfflineUpdater(applicationContext, safUsbManager) {
                 runOnUiThread { if (::webView.isInitialized) { webPageLoaded = false; webView.reload() } }
             }
+            wifiSyncManager = WifiLockerSyncManager(applicationContext, lockerDbManager, usbOfflineUpdater)
             phoneCaseManager = PhoneCaseManager(applicationContext, lockerDbManager, wifiSyncManager)
             nativeBridge = TetheractNativeBridge(
                 context = applicationContext,
@@ -192,6 +196,7 @@ class MainActivity : Activity() {
                         val disc = wifiSyncManager.discoverPcOnLan(requestPair = false)
                         notifyWebViewPcDiscovered(disc)
                         notifyWebViewLinkStateChanged(force = true)
+                        triggerWifiUiAutoUpdateIfNeeded()
                     } catch (e: Exception) {
                         Log.w(TAG, "起動時自動チェック警告", e)
                     }
@@ -209,6 +214,7 @@ class MainActivity : Activity() {
             try {
                 if (::wifiSyncManager.isInitialized) wifiSyncManager.probePcLinkOnline()
                 notifyWebViewLinkStateChanged(force = true)
+                triggerWifiUiAutoUpdateIfNeeded()
                 autoScanLinkedPhoneFoldersIfNeeded(forceNotify = false)
             } catch (e: Exception) {
                 Log.w(TAG, "onResume 自動チェック警告", e)
@@ -247,8 +253,62 @@ class MainActivity : Activity() {
                 if (!isActivityResumed || wifiSyncInProgress.get() || (::phoneCaseManager.isInitialized && phoneCaseManager.isTransferRunning())) return@scheduleWithFixedDelay
                 if (::wifiSyncManager.isInitialized) wifiSyncManager.probePcLinkOnline()
                 notifyWebViewLinkStateChanged(force = false)
+                triggerWifiUiAutoUpdateIfNeeded()
             } catch (_: Exception) {}
         }, 6L, 6L, java.util.concurrent.TimeUnit.SECONDS)
+    }
+
+    private fun triggerWifiUiAutoUpdateIfNeeded() {
+        if (!::wifiSyncManager.isInitialized || !::usbOfflineUpdater.isInitialized) return
+        if (wifiSyncInProgress.get() || (::phoneCaseManager.isInitialized && phoneCaseManager.isTransferRunning())) return
+        val rev = wifiSyncManager.remoteUiRevision
+        if (wifiSyncManager.isPcOnline && rev.isNotEmpty() && rev != lastFailedWifiUiRevision && usbOfflineUpdater.needsWifiUiUpdate(rev)) {
+            if (wifiUiUpdateInProgress.compareAndSet(false, true)) {
+                try {
+                    val res = wifiSyncManager.checkAndApplyRemoteUiUpdateIfNeeded(triggerReload = false)
+                    if (res.optBoolean("uiBundleApplied", false)) {
+                        lastFailedWifiUiRevision = ""
+                        val ver = res.optString("uiVersion", "").let { if (it.isNotEmpty()) " (v$it)" else "" }
+                        pendingPostReloadToast = "✓ 母艦とリンクし、最新UI$ver へ自動アップデートしました"
+                        runOnUiThread {
+                            if (!isFinishing && !isDestroyed && ::webView.isInitialized) {
+                                webPageLoaded = false
+                                webView.reload()
+                            }
+                        }
+                        return
+                    } else {
+                        lastFailedWifiUiRevision = rev
+                    }
+                } catch (e: Exception) {
+                    lastFailedWifiUiRevision = rev
+                    Log.w(TAG, "Wi-Fiリンク自動UIアップデート警告", e)
+                } finally {
+                    wifiUiUpdateInProgress.set(false)
+                }
+            }
+        }
+        notifyNativeApkUpdateIfNeeded()
+    }
+
+    private fun notifyNativeApkUpdateIfNeeded() {
+        if (!::wifiSyncManager.isInitialized || !wifiSyncManager.isNativeApkUpdateAvailable()) return
+        val rev = wifiSyncManager.remoteNativeRevision
+        if (rev.isEmpty() || rev == lastNotifiedNativeRevision) return
+        runOnUiThread {
+            if (!isFinishing && !isDestroyed && ::webView.isInitialized && webPageLoaded) {
+                lastNotifiedNativeRevision = rev
+                val payload = JSONObject()
+                    .put("nativeRevision", rev)
+                    .put("uiVersion", wifiSyncManager.remoteUiVersion)
+                    .put("apkDownloadUrl", wifiSyncManager.getRemoteApkDownloadUrl())
+                    .toString()
+                webView.evaluateJavascript(
+                    "if(window.__onTetheractNativeApkUpdateRequired){window.__onTetheractNativeApkUpdateRequired($payload);}",
+                    null
+                )
+            }
+        }
     }
 
     private fun notifyWebViewLinkStateChanged(force: Boolean = false) {
@@ -391,7 +451,20 @@ class MainActivity : Activity() {
                     syncRes.put("dbPhotoCount", lockerDbManager.getPhotoCount())
                 }
                 notifyWebViewLinkStateChanged(force = true)
-                notifyWebViewUsbSyncCompleted(syncRes)
+                if (syncRes.optBoolean("uiBundleApplied", false)) {
+                    lastFailedWifiUiRevision = ""
+                    val ver = syncRes.optString("uiVersion", "").let { if (it.isNotEmpty()) " (v$it)" else "" }
+                    pendingPostReloadToast = "✓ 母艦と同期し、最新UI$ver へアップデートしました"
+                    runOnUiThread {
+                        if (!isFinishing && !isDestroyed && ::webView.isInitialized) {
+                            webPageLoaded = false
+                            webView.reload()
+                        }
+                    }
+                } else {
+                    notifyWebViewUsbSyncCompleted(syncRes)
+                    notifyNativeApkUpdateIfNeeded()
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Wi-Fiバックグラウンド同期エラー", e)
                 notifyWebViewLinkStateChanged(force = true)
@@ -450,6 +523,30 @@ class MainActivity : Activity() {
                     if (pendingOpenFieldLog) {
                         pendingOpenFieldLog = false
                         dispatchOpenFieldLogToWebView()
+                    }
+                    val toastMsg = pendingPostReloadToast
+                    if (!toastMsg.isNullOrEmpty()) {
+                        pendingPostReloadToast = null
+                        val escMsg = JSONObject.quote(toastMsg)
+                        view?.postDelayed({
+                            if (!isFinishing && !isDestroyed && ::webView.isInitialized) {
+                                webView.evaluateJavascript(
+                                    "if(window.__showTetheractToast){window.__showTetheractToast($escMsg,4500);}",
+                                    null
+                                )
+                            }
+                        }, 500L)
+                        view?.postDelayed({
+                            if (!isFinishing && !isDestroyed && ::webView.isInitialized) {
+                                notifyNativeApkUpdateIfNeeded()
+                            }
+                        }, 5200L)
+                    } else {
+                        view?.postDelayed({
+                            if (!isFinishing && !isDestroyed && ::webView.isInitialized) {
+                                notifyNativeApkUpdateIfNeeded()
+                            }
+                        }, 600L)
                     }
                 }
             }

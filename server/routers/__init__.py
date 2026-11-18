@@ -10,6 +10,7 @@ from . import (
     mobile_router,
     security_router,
     storage_volumes_router,
+    updater_router,
 )
 
 ALL_ROUTERS = [
@@ -19,6 +20,7 @@ ALL_ROUTERS = [
     export_import_router.router,
     mobile_router.router,
     security_router.router,
+    updater_router.router,
 ]
 
 __all__ = [
@@ -29,4 +31,5 @@ __all__ = [
     "mobile_router",
     "security_router",
     "storage_volumes_router",
+    "updater_router",
 ]

@@ -6,9 +6,11 @@
 
 import contextlib
 import io
+import json
 import sys
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 from typing import Any, Dict
 from unittest.mock import patch
@@ -19,7 +21,7 @@ if str(ROOT) not in sys.path:
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from server import database as db_pkg_mod, field_log_store, lan_access, mobile_bundle, mobile_delta, security as security_mod, storage_manager  # noqa: E402
+from server import database as db_pkg_mod, field_log_store, lan_access, mobile_bundle, mobile_delta, security as security_mod, storage_manager, updater as updater_mod  # noqa: E402
 from server.app import app  # noqa: E402
 from server.database import close_all_connections, initialize_database, stats as db_stats_mod, switch_database_path as _raw_switch_database_path  # noqa: E402
 from server.database import connection as db_conn_mod  # noqa: E402
@@ -79,6 +81,9 @@ def setUpModule() -> None:
         "orig_lan_token": lan_access.LAN_TOKEN,
         "orig_approved_ips": dict(lan_access._approved_client_ips),
         "orig_standalone_html": mobile_bundle.STANDALONE_HTML_PATH,
+        "orig_ui_bundle_path": mobile_bundle.UI_BUNDLE_PATH,
+        "orig_ui_bundle_meta_path": mobile_bundle.UI_BUNDLE_META_PATH,
+        "orig_updates_dir": updater_mod.UPDATES_DIR,
         "orig_delta_db": mobile_delta.DELTA_DB_PATH,
         "orig_locker_state": mobile_delta.LOCKER_STATE_PATH,
         "orig_loome_dir": storage_manager.LOOME_DIR,
@@ -92,6 +97,9 @@ def setUpModule() -> None:
 
     lan_access._LAN_AUTH_FILE = tmp_cache / ".mobile_lan_auth.json"
     mobile_bundle.STANDALONE_HTML_PATH = tmp_root / "Tetheract_Mobile.html"
+    mobile_bundle.UI_BUNDLE_PATH = tmp_cache / "tetheract_ui_bundle.zip"
+    mobile_bundle.UI_BUNDLE_META_PATH = tmp_cache / "tetheract_ui_bundle_meta.json"
+    updater_mod.UPDATES_DIR = tmp_cache / "updates"
     mobile_delta.DELTA_DB_PATH = tmp_cache / "mobile_delta.db"
     mobile_delta.LOCKER_STATE_PATH = tmp_cache / "mobile_locker_state.json"
     storage_manager.LOOME_DIR = tmp_loome
@@ -124,6 +132,9 @@ def tearDownModule() -> None:
         lan_access._approved_client_ips.update(_MODULE_CTX["orig_approved_ips"])
 
         mobile_bundle.STANDALONE_HTML_PATH = _MODULE_CTX["orig_standalone_html"]
+        mobile_bundle.UI_BUNDLE_PATH = _MODULE_CTX["orig_ui_bundle_path"]
+        mobile_bundle.UI_BUNDLE_META_PATH = _MODULE_CTX["orig_ui_bundle_meta_path"]
+        updater_mod.UPDATES_DIR = _MODULE_CTX["orig_updates_dir"]
         mobile_delta.DELTA_DB_PATH = _MODULE_CTX["orig_delta_db"]
         mobile_delta.LOCKER_STATE_PATH = _MODULE_CTX["orig_locker_state"]
         storage_manager.LOOME_DIR = _MODULE_CTX["orig_loome_dir"]
@@ -252,6 +263,7 @@ def test_lan_whitelist_allows_mobile_apis():
         ("POST", "/api/mobile/sync-import"),
         ("GET", "/api/mobile/pair-info"),
         ("GET", "/api/mobile/locker-sync"),
+        ("GET", "/api/mobile/ui-bundle"),
         ("GET", "/css/touch-responsive.css"),
         ("GET", "/js/core/tree_builder.js"),
         ("GET", "/js/adapters/data_adapter.js"),
@@ -260,6 +272,7 @@ def test_lan_whitelist_allows_mobile_apis():
     lan_no_tok = _lan_client(with_cookie=False)
     assert lan_no_tok.get("/api/mobile/locker-sync?mode=status").status_code == 401
     assert lan_no_tok.get("/api/mobile/pair-info").status_code == 401
+    assert lan_no_tok.get("/api/mobile/ui-bundle").status_code == 401
     # トークン未所持のLANクライアントからの discover は母艦情報のみ返し、秘密トークンは漏洩しない
     r_disc_unauth = lan_no_tok.get("/api/mobile/discover?request_pair=1&device=PixelTest")
     assert r_disc_unauth.status_code == 200
@@ -286,7 +299,28 @@ def test_lan_whitelist_allows_mobile_apis():
     assert r_pair.json().get("deep_link", "").startswith("tetheract://pair?")
     r_st = lan_tok.get("/api/mobile/locker-sync?mode=status")
     assert r_st.status_code == 200
-    assert r_st.json().get("ok") is True
+    st_json = r_st.json()
+    assert st_json.get("ok") is True
+    assert st_json.get("ui_revision") and isinstance(st_json.get("ui_mtime"), int) and st_json.get("ui_version")
+    assert st_json.get("native_revision")
+
+    r_conn = lan_tok.get("/api/mobile/connection-status")
+    assert r_conn.status_code == 200
+    conn_json = r_conn.json()
+    assert conn_json.get("ui_revision") == st_json.get("ui_revision")
+    assert conn_json.get("native_revision") == st_json.get("native_revision")
+    assert conn_json.get("ui_version") == st_json.get("ui_version")
+
+    r_bundle = lan_tok.get("/api/mobile/ui-bundle")
+    assert r_bundle.status_code == 200
+    assert r_bundle.headers.get("x-tetheract-ui-revision") == st_json.get("ui_revision")
+    with zipfile.ZipFile(io.BytesIO(r_bundle.content), "r") as zf:
+        names = set(zf.namelist())
+        assert "mobile.html" in names
+        assert "ui_bundle_meta.json" in names
+        meta = json.loads(zf.read("ui_bundle_meta.json").decode("utf-8"))
+        assert meta.get("ui_revision") == st_json.get("ui_revision")
+        assert meta.get("native_revision") == st_json.get("native_revision")
     for method, path in allowed:
         assert is_lan_path_allowed(method, path), f"{method} {path} はLANから許可されるべき"
 
@@ -1239,6 +1273,69 @@ def test_mobile_connection_status_and_raw_jpg_online_rules(tmp_path: Path):
         assert r_locked.status_code == 423
 
 
+def test_system_updater_localhost_only_and_diff_export(tmp_path: Path):
+    """PC母艦アップデートAPIのlocalhost専用制限・開発保護ガード・ポータブルdiff.zip生成/検証をテスト"""
+    lan_tok = _lan_client(with_cookie=True)
+    for method, path in (
+        ("GET", "/api/system/update-status"),
+        ("GET", "/api/system/export-diff-zip"),
+        ("POST", "/api/system/download-github-update"),
+        ("POST", "/api/system/stage-diff-zip?file_name=test.zip"),
+        ("POST", "/api/system/trigger-clean-update"),
+    ):
+        r_lan = lan_tok.request(method, path)
+        assert r_lan.status_code == 403, f"{method} {path} はLANから拒否されるべき (actual={r_lan.status_code})"
+
+    # localhost からのステータス確認
+    r_st = LOCAL.get("/api/system/update-status?check_remote=0")
+    assert r_st.status_code == 200
+    st_json = r_st.json()
+    assert st_json.get("ok") is True
+    assert st_json.get("current_version")
+    assert st_json.get("ui_revision")
+    assert st_json.get("native_revision")
+    assert st_json.get("is_dev_repository") is True
+
+    # 開発リポジトリ環境では自己上書きアップデートを拒否
+    r_trig = LOCAL.post("/api/system/trigger-clean-update")
+    assert r_trig.status_code == 403
+
+    # ポータブル差分ZIP (Tetheract_v*diff.zip) の生成・配信
+    r_exp = LOCAL.get("/api/system/export-diff-zip")
+    assert r_exp.status_code == 200
+    zip_bytes = r_exp.content
+    with zipfile.ZipFile(io.BytesIO(zip_bytes), "r") as zf:
+        names = set(zf.namelist())
+        assert "VERSION" in names
+        assert "frontend/index.html" in names
+        assert "server/run.py" in names
+        assert "android/tetheract_ui_bundle.zip" in names
+        assert not any(n.startswith("cache/") or n.startswith("Loome/") or n.endswith(".loome_seal") for n in names)
+
+    # 非公式URLからのダウンロードは拒否されること
+    bad_dl = updater_mod.download_and_stage_github_diff_zip(
+        download_url="https://evil.example.com/Tetheract_v9.9.9diff.zip",
+        base_dir=tmp_path,
+    )
+    assert bad_dl.get("ok") is False
+
+    # 有効な diff.zip のステージングと検索
+    stage_ok = updater_mod.stage_uploaded_diff_zip("portable.zip", zip_bytes, base_dir=tmp_path)
+    assert stage_ok.get("ok") is True
+    found = updater_mod.find_staged_diff_zip(base_dir=tmp_path)
+    assert found is not None and found.get("version") == stage_ok.get("version")
+
+    # Zip Slip エントリを含む不正ZIPは拒否されること
+    bad_buf = io.BytesIO()
+    with zipfile.ZipFile(bad_buf, "w") as zf:
+        zf.writestr("VERSION", "9.9.9\n")
+        zf.writestr("server/run.py", "print('ok')\n")
+        zf.writestr("frontend/index.html", "<html></html>")
+        zf.writestr("../evil.txt", "pwned")
+    stage_bad = updater_mod.stage_uploaded_diff_zip("evil.zip", bad_buf.getvalue(), base_dir=tmp_path)
+    assert stage_bad.get("ok") is False
+
+
 class TestSecurityRegression(unittest.TestCase):
     """unittest discover からも上記のセキュリティ回帰テストを実行するためのラッパー"""
 
@@ -1307,6 +1404,10 @@ class TestSecurityRegression(unittest.TestCase):
     def test_mobile_connection_status_and_raw_jpg_online_rules(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             test_mobile_connection_status_and_raw_jpg_online_rules(Path(tmp_dir))
+
+    def test_system_updater_localhost_only_and_diff_export(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            test_system_updater_localhost_only_and_diff_export(Path(tmp_dir))
 
 
 if __name__ == "__main__":

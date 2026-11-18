@@ -17,10 +17,15 @@
 """
 
 import base64
+import datetime
+import hashlib
+import json
 import logging
 import re
+import threading
+import zipfile
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger("photo_manager.mobile_bundle")
 
@@ -28,6 +33,29 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 FRONTEND_DIR = BASE_DIR / "frontend"
 STANDALONE_HTML_FILENAME = "Tetheract_Mobile.html"
 STANDALONE_HTML_PATH = BASE_DIR / STANDALONE_HTML_FILENAME
+UI_BUNDLE_FILENAME = "tetheract_ui_bundle.zip"
+UI_BUNDLE_PATH = BASE_DIR / "cache" / UI_BUNDLE_FILENAME
+UI_BUNDLE_META_PATH = BASE_DIR / "cache" / "tetheract_ui_bundle_meta.json"
+
+UI_BUNDLE_SYNC_TARGETS: List[str] = [
+    "mobile.html",
+    "manifest_mobile.json",
+    "sw_mobile.js",
+    "favicon.ico",
+    "css/mobile.css",
+    "css/touch-responsive.css",
+    "css/touch-fieldlog.css",
+    "js/core",
+    "js/adapters",
+    "js/views/touch",
+    "js/privacy_mask_editor.js",
+    "js/mobile.js",
+    "icons",
+    "vendor/sqljs",
+]
+
+_ui_bundle_lock = threading.Lock()
+_ui_bundle_info_cache: Dict[str, Any] = {"sig": None, "info": None}
 
 # 厳格なCSP設定（インラインCSS/JS・WASMメモリ実行・Blob/Data URL画像・Android WebView内部ストリームのみ許可）
 CSP_META_TAG = (
@@ -216,6 +244,233 @@ def ensure_standalone_mobile_html(force: bool = False) -> Optional[Path]:
     except Exception as e:
         logger.error(f"単体モバイルHTMLの生成に失敗しました: {e}")
         return None
+
+
+def read_app_version() -> str:
+    """ルートの VERSION ファイルからアプリバージョン文字列を取得する"""
+    ver_file = BASE_DIR / "VERSION"
+    if ver_file.exists():
+        try:
+            lines = ver_file.read_text(encoding="utf-8").splitlines()
+            if lines and lines[0].strip():
+                return lines[0].strip()
+        except Exception as e:
+            logger.debug(f"VERSION 読込スキップ: {e}")
+    return "2.0.0"
+
+
+def collect_mobile_ui_asset_files() -> List[Tuple[Path, str]]:
+    """Android UIバンドル・アセット同期対象のフロントエンドファイル一覧を収集する"""
+    collected: List[Tuple[Path, str]] = []
+    for rel_name in UI_BUNDLE_SYNC_TARGETS:
+        src = FRONTEND_DIR / rel_name
+        if not src.exists():
+            continue
+        if src.is_file():
+            collected.append((src, rel_name))
+        elif src.is_dir():
+            for child in sorted(src.rglob("*")):
+                if child.is_file() and not child.name.endswith((".pyc", ".tmp")):
+                    rel_path = child.relative_to(FRONTEND_DIR).as_posix()
+                    collected.append((child, rel_path))
+    return collected
+
+
+def render_stamped_mobile_html(
+    mh_txt: str,
+    ver_str: str,
+    stamp_dt: Optional[datetime.datetime] = None,
+) -> str:
+    """配信・バンドル用にビルド日時とバージョンを注入した mobile.html 文字列を返す（原紙は変更しない）"""
+    now = stamp_dt or datetime.datetime.now()
+    now_str = now.strftime("%Y-%m-%d %H:%M")
+    short_ts = now.strftime("%m/%d %H:%M")
+    full_ver_name = f"{ver_str} (Build {now_str})"
+    short_badge = f"v{ver_str} ({short_ts})"
+
+    stamped = re.sub(
+        r'(<span id="mAppBuildBadge"[^>]*>)[^<]*(</span>)',
+        f"\\g<1>{short_badge}\\g<2>",
+        mh_txt,
+    )
+    stamped = re.sub(
+        r'(<div id="mModalAppBuildInfo"[^>]*>)[^<]*(</div>)',
+        f"\\g<1>TETHERACT pm · v{full_ver_name}\\g<2>",
+        stamped,
+    )
+    return stamped
+
+
+def collect_android_native_source_files() -> List[Tuple[Path, str]]:
+    """Android ネイティブ層（Kotlin / Manifest / Gradle）のソースファイル一覧を収集する"""
+    android_dir = BASE_DIR / "android"
+    if not android_dir.is_dir():
+        return []
+
+    candidates: List[Path] = [
+        android_dir / "settings.gradle",
+        android_dir / "build.gradle",
+        android_dir / "gradle.properties",
+        android_dir / "app" / "build.gradle",
+        android_dir / "app" / "src" / "main" / "AndroidManifest.xml",
+        android_dir / "app" / "src" / "main" / "res" / "drawable" / "ic_tile_fieldlog.xml",
+    ]
+    java_dir = android_dir / "app" / "src" / "main" / "java"
+    if java_dir.is_dir():
+        candidates.extend(sorted(java_dir.rglob("*.kt")))
+
+    collected: List[Tuple[Path, str]] = []
+    for p in candidates:
+        if p.is_file():
+            collected.append((p, p.relative_to(BASE_DIR).as_posix()))
+    return collected
+
+
+def find_prebuilt_android_apk() -> Optional[Path]:
+    """配信可能なビルド済み Android APK (Tetheract_Android.apk) のパスを返す"""
+    candidates = [
+        BASE_DIR / "android" / "Tetheract_Android.apk",
+        BASE_DIR / "dist_v2" / "android" / "Tetheract_Android.apk",
+        BASE_DIR / "dist" / "android" / "Tetheract_Android.apk",
+    ]
+    for p in candidates:
+        if p.is_file() and p.stat().st_size > 0:
+            return p
+    return None
+
+
+def _read_native_revision_from_prebuilt_apk() -> str:
+    """配布環境等で Kotlin ソースが無い場合、同梱済み APK 内の ui_bundle_meta.json から native_revision を取得する"""
+    apk_path = find_prebuilt_android_apk()
+    if not apk_path:
+        return ""
+    try:
+        with zipfile.ZipFile(apk_path, "r") as zf:
+            if "assets/ui_bundle_meta.json" in zf.namelist():
+                meta = json.loads(zf.read("assets/ui_bundle_meta.json").decode("utf-8"))
+                return str(meta.get("native_revision") or "").strip()
+    except Exception as e:
+        logger.debug(f"APK内蔵メタからの native_revision 読取スキップ: {e}")
+    return ""
+
+
+def get_mobile_ui_bundle_info() -> Dict[str, Any]:
+    """モバイルUIアセット群・VERSION・Androidネイティブソースから決定論的リビジョン情報を算出する"""
+    files = collect_mobile_ui_asset_files()
+    native_files = collect_android_native_source_files()
+    ver_file = BASE_DIR / "VERSION"
+    ver_stat = ver_file.stat() if ver_file.exists() else None
+    ver_sig = (ver_stat.st_mtime_ns, ver_stat.st_size) if ver_stat else (0, 0)
+
+    apk_path = find_prebuilt_android_apk() if not native_files else None
+    apk_stat = apk_path.stat() if apk_path else None
+    apk_sig = (str(apk_path), apk_stat.st_mtime_ns, apk_stat.st_size) if apk_path and apk_stat else None
+
+    sig_items: List[Any] = [ver_sig, apk_sig]
+    max_mtime_ns = ver_stat.st_mtime_ns if ver_stat else 0
+    for src, rel_posix in files:
+        st = src.stat()
+        sig_items.append(("ui", rel_posix, st.st_mtime_ns, st.st_size))
+        if st.st_mtime_ns > max_mtime_ns:
+            max_mtime_ns = st.st_mtime_ns
+    for src, rel_posix in native_files:
+        st = src.stat()
+        sig_items.append(("native", rel_posix, st.st_mtime_ns, st.st_size))
+    sig = tuple(sig_items)
+
+    with _ui_bundle_lock:
+        cached_info = _ui_bundle_info_cache.get("info")
+        if _ui_bundle_info_cache.get("sig") == sig and isinstance(cached_info, dict):
+            return dict(cached_info)
+
+        ver_str = read_app_version()
+        ui_hasher = hashlib.sha256()
+        ui_hasher.update(f"version:{ver_str}\n".encode("utf-8"))
+        for src, rel_posix in files:
+            file_hash = hashlib.sha256(src.read_bytes()).hexdigest()
+            ui_hasher.update(f"{rel_posix}:{file_hash}\n".encode("utf-8"))
+
+        if native_files:
+            native_hasher = hashlib.sha256()
+            for src, rel_posix in native_files:
+                file_hash = hashlib.sha256(src.read_bytes()).hexdigest()
+                native_hasher.update(f"{rel_posix}:{file_hash}\n".encode("utf-8"))
+            native_revision = native_hasher.hexdigest()[:16]
+        else:
+            native_revision = _read_native_revision_from_prebuilt_apk()
+
+        ui_revision = ui_hasher.hexdigest()[:16]
+        ui_mtime = int(max_mtime_ns // 1_000_000) if max_mtime_ns > 0 else int(datetime.datetime.now().timestamp() * 1000)
+        info = {
+            "ui_revision": ui_revision,
+            "native_revision": native_revision,
+            "ui_mtime": ui_mtime,
+            "ui_version": ver_str,
+        }
+        _ui_bundle_info_cache["sig"] = sig
+        _ui_bundle_info_cache["info"] = dict(info)
+        return info
+
+
+def write_mobile_ui_bundle_zip(
+    output_zip: Path,
+    info: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """指定パスへモバイルUIホットアップデート用 ZIP (tetheract_ui_bundle.zip) を原子的に生成する"""
+    bundle_info = dict(info) if info else get_mobile_ui_bundle_info()
+    stamp_ms = int(bundle_info.get("ui_mtime") or 0)
+    stamp_dt = datetime.datetime.fromtimestamp(stamp_ms / 1000.0) if stamp_ms > 0 else datetime.datetime.now()
+    ver_str = str(bundle_info.get("ui_version") or read_app_version())
+
+    files = collect_mobile_ui_asset_files()
+    output_zip.parent.mkdir(parents=True, exist_ok=True)
+    tmp_zip = output_zip.with_name(f".{output_zip.name}.{threading.get_ident()}.tmp")
+    try:
+        with zipfile.ZipFile(tmp_zip, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            for src, rel_posix in files:
+                if rel_posix == "mobile.html":
+                    stamped_html = render_stamped_mobile_html(_read_text_utf8(src), ver_str, stamp_dt)
+                    zf.writestr(rel_posix, stamped_html.encode("utf-8"))
+                else:
+                    zf.write(src, arcname=rel_posix)
+            zf.writestr(
+                "ui_bundle_meta.json",
+                json.dumps(bundle_info, ensure_ascii=False, indent=2).encode("utf-8"),
+            )
+        tmp_zip.replace(output_zip)
+    finally:
+        if tmp_zip.exists():
+            try:
+                tmp_zip.unlink()
+            except Exception:
+                pass
+    return bundle_info
+
+
+def ensure_mobile_ui_bundle_zip(force: bool = False) -> Tuple[Optional[Path], Dict[str, Any]]:
+    """
+    モバイルUIアセットの変更を検知し、必要時のみ cache/tetheract_ui_bundle.zip を最新化して返す。
+    """
+    info = get_mobile_ui_bundle_info()
+    with _ui_bundle_lock:
+        try:
+            if not force and UI_BUNDLE_PATH.exists() and UI_BUNDLE_PATH.stat().st_size > 0 and UI_BUNDLE_META_PATH.exists():
+                meta = json.loads(UI_BUNDLE_META_PATH.read_text(encoding="utf-8"))
+                if meta.get("ui_revision") == info["ui_revision"]:
+                    return UI_BUNDLE_PATH, info
+        except Exception as e:
+            logger.debug(f"UIバンドルメタ読込スキップ: {e}")
+
+        try:
+            write_mobile_ui_bundle_zip(UI_BUNDLE_PATH, info)
+            UI_BUNDLE_META_PATH.parent.mkdir(parents=True, exist_ok=True)
+            tmp_meta = UI_BUNDLE_META_PATH.with_name(f".{UI_BUNDLE_META_PATH.name}.tmp")
+            tmp_meta.write_text(json.dumps(info, ensure_ascii=False, indent=2), encoding="utf-8")
+            tmp_meta.replace(UI_BUNDLE_META_PATH)
+            return UI_BUNDLE_PATH, info
+        except Exception as e:
+            logger.error(f"UIバンドルZIPの生成に失敗しました: {e}")
+            return None, info
 
 
 if __name__ == "__main__":

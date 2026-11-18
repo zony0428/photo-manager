@@ -146,6 +146,7 @@
       el.style.display = 'none';
     }, durationMs);
   }
+  window.__showTetheractToast = showToast;
 
   /**
    * モバイル・タッチUI用の確認モーダル（window.confirm 禁止規約対応）
@@ -654,6 +655,10 @@
         wifiBox.innerHTML = '「今すぐWi-Fi同期」を押すと同一Wi-Fi内のPC母艦を自動検出して接続します（PC側で「許可する」を押すかQRコード読み取りでも接続できます）。';
       }
     }
+    const nativeBox = document.getElementById('mNativeApkUpdateBox');
+    if (nativeBox) {
+      nativeBox.style.display = Boolean(st && st.nativeApkUpdateRequired) ? 'block' : 'none';
+    }
   }
 
   async function _triggerAndroidWifiLockerSync(rawUrlInput = '') {
@@ -780,6 +785,11 @@
         welcomeBtnSpan.textContent = `検出したPC (${disc.hostname}) とWi-Fiで同期`;
       }
       showToast(`● 同一Wi-Fi上にPC母艦「${disc.hostname || disc.serverUrl}」を検出しました`, 3000);
+    };
+    window.__onTetheractNativeApkUpdateRequired = (info) => {
+      _refreshWifiStatusBox();
+      const verLabel = info && info.uiVersion ? ` (v${info.uiVersion})` : '';
+      showToast(`! 本体アプリ(APK)${verLabel}のネイティブ更新があります。「DB/同期」から最新APKを取得できます`, 5500);
     };
     if (!_nativeUsbSyncEventBound) {
       _nativeUsbSyncEventBound = true;
@@ -5719,6 +5729,18 @@
       const inp = document.getElementById('mWifiUrlInput');
       const val = inp ? inp.value.trim() : '';
       runUnifiedUplink(val);
+    });
+    document.getElementById('mDownloadNativeApkBtn')?.addEventListener('click', async () => {
+      if (!window.TetheractAdapter || typeof window.TetheractAdapter.openPcApkDownloadInBrowser !== 'function') {
+        showToast('この環境ではAPKの直接ダウンロードに対応していません');
+        return;
+      }
+      const res = await window.TetheractAdapter.openPcApkDownloadInBrowser();
+      if (res && res.ok) {
+        showToast('ブラウザで最新APKのダウンロードを開始しました', 4000);
+      } else {
+        showToast((res && res.error) || 'APKダウンロードの起動に失敗しました', 4000);
+      }
     });
     document.getElementById('mSaveWifiUrlBtn')?.addEventListener('click', () => {
       const inp = document.getElementById('mWifiUrlInput');

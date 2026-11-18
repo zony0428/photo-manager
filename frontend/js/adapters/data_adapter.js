@@ -162,6 +162,8 @@
         lastCachedAt: String(p.lastCachedAt || ''),
         pendingChangeCount: Number(p.pendingChangeCount || 0),
         availableUpdate: p.availableUpdate || null,
+        nativeApkUpdateRequired: Boolean(p.nativeApkUpdateRequired),
+        apkDownloadUrl: String(p.apkDownloadUrl || ''),
       };
     }
     if (mode === 'http_api') {
@@ -830,6 +832,14 @@
     return { ok: false, mode };
   }
 
+  async function openPcApkDownloadInBrowser() {
+    const mode = await detectRuntimeMode();
+    if (mode === 'android_native' && typeof global.TetheractNative.openPcApkDownloadInBrowserJson === 'function') {
+      return _safeParseJson(global.TetheractNative.openPcApkDownloadInBrowserJson(), { ok: false });
+    }
+    return { ok: false, mode };
+  }
+
   const TetheractAdapter = {
     detectRuntimeMode,
     getRuntimeModeSync,
@@ -838,6 +848,7 @@
     refreshLockerFromUsbIfUpdated,
     saveWifiPairing,
     syncLockerOverWifi,
+    openPcApkDownloadInBrowser,
     queryPhotos,
     getFilterTrees,
     getThumbnailUrl,
