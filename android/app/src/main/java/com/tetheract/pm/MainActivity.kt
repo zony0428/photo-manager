@@ -176,6 +176,18 @@ class MainActivity : Activity() {
                     }
                 }
                 webViewClient = createInterceptingWebViewClient()
+                setDownloadListener { url, _, _, _, _ ->
+                    if (!url.isNullOrBlank() && (url.startsWith("http://", ignoreCase = true) || url.startsWith("https://", ignoreCase = true))) {
+                        try {
+                            val dlIntent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            startActivity(dlIntent)
+                        } catch (e: Exception) {
+                            Log.w(TAG, "WebView ダウンロード起動失敗: $url", e)
+                        }
+                    }
+                }
                 addJavascriptInterface(nativeBridge, "TetheractNative")
             }
 
@@ -262,7 +274,7 @@ class MainActivity : Activity() {
         if (!::wifiSyncManager.isInitialized || !::usbOfflineUpdater.isInitialized) return
         if (wifiSyncInProgress.get() || (::phoneCaseManager.isInitialized && phoneCaseManager.isTransferRunning())) return
         val rev = wifiSyncManager.remoteUiRevision
-        if (wifiSyncManager.isPcOnline && rev.isNotEmpty() && rev != lastFailedWifiUiRevision && usbOfflineUpdater.needsWifiUiUpdate(rev)) {
+        if (wifiSyncManager.isPcOnline && !wifiSyncManager.isNativeApkUpdateAvailable() && rev.isNotEmpty() && rev != lastFailedWifiUiRevision && usbOfflineUpdater.needsWifiUiUpdate(rev)) {
             if (wifiUiUpdateInProgress.compareAndSet(false, true)) {
                 try {
                     val res = wifiSyncManager.checkAndApplyRemoteUiUpdateIfNeeded(triggerReload = false)
@@ -508,6 +520,7 @@ class MainActivity : Activity() {
                 val path = url.path ?: "/"
                 return when {
                     path.startsWith("/thumb/") -> serveThumbnailBlob(path.removePrefix("/thumb/"))
+                    path.startsWith("/watermark/") -> serveWatermarkBlob(path.removePrefix("/watermark/"))
                     path.startsWith("/usb_photo/") -> serveUsbFullPhoto(path.removePrefix("/usb_photo/"), url.getQueryParameter("only_hd") == "1")
                     path.startsWith("/phone_photo/") -> servePhonePhoto(path.removePrefix("/phone_photo/"), url.getQueryParameter("thumb") == "1")
                     path.startsWith("/app/") -> serveAppAsset(path.removePrefix("/app/"))
@@ -551,6 +564,23 @@ class MainActivity : Activity() {
                 }
             }
         }
+    }
+
+    private fun serveWatermarkBlob(idSegment: String): WebResourceResponse {
+        val assetId = idSegment.substringBefore('?').substringBefore('/').trim()
+        val hit = lockerDbManager.watermarkStore.getAssetBlob(assetId)
+        if (hit != null) {
+            return WebResourceResponse(
+                hit.first, null, 200, "OK",
+                mapOf("Access-Control-Allow-Origin" to "*", "Cache-Control" to "public, max-age=86400"),
+                ByteArrayInputStream(hit.second)
+            )
+        }
+        return WebResourceResponse(
+            "text/plain", "utf-8", 404, "Not Found",
+            mapOf("Access-Control-Allow-Origin" to "*"),
+            ByteArrayInputStream(ByteArray(0))
+        )
     }
 
     private fun serveThumbnailBlob(idSegment: String): WebResourceResponse {

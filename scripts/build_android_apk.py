@@ -86,10 +86,14 @@ REQUIRED_ANDROID_FILES = [
     JAVA_PKG_DIR / "PhoneCaseTransferRunner.kt",
     JAVA_PKG_DIR / "PhoneCatalogEngine.kt",
     JAVA_PKG_DIR / "OnnxPrivacyEngine.kt",
+    JAVA_PKG_DIR / "QuickShareHelper.kt",
+    JAVA_PKG_DIR / "WatermarkAssetStore.kt",
     MAIN_SRC_DIR / "res" / "drawable" / "ic_tile_fieldlog.xml",
+    MAIN_SRC_DIR / "res" / "xml" / "file_paths.xml",
     ADAPTER_JS_PATH,
     ADAPTERS_DIR / "field_log_adapter.js",
     ADAPTERS_DIR / "phone_case_adapter.js",
+    ADAPTERS_DIR / "watermark_adapter.js",
 ]
 
 FRONTEND_SYNC_TARGETS = UI_BUNDLE_SYNC_TARGETS

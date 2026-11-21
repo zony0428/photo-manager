@@ -794,6 +794,7 @@ class WifiLockerSyncManager(
         remoteVer: String,
         triggerReload: Boolean = false
     ): Boolean {
+        if (isNativeApkUpdateAvailable()) return false
         val updater = usbOfflineUpdater ?: return false
         val cleanRev = remoteRev.trim()
         val cleanUrl = serverUrl.trim().trimEnd('/')

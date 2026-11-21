@@ -47,8 +47,14 @@ class UsbOfflineUpdater(
             val prevApkVer = meta.optLong("apk_version_code", 0L)
             val bundleMtime = meta.optLong("ui_mtime", 0L)
             val hasUiRevision = meta.optString("ui_revision", "").isNotEmpty()
+            val installedNativeRev = getInstalledApkNativeRevision()
+            val bundleNativeRev = meta.optString("native_revision", "").trim()
+            val hasIncompatibleNativeRev = hasUiRevision && installedNativeRev.isNotEmpty() && bundleNativeRev != installedNativeRev
             val isStaleUsbBundle = !hasUiRevision && (bundleMtime in 1L..pkgTime)
-            if (pkgTime > prevApkTime || pkgVer > prevApkVer || isStaleUsbBundle) {
+            if (pkgTime > prevApkTime || pkgVer > prevApkVer || isStaleUsbBundle || hasIncompatibleNativeRev) {
+                if (hasIncompatibleNativeRev) {
+                    Log.i(TAG, "ネイティブ層リビジョン不一致のためホットUIキャッシュをリセットしました (bundle=$bundleNativeRev, installed=$installedNativeRev)")
+                }
                 if (uiBundleCurrentDir.exists()) uiBundleCurrentDir.deleteRecursively()
                 uiBundleCurrentDir.mkdirs()
                 writeBundleMeta(
@@ -212,6 +218,16 @@ class UsbOfflineUpdater(
                 stagingDir.deleteRecursively()
                 return false
             }
+            val embeddedMetaFile = File(stagingDir, "ui_bundle_meta.json")
+            val embeddedMeta = if (embeddedMetaFile.exists()) {
+                try { JSONObject(embeddedMetaFile.readText(Charsets.UTF_8)) } catch (_: Exception) { null }
+            } else null
+            val bundleNativeRev = embeddedMeta?.optString("native_revision", "")?.trim().orEmpty()
+            if (bundleNativeRev.isEmpty() || needsNativeApkUpdate(bundleNativeRev)) {
+                Log.w(TAG, "ネイティブ層と互換性のないWi-Fi UIバンドルを拒否しました (bundle=$bundleNativeRev, installed=${getInstalledApkNativeRevision()})")
+                stagingDir.deleteRecursively()
+                return false
+            }
             promoteStagingToCurrent(stagingDir)
 
             val (pkgTime, pkgVer) = readCurrentApkStamp()
@@ -220,6 +236,7 @@ class UsbOfflineUpdater(
                     .put("apk_update_time", pkgTime)
                     .put("apk_version_code", pkgVer)
                     .put("ui_revision", uiRevision.trim())
+                    .put("native_revision", bundleNativeRev)
                     .put("ui_mtime", uiMtime)
                     .put("ui_size", zipFile.length())
                     .put("ui_version", uiVersion.trim())
@@ -314,14 +331,31 @@ class UsbOfflineUpdater(
                 }
             }
 
-            promoteStagingToCurrent(stagingDir)
-
-            val (pkgTime, pkgVer) = readCurrentApkStamp()
-            val embeddedMetaFile = File(uiBundleCurrentDir, "ui_bundle_meta.json")
+            if (!File(stagingDir, "mobile.html").exists()) {
+                stagingDir.deleteRecursively()
+                return false
+            }
+            val embeddedMetaFile = File(stagingDir, "ui_bundle_meta.json")
             val embeddedMeta = if (embeddedMetaFile.exists()) {
                 try { JSONObject(embeddedMetaFile.readText(Charsets.UTF_8)) } catch (_: Exception) { null }
             } else null
+            val bundleNativeRev = embeddedMeta?.optString("native_revision", "")?.trim().orEmpty()
+            val installedNativeRev = getInstalledApkNativeRevision()
+            if (name.endsWith(".zip")) {
+                if (bundleNativeRev.isEmpty() || needsNativeApkUpdate(bundleNativeRev)) {
+                    Log.w(TAG, "ネイティブ層と互換性のないUSB UIバンドルを拒否しました (bundle=$bundleNativeRev, installed=$installedNativeRev)")
+                    stagingDir.deleteRecursively()
+                    return false
+                }
+            } else if (installedNativeRev.isNotEmpty() && (bundleNativeRev.isEmpty() || needsNativeApkUpdate(bundleNativeRev))) {
+                Log.w(TAG, "ネイティブ層リビジョン不一致のためUSB単体HTML適用を拒否しました")
+                stagingDir.deleteRecursively()
+                return false
+            }
 
+            promoteStagingToCurrent(stagingDir)
+
+            val (pkgTime, pkgVer) = readCurrentApkStamp()
             val nextMeta = JSONObject()
                 .put("apk_update_time", pkgTime)
                 .put("apk_version_code", pkgVer)
@@ -333,6 +367,9 @@ class UsbOfflineUpdater(
             if (embRev.isNotEmpty()) {
                 nextMeta.put("ui_revision", embRev)
                 nextMeta.put("ui_version", embeddedMeta?.optString("ui_version", "")?.trim().orEmpty())
+            }
+            if (bundleNativeRev.isNotEmpty()) {
+                nextMeta.put("native_revision", bundleNativeRev)
             }
             writeBundleMeta(nextMeta)
             true

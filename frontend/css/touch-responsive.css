@@ -1743,3 +1743,147 @@ body.is-af-pick-mode .m-card:active {
   }
 }
 
+/* モバイル Art Framer ウォーターマークロゴライブラリ */
+.t-af-seg-grid2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.t-af-wm-type-btn {
+  height: 32px;
+  border-radius: 7px;
+  border: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.t-af-wm-type-btn.active {
+  background: rgba(var(--accent-rgb), 0.18);
+  border-color: var(--accent-primary);
+  color: var(--text-main);
+}
+
+.t-af-wm-gallery-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.t-af-wm-name-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.t-af-wm-asset-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  max-height: 168px;
+  overflow-y: auto;
+}
+
+.t-af-wm-asset-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 5px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.03);
+  cursor: pointer;
+}
+
+.t-af-wm-asset-card.is-selected {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.35);
+}
+
+.t-af-wm-asset-thumb {
+  width: 100%;
+  height: 44px;
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  overflow: hidden;
+  background-color: #2b2f36;
+  background-image:
+    linear-gradient(45deg, #3a3f47 25%, transparent 25%),
+    linear-gradient(-45deg, #3a3f47 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #3a3f47 75%),
+    linear-gradient(-45deg, transparent 75%, #3a3f47 75%);
+  background-size: 12px 12px;
+  background-position: 0 0, 0 6px, 6px -6px, -6px 0;
+}
+
+.t-af-wm-asset-thumb img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.t-af-wm-asset-name {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-right: 18px;
+}
+
+.t-af-wm-asset-card.is-selected .t-af-wm-asset-name {
+  color: var(--text-main);
+  font-weight: 600;
+}
+
+.t-af-wm-asset-del {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(16, 18, 22, 0.82);
+  color: #e5e7eb;
+  font-size: 11px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.t-af-wm-asset-del.is-confirm {
+  background: #dc2626;
+  border-color: #ef4444;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.t-af-wm-asset-empty {
+  grid-column: 1 / -1;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 10px 6px;
+  border: 1px dashed var(--border-color);
+  border-radius: 7px;
+}
+
+

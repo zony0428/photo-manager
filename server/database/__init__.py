@@ -194,3 +194,15 @@ from .field_log_apply import (
     list_field_log_batches,
     undo_field_log_batch,
 )
+
+# ウォーターマーク用ロゴ画像アセット管理
+from .watermarks import (
+    DEFAULT_WATERMARK_ID,
+    ensure_watermark_assets_table,
+    seed_default_watermark_if_needed,
+    list_watermark_assets,
+    get_watermark_asset_blob,
+    save_watermark_asset,
+    delete_watermark_asset,
+)
+

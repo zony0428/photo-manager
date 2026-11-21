@@ -39,6 +39,7 @@ USBメモリ（exFAT等）での微小ファイル大量生成によるI/O劣化
 
 - **`thumbnails` テーブル**: `photo_id INTEGER PRIMARY KEY` による ROWID 直結1発ルックアップ構造。一覧クエリで寸法のみ参照する際は BLOB 本体ページを読まないカバリングインデックス `idx_thumbnails_dims(photo_id, width, height)` を使用する。
 - **`photo_tags` テーブル**: `PRIMARY KEY (photo_id, tag) WITHOUT ROWID` により同一写真のタグ行を物理隣接配置する。
+- **`watermark_assets` テーブル (`server/database/watermarks.py`)**: Art Framer 用の透過 PNG ロゴ画像（長辺最大 2048px へ自動正規化・最大 24 枚）を `library.db` 内に BLOB 格納し、USB 持ち歩きおよび `mobile_delta.db` 経由のスマホ同期まで完全ポータブルに持ち運べる構造。初回初期化時のみデフォルト `TETHERACT` ロゴ（`default_tetheract_logo`）を1回だけ投入し、`app_meta` の `default_watermark_seeded_v1` フラグによりユーザー削除後の再復活を防ぐ。
 - **基本PRAGMA (`server/database/connection.py`)**: `journal_mode = WAL`, `cache_size = -16000` (16MB), `mmap_size = 268435456` (256MB), `synchronous = NORMAL`, `temp_store = MEMORY`。
 
 ---

@@ -36,6 +36,7 @@ class TetheractNativeBridge(
     }
 
     private val appContext: Context = context.applicationContext
+    private val quickShareHelper: QuickShareHelper = QuickShareHelper(appContext)
     private val lastPhotoSourceMap = java.util.concurrent.ConcurrentHashMap<Long, String>()
     private val statusRefreshExecutor = java.util.concurrent.Executors.newSingleThreadExecutor { r ->
         Thread(r, "TetheractUsbStatusRefresh").apply { isDaemon = true }
@@ -728,5 +729,25 @@ class TetheractNativeBridge(
             Log.e(TAG, "phoneCaseTransferAsyncJson 起動エラー", e)
             JSONObject().put("ok", false).put("error", e.message ?: "Failed to start transfer").toString()
         }
+    }
+
+    @JavascriptInterface
+    fun listWatermarkAssetsJson(): String {
+        return lockerDbManager.watermarkStore.listAssetsJson()
+    }
+
+    @JavascriptInterface
+    fun saveWatermarkAssetJson(payloadJson: String): String {
+        return lockerDbManager.watermarkStore.saveAssetJson(payloadJson)
+    }
+
+    @JavascriptInterface
+    fun deleteWatermarkAssetJson(assetId: String): String {
+        return lockerDbManager.watermarkStore.deleteAssetJson(assetId)
+    }
+
+    @JavascriptInterface
+    fun sharePhotoToSnsJson(payloadJson: String): String {
+        return quickShareHelper.sharePhotoFromDataUrlJson(payloadJson)
     }
 }

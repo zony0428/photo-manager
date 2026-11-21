@@ -142,10 +142,11 @@ function _ftPruneExpanded() {
  * ツリー全体を再取得して描画する（スキャン・管理状態変更・ドライブ抜き差し後に呼ぶ）。
  * 展開中のノードは子を先に読み込んでから描画し、ちらつきを防ぐ。
  */
-async function refreshFolderTree() {
+async function refreshFolderTree(forceRefresh = false) {
   const token = ++folderTreeState.renderToken;
   try {
-    const res = await fetch('/api/folder-tree/roots');
+    const url = forceRefresh ? '/api/folder-tree/roots?refresh=1' : '/api/folder-tree/roots';
+    const res = await fetch(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const roots = await res.json();
     if (token !== folderTreeState.renderToken) return;

@@ -3110,7 +3110,11 @@ function setupEventListeners() {
   const reloadFolderTreeBtn = document.getElementById('reloadFolderTreeBtn');
   if (reloadFolderTreeBtn) {
     reloadFolderTreeBtn.addEventListener('click', async () => {
+      if (typeof refreshFolderTree === 'function') {
+        await refreshFolderTree(true);
+      }
       await fetchFolders();
+      await fetchPhotos();
       if (state.currentFilter.type === 'folder' && state.currentFilter.value && !state.currentFilter.isOffline) {
         _dismissedFolderDiffSignatures.clear();
         const folderName = state.currentFilter.value.split(/[\\/]/).filter(Boolean).pop() || state.currentFilter.value;

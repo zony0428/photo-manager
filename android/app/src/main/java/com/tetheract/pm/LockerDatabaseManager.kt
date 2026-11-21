@@ -48,6 +48,7 @@ class LockerDatabaseManager(private val context: Context) {
     private val journalLock = Any()
     private val metaLock = Any()
     private val journal = PendingJournalStore(journalDbFile, journalLock) { formatLocalNow() }
+    val watermarkStore = WatermarkAssetStore(context.applicationContext, this)
     @Volatile
     private var libraryDb: SQLiteDatabase? = null
     @Volatile
@@ -204,6 +205,11 @@ class LockerDatabaseManager(private val context: Context) {
 
     /** 一時ダウンロードした完全版 library.db を排他 writeLock 下で原子的に差し替え、オープンとジャーナル再適用まで行う */
     fun replaceLibraryDatabaseFromTemp(srcTmpFile: File, bufferSize: Int = 65536): Int = withWriteLock {
+        val mobileWatermarkBackup = try {
+            ensureLibraryDbOpen(createIfMissing = false)?.let { watermarkStore.readMobileLocalBackup(it) } ?: emptyList()
+        } catch (_: Exception) {
+            emptyList()
+        }
         closeLibraryDatabase()
         File(lockerDir, "library.db-wal").delete()
         File(lockerDir, "library.db-shm").delete()
@@ -224,7 +230,10 @@ class LockerDatabaseManager(private val context: Context) {
             }
             srcTmpFile.delete()
         }
-        ensureLibraryDbOpen()
+        val reopenedDb = ensureLibraryDbOpen()
+        if (reopenedDb != null && mobileWatermarkBackup.isNotEmpty()) {
+            watermarkStore.restoreMobileLocalBackup(reopenedDb, mobileWatermarkBackup)
+        }
         replayPendingJournal()
     }
 
@@ -885,6 +894,27 @@ class LockerDatabaseManager(private val context: Context) {
                                 }
                             }
                         }
+                    }
+                }
+                db.rawQuery("SELECT 1 FROM delta.sqlite_master WHERE type='table' AND name='watermark_assets'", null).use { tc ->
+                    if (tc.moveToFirst()) {
+                        db.execSQL(
+                            """
+                            CREATE TABLE IF NOT EXISTS main.watermark_assets (
+                                id TEXT PRIMARY KEY,
+                                name TEXT NOT NULL,
+                                mime_type TEXT NOT NULL,
+                                width INTEGER NOT NULL,
+                                height INTEGER NOT NULL,
+                                data BLOB NOT NULL,
+                                origin TEXT NOT NULL DEFAULT 'pc',
+                                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                            )
+                            """.trimIndent()
+                        )
+                        db.execSQL("DELETE FROM main.watermark_assets WHERE IFNULL(origin, 'pc') != 'mobile'")
+                        db.execSQL("INSERT OR REPLACE INTO main.watermark_assets SELECT * FROM delta.watermark_assets")
+                        db.execSQL("INSERT OR REPLACE INTO main.app_meta (key, value) VALUES ('${WatermarkAssetStore.DEFAULT_WATERMARK_SEED_KEY}', '1')")
                     }
                 }
                 db.execSQL("INSERT OR REPLACE INTO main.thumbnails (photo_id, data, width, height, created_at) SELECT photo_id, data, width, height, created_at FROM delta.thumbnails")

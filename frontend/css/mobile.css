@@ -1941,3 +1941,187 @@ html.is-native-app .m-browser-only {
   opacity: 0.62;
   border-style: dashed;
 }
+
+/* ライトボックス アクションランチャー */
+.m-viewer-launcher-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background-color: rgba(255, 255, 255, 0.08);
+  color: #f0f2f5;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.12s ease;
+}
+
+.m-viewer-launcher-btn.is-open,
+.m-viewer-launcher-btn.has-active-tool {
+  background-color: var(--accent-subtle, rgba(225, 77, 42, 0.24));
+  border-color: var(--accent-primary, #e14d2a);
+  color: #ffffff;
+}
+
+.m-viewer-launcher-dot {
+  display: none;
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background-color: var(--accent-primary, #e14d2a);
+}
+
+.m-viewer-launcher-btn.has-active-tool .m-viewer-launcher-dot {
+  display: block;
+}
+
+.m-viewer-launcher-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 44;
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.m-viewer-launcher-menu {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 56px);
+  right: 10px;
+  width: min(268px, calc(100vw - 20px));
+  z-index: 45;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  border-radius: 13px;
+  background: rgba(22, 24, 29, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  transform-origin: top right;
+  opacity: 0;
+  transform: translateY(-6px) scale(0.96);
+  transition: opacity 0.14s ease, transform 0.14s ease;
+}
+
+.m-viewer-launcher-menu.is-open {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.m-launcher-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: #f0f2f5;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+
+.m-launcher-item:active {
+  background-color: rgba(255, 255, 255, 0.10);
+}
+
+.m-launcher-item-primary {
+  background-color: rgba(225, 77, 42, 0.15);
+  border-color: rgba(225, 77, 42, 0.35);
+}
+
+.m-launcher-item-primary .m-launcher-icon {
+  color: var(--accent-primary, #e14d2a);
+}
+
+.m-launcher-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.07);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #e2e6ee;
+}
+
+.m-launcher-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+
+.m-launcher-title {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.m-launcher-sub {
+  font-size: 10.5px;
+  color: #9ca6b5;
+  line-height: 1.25;
+}
+
+.m-launcher-divider {
+  height: 1px;
+  margin: 3px 6px;
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.m-launcher-state-pill {
+  display: none;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--accent-primary, #e14d2a);
+  color: #ffffff;
+}
+
+.m-launcher-item.active .m-launcher-state-pill {
+  display: inline-block;
+}
+
+.m-launcher-toggle-pill {
+  position: relative;
+  width: 34px;
+  height: 19px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  flex-shrink: 0;
+  transition: background-color 0.15s ease;
+}
+
+.m-launcher-toggle-pill::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 15px;
+  height: 15px;
+  border-radius: 999px;
+  background: #ffffff;
+  transition: transform 0.15s ease;
+}
+
+.m-launcher-toggle.active .m-launcher-toggle-pill {
+  background: var(--accent-primary, #e14d2a);
+}
+
+.m-launcher-toggle.active .m-launcher-toggle-pill::after {
+  transform: translateX(15px);
+}
+

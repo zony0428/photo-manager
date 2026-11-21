@@ -29,6 +29,10 @@ from .tags import (
     is_color_tag,
     repair_missing_ancestor_tags,
 )
+from .watermarks import (
+    ensure_watermark_assets_table,
+    seed_default_watermark_if_needed,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -244,6 +248,13 @@ def initialize_database(fast_boot: bool = False) -> None:
                         cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='mobile_pending_signals'")
                         if not cursor.fetchone():
                             _ensure_mobile_pending_signals_table(cursor)
+                            fb_dirty = True
+                        cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='watermark_assets'")
+                        if not cursor.fetchone():
+                            ensure_watermark_assets_table(cursor)
+                            seed_default_watermark_if_needed(cursor)
+                            fb_dirty = True
+                        elif seed_default_watermark_if_needed(cursor):
                             fb_dirty = True
                         cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='scan_roots'")
                         if cursor.fetchone():
@@ -545,6 +556,10 @@ def initialize_database(fast_boot: bool = False) -> None:
 
         # モバイル待機シグナル管理テーブル（SDカード取り込み前の先行評価・タグ・GPS保管）
         _ensure_mobile_pending_signals_table(cursor)
+
+        # ウォーターマークロゴ画像テーブル＆初回デフォルトロゴ投入
+        ensure_watermark_assets_table(cursor)
+        seed_default_watermark_if_needed(cursor)
 
         _create_photos_indexes(cursor)
         conn.commit()

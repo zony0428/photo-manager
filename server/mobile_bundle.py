@@ -81,6 +81,7 @@ MOBILE_JS_REL_PATHS: List[str] = [
     "js/adapters/data_adapter.js",
     "js/adapters/field_log_adapter.js",
     "js/adapters/phone_case_adapter.js",
+    "js/adapters/watermark_adapter.js",
     "js/views/touch/touch_layout.js",
     "js/views/touch/touch_gestures.js",
     "js/views/touch/morph_thumb_bar.js",
@@ -88,6 +89,7 @@ MOBILE_JS_REL_PATHS: List[str] = [
     "js/views/touch/touch_field_log.js",
     "js/views/touch/touch_phone_case.js",
     "js/views/touch/touch_center_dial.js",
+    "js/views/touch/touch_viewer_launcher.js",
     "js/privacy_mask_editor.js",
     "js/views/touch/touch_art_framer.js",
     "js/mobile.js",
@@ -456,7 +458,7 @@ def ensure_mobile_ui_bundle_zip(force: bool = False) -> Tuple[Optional[Path], Di
         try:
             if not force and UI_BUNDLE_PATH.exists() and UI_BUNDLE_PATH.stat().st_size > 0 and UI_BUNDLE_META_PATH.exists():
                 meta = json.loads(UI_BUNDLE_META_PATH.read_text(encoding="utf-8"))
-                if meta.get("ui_revision") == info["ui_revision"]:
+                if meta.get("ui_revision") == info["ui_revision"] and meta.get("native_revision") == info["native_revision"]:
                     return UI_BUNDLE_PATH, info
         except Exception as e:
             logger.debug(f"UIバンドルメタ読込スキップ: {e}")

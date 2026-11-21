@@ -9,13 +9,13 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#16181b" id="mMetaThemeColor">
   <title>TETHERACT pm</title>
-  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=2.5.0">
-  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png?v=2.5.0">
-  <link rel="apple-touch-icon" href="/icons/icon-192.png?v=2.5.0">
-  <link rel="manifest" href="/manifest_mobile.json?v=2.5.0">
-  <link rel="stylesheet" href="/css/mobile.css?v=2.5.0">
-  <link rel="stylesheet" href="/css/touch-responsive.css?v=2.5.0">
-  <link rel="stylesheet" href="/css/touch-fieldlog.css?v=2.5.0">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=2.5.1">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png?v=2.5.1">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png?v=2.5.1">
+  <link rel="manifest" href="/manifest_mobile.json?v=2.5.1">
+  <link rel="stylesheet" href="/css/mobile.css?v=2.5.1">
+  <link rel="stylesheet" href="/css/touch-responsive.css?v=2.5.1">
+  <link rel="stylesheet" href="/css/touch-fieldlog.css?v=2.5.1">
   <!-- オフラインUSB library.db 直接読み込み用 WebAssembly SQLite (sql.js) -->
   <script src="/vendor/sqljs/sql-wasm.js"></script>
 </head>
@@ -25,7 +25,7 @@
     <header class="m-header">
       <div class="m-header-left">
         <div id="mBrandHeaderBtn" class="m-brand" role="button" tabindex="0" title="タップして同期・バージョン・レイアウト設定を開く" aria-label="TETHERACT 設定・同期メニューを開く">
-          <img class="m-logo-icon" src="/icons/icon-192.png?v=2.5.0" width="24" height="24" alt="" aria-hidden="true">
+          <img class="m-logo-icon" src="/icons/icon-192.png?v=2.5.1" width="24" height="24" alt="" aria-hidden="true">
           <div class="m-brand-titles">
             <div class="m-brand-main">
               <svg id="mBrandWordmarkSvg" class="m-brand-wordmark" viewBox="62 12 246 36" width="94" height="14" fill="none" role="img" aria-label="TETHERACT Rg">
@@ -37,7 +37,7 @@
               <span id="mModeBadge" class="m-mode-badge mode-checking">○ UNLINK</span>
               <span id="mPhotoCount" class="m-photo-count">0枚</span>
               <span id="mPendingBadge" class="m-pending-badge" style="display:none;">0</span>
-              <span id="mAppBuildBadge" class="m-build-badge" style="display:none;">v2.5.0 (11/18 23:35)</span>
+              <span id="mAppBuildBadge" class="m-build-badge" style="display:none;">v2.5.1 (11/21 23:05)</span>
             </div>
           </div>
         </div>
@@ -280,22 +280,74 @@
         </div>
 
         <div class="m-viewer-top-actions">
-          <button id="mViewerAutoAdvanceBtn" class="m-viewer-info-btn active" title="評価した直後に次の写真へ自動進行 (ON/OFF)">
-            <span>⚡次送</span>
-          </button>
-          <button id="mViewerArtFramerBtn" class="m-viewer-info-btn" title="Art Framer（プライバシーマスク・プリント枠・共有）">
-            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="7" y="7" width="10" height="10" rx="1"/><circle cx="15" cy="9" r="0.9"/></svg>
-            <span>枠</span>
-          </button>
-          <button id="mViewerAdjustBtn" class="m-viewer-info-btn" title="非破壊調整 (露出・コントラスト・彩度・傾き)">
-            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.75"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/></svg>
-            <span>調整</span>
-          </button>
-          <button id="mViewerOpenInfoBtn" class="m-viewer-info-btn" title="タグ編集・Exif詳細を開く（上スワイプでも起動）">
-            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
-            <span>詳細</span>
+          <button id="mViewerLauncherBtn" class="m-viewer-launcher-btn" aria-label="ツールメニューを開く" aria-expanded="false" aria-controls="mViewerLauncherMenu" title="SNS共有・Art Framer・調整・詳細">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/>
+              <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/>
+              <circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/>
+            </svg>
+            <span class="m-viewer-launcher-dot" aria-hidden="true"></span>
           </button>
         </div>
+      </div>
+
+      <!-- ライトボックス アクションランチャーポップオーバー -->
+      <div id="mViewerLauncherBackdrop" class="m-viewer-launcher-backdrop" style="display:none;"></div>
+      <div id="mViewerLauncherMenu" class="m-viewer-launcher-menu" role="menu" aria-label="写真アクション" style="display:none;">
+        <button id="mViewerQuickShareBtn" type="button" class="m-launcher-item m-launcher-item-primary" role="menuitem">
+          <span class="m-launcher-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+          </span>
+          <span class="m-launcher-text">
+            <span class="m-launcher-title">SNSへ共有</span>
+            <span class="m-launcher-sub">調整反映・GPS除去して一時共有</span>
+          </span>
+        </button>
+
+        <div class="m-launcher-divider" role="separator"></div>
+
+        <button id="mViewerArtFramerBtn" type="button" class="m-launcher-item" role="menuitem">
+          <span class="m-launcher-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="7" y="7" width="10" height="10" rx="1"/><circle cx="15" cy="9" r="0.9"/></svg>
+          </span>
+          <span class="m-launcher-text">
+            <span class="m-launcher-title">Art Framer</span>
+            <span class="m-launcher-sub">枠・ロゴ透かし・マスク仕上げ</span>
+          </span>
+        </button>
+
+        <button id="mViewerAdjustBtn" type="button" class="m-launcher-item" role="menuitem">
+          <span class="m-launcher-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/></svg>
+          </span>
+          <span class="m-launcher-text">
+            <span class="m-launcher-title">非破壊調整</span>
+            <span class="m-launcher-sub">露出・コントラスト・彩度・傾き</span>
+          </span>
+          <span class="m-launcher-state-pill">ON</span>
+        </button>
+
+        <button id="mViewerOpenInfoBtn" type="button" class="m-launcher-item" role="menuitem">
+          <span class="m-launcher-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+          </span>
+          <span class="m-launcher-text">
+            <span class="m-launcher-title">タグ・Exif詳細</span>
+            <span class="m-launcher-sub">上スワイプでも開けます</span>
+          </span>
+        </button>
+
+        <div class="m-launcher-divider" role="separator"></div>
+
+        <button id="mViewerAutoAdvanceBtn" type="button" class="m-launcher-item m-launcher-toggle active" role="menuitemcheckbox" aria-checked="true">
+          <span class="m-launcher-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          </span>
+          <span class="m-launcher-text">
+            <span class="m-launcher-title">評価後の自動次送り</span>
+          </span>
+          <span class="m-launcher-toggle-pill" aria-hidden="true"></span>
+        </button>
       </div>
 
       <!-- 中央画像ステージ（シングルタップで没入表示、左右スワイプ移動、上下スワイプで一覧/詳細、ダブルタップ/ピンチズーム） -->
@@ -384,7 +436,7 @@
         <div class="m-sheet-header">
           <div>
             <div class="m-sheet-title"><span class="m-native-only">Wi-Fi同期 &amp; 設定</span><span class="m-browser-only">DB読込 &amp; 選別データの保存</span></div>
-            <div id="mModalAppBuildInfo" style="font-size:0.70rem; color:var(--text-muted, #9ca6b5); margin-top:2px;">TETHERACT pm · v2.5.0 (Build 2026-11-18 23:35)</div>
+            <div id="mModalAppBuildInfo" style="font-size:0.70rem; color:var(--text-muted, #9ca6b5); margin-top:2px;">TETHERACT pm · v2.5.1 (Build 2026-11-21 23:05)</div>
           </div>
           <button id="mCloseDbSyncBtn" class="m-icon-btn">✕</button>
         </div>
@@ -543,21 +595,23 @@
   </div>
 
   <!-- Layer 2: Core Domain & State -->
-  <script src="/js/core/tree_builder.js?v=2.5.0"></script>
+  <script src="/js/core/tree_builder.js?v=2.5.1"></script>
   <!-- Layer 1: Data Adapter (Android Native / HTTP API / WASM SQLite) -->
-  <script src="/js/adapters/data_adapter.js?v=2.5.0"></script>
-  <script src="/js/adapters/field_log_adapter.js?v=2.5.0"></script>
-  <script src="/js/adapters/phone_case_adapter.js?v=2.5.0"></script>
+  <script src="/js/adapters/data_adapter.js?v=2.5.1"></script>
+  <script src="/js/adapters/field_log_adapter.js?v=2.5.1"></script>
+  <script src="/js/adapters/phone_case_adapter.js?v=2.5.1"></script>
+  <script src="/js/adapters/watermark_adapter.js?v=2.5.1"></script>
   <!-- Layer 3: Touch & Tablet View / Gesture Controllers -->
-  <script src="/js/views/touch/touch_layout.js?v=2.5.0"></script>
-  <script src="/js/views/touch/touch_gestures.js?v=2.5.0"></script>
-  <script src="/js/views/touch/morph_thumb_bar.js?v=2.5.0"></script>
-  <script src="/js/views/touch/touch_duel.js?v=2.5.0"></script>
-  <script src="/js/views/touch/touch_field_log.js?v=2.5.0"></script>
-  <script src="/js/views/touch/touch_phone_case.js?v=2.5.0"></script>
-  <script src="/js/views/touch/touch_center_dial.js?v=2.5.0"></script>
-  <script src="/js/privacy_mask_editor.js?v=2.5.0"></script>
-  <script src="/js/views/touch/touch_art_framer.js?v=2.5.0"></script>
-  <script src="/js/mobile.js?v=2.5.0"></script>
+  <script src="/js/views/touch/touch_layout.js?v=2.5.1"></script>
+  <script src="/js/views/touch/touch_gestures.js?v=2.5.1"></script>
+  <script src="/js/views/touch/morph_thumb_bar.js?v=2.5.1"></script>
+  <script src="/js/views/touch/touch_duel.js?v=2.5.1"></script>
+  <script src="/js/views/touch/touch_field_log.js?v=2.5.1"></script>
+  <script src="/js/views/touch/touch_phone_case.js?v=2.5.1"></script>
+  <script src="/js/views/touch/touch_center_dial.js?v=2.5.1"></script>
+  <script src="/js/views/touch/touch_viewer_launcher.js?v=2.5.1"></script>
+  <script src="/js/privacy_mask_editor.js?v=2.5.1"></script>
+  <script src="/js/views/touch/touch_art_framer.js?v=2.5.1"></script>
+  <script src="/js/mobile.js?v=2.5.1"></script>
 </body>
 </html>

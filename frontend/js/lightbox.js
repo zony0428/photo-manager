@@ -5,7 +5,220 @@
 
 let _lightboxOpenRafId = null;
 let _lightboxViewPreloadImg = null;
+let _lightboxViewFetchAbort = null;
+let _lightboxThumbHoldTimer = null;
+let _lightboxObjectUrl = null;
 let _lightboxPanRafId = null;
+
+function _revokeLightboxObjectUrl() {
+  if (_lightboxObjectUrl) {
+    try {
+      URL.revokeObjectURL(_lightboxObjectUrl);
+    } catch (e) {}
+    _lightboxObjectUrl = null;
+  }
+}
+
+function _cleanupLightboxAsyncLoad() {
+  if (_lightboxThumbHoldTimer) {
+    clearTimeout(_lightboxThumbHoldTimer);
+    _lightboxThumbHoldTimer = null;
+  }
+  if (_lightboxViewPreloadImg) {
+    _lightboxViewPreloadImg.onload = null;
+    _lightboxViewPreloadImg.onerror = null;
+    _lightboxViewPreloadImg = null;
+  }
+  if (_lightboxViewFetchAbort) {
+    try {
+      _lightboxViewFetchAbort.abort();
+    } catch (e) {}
+    _lightboxViewFetchAbort = null;
+  }
+}
+
+function _setLightboxImageSrcSafely(nextSrc, nextObjectUrl = null) {
+  if (!elements.lightboxImage) return;
+  const prevUrl = _lightboxObjectUrl;
+  _lightboxObjectUrl = nextObjectUrl;
+  elements.lightboxImage.src = nextSrc;
+  if (prevUrl && prevUrl !== nextObjectUrl) {
+    try {
+      URL.revokeObjectURL(prevUrl);
+    } catch (e) {}
+  }
+}
+
+function _renderLightboxMetaBanner(photo, statusPillText = '') {
+  if (!photo || !elements.lightboxMeta) return;
+  const metaText = `${photo.date_taken || '日付不明'} | ${photo.camera_model || 'カメラ不明'}`;
+  if (statusPillText) {
+    elements.lightboxMeta.innerHTML = `<span class="lightbox-offline-pill">${escapeHtml(statusPillText)}</span>${escapeHtml(metaText)}`;
+  } else if (photo.is_offline) {
+    const volInfo = photo.volume_label ? ` — ${escapeHtml(photo.volume_label)}` : '';
+    elements.lightboxMeta.innerHTML = `<span class="lightbox-offline-pill">プレビュー表示${volInfo}</span>${escapeHtml(metaText)}`;
+  } else {
+    elements.lightboxMeta.textContent = metaText;
+  }
+}
+
+function _markPhotoOnlineEverywhere(photo) {
+  if (!photo) return;
+  photo.is_offline = false;
+  photo._viewWasFallbackThumb = false;
+  if (typeof findAllPhotoInstancesById === 'function') {
+    findAllPhotoInstancesById(photo.id).forEach(inst => {
+      if (!inst) return;
+      inst.is_offline = false;
+      inst._viewWasFallbackThumb = false;
+    });
+  }
+  if (elements.photoGrid) {
+    elements.photoGrid.querySelectorAll(`.photo-card[data-photo-id="${photo.id}"].is-offline`).forEach(card => {
+      card.classList.remove('is-offline');
+    });
+  }
+  const activePhoto = getCurrentLightboxPhoto();
+  if (activePhoto && activePhoto.id === photo.id) {
+    _renderLightboxMetaBanner(activePhoto, '');
+  }
+}
+
+async function _fetchViewAsDecodedImage(viewUrl, signal) {
+  const res = await fetch(viewUrl, { cache: 'no-store', signal });
+  if (!res.ok) {
+    return { isOffline: true, blobUrl: null, img: null };
+  }
+  if (res.headers.get('X-Photo-Offline') === 'true') {
+    return { isOffline: true, blobUrl: null, img: null };
+  }
+  const blob = await res.blob();
+  const blobUrl = URL.createObjectURL(blob);
+  try {
+    const img = await new Promise((resolve, reject) => {
+      const loader = new Image();
+      loader.onload = () => resolve(loader);
+      loader.onerror = () => reject(new Error('Image decode failed'));
+      loader.src = blobUrl;
+    });
+    return { isOffline: false, blobUrl, img };
+  } catch (err) {
+    try {
+      URL.revokeObjectURL(blobUrl);
+    } catch (e) {}
+    throw err;
+  }
+}
+
+function _probeAndUpgradeOfflinePhoto(photo, viewSrc) {
+  if (!photo || photo.is_unlinked) return;
+  const targetPhotoId = photo.id;
+  const abortCtrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+  _lightboxViewFetchAbort = abortCtrl;
+  const sep = viewSrc.includes('?') ? '&' : '?';
+  const probeUrl = `${viewSrc}${sep}_probe=${Date.now()}`;
+  _fetchViewAsDecodedImage(probeUrl, abortCtrl ? abortCtrl.signal : undefined)
+    .then(result => {
+      if (_lightboxViewFetchAbort === abortCtrl) {
+        _lightboxViewFetchAbort = null;
+      }
+      if (!result || result.isOffline || !result.img) {
+        if (result && result.blobUrl) {
+          try { URL.revokeObjectURL(result.blobUrl); } catch (e) {}
+        }
+        return;
+      }
+      const activePhoto = getCurrentLightboxPhoto();
+      if (!activePhoto || activePhoto.id !== targetPhotoId || !elements.lightboxImage || state.currentPhotoIndex < 0) {
+        try { URL.revokeObjectURL(result.blobUrl); } catch (e) {}
+        return;
+      }
+      activePhoto._lightboxLoadedViewSrc = viewSrc;
+      _setLightboxImageSrcSafely(result.blobUrl, result.blobUrl);
+      _markPhotoOnlineEverywhere(activePhoto);
+      _applyLightboxBaseSize(activePhoto, result.img.naturalWidth, result.img.naturalHeight);
+      if (typeof window.refreshLightboxHistogram === 'function') {
+        window.refreshLightboxHistogram();
+      }
+    })
+    .catch(err => {
+      if (_lightboxViewFetchAbort === abortCtrl) {
+        _lightboxViewFetchAbort = null;
+      }
+      if (err && err.name === 'AbortError') return;
+    });
+}
+
+function _isLightboxShowingSmallFallback(photo) {
+  if (!photo || photo.is_unlinked) return false;
+  if (photo.is_offline || photo.is_missing || photo._viewWasFallbackThumb) return true;
+  const metaMax = Math.max(Number(photo.width) || 0, Number(photo.height) || 0);
+  const nw = Number(elements.lightboxImage && elements.lightboxImage.naturalWidth) || 0;
+  const nh = Number(elements.lightboxImage && elements.lightboxImage.naturalHeight) || 0;
+  const natMax = Math.max(nw, nh);
+  return metaMax > 640 && natMax > 0 && natMax <= 640;
+}
+
+async function _forceReloadLightboxOriginalOnDblClick(photo, cursorX, cursorY) {
+  if (!photo || photo.is_unlinked) return;
+  _cleanupLightboxAsyncLoad();
+  const targetPhotoId = photo.id;
+  const baseUrl = getPhotoViewUrl(photo);
+  const sep = baseUrl.includes('?') ? '&' : '?';
+  const retryUrl = `${baseUrl}${sep}_retry=${Date.now()}`;
+  const abortCtrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+  _lightboxViewFetchAbort = abortCtrl;
+  _renderLightboxMetaBanner(photo, 'オリジナル取得中...');
+  try {
+    const result = await _fetchViewAsDecodedImage(retryUrl, abortCtrl ? abortCtrl.signal : undefined);
+    if (_lightboxViewFetchAbort === abortCtrl) {
+      _lightboxViewFetchAbort = null;
+    }
+    const activePhoto = getCurrentLightboxPhoto();
+    if (!activePhoto || activePhoto.id !== targetPhotoId || !elements.lightboxImage || state.currentPhotoIndex < 0) {
+      if (result && result.blobUrl) {
+        try { URL.revokeObjectURL(result.blobUrl); } catch (e) {}
+      }
+      return;
+    }
+    if (!result || result.isOffline || !result.img) {
+      if (result && result.blobUrl) {
+        try { URL.revokeObjectURL(result.blobUrl); } catch (e) {}
+      }
+      _renderLightboxMetaBanner(activePhoto, '');
+      const m = _getLightboxPhotoMetrics(activePhoto);
+      const targetZoom = m.oneToOneScale;
+      state.lightboxZoom = targetZoom;
+      state.lightboxPanX = -cursorX * (targetZoom - 1.0);
+      state.lightboxPanY = -cursorY * (targetZoom - 1.0);
+      applyLightboxTransform(true);
+      showZoomBadge(_formatLightboxOriginalZoomLabel(targetZoom));
+      return;
+    }
+    activePhoto._lightboxLoadedViewSrc = baseUrl;
+    _setLightboxImageSrcSafely(result.blobUrl, result.blobUrl);
+    _markPhotoOnlineEverywhere(activePhoto);
+    const m = _getLightboxPhotoMetrics(activePhoto, result.img.naturalWidth, result.img.naturalHeight);
+    const targetZoom = m.oneToOneScale;
+    state.lightboxZoom = targetZoom;
+    state.lightboxPanX = -cursorX * (targetZoom - 1.0);
+    state.lightboxPanY = -cursorY * (targetZoom - 1.0);
+    applyLightboxTransform(true);
+    showZoomBadge(_formatLightboxOriginalZoomLabel(targetZoom));
+    if (typeof window.refreshLightboxHistogram === 'function') {
+      window.refreshLightboxHistogram();
+    }
+  } catch (err) {
+    if (_lightboxViewFetchAbort === abortCtrl) {
+      _lightboxViewFetchAbort = null;
+    }
+    if (err && err.name === 'AbortError') return;
+    const activePhoto = getCurrentLightboxPhoto();
+    if (activePhoto && activePhoto.id === targetPhotoId) {
+      _renderLightboxMetaBanner(activePhoto, '');
+    }
+  }
+}
 const _lightboxStageMetricsCache = {
   bodyWidth: 0,
   bodyHeight: 0,
@@ -215,36 +428,39 @@ function _triggerLightboxImageFadeIn() {
 function updateLightboxContent(photo) {
   if (!photo) return;
 
+  _cleanupLightboxAsyncLoad();
+
   elements.lightboxFileName.textContent = photo.file_name;
-  if (photo.is_offline) {
-    const volInfo = photo.volume_label ? ` — ${escapeHtml(photo.volume_label)}` : '';
-    elements.lightboxMeta.innerHTML = `<span class="lightbox-offline-pill">プレビュー表示${volInfo}</span>${escapeHtml(photo.date_taken || '日付不明')} | ${escapeHtml(photo.camera_model || 'カメラ不明')}`;
-  } else {
-    elements.lightboxMeta.textContent = `${photo.date_taken || '日付不明'} | ${photo.camera_model || 'カメラ不明'}`;
-  }
+  _renderLightboxMetaBanner(photo, '');
 
   // 実画像読み込み:
-  // - 本体ファイルがある（オンライン）ときは先に小さいサムネイルを表示せず、フル解像度画像をロードしてふわっとフェードインする
-  // - サムネイルしかない（オフライン / リンク消失）ときはサムネイルを200%上限で拡大し、ふわっとフェードインする
+  // - オンライン判定時は通常フル解像度画像をロード（遅延時は180ms後に一時サムネイルを表示して暗転を防ぐ）
+  // - オフライン判定時はサムネイルを即時表示しつつ、クラウド復帰等を考慮して原本プローブ昇格を試行する
   const viewSrc = getPhotoViewUrl(photo);
   const thumbSrc = getThumbnailUrl(photo);
-  const currentSrc = elements.lightboxImage.getAttribute('src') || '';
-  const isOfflineOrUnlinked = Boolean(photo.is_offline || photo.is_unlinked || photo.is_missing);
+  const currentAttrSrc = elements.lightboxImage.getAttribute('src') || '';
 
-  if (_lightboxViewPreloadImg) {
-    _lightboxViewPreloadImg.onload = null;
-    _lightboxViewPreloadImg.onerror = null;
-    _lightboxViewPreloadImg = null;
-  }
-
-  if (isOfflineOrUnlinked) {
+  if (photo.is_unlinked) {
     const targetSrc = thumbSrc || viewSrc;
-    if (currentSrc !== targetSrc) {
-      elements.lightboxImage.src = targetSrc;
+    if (currentAttrSrc !== targetSrc) {
+      _setLightboxImageSrcSafely(targetSrc, null);
     }
     _applyLightboxBaseSize(photo, elements.lightboxImage.naturalWidth, elements.lightboxImage.naturalHeight);
     _triggerLightboxImageFadeIn();
-  } else if (currentSrc === viewSrc && elements.lightboxImage.complete && elements.lightboxImage.naturalWidth > 0) {
+  } else if (photo.is_offline || photo.is_missing) {
+    const targetSrc = thumbSrc || viewSrc;
+    if (currentAttrSrc !== targetSrc) {
+      _setLightboxImageSrcSafely(targetSrc, null);
+    }
+    _applyLightboxBaseSize(photo, elements.lightboxImage.naturalWidth, elements.lightboxImage.naturalHeight);
+    _triggerLightboxImageFadeIn();
+    _probeAndUpgradeOfflinePhoto(photo, viewSrc);
+  } else if (
+    (currentAttrSrc === viewSrc || Boolean(_lightboxObjectUrl)) &&
+    photo._lightboxLoadedViewSrc === viewSrc &&
+    elements.lightboxImage.complete &&
+    elements.lightboxImage.naturalWidth > 0
+  ) {
     _applyLightboxBaseSize(photo, elements.lightboxImage.naturalWidth, elements.lightboxImage.naturalHeight);
     _triggerLightboxImageFadeIn();
   } else {
@@ -255,20 +471,38 @@ function updateLightboxContent(photo) {
     _lightboxViewPreloadImg = preloader;
     preloader.onload = () => {
       if (_lightboxViewPreloadImg !== preloader) return;
+      if (_lightboxThumbHoldTimer) {
+        clearTimeout(_lightboxThumbHoldTimer);
+        _lightboxThumbHoldTimer = null;
+      }
       _lightboxViewPreloadImg = null;
       const activePhoto = getCurrentLightboxPhoto();
       if (activePhoto && activePhoto.id === targetPhotoId && elements.lightboxImage) {
-        elements.lightboxImage.src = viewSrc;
+        const metaMax = Math.max(Number(activePhoto.width) || 0, Number(activePhoto.height) || 0);
+        const natMax = Math.max(Number(preloader.naturalWidth) || 0, Number(preloader.naturalHeight) || 0);
+        activePhoto._viewWasFallbackThumb = Boolean(metaMax > 640 && natMax > 0 && natMax <= 640);
+        activePhoto._lightboxLoadedViewSrc = viewSrc;
+        _setLightboxImageSrcSafely(viewSrc, null);
+        _renderLightboxMetaBanner(activePhoto, '');
         _applyLightboxBaseSize(activePhoto, preloader.naturalWidth, preloader.naturalHeight);
         _triggerLightboxImageFadeIn();
+        if (typeof window.refreshLightboxHistogram === 'function') {
+          window.refreshLightboxHistogram();
+        }
       }
     };
     preloader.onerror = () => {
       if (_lightboxViewPreloadImg !== preloader) return;
+      if (_lightboxThumbHoldTimer) {
+        clearTimeout(_lightboxThumbHoldTimer);
+        _lightboxThumbHoldTimer = null;
+      }
       _lightboxViewPreloadImg = null;
       const activePhoto = getCurrentLightboxPhoto();
       if (activePhoto && activePhoto.id === targetPhotoId && elements.lightboxImage) {
-        elements.lightboxImage.src = thumbSrc || viewSrc;
+        activePhoto._viewWasFallbackThumb = true;
+        _setLightboxImageSrcSafely(thumbSrc || viewSrc, null);
+        _renderLightboxMetaBanner(activePhoto, '');
         _applyLightboxBaseSize(activePhoto, 0, 0);
         _triggerLightboxImageFadeIn();
       }
@@ -277,9 +511,26 @@ function updateLightboxContent(photo) {
     // ブラウザキャッシュに既にフル解像度画像がある場合は同期で即時反映＆フェードイン
     if (preloader.complete && preloader.naturalWidth > 0) {
       _lightboxViewPreloadImg = null;
-      elements.lightboxImage.src = viewSrc;
+      const metaMax = Math.max(Number(photo.width) || 0, Number(photo.height) || 0);
+      const natMax = Math.max(Number(preloader.naturalWidth) || 0, Number(preloader.naturalHeight) || 0);
+      photo._viewWasFallbackThumb = Boolean(metaMax > 640 && natMax > 0 && natMax <= 640);
+      photo._lightboxLoadedViewSrc = viewSrc;
+      _setLightboxImageSrcSafely(viewSrc, null);
+      _renderLightboxMetaBanner(photo, '');
       _applyLightboxBaseSize(photo, preloader.naturalWidth, preloader.naturalHeight);
       _triggerLightboxImageFadeIn();
+    } else if (thumbSrc) {
+      // 180ms経過しても原本取得中（Google Driveダウンロード待ち等）なら一時的にサムネイルを表示して暗転を防ぐ
+      _lightboxThumbHoldTimer = setTimeout(() => {
+        _lightboxThumbHoldTimer = null;
+        if (_lightboxViewPreloadImg !== preloader) return;
+        const activePhoto = getCurrentLightboxPhoto();
+        if (!activePhoto || activePhoto.id !== targetPhotoId || !elements.lightboxImage) return;
+        _setLightboxImageSrcSafely(thumbSrc, null);
+        _applyLightboxBaseSize(activePhoto, activePhoto.thumb_width || 0, activePhoto.thumb_height || 0);
+        elements.lightboxImage.classList.remove('lightbox-image-loading');
+        _renderLightboxMetaBanner(activePhoto, 'オリジナル取得中...');
+      }, 180);
     }
   }
   if (elements.lightboxImage.complete && typeof window.refreshLightboxHistogram === 'function') {
@@ -1603,11 +1854,8 @@ function closeLightbox(opts) {
     cancelAnimationFrame(_lightboxOpenRafId);
     _lightboxOpenRafId = null;
   }
-  if (_lightboxViewPreloadImg) {
-    _lightboxViewPreloadImg.onload = null;
-    _lightboxViewPreloadImg.onerror = null;
-    _lightboxViewPreloadImg = null;
-  }
+  _cleanupLightboxAsyncLoad();
+  _revokeLightboxObjectUrl();
   if (filmstripScrollRafId) {
     cancelAnimationFrame(filmstripScrollRafId);
     filmstripScrollRafId = null;
@@ -1854,10 +2102,11 @@ function initLightboxZoomInteractions() {
     }
   });
 
-  // 5. ダブルクリックで 全体フィット ⇔ 原本100%等倍 のトグル
+  // 5. ダブルクリックで 全体フィット ⇔ 原本100%等倍 のトグル（サムネイル表示中ならオンデマンドで原本を再取得）
   zoomContainer.addEventListener('dblclick', (e) => {
     if (e.target.closest('#lightboxBracketBar, #exifDrawer, .nav-arrow, .lightbox-tags-section, button, input')) return;
-    const m = _getLightboxPhotoMetrics(getCurrentLightboxPhoto());
+    const curPhoto = getCurrentLightboxPhoto();
+    const m = _getLightboxPhotoMetrics(curPhoto);
     if (state.lightboxZoom > 1.05) {
       resetLightboxZoom();
       showZoomBadge(_formatLightboxOriginalZoomLabel(1.0));
@@ -1865,6 +2114,10 @@ function initLightboxZoomInteractions() {
       const rect = _ensureLightboxStageMetrics().stageRect || elements.imageStage.getBoundingClientRect();
       const cursorX = e.clientX - (rect.left + rect.width / 2);
       const cursorY = e.clientY - (rect.top + rect.height / 2);
+      if (curPhoto && _isLightboxShowingSmallFallback(curPhoto)) {
+        _forceReloadLightboxOriginalOnDblClick(curPhoto, cursorX, cursorY);
+        return;
+      }
       const targetZoom = m.oneToOneScale;
       state.lightboxZoom = targetZoom;
       state.lightboxPanX = -cursorX * (targetZoom - 1.0);

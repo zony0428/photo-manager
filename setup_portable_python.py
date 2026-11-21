@@ -18,6 +18,11 @@ GET_PIP_URL = "https://bootstrap.pypa.io/get-pip.py"
 # （更新時は動作確認のうえでこの一覧を書き換え、LICENSES/NOTICE.txt も見直すこと）
 REQUIRED_PACKAGES = [
     "fastapi==0.141.1",
+    "pydantic==2.14.4",
+    "starlette==1.10.0",
+    "anyio==4.16.0",
+    "click==8.5.1",
+    "h11==0.16.0",
     "uvicorn==0.53.0",
     "pillow==12.3.0",
     "rawpy==0.27.1",

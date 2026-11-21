@@ -14,7 +14,7 @@
 | 区分 | ファイルパス | 現在の稼働状態と扱い |
 | :--- | :--- | :--- |
 | **実動本体（メイン制御）** | `frontend/mobile.html`<br>`frontend/js/mobile.js` | **現役の本丸**。画面初期化（多重 `refreshAllData` 単一フライト集約）、Android Native SQLプロキシ（`TetheractNative.rawQueryJson` 呼び出し）、グリッド描画、全画面ビューア・ジェスチャー（`setupViewerTouchGestures`）、評価・タグ一括更新（`savePhotoChangesBatch` 配線）、Wi-Fi/USB同期モーダル制御を担う。 |
-| **実動モジュール（Touch / Adapter / Core）** | `frontend/js/views/touch/touch_layout.js`<br>`frontend/js/views/touch/touch_gestures.js`<br>`frontend/js/views/touch/morph_thumb_bar.js`<br>`frontend/js/views/touch/touch_duel.js`<br>`frontend/js/views/touch/touch_field_log.js`<br>`frontend/js/views/touch/touch_phone_case.js`<br>`frontend/js/adapters/data_adapter.js`<br>`frontend/js/adapters/field_log_adapter.js`<br>`frontend/js/adapters/phone_case_adapter.js`<br>`frontend/js/core/tree_builder.js` | **現役で稼働中**。Phone/Tablet可変レイアウト、グリッド長押し選択・ピンチ列数変更・スクラブ調整、変身する親指バー、2枚比較（Duel）、フィールドログUI/Adapter、手許写真（PhoneCase）UI/Adapter、バッチ保存・`CustomEvent('tetheract:usb-sync-completed')` イベントバス統合（`data_adapter.js`）、および階層ツリー構築を担う。 |
+| **実動モジュール（Touch / Adapter / Core）** | `frontend/js/views/touch/touch_layout.js`<br>`frontend/js/views/touch/touch_gestures.js`<br>`frontend/js/views/touch/morph_thumb_bar.js`<br>`frontend/js/views/touch/touch_duel.js`<br>`frontend/js/views/touch/touch_field_log.js`<br>`frontend/js/views/touch/touch_phone_case.js`<br>`frontend/js/views/touch/touch_center_dial.js`<br>`frontend/js/views/touch/touch_art_framer.js`<br>`frontend/js/views/touch/touch_viewer_launcher.js`<br>`frontend/js/adapters/data_adapter.js`<br>`frontend/js/adapters/field_log_adapter.js`<br>`frontend/js/adapters/phone_case_adapter.js`<br>`frontend/js/adapters/watermark_adapter.js`<br>`frontend/js/core/tree_builder.js` | **現役で稼働中**。Phone/Tablet可変レイアウト、グリッド長押し選択・ピンチ列数変更・スクラブ調整、変身する親指バー、2枚比較（Duel）、フィールドログUI/Adapter、手許写真（PhoneCase）UI/Adapter、Art Framer＆画像ウォーターマークライブラリ、ライトボックス・アクションランチャー＆クイックSNS共有、バッチ保存・`CustomEvent('tetheract:usb-sync-completed')` イベントバス統合（`data_adapter.js`）、および階層ツリー構築を担う。 |
 | **退避済みレガシー（非読込）** | `docs/archive/js_legacy/journal_sync.js`<br>`docs/archive/js_legacy/filter_engine.js` | **参照専用の退避コード**。実動ジャーナルは Android 側 `PendingJournalStore.kt`（およびブラウザ単体用 `mobile.js`）に一本化済み。`touch_gestures.js` 内の未使用 `bindViewerGestures` も除去済み。 |
 
 ---
@@ -25,9 +25,10 @@ WebView 上で HTML/CSS/JS UI を動かし（`https://appassets.tetheract.local/
 
 | Android Kotlin クラス | 主な責務 | 対応する WebView JS / PC サーバー実装 |
 | :--- | :--- | :--- |
-| `MainActivity.kt` | WebView 初期化（`onJsAlert` トースト安全弁含む）、ローカルアセット・`/thumb/{id}`・`/usb_photo/{id}`・`/phone_photo/{key}` ストリーム応答、`tetheract:usb-sync-completed` 通知 | `frontend/mobile.html`, `frontend/js/mobile.js` |
-| `TetheractNativeBridge.kt` | `window.TetheractNative` (`@JavascriptInterface`) 公開メソッド群。UIスレッド非ブロックのキャッシュ参照 `getLockerStatusJson`、読取SQL（`rawQueryJson`）、単体/一括更新（`savePhotoChangeJson` / `savePhotoChangesBatchJson`）を公開 | `mobile.js`, `adapters/*.js`, `views/touch/*.js` |
-| `LockerDatabaseManager.kt`<br>`PendingJournalStore.kt` | `ReentrantReadWriteLock` による並列読取／排他書込分離、`wifi_delta` 時の無停止 WAL 維持、単一トランザクション一括更新、世代番号 `rev` 付き `pending_journal.db` 管理 | `server/mobile_delta.py`<br>`server/mobile_sync_apply.py` |
+| `MainActivity.kt` | WebView 初期化（`onJsAlert` トースト安全弁含む）、ローカルアセット・`/thumb/{id}`・`/watermark/{id}`・`/usb_photo/{id}`・`/phone_photo/{key}` ストリーム応答、`tetheract:usb-sync-completed` 通知 | `frontend/mobile.html`, `frontend/js/mobile.js` |
+| `TetheractNativeBridge.kt` | `window.TetheractNative` (`@JavascriptInterface`) 公開メソッド群。UIスレッド非ブロックのキャッシュ参照 `getLockerStatusJson`、読取SQL（`rawQueryJson`）、単体/一括更新（`savePhotoChangeJson` / `savePhotoChangesBatchJson`）、ウォーターマークCRUD・SNSクイック共有を公開 | `mobile.js`, `adapters/*.js`, `views/touch/*.js` |
+| `LockerDatabaseManager.kt`<br>`PendingJournalStore.kt`<br>`WatermarkAssetStore.kt` | `ReentrantReadWriteLock` による並列読取／排他書込分離、`wifi_delta` 時の無停止 WAL 維持、単一トランザクション一括更新、世代番号 `rev` 付き `pending_journal.db` 管理、`watermark_assets` CRUD＆同期保護 | `server/mobile_delta.py`<br>`server/mobile_sync_apply.py`<br>`server/database/watermarks.py` |
+| `QuickShareHelper.kt` | `FileProvider`（`cacheDir/share/` 一時ファイル）経由で端末ギャラリーを汚さずに `Intent.ACTION_SEND` 共有シートを起動（GPS除去済みExif整形・古い一時ファイル自動掃除） | `adapters/watermark_adapter.js`<br>`views/touch/touch_viewer_launcher.js` |
 | `WifiLockerSyncManager.kt` | UDP `8088` 母艦自動発見、ペアリング、`mobile_delta.db` 無停止差分同期（`wifi_full` 時のみ原子的DBファイル置換）、未同期ジャーナル送信、PC接続中写真のLANストリーミング | `server/routers/mobile_router.py`<br>`server/lan_access.py`, `server/lan_bridge.py` |
 | `PhoneCatalogEngine.kt`<br>`PhoneCaseManager.kt`<br>`PhoneCaseTransferRunner.kt` | スマホ内撮影フォルダ（DCIM/Pictures 等）のSAF増分スキャン・EXIF解析、ドラフト評価/タグ保持（`phone_case_drafts.json`）、PC母艦へのマルチパートUplink転送・重複照合 | `adapters/phone_case_adapter.js`<br>`views/touch/touch_phone_case.js`<br>`server/routers/mobile_case_router.py` |
 | `SafUsbManager.kt`<br>`LoomeVaultCrypto.kt` | 外付けUSB `Loome` への完全Read-Onlyアクセス、先頭窓＋前方スキップによる省メモリRAW埋め込みJPEG抽出、`.loome_seal` オーナー照合、オンメモリDEK展開、Lv.2 `TETHVLT1` 復号 | `server/security.py` |
@@ -60,6 +61,11 @@ WebView 上で HTML/CSS/JS UI を動かし（`https://appassets.tetheract.local/
 - **プライバシーとファイル分離**: 位置履歴生データは `library.db` に一切入れず、スマホ内 `filesDir/fieldlog/YYYY-MM-DD.jsonl` およびPC内 `cache/field_logs/<device_id>/YYYY-MM-DD.jsonl` にローカル日付単位（`toISOString()` 禁止）で保存する。各測位点 `pt` には記録時の端末UTCオフセット分 `tz`（JSTは `540`）を記録する。
 - **Android 14 (`targetSdk 34`) 制約対応**: クイック設定タイル（`FieldLogTileService`）から直接 location Foreground Service を起動せず、透明な `FieldLogStartActivity` を `PendingIntent` で経由して `ACCESS_FINE_LOCATION` 権限を確認した上で `FieldLogService` を起動する。
 - **PC側時刻補間とUndo (`server/field_log_match.py`)**: カメラ別時刻オフセット補正を加味して前後ログ点から線形補間（または最寄り点）で座標を算出し、`photos` に `gps_source='fieldlog'` として非破壊記録する。適用前状態はバッチJSONに退避し、いつでもバッチ単位で Undo 可能とする（GPX書き出しにも対応）。
+
+### 3.5 ライトボックス・アクションランチャー ＆ クイック SNS 共有 ＆ 画像ウォーターマーク
+- **アクションランチャー (`touch_viewer_launcher.js`)**: ライトボックス上部バー右側の操作ボタン群を単一のメインボタン（`#mViewerLauncherBtn`）へ集約し、ポップオーバーから「SNSへ共有」「Art Framer」「非破壊調整」「タグ・Exif詳細」「評価後の自動次送り」を呼び出す。
+- **ギャラリー非汚染クイック SNS 共有 (`QuickShareHelper.kt`, `file_paths.xml`)**: ライトボックスから共有する際、非破壊調整（露出・コントラスト・彩度・傾き・90°回転）を Canvas 焼き込みした長辺最大 2048px・GPS非含有の JPEG を `cacheDir/share/` に一時生成し、`FileProvider` 経由の `Intent.ACTION_SEND` で共有シートを開く（`Pictures/Tetheract` へ重複保存しない）。
+- **画像ウォーターマーク同期 (`WatermarkAssetStore.kt`, `watermark_adapter.js`)**: `library.db` の `watermark_assets` テーブルで透過 PNG ロゴを複数管理し、初回のみデフォルトの `TETHERACT` ロゴ（`frontend/icons/tetheract-watermark-default.png`）を投入する（`app_meta` の `default_watermark_seeded_v1` によりユーザー削除後は復活しない）。PC 登録ロゴは `mobile_delta.db` で自動配信し、スマホ登録ロゴ（`origin = 'mobile'`）は差分・フル同期双方で退避・保護する。サイズ指定は PC（Pillow）・モバイル（Canvas）共通で **「写真の長辺 × % ＝ ロゴの長辺（3%〜50%）」** に統一している。
 
 ---
 

@@ -183,6 +183,12 @@ def ensure_mobile_delta_db(force: bool = False) -> Optional[Path]:
             if has_presets:
                 cur.execute("CREATE TABLE delta.filter_presets AS SELECT * FROM main.filter_presets")
 
+            has_watermarks = cur.execute(
+                "SELECT 1 FROM main.sqlite_master WHERE type='table' AND name='watermark_assets'"
+            ).fetchone()
+            if has_watermarks:
+                cur.execute("CREATE TABLE delta.watermark_assets AS SELECT * FROM main.watermark_assets")
+
             has_links = cur.execute(
                 "SELECT 1 FROM main.sqlite_master WHERE type='table' AND name='photo_links'"
             ).fetchone()

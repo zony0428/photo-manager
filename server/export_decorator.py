@@ -308,17 +308,30 @@ def apply_watermark_pil(img: Image.Image, wm_cfg: Optional[Dict[str, Any]]) -> I
     base_rgba = img.convert("RGBA")
     overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
 
-    # A. 画像ロゴ透かし
+    # A. 画像ロゴ透かし（library.db の asset_id 優先、互換用にローカル image_path も維持）
+    asset_id = str(wm_cfg.get("asset_id") or "").strip()
     logo_path_str = str(wm_cfg.get("image_path") or "").strip()
-    if wm_type == "image" and logo_path_str:
+    if wm_type == "image" and (asset_id or logo_path_str):
         try:
-            logo_path = Path(logo_path_str)
-            if logo_path.is_file() and logo_path.suffix.lower() in (".png", ".webp", ".jpg", ".jpeg"):
-                logo = Image.open(logo_path).convert("RGBA")
-                scale_ratio = max(0.03, min(0.45, float(wm_cfg.get("size_ratio") or 0.12)))
-                target_logo_w = max(24, int(round(long_edge * scale_ratio)))
-                aspect = logo.height / max(1.0, float(logo.width))
-                target_logo_h = max(12, int(round(target_logo_w * aspect)))
+            logo: Optional[Image.Image] = None
+            if asset_id:
+                import io
+                from .database.watermarks import get_watermark_asset_blob
+                blob_info = get_watermark_asset_blob(asset_id)
+                if blob_info and blob_info[0]:
+                    logo = Image.open(io.BytesIO(blob_info[0])).convert("RGBA")
+            if logo is None and logo_path_str:
+                logo_path = Path(logo_path_str)
+                if logo_path.is_file() and logo_path.suffix.lower() in (".png", ".webp", ".jpg", ".jpeg"):
+                    logo = Image.open(logo_path).convert("RGBA")
+
+            if logo is not None:
+                scale_ratio = max(0.03, min(0.50, float(wm_cfg.get("size_ratio") or 0.16)))
+                logo_long = max(1.0, float(max(logo.width, logo.height)))
+                target_long = max(24.0, float(long_edge) * scale_ratio)
+                sc = target_long / logo_long
+                target_logo_w = max(12, int(round(logo.width * sc)))
+                target_logo_h = max(12, int(round(logo.height * sc)))
                 logo = logo.resize((target_logo_w, target_logo_h), Image.Resampling.LANCZOS)
 
                 if opacity < 0.999:
@@ -330,7 +343,7 @@ def apply_watermark_pil(img: Image.Image, wm_cfg: Optional[Dict[str, Any]]) -> I
                 overlay.paste(logo, (lx, ly), logo)
                 return Image.alpha_composite(base_rgba, overlay).convert("RGB")
         except Exception as e:
-            logger.warning(f"画像ロゴ透かしの適用に失敗しました ({logo_path_str}): {e}")
+            logger.warning(f"画像ロゴ透かしの適用に失敗しました (asset_id={asset_id}, path={logo_path_str}): {e}")
 
     # B. テキスト透かし
     text = str(wm_cfg.get("text") or "").strip()

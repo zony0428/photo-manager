@@ -108,8 +108,10 @@ from .scanner import (
     extract_raw_full_preview,
     check_folder_diff,
     refresh_photo_thumbnail_transform,
+    _safe_exists,
     SUPPORTED_EXTENSIONS,
 )
+from .shell_thumbnail import is_cloud_or_ondemand_path
 from .database.folders import (
     clear_folders_fs_cache,
     _PHOTO_DIR_SCAN_CACHE,
@@ -1801,7 +1803,18 @@ def api_get_photo_view(photo_id: int, request: Request, raw: int = Query(default
     etag_val = f'"{photo_id}-{path_hash}-{file_size_part}-{mtime_part}-{adj_sig}-view"'
 
     target_path, is_online = resolve_portable_path(photo["file_path"], expected_serial=photo.get("volume_serial"))
-    if is_online and target_path.exists():
+    target_exists = bool(is_online and _safe_exists(target_path))
+    switched_to_pair = False
+    if not target_exists and photo.get("paired_raw_path"):
+        pair_fp = str(photo["paired_raw_path"])
+        pair_vsn = _lookup_paired_volume_serial(pair_fp, photo.get("volume_serial"))
+        pair_path, is_pair_online = resolve_portable_path(pair_fp, expected_serial=pair_vsn)
+        if is_pair_online and _safe_exists(pair_path):
+            target_path = pair_path
+            target_exists = True
+            switched_to_pair = True
+
+    if target_exists:
         # オンラインで実ファイルが存在する場合のみ ETag / 304 Not Modified を返す
         if_none_match = request.headers.get("if-none-match")
         if if_none_match and (if_none_match == etag_val or etag_val in [t.strip() for t in if_none_match.split(",")]):
@@ -1813,11 +1826,13 @@ def api_get_photo_view(photo_id: int, request: Request, raw: int = Query(default
                 },
             )
 
+        is_raw_target = is_raw_file(target_path) if switched_to_pair else bool(photo.get("is_raw") or is_raw_file(target_path))
+
         # 非破壊調整（回転・クロップ・水平出し・トーン微調整）が有効かつ raw=0 の場合はPillowで適用して返却
         if has_baked_adjustments:
             try:
                 pil_img = None
-                if photo.get("is_raw") or is_raw_file(target_path):
+                if is_raw_target:
                     preview_res = extract_raw_full_preview(target_path)
                     if preview_res:
                         img_bytes, _, _, _ = preview_res
@@ -1852,13 +1867,14 @@ def api_get_photo_view(photo_id: int, request: Request, raw: int = Query(default
                             "Cache-Control": "no-cache, must-revalidate",
                             "ETag": etag_val,
                             "X-Photo-Adjusted": "true",
+                            "X-Photo-View-Source": "original",
                         },
                     )
             except Exception as e:
                 logger.warning(f"拡大プレビューへの非破壊調整適用失敗 ({target_path}): {e}")
 
         # RAWファイルはブラウザが直接デコードできないため、カメラ内現像済みの埋め込みフルサイズプレビュー（JPEG）を抽出して配信
-        if photo.get("is_raw") or is_raw_file(target_path):
+        if is_raw_target:
             try:
                 preview_res = extract_raw_full_preview(target_path)
                 if preview_res:
@@ -1870,28 +1886,50 @@ def api_get_photo_view(photo_id: int, request: Request, raw: int = Query(default
                             "Cache-Control": "no-cache, must-revalidate",
                             "ETag": etag_val,
                             "X-Photo-Raw-Preview": "full",
+                            "X-Photo-View-Source": "original",
                         },
                     )
             except Exception as e:
                 logger.warning(f"RAWフルサイズプレビュー抽出失敗 ({target_path}): {e}")
 
-            # フルサイズプレビューが取得できなかった場合のフォールバック: DBサムネイル
+            # フルサイズプレビューが取得できなかった場合のフォールバック: DBサムネイル（キャッシュ汚染防止のためETagなし）
             try:
                 thumb_data = ensure_thumbnail(photo["id"], photo["file_path"], allow_cloud_download=True)
                 return Response(
                     content=thumb_data,
                     media_type="image/webp",
                     headers={
-                        "Cache-Control": "no-cache, must-revalidate",
-                        "ETag": etag_val,
+                        "Cache-Control": "no-store",
                         "X-Photo-Offline": "true",
                     },
                 )
             except Exception as e:
                 logger.debug(f"調整適用プレビュー生成失敗、スマートプレビューへフォールバック (id={photo_id}): {e}")
         else:
-            if is_vault_encrypted_file(target_path):
-                import mimetypes as _mimetypes
+            import mimetypes as _mimetypes
+            ext_low = target_path.suffix.lower()
+            is_vault = is_vault_encrypted_file(target_path)
+            if ext_low in (".tif", ".tiff"):
+                try:
+                    raw_src = _io.BytesIO(read_loome_file_decrypted_bytes(target_path)) if is_vault else target_path
+                    with _Image.open(raw_src) as tiff_img:
+                        conv_img = _ImageOps.exif_transpose(tiff_img)
+                        if conv_img.mode != "RGB":
+                            conv_img = conv_img.convert("RGB")
+                        buf = _io.BytesIO()
+                        conv_img.save(buf, format="JPEG", quality=92)
+                    return Response(
+                        content=buf.getvalue(),
+                        media_type="image/jpeg",
+                        headers={
+                            "Cache-Control": "no-cache, must-revalidate",
+                            "ETag": etag_val,
+                            "X-Photo-View-Source": "original",
+                        },
+                    )
+                except Exception as e:
+                    logger.warning(f"TIFF原本のブラウザ配信変換失敗 ({target_path}): {e}")
+            elif is_vault:
                 mime_guess = _mimetypes.guess_type(str(target_path))[0] or "image/jpeg"
                 return Response(
                     content=read_loome_file_decrypted_bytes(target_path),
@@ -1899,15 +1937,34 @@ def api_get_photo_view(photo_id: int, request: Request, raw: int = Query(default
                     headers={
                         "Cache-Control": "no-cache, must-revalidate",
                         "ETag": etag_val,
+                        "X-Photo-View-Source": "original",
                     },
                 )
-            return FileResponse(
-                str(target_path),
-                headers={
-                    "Cache-Control": "no-cache, must-revalidate",
-                    "ETag": etag_val,
-                },
-            )
+            elif is_cloud_or_ondemand_path(target_path):
+                # クラウド仮想FS上のファイルはFileResponse事前statとの不整合を避けるため一括読込して配信する
+                try:
+                    data_bytes = target_path.read_bytes()
+                    mime_guess = _mimetypes.guess_type(str(target_path))[0] or "image/jpeg"
+                    return Response(
+                        content=data_bytes,
+                        media_type=mime_guess,
+                        headers={
+                            "Cache-Control": "no-cache, must-revalidate",
+                            "ETag": etag_val,
+                            "X-Photo-View-Source": "original",
+                        },
+                    )
+                except Exception as e:
+                    logger.warning(f"クラウド原本のオンデマンド読込失敗、スマートプレビューへフォールバック ({target_path}): {e}")
+            else:
+                return FileResponse(
+                    str(target_path),
+                    headers={
+                        "Cache-Control": "no-cache, must-revalidate",
+                        "ETag": etag_val,
+                        "X-Photo-View-Source": "original",
+                    },
+                )
 
     # オフライン時（USB持出で元ドライブ未接続など）または実ファイル取得失敗時はDB内サムネイルをスマートプレビューとしてフォールバック配信
     # ※再接続時にフル解像度へ即切り替わるよう ETag は付与せず no-store とする
@@ -2631,8 +2688,12 @@ def _get_windows_quick_access() -> list:
 
 
 @app.get("/api/folder-tree/roots")
-def api_folder_tree_roots():
+def api_folder_tree_roots(refresh: int = Query(default=0)):
     """フォルダツリー最上位（ショートカット・接続中ドライブ・未接続ボリューム）を返す"""
+    if refresh:
+        clear_online_cache()
+        clear_folders_fs_cache()
+        clear_api_photos_cache()
     return _fast_json(build_folder_tree_roots(_get_windows_quick_access()))
 
 

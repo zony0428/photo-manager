@@ -230,11 +230,20 @@
           this.render();
         } else if (!this.logoImageEl || this.logoImageEl._srcKey !== logoDataUrl) {
           const img = new Image();
+          img.crossOrigin = 'anonymous';
           img._srcKey = logoDataUrl;
           img.onload = () => {
+            if (this._pendingLogoKey && this._pendingLogoKey !== logoDataUrl) return;
             this.logoImageEl = img;
             this.render();
           };
+          img.onerror = () => {
+            if (this._pendingLogoKey === logoDataUrl) {
+              this.logoImageEl = null;
+              this.render();
+            }
+          };
+          this._pendingLogoKey = logoDataUrl;
           img.src = logoDataUrl;
           return;
         }
@@ -989,9 +998,14 @@
         dCtx.globalAlpha = opacity;
 
         if (wc.type === 'image' && this.logoImageEl) {
-          const scaleRatio = clamp(Number(wc.size_ratio || 0.12), 0.03, 0.45);
-          const lw = Math.max(24, Math.round(drawLong * scaleRatio));
-          const lh = Math.max(12, Math.round(lw * (this.logoImageEl.naturalHeight / Math.max(1, this.logoImageEl.naturalWidth))));
+          const scaleRatio = clamp(Number(wc.size_ratio || 0.16), 0.03, 0.50);
+          const natW = Math.max(1, this.logoImageEl.naturalWidth || 1);
+          const natH = Math.max(1, this.logoImageEl.naturalHeight || 1);
+          const natLong = Math.max(natW, natH);
+          const targetLong = Math.max(24, drawLong * scaleRatio);
+          const sc = targetLong / natLong;
+          const lw = Math.max(12, Math.round(natW * sc));
+          const lh = Math.max(12, Math.round(natH * sc));
           const { x: lx, y: ly } = this._anchorRect(ox, oy, drawPw, drawPh, lw, lh, pos, margin);
           dCtx.drawImage(this.logoImageEl, lx, ly, lw, lh);
         } else if ((wc.text || '').trim()) {

@@ -99,6 +99,45 @@ def _extract_vsn_prefix(path_str: str) -> Tuple[Optional[str], str]:
     return None, path_str
 
 
+# Google Drive / クラウドマウント用のパスマーカーおよび全環境共通の仮想ボリュームシリアル
+_GDRIVE_PATH_MARKERS = (
+    "\\マイドライブ",
+    "\\my drive",
+    "\\共有ドライブ",
+    "\\shared drives",
+    "\\その他のパソコン",
+    "\\other computers",
+    "\\マイ コンピュータ",
+    "\\computers",
+    "\\.shortcut-targets-by-id",
+)
+_SHARED_CLOUD_VSNS = {"19831116", "00000000", "FFFFFFFF"}
+
+
+def _safe_exists(path_obj: Path) -> bool:
+    """PermissionError 等の OSError を握りつぶさず False として扱う安全な実在確認"""
+    try:
+        return bool(path_obj.exists())
+    except OSError:
+        return False
+
+
+def _safe_is_dir(path_obj: Path) -> bool:
+    """PermissionError 等の OSError 発生時に False を返す安全なディレクトリ確認"""
+    try:
+        return bool(path_obj.is_dir())
+    except OSError:
+        return False
+
+
+def _safe_is_file(path_obj: Path) -> bool:
+    """PermissionError 等の OSError 発生時に False を返す安全な通常ファイル確認"""
+    try:
+        return bool(path_obj.is_file())
+    except OSError:
+        return False
+
+
 def sanitize_camera_model(model: Optional[str]) -> str:
     """
     カメラ機種名からNUL文字（\\x00）や不可視制御文字を除去し、安全な文字列にサニタイズする。
@@ -210,6 +249,8 @@ _serial_to_drive_cache: Dict[str, str] = {}
 _drive_to_serial_cache: Dict[str, str] = {}
 # 接続中のネットワークドライブ文字（例: 'Z:'）。VSN厳密照合の対象外とするために保持する
 _remote_drive_letters_cache: set = set()
+# OSボリュームラベルで識別された Google Drive 仮想ドライブ文字（例: 'G:'）
+_gdrive_letters_cache: set = set()
 # ネットワークドライブルート（例: 'Z:\' や '\\server\share'）の疎通キャッシュ（SMB 21秒タイムアウト防止用）
 _network_root_online_cache: Dict[str, Tuple[bool, float]] = {}
 _network_root_probing: set = set()
@@ -226,6 +267,7 @@ def clear_online_cache() -> None:
         _serial_to_drive_cache.clear()
         _drive_to_serial_cache.clear()
         _remote_drive_letters_cache.clear()
+        _gdrive_letters_cache.clear()
         _network_root_online_cache.clear()
         _cloud_root_online_cache.clear()
     from .database.connection import bump_links_seq
@@ -238,15 +280,16 @@ def _get_connected_drive_serial_map() -> Tuple[Dict[str, str], Dict[str, str]]:
     (serial_to_drive: {VSN大文字: 'E:'}, drive_to_serial: {'E:': VSN大文字}) を返す（2秒TTLキャッシュ）。
     ネットワークドライブやメディア未挿入ドライブはブロック防止のためスキップする。
     """
-    global _drive_serial_cache_time, _serial_to_drive_cache, _drive_to_serial_cache, _remote_drive_letters_cache
+    global _drive_serial_cache_time, _serial_to_drive_cache, _drive_to_serial_cache, _remote_drive_letters_cache, _gdrive_letters_cache
     now = time.time()
     with _online_cache_lock:
-        if now < _drive_serial_cache_time and (_serial_to_drive_cache or _drive_to_serial_cache):
+        if now < _drive_serial_cache_time and (_serial_to_drive_cache or _drive_to_drive_has_any(_drive_to_serial_cache, _remote_drive_letters_cache, _gdrive_letters_cache)):
             return dict(_serial_to_drive_cache), dict(_drive_to_serial_cache)
 
     serial_to_drive: Dict[str, str] = {}
     drive_to_serial: Dict[str, str] = {}
     remote_drive_letters: set = set()
+    gdrive_letters: set = set()
 
     if sys.platform == "win32":
         try:
@@ -276,6 +319,8 @@ def _get_connected_drive_serial_map() -> Tuple[Dict[str, str], Dict[str, str]]:
                         d_upper = f"{letter}:"
                         serial_to_drive[s_upper] = d_upper
                         drive_to_serial[d_upper] = s_upper
+                        if "GOOGLE DRIVE" in str(info.get("label") or "").upper():
+                            gdrive_letters.add(d_upper)
             finally:
                 try:
                     kernel32.SetThreadErrorMode(old_mode.value, None)
@@ -288,9 +333,39 @@ def _get_connected_drive_serial_map() -> Tuple[Dict[str, str], Dict[str, str]]:
         _serial_to_drive_cache = serial_to_drive
         _drive_to_serial_cache = drive_to_serial
         _remote_drive_letters_cache = remote_drive_letters
+        _gdrive_letters_cache = gdrive_letters
         _drive_serial_cache_time = time.time() + 2.0
 
     return dict(serial_to_drive), dict(drive_to_serial)
+
+
+def _drive_to_drive_has_any(d2s: Dict[str, str], remote_set: set, gdrv_set: set) -> bool:
+    """接続ドライブキャッシュが1件以上の情報を保持しているか判定する"""
+    return bool(d2s or remote_set or gdrv_set)
+
+
+def _get_gdrive_letters() -> set:
+    """Google Drive 仮想ドライブとして識別されたドライブ文字集合（例: {'G:'}）を返す"""
+    _get_connected_drive_serial_map()
+    with _online_cache_lock:
+        return set(_gdrive_letters_cache)
+
+
+def _iter_cloud_candidate_drives() -> List[str]:
+    """ローカルドライブおよび疎通確認済みのリモートドライブをクラウド候補として重複なく返す"""
+    _, drive_to_serial = _get_connected_drive_serial_map()
+    with _online_cache_lock:
+        remote_list = sorted(_remote_drive_letters_cache)
+    candidates: List[str] = list(drive_to_serial.keys())
+    seen = {d.upper() for d in candidates}
+    for drv in remote_list:
+        d_up = drv.upper()
+        if d_up in seen:
+            continue
+        if _is_network_root_online(f"{d_up}\\"):
+            candidates.append(d_up)
+            seen.add(d_up)
+    return candidates
 
 
 def _is_network_path(clean_path: str) -> bool:
@@ -309,10 +384,10 @@ def _is_network_path(clean_path: str) -> bool:
     return False
 
 
-def _is_network_root_online(clean_path: str, timeout_sec: float = 0.12) -> bool:
+def _is_network_root_online(clean_path: str, timeout_sec: float = 0.35) -> bool:
     """
     ネットワークドライブ（Z:\\ 等）やUNCパス（\\\\server\\share）のルート疎通を
-    短いタイムアウト（既定120ms）＋バックグラウンド更新キャッシュで判定する。
+    短いタイムアウト（既定350ms）＋バックグラウンド更新キャッシュで判定する。
     WindowsのSMB切断時タイムアウト（約21秒ブロック）でUIやAPIがフリーズするのを防ぐ。
     """
     norm = (clean_path or "").replace("/", "\\")
@@ -351,7 +426,7 @@ def _is_network_root_online(clean_path: str, timeout_sec: float = 0.12) -> bool:
 
     with _online_cache_lock:
         if net_root not in _network_root_online_cache:
-            _network_root_online_cache[net_root] = (False, time.time() + 60.0)
+            _network_root_online_cache[net_root] = (False, time.time() + 2.0)
     return False
 
 
@@ -363,14 +438,24 @@ def _probe_network_root_worker(net_root: str, done_evt: Optional[threading.Event
     except Exception:
         is_on = False
     ttl = 30.0 if is_on else 60.0
+    became_online = False
     with _online_cache_lock:
+        prev = _network_root_online_cache.get(net_root)
+        was_online = bool(prev[0]) if prev is not None else False
+        became_online = bool(is_on and not was_online)
         _network_root_online_cache[net_root] = (is_on, time.time() + ttl)
         _network_root_probing.discard(net_root)
+    if became_online:
+        try:
+            from .database.connection import bump_links_seq
+            bump_links_seq()
+        except Exception:
+            pass
     if done_evt is not None:
         done_evt.set()
 
 
-def _resolve_cloud_drive_path(clean_path: str) -> Optional[Path]:
+def _resolve_cloud_drive_path(clean_path: str, expected_serial: Optional[str] = None) -> Optional[Path]:
     """
     クラウドドライブ（OneDrive / Google Drive / Dropbox / iCloud Drive）上のパスについて、
     PC間移動（ユーザー名変更・CドライブVSN変化・Google Drive仮想ドライブ文字変化）を吸収して実在パスを解決する。
@@ -394,7 +479,7 @@ def _resolve_cloud_drive_path(clean_path: str) -> Optional[Path]:
         od_roots.append(home / "OneDrive")
         for root in od_roots:
             cand = (root / rel) if rel else root
-            if cand.exists():
+            if _safe_exists(cand):
                 return cand
 
     # 2. Google Drive / Dropbox / iCloudDrive (ユーザープロファイル配下)
@@ -408,37 +493,48 @@ def _resolve_cloud_drive_path(clean_path: str) -> Optional[Path]:
         if idx != -1:
             rel = norm[idx + len(marker):].lstrip("\\")
             cand = (target_root / rel) if rel else target_root
-            if cand.exists():
+            if _safe_exists(cand):
                 return cand
         elif lower.endswith(marker.rstrip("\\")):
-            if target_root.exists():
+            if _safe_exists(target_root):
                 return target_root
 
-    # 3. Google Drive 仮想ドライブ / ストリームマウント (\マイドライブ, \My Drive, \共有ドライブ, \Shared drives)
-    gdrive_markers = ("\\マイドライブ", "\\my drive", "\\共有ドライブ", "\\shared drives")
-    for gm in gdrive_markers:
+    # 3. Google Drive 仮想ドライブ / ストリームマウント (\マイドライブ, \My Drive, \共有ドライブ, \その他のパソコン 等)
+    for gm in _GDRIVE_PATH_MARKERS:
         idx = lower.find(gm)
         if idx != -1:
             after_idx = idx + len(gm)
             if after_idx == len(lower) or lower[after_idx] == "\\":
                 orig_p = Path(norm)
-                if orig_p.exists():
+                if _safe_exists(orig_p):
                     return orig_p
-                # ドライブレターが G: -> H: 等に変わった場合、接続中ドライブの同相対パスを照合
+                # ドライブレターが G: -> H: 等に変わった場合、接続中の候補ドライブ上の同相対パスを照合
                 if orig_p.drive:
                     tail = norm[len(orig_p.drive):].lstrip("\\")
-                    _, drive_to_serial = _get_connected_drive_serial_map()
-                    for drv in drive_to_serial.keys():
+                    for drv in _iter_cloud_candidate_drives():
                         cand = Path(f"{drv}\\{tail}")
-                        if cand.exists():
+                        if _safe_exists(cand):
                             return cand
                 # Google Drive フォルダモードへのフォールバック
                 rel_with_marker = norm[idx:].lstrip("\\")
                 rel_after = norm[after_idx:].lstrip("\\")
                 for rel_cand in (rel_with_marker, rel_after):
                     cand_home = (home / "Google Drive" / rel_cand) if rel_cand else (home / "Google Drive")
-                    if cand_home.exists():
+                    if _safe_exists(cand_home):
                         return cand_home
+
+    # 4. マーカー外パスでも Google Drive 仮想ドライブ文字や仮想VSN (19831116 等) が一致する場合は追従解決
+    orig_p = Path(norm)
+    if orig_p.drive:
+        gdrive_letters = _get_gdrive_letters()
+        eff_vsn = (expected_serial or "").strip().upper()
+        is_gdrive_hint = (orig_p.drive.upper() in gdrive_letters) or (eff_vsn in _SHARED_CLOUD_VSNS)
+        if gdrive_letters and is_gdrive_hint:
+            tail = norm[len(orig_p.drive):].lstrip("\\")
+            for drv in sorted(gdrive_letters):
+                cand = Path(f"{drv}\\{tail}") if tail else Path(f"{drv}\\")
+                if _safe_exists(cand):
+                    return cand
 
     return None
 
@@ -476,13 +572,13 @@ def resolve_portable_path(
         if idx_st == -1 and not ends_st:
             continue
         app_loome_dir = base_dir / folder_label
-        if not app_loome_dir.exists():
+        if not _safe_exists(app_loome_dir):
             continue
         if idx_st != -1:
             rel_in_storage = norm_stored[idx_st + len(marker):].lstrip("\\")
             if rel_in_storage:
                 candidate_storage = app_loome_dir / rel_in_storage
-                if candidate_storage.exists():
+                if _safe_exists(candidate_storage):
                     return candidate_storage, True
         elif ends_st:
             return app_loome_dir, True
@@ -503,11 +599,11 @@ def resolve_portable_path(
             else:
                 target_candidate = orig_path
 
-            if target_candidate.exists():
+            if _safe_exists(target_candidate):
                 return target_candidate, True
 
             # 該当VSNドライブ上に無い場合、クラウドドライブパスであればクラウド解決を試行
-            cloud_cand = _resolve_cloud_drive_path(clean_path)
+            cloud_cand = _resolve_cloud_drive_path(clean_path, expected_serial=effective_serial)
             if cloud_cand is not None:
                 return cloud_cand, True
 
@@ -516,13 +612,16 @@ def resolve_portable_path(
             # 該当VSNのメディアが現在接続されていない場合:
             # クラウドドライブ（OneDrive/Google Drive等）のPC間移動のみフォールバック照合し、
             # それ以外（別SDカードが同じドライブ文字 E: に挿さっているケース等）は絶対に誤一致させない
-            cloud_cand = _resolve_cloud_drive_path(clean_path)
+            cloud_cand = _resolve_cloud_drive_path(clean_path, expected_serial=effective_serial)
             if cloud_cand is not None:
                 return cloud_cand, True
             return orig_path, False
 
     # 3. VSN未指定（レガシーレコード・ネットワークドライブ等）の従来ポータブル解決
     if _is_network_path(clean_path) and not _is_network_root_online(clean_path):
+        cloud_cand = _resolve_cloud_drive_path(clean_path, expected_serial=effective_serial)
+        if cloud_cand is not None:
+            return cloud_cand, True
         return orig_path, False
     parent_str = str(orig_path.parent)
     now = time.time()
@@ -534,13 +633,13 @@ def resolve_portable_path(
             if now < expire_time and not is_online:
                 parent_known_offline = True
 
-    if not parent_known_offline and orig_path.exists():
+    if not parent_known_offline and _safe_exists(orig_path):
         with _online_cache_lock:
             _directory_online_cache[parent_str] = (True, now + 5.0)
         return orig_path, True
 
     # 3-a. クラウドドライブのパス照合
-    cloud_cand = _resolve_cloud_drive_path(clean_path)
+    cloud_cand = _resolve_cloud_drive_path(clean_path, expected_serial=effective_serial)
     if cloud_cand is not None:
         return cloud_cand, True
 
@@ -549,29 +648,29 @@ def resolve_portable_path(
     if current_drive and orig_path.drive and current_drive.lower() != orig_path.drive.lower():
         path_without_drive = str(orig_path)[len(orig_path.drive):].lstrip("\\/")
         candidate_same_drive = Path(f"{current_drive}\\{path_without_drive}")
-        if candidate_same_drive.exists():
+        if _safe_exists(candidate_same_drive):
             return candidate_same_drive, True
 
     # 3-c. プロジェクト直下の "photos" ディレクトリ内を照合
     app_photos_dir = base_dir / "photos"
-    if app_photos_dir.exists():
+    if _safe_exists(app_photos_dir):
         candidate_app_sub = app_photos_dir / orig_path.name
-        if candidate_app_sub.exists():
+        if _safe_exists(candidate_app_sub):
             return candidate_app_sub, True
         if orig_path.parent.name:
             candidate_parent_sub = app_photos_dir / orig_path.parent.name / orig_path.name
-            if candidate_parent_sub.exists():
+            if _safe_exists(candidate_parent_sub):
                 return candidate_parent_sub, True
 
     # 4. 見つからない場合はオフライン
     if not parent_known_offline:
-        parent_online = orig_path.parent.exists()
+        parent_online = _safe_exists(orig_path.parent)
         with _online_cache_lock:
             _directory_online_cache[parent_str] = (parent_online, now + 30.0)
     return orig_path, False
 
 
-def _resolve_cloud_drive_online_fast(clean_path: str) -> Optional[Path]:
+def _resolve_cloud_drive_online_fast(clean_path: str, expected_serial: Optional[str] = None) -> Optional[Path]:
     """クラウドドライブ（OneDrive / Google Drive 等）のルート接続状態を2秒TTLで高速判定し、候補パスを返す"""
     if not clean_path:
         return None
@@ -596,10 +695,10 @@ def _resolve_cloud_drive_online_fast(clean_path: str) -> Optional[Path]:
         def _find_od_root() -> Optional[Path]:
             for env_key in ("OneDrive", "OneDriveConsumer", "OneDriveCommercial"):
                 env_val = os.environ.get(env_key)
-                if env_val and os.path.isdir(env_val):
+                if env_val and _safe_is_dir(Path(env_val)):
                     return Path(env_val)
             cand_h = Path.home() / "OneDrive"
-            return cand_h if cand_h.is_dir() else None
+            return cand_h if _safe_is_dir(cand_h) else None
 
         od_root = _get_cached_cloud_root("onedrive", _find_od_root)
         return (od_root / rel if rel else od_root) if od_root else None
@@ -614,11 +713,11 @@ def _resolve_cloud_drive_online_fast(clean_path: str) -> Optional[Path]:
             rel = norm[idx + len(marker):].lstrip("\\") if idx != -1 else ""
             c_root = _get_cached_cloud_root(
                 key_name,
-                lambda fn=folder_name: (Path.home() / fn) if (Path.home() / fn).is_dir() else None,
+                lambda fn=folder_name: (Path.home() / fn) if _safe_is_dir(Path.home() / fn) else None,
             )
             return (c_root / rel if rel else c_root) if c_root else None
 
-    for gm in ("\\マイドライブ", "\\my drive", "\\共有ドライブ", "\\shared drives"):
+    for gm in _GDRIVE_PATH_MARKERS:
         idx = lower.find(gm)
         if idx != -1:
             after_idx = idx + len(gm)
@@ -630,21 +729,39 @@ def _resolve_cloud_drive_online_fast(clean_path: str) -> Optional[Path]:
                 def _find_gstream_root(drv=orig_drive, mk=marker_cased) -> Optional[Path]:
                     if drv:
                         cand0 = Path(f"{drv}\\{mk}")
-                        if cand0.is_dir():
+                        if _safe_is_dir(cand0):
                             return cand0
-                    _, drive_to_serial = _get_connected_drive_serial_map()
-                    for d_let in drive_to_serial.keys():
+                    for d_let in _iter_cloud_candidate_drives():
                         cand_d = Path(f"{d_let}\\{mk}")
-                        if cand_d.is_dir():
+                        if _safe_is_dir(cand_d):
                             return cand_d
                     cand_h = Path.home() / "Google Drive" / mk
-                    if cand_h.is_dir():
+                    if _safe_is_dir(cand_h):
                         return cand_h
                     cand_h2 = Path.home() / "Google Drive"
-                    return cand_h2 if cand_h2.is_dir() else None
+                    return cand_h2 if _safe_is_dir(cand_h2) else None
 
                 gs_root = _get_cached_cloud_root(f"gstream:{orig_drive}:{gm}", _find_gstream_root)
                 return (gs_root / rel_after if rel_after else gs_root) if gs_root else None
+
+    orig_p = Path(norm)
+    if orig_p.drive:
+        gdrive_letters = _get_gdrive_letters()
+        eff_vsn = (expected_serial or "").strip().upper()
+        is_gdrive_hint = (orig_p.drive.upper() in gdrive_letters) or (eff_vsn in _SHARED_CLOUD_VSNS)
+        if gdrive_letters and is_gdrive_hint:
+            rel_tail = norm[len(orig_p.drive):].lstrip("\\")
+
+            def _find_gdrive_letter_root(letters=tuple(sorted(gdrive_letters))) -> Optional[Path]:
+                for drv in letters:
+                    root_p = Path(f"{drv}\\")
+                    if _safe_is_dir(root_p):
+                        return root_p
+                return None
+
+            gd_root = _get_cached_cloud_root(f"gdrive_drv:{orig_p.drive.upper()}", _find_gdrive_letter_root)
+            if gd_root is not None:
+                return (gd_root / rel_tail) if rel_tail else gd_root
 
     return None
 
@@ -678,7 +795,7 @@ def resolve_drive_online_path(
         if idx_st == -1 and not ends_st:
             continue
         app_loome_dir = base_dir / folder_label
-        if not app_loome_dir.exists():
+        if not _safe_exists(app_loome_dir):
             continue
         if idx_st != -1:
             rel_in_storage = norm_stored[idx_st + len(marker):].lstrip("\\")
@@ -701,7 +818,7 @@ def resolve_drive_online_path(
                 target_candidate = orig_path
             return target_candidate, True
         # 該当VSNが未接続でもクラウドドライブ移動の可能性がある場合のみルートキャッシュで高速フォールバック解決
-        cloud_cand = _resolve_cloud_drive_online_fast(clean_path)
+        cloud_cand = _resolve_cloud_drive_online_fast(clean_path, expected_serial=effective_serial)
         if cloud_cand is not None:
             return cloud_cand, True
         return orig_path, False
@@ -713,7 +830,7 @@ def resolve_drive_online_path(
 
     if orig_path.drive and not _is_network_path(clean_path):
         drive_root = Path(f"{orig_path.drive}\\")
-        if drive_root.exists():
+        if _safe_exists(drive_root):
             return orig_path, True
 
     return orig_path, False

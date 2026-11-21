@@ -2,16 +2,23 @@
 ピックアップ（take_out / import）＆ スマート・テイクアウト / コンタクトシート出力 APIルーター
 """
 
+import base64
 import logging
 import os
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel
 
-from ..database import get_photo_by_id
+from ..database import (
+    delete_watermark_asset,
+    get_photo_by_id,
+    get_watermark_asset_blob,
+    list_watermark_assets,
+    save_watermark_asset,
+)
 from ..exporter import (
     DEFAULT_TAKEOUT_DIR,
     detect_photo_privacy_masks,
@@ -351,8 +358,92 @@ def api_detect_privacy_masks(req: DetectPrivacyRequest):
     return _fast_json(res)
 
 
+_WATERMARK_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+
+class UploadWatermarkRequest(BaseModel):
+    name: Optional[str] = "logo.png"
+    data_url: str
+
+
+@router.get("/api/watermarks")
+def api_list_watermarks():
+    """library.db に登録済みのウォーターマーク用ロゴ画像一覧を返す"""
+    return _fast_json({"watermarks": list_watermark_assets()})
+
+
+@router.get("/api/watermarks/{asset_id}/image")
+def api_get_watermark_image(asset_id: str):
+    """library.db に保存されたウォーターマークロゴ画像のバイナリを返す"""
+    if not _WATERMARK_ID_RE.match(asset_id or ""):
+        raise HTTPException(status_code=400, detail="無効なウォーターマークIDです")
+    blob_info = get_watermark_asset_blob(asset_id)
+    if not blob_info:
+        raise HTTPException(status_code=404, detail="ウォーターマーク画像が見つかりません")
+    data, mime_type, _, _, _ = blob_info
+    return Response(
+        content=data,
+        media_type=mime_type,
+        headers={
+            "Cache-Control": "public, max-age=86400",
+            "Access-Control-Allow-Origin": "*",
+        },
+    )
+
+
+@router.post("/api/watermarks")
+def api_upload_watermark(req: UploadWatermarkRequest):
+    """Base64 DataURL からウォーターマーク画像を正規化して library.db へ登録する"""
+    raw_str = str(req.data_url or "").strip()
+    if not raw_str:
+        raise HTTPException(status_code=400, detail="画像データが指定されていません")
+    comma_idx = raw_str.find(",")
+    b64_part = raw_str[comma_idx + 1 :] if comma_idx >= 0 else raw_str
+    try:
+        raw_bytes = base64.b64decode(b64_part, validate=False)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"画像データのデコードに失敗しました: {e}") from e
+    try:
+        asset = save_watermark_asset(name=req.name or "logo.png", raw_bytes=raw_bytes, origin="pc")
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve)) from ve
+    except Exception as e:
+        logger.warning(f"ウォーターマーク登録失敗: {e}")
+        raise HTTPException(status_code=500, detail="ウォーターマーク画像の保存に失敗しました") from e
+    return _fast_json({"status": "ok", "asset": asset, "watermarks": list_watermark_assets()})
+
+
+@router.delete("/api/watermarks/{asset_id}")
+def api_delete_watermark(asset_id: str):
+    """指定IDのウォーターマーク画像を library.db から削除する"""
+    if not _WATERMARK_ID_RE.match(asset_id or ""):
+        raise HTTPException(status_code=400, detail="無効なウォーターマークIDです")
+    deleted = delete_watermark_asset(asset_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="ウォーターマーク画像が見つかりません")
+    return _fast_json({"status": "ok", "deleted_id": asset_id, "watermarks": list_watermark_assets()})
+
+
 @router.post("/api/export/pick-watermark-image")
 def api_pick_watermark_image(req: Optional[PickWatermarkImageRequest] = None):
-    """ウォーターマーク用のローカル透過PNG/WebPロゴ画像をファイル選択ダイアログで取得する"""
+    """ウォーターマーク用のローカル透過PNG/WebPロゴ画像をファイル選択ダイアログで取得し library.db へ登録する"""
     init_path = req.initial_path if req else None
-    return _fast_json(pick_watermark_image_dialog(init_path))
+    picked = pick_watermark_image_dialog(init_path)
+    selected_path = picked.get("selected_path")
+    if selected_path and not picked.get("error"):
+        try:
+            fpath = Path(selected_path)
+            if fpath.is_file():
+                asset = save_watermark_asset(
+                    name=fpath.name,
+                    raw_bytes=fpath.read_bytes(),
+                    origin="pc",
+                )
+                picked["asset"] = asset
+                picked["asset_id"] = asset["id"]
+                picked["image_url"] = asset["image_url"]
+                picked["watermarks"] = list_watermark_assets()
+        except Exception as e:
+            logger.warning(f"選択済みロゴの library.db 保存に失敗: {e}")
+            picked["error"] = str(e)
+    return _fast_json(picked)

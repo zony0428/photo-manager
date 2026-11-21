@@ -58,13 +58,13 @@
   - ファイル: LICENSE.NumPy
   - URL: https://numpy.org/
 
-■ Pydantic 2.13
+■ Pydantic 2.14
   - 著作権: Copyright (c) Samuel Colvin
   - ライセンス: MIT License
   - ファイル: LICENSE.Pydantic
   - URL: https://docs.pydantic.dev/
 
-■ Starlette 1.6
+■ Starlette 1.10
   - 著作権: Copyright (c) encode
   - ライセンス: BSD 3-Clause License
   - ファイル: LICENSE.Starlette
@@ -76,7 +76,7 @@
   - ファイル: LICENSE.Click
   - URL: https://click.palletsprojects.com/
 
-■ AnyIO 4.15
+■ AnyIO 4.16
   - 著作権: Copyright (c) Alex Grönholm
   - ライセンス: MIT License
   - ファイル: LICENSE.AnyIO

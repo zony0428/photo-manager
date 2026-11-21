@@ -1518,3 +1518,121 @@ body.theme-dark .card-thumb-wrapper .thumb-corner-cut {
   color: var(--text-muted, #94a3b8);
   font-variant-numeric: tabular-nums;
 }
+
+/* Art Framer ウォーターマークロゴライブラリ */
+.af-wm-gallery-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.af-wm-asset-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  max-height: 176px;
+  overflow-y: auto;
+  padding: 2px 0;
+}
+
+.af-wm-asset-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 5px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-panel);
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  text-align: left;
+  color: var(--text-main);
+}
+
+.af-wm-asset-card:hover {
+  border-color: rgba(var(--accent-rgb), 0.55);
+}
+
+.af-wm-asset-card.is-selected {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.35);
+}
+
+.af-wm-asset-thumb {
+  width: 100%;
+  height: 44px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  overflow: hidden;
+  background-color: #2b2f36;
+  background-image:
+    linear-gradient(45deg, #3a3f47 25%, transparent 25%),
+    linear-gradient(-45deg, #3a3f47 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #3a3f47 75%),
+    linear-gradient(-45deg, transparent 75%, #3a3f47 75%);
+  background-size: 12px 12px;
+  background-position: 0 0, 0 6px, 6px -6px, -6px 0;
+}
+
+.af-wm-asset-thumb img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.af-wm-asset-name {
+  font-size: 0.7rem;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-right: 16px;
+  color: var(--text-muted);
+}
+
+.af-wm-asset-card.is-selected .af-wm-asset-name {
+  color: var(--text-main);
+  font-weight: 600;
+}
+
+.af-wm-asset-del {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(18, 20, 24, 0.78);
+  color: #e5e7eb;
+  font-size: 11px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+.af-wm-asset-del:hover {
+  background: #dc2626;
+  border-color: #ef4444;
+  color: #ffffff;
+}
+
+.af-wm-asset-empty {
+  grid-column: 1 / -1;
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 10px 6px;
+  border: 1px dashed var(--border-color);
+  border-radius: 6px;
+}
+

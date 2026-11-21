@@ -240,6 +240,8 @@ def test_lan_whitelist_blocks_admin_apis():
         ("POST", "/api/export/smart"),
         ("POST", "/api/export/detect-privacy"),
         ("POST", "/api/export/pick-watermark-image"),
+        ("POST", "/api/watermarks"),
+        ("DELETE", "/api/watermarks/default_tetheract_logo"),
         ("GET", "/index.html"),
     ]
     for method, path in blocked:
@@ -264,10 +266,14 @@ def test_lan_whitelist_allows_mobile_apis():
         ("GET", "/api/mobile/pair-info"),
         ("GET", "/api/mobile/locker-sync"),
         ("GET", "/api/mobile/ui-bundle"),
+        ("GET", "/api/watermarks"),
+        ("GET", "/api/watermarks/default_tetheract_logo/image"),
         ("GET", "/css/touch-responsive.css"),
         ("GET", "/js/core/tree_builder.js"),
         ("GET", "/js/adapters/data_adapter.js"),
+        ("GET", "/js/adapters/watermark_adapter.js"),
         ("GET", "/js/views/touch/touch_layout.js"),
+        ("GET", "/js/views/touch/touch_viewer_launcher.js"),
     ]
     lan_no_tok = _lan_client(with_cookie=False)
     assert lan_no_tok.get("/api/mobile/locker-sync?mode=status").status_code == 401

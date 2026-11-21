@@ -63,6 +63,7 @@ GitHub Releases 投稿用に作成されたバージョン別リリースノー�
 
 | バージョン | 主な更新内容 | ファイル |
 | :--- | :--- | :--- |
+| **v2.5.1** | モバイルライトボックスのアクションランチャー集約＆ギャラリー非汚染クイックSNS共有、`library.db` 複数画像ウォーターマーク管理＆PC⇄スマホ同期・サイズ比率統一、Google ドライブ原本表示＆Android ホット更新互換ガード修正 | [RELEASE_NOTES_v2.5.1.md](release_notes/RELEASE_NOTES_v2.5.1.md) |
 | **v2.5.0** | 母艦Wi-Fiリンク連動Android UI自動ホットアップデート・`native_revision`更新通知＆APK取得導線・PC母艦GitHub連動アップデータ＆ポータブル`diff.zip`書き出し・RAW解析＆並列サムネイル再取得強化 | [RELEASE_NOTES_v2.5.0.md](release_notes/RELEASE_NOTES_v2.5.0.md) |
 | **v2.4.0** | モバイル版『Art Framer』搭載（1タップ選択起動・Step2/3拡大・OS共有）、オンデバイス `YuNet`/`LPD-YuNet` ONNX推論＆4辺スナップ、PhoneCase役割モード＆スマートRAW照合・待機シグナル・`thmod_` フォルダ横断スタック | [RELEASE_NOTES_v2.4.0.md](release_notes/RELEASE_NOTES_v2.4.0.md) |
 | **v2.3.0** | 作品書き出しウィザード『Art Framer』搭載（外寸逆算プリセット、ローカルAIナンバープレート・顔検出＆フチのモヤ、4種プリント枠・EXIFキャプション・透かし合成、`thmod_` 自動スタック＆AIタグ除外） | [RELEASE_NOTES_v2.3.0.md](release_notes/RELEASE_NOTES_v2.3.0.md) |

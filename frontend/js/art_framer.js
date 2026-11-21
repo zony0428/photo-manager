@@ -55,6 +55,8 @@
       enabled: false,
       type: 'text',
       text: '© 2026',
+      asset_id: '',
+      image_url: '',
       image_path: '',
       image_name: '',
       preview_data_url: '',
@@ -75,6 +77,8 @@
       open_folder_after: true,
     },
   };
+
+  let watermarkAssets = [];
 
   function toast(msg, type = 'info', duration = 3500) {
     if (typeof window.showToast === 'function') {
@@ -233,6 +237,14 @@
     return 'for_x';
   }
 
+  function resolveActiveWatermarkLogoUrl() {
+    if (cfg.watermark.asset_id) {
+      const hit = watermarkAssets.find((a) => a.id === cfg.watermark.asset_id);
+      if (hit && hit.image_url) return hit.image_url;
+    }
+    return cfg.watermark.image_url || cfg.watermark.preview_data_url || '';
+  }
+
   function pushDecoratorToEditor() {
     if (!editor) return;
     editor.setDecoratorState({
@@ -240,7 +252,7 @@
       frameConfig: cfg.frame,
       watermarkConfig: cfg.watermark,
       artPreset: cfg.artPreset,
-      logoDataUrl: cfg.watermark.preview_data_url || '',
+      logoDataUrl: resolveActiveWatermarkLogoUrl(),
     });
   }
 
@@ -348,15 +360,20 @@
     setVal('afWmOpacitySlider', opPct);
     setTxt('afWmOpacityVal', `${opPct}%`);
 
-    const szPct = ((cfg.watermark.size_ratio || (isLogo ? 0.12 : 0.018)) * 100).toFixed(1);
+    const szRatio = isLogo
+      ? Math.max(0.03, Math.min(0.50, Number(cfg.watermark.size_ratio || 0.16)))
+      : Math.max(0.008, Math.min(0.06, Number(cfg.watermark.size_ratio || 0.018)));
+    const szPct = isLogo ? Math.round(szRatio * 100).toString() : (szRatio * 100).toFixed(1);
     const szSlider = document.getElementById('afWmSizeSlider');
     if (szSlider) {
-      szSlider.min = isLogo ? '4.0' : '0.8';
-      szSlider.max = isLogo ? '35.0' : '6.0';
-      szSlider.step = isLogo ? '1.0' : '0.2';
+      szSlider.min = isLogo ? '3' : '0.8';
+      szSlider.max = isLogo ? '50' : '6.0';
+      szSlider.step = isLogo ? '1' : '0.2';
       szSlider.value = szPct;
     }
+    setTxt('afWmSizeLabel', isLogo ? '大きさ(長辺)' : '大きさ');
     setTxt('afWmSizeVal', `${szPct}%`);
+    renderWatermarkAssetGallery();
 
     // Step 3: 出力
     setVal('afFormatSelect', cfg.output.format);
@@ -680,6 +697,7 @@
         enabled: true,
         type: cfg.watermark.type,
         text: cfg.watermark.text,
+        asset_id: cfg.watermark.asset_id || '',
         image_path: cfg.watermark.image_path,
         position: cfg.watermark.position,
         opacity: cfg.watermark.opacity,
@@ -824,6 +842,7 @@
 
     loadSavedSettings();
     await ensureDefaultDestination();
+    await loadWatermarkAssets();
 
     photoQueue = ids;
     queueIndex = 0;
@@ -868,35 +887,186 @@
     }
   }
 
-  async function pickLogoImage() {
+  function _selectWatermarkAsset(asset) {
+    if (!asset) {
+      cfg.watermark.asset_id = '';
+      cfg.watermark.image_url = '';
+      cfg.watermark.image_name = '';
+      cfg.watermark.image_path = '';
+      cfg.watermark.preview_data_url = '';
+      return;
+    }
+    cfg.watermark.asset_id = asset.id;
+    cfg.watermark.image_url = asset.image_url || `/api/watermarks/${asset.id}/image`;
+    cfg.watermark.image_name = asset.name || 'logo.png';
+    cfg.watermark.image_path = '';
+    cfg.watermark.preview_data_url = '';
+  }
+
+  function renderWatermarkAssetGallery() {
+    const container = document.getElementById('afWmAssetList');
+    if (!container) return;
+    container.textContent = '';
+
+    if (!watermarkAssets.length) {
+      const empty = document.createElement('div');
+      empty.className = 'af-wm-asset-empty';
+      empty.textContent = '登録済みロゴがありません。「＋ ロゴを追加」から透過PNG等を登録できます。';
+      container.appendChild(empty);
+      return;
+    }
+
+    watermarkAssets.forEach((asset) => {
+      const isSel = cfg.watermark.asset_id === asset.id;
+      const card = document.createElement('div');
+      card.className = `af-wm-asset-card${isSel ? ' is-selected' : ''}`;
+      card.setAttribute('role', 'button');
+      card.tabIndex = 0;
+      card.title = `${asset.name} (${asset.width}×${asset.height})`;
+
+      const thumb = document.createElement('div');
+      thumb.className = 'af-wm-asset-thumb';
+      const img = document.createElement('img');
+      img.src = asset.image_url || `/api/watermarks/${asset.id}/image`;
+      img.alt = asset.name || 'logo';
+      img.loading = 'lazy';
+      thumb.appendChild(img);
+
+      const nameEl = document.createElement('div');
+      nameEl.className = 'af-wm-asset-name';
+      nameEl.textContent = asset.name || 'logo.png';
+
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.className = 'af-wm-asset-del';
+      delBtn.title = 'このロゴを削除';
+      delBtn.setAttribute('aria-label', `${asset.name || 'ロゴ'}を削除`);
+      delBtn.textContent = '×';
+      delBtn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        deleteWatermarkAssetById(asset);
+      });
+
+      const onSelect = () => {
+        _selectWatermarkAsset(asset);
+        if (cfg.watermark.type === 'image' && cfg.watermark.size_ratio < 0.03) {
+          cfg.watermark.size_ratio = 0.16;
+        }
+        syncFormFromState();
+        pushDecoratorToEditor();
+        saveSettings();
+      };
+      card.addEventListener('click', onSelect);
+      card.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter' || ev.key === ' ') {
+          ev.preventDefault();
+          onSelect();
+        }
+      });
+
+      card.appendChild(thumb);
+      card.appendChild(nameEl);
+      card.appendChild(delBtn);
+      container.appendChild(card);
+    });
+  }
+
+  async function loadWatermarkAssets() {
+    try {
+      const res = await fetch('/api/watermarks');
+      if (!res.ok) return;
+      const d = await res.json();
+      watermarkAssets = Array.isArray(d.watermarks) ? d.watermarks : [];
+      const currentHit = watermarkAssets.find((a) => a.id === cfg.watermark.asset_id);
+      if (currentHit) {
+        _selectWatermarkAsset(currentHit);
+      } else if (watermarkAssets.length > 0) {
+        _selectWatermarkAsset(watermarkAssets[0]);
+      } else if (!cfg.watermark.image_path) {
+        _selectWatermarkAsset(null);
+      }
+      renderWatermarkAssetGallery();
+    } catch (e) {
+      console.warn('[ART_FRAMER] ウォーターマーク一覧取得スキップ:', e);
+    }
+  }
+
+  async function uploadLogoFile(file) {
+    if (!file) return;
     const btn = document.getElementById('afPickWmLogoBtn');
     try {
       if (btn) btn.disabled = true;
-      const res = await fetch('/api/export/pick-watermark-image', {
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(new Error('ファイルの読み込みに失敗しました'));
+        reader.readAsDataURL(file);
+      });
+      const res = await fetch('/api/watermarks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ initial_path: cfg.watermark.image_path || null }),
+        body: JSON.stringify({ name: file.name || 'logo.png', data_url: dataUrl }),
       });
-      if (res.ok) {
-        const d = await res.json();
-        if (d.error) {
-          toast(d.error, 'warning');
-          return;
-        }
-        if (d.selected_path) {
-          cfg.watermark.image_path = d.selected_path;
-          cfg.watermark.image_name = d.file_name || 'logo.png';
-          cfg.watermark.preview_data_url = d.preview_data_url || '';
-          if (cfg.watermark.size_ratio < 0.04) cfg.watermark.size_ratio = 0.12;
-          syncFormFromState();
-          pushDecoratorToEditor();
-          saveSettings();
-        }
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast(d.detail || 'ロゴ画像の登録に失敗しました', 'warning');
+        return;
       }
+      watermarkAssets = Array.isArray(d.watermarks) ? d.watermarks : watermarkAssets;
+      if (d.asset) {
+        _selectWatermarkAsset(d.asset);
+        cfg.watermark.type = 'image';
+        if (cfg.watermark.size_ratio < 0.03) cfg.watermark.size_ratio = 0.16;
+      }
+      syncFormFromState();
+      pushDecoratorToEditor();
+      saveSettings();
+      toast(`ロゴ「${(d.asset && d.asset.name) || file.name}」を登録しました`, 'success');
     } catch (e) {
-      toast('ロゴ画像の選択に失敗しました', 'error');
+      toast('ロゴ画像の登録に失敗しました', 'error');
     } finally {
       if (btn) btn.disabled = false;
+    }
+  }
+
+  async function deleteWatermarkAssetById(asset) {
+    if (!asset || !asset.id) return;
+    let ok = true;
+    if (typeof window.showConfirmModal === 'function') {
+      ok = await window.showConfirmModal({
+        title: 'ロゴ画像の削除',
+        message: `登録済みロゴ「${asset.name || asset.id}」を削除しますか？`,
+        confirmText: '削除する',
+        cancelText: 'キャンセル',
+        danger: true,
+      });
+    }
+    if (!ok) return;
+    try {
+      const res = await fetch(`/api/watermarks/${encodeURIComponent(asset.id)}`, { method: 'DELETE' });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast(d.detail || 'ロゴの削除に失敗しました', 'error');
+        return;
+      }
+      watermarkAssets = Array.isArray(d.watermarks) ? d.watermarks : [];
+      if (cfg.watermark.asset_id === asset.id) {
+        _selectWatermarkAsset(watermarkAssets[0] || null);
+      }
+      syncFormFromState();
+      pushDecoratorToEditor();
+      saveSettings();
+      toast('ロゴを削除しました', 'info');
+    } catch (e) {
+      toast('ロゴの削除に失敗しました', 'error');
+    }
+  }
+
+  function pickLogoImage() {
+    const fileInput = document.getElementById('afWmFileInput');
+    if (fileInput) {
+      fileInput.value = '';
+      fileInput.click();
     }
   }
 
@@ -1137,9 +1307,13 @@
     });
     document.getElementById('afWmTypeSelect')?.addEventListener('change', (e) => {
       cfg.watermark.type = e.target.value;
-      cfg.watermark.size_ratio = cfg.watermark.type === 'image' ? 0.12 : 0.018;
+      cfg.watermark.size_ratio = cfg.watermark.type === 'image' ? 0.16 : 0.018;
+      if (cfg.watermark.type === 'image' && !cfg.watermark.asset_id && watermarkAssets.length > 0) {
+        _selectWatermarkAsset(watermarkAssets[0]);
+      }
       syncFormFromState();
       pushDecoratorToEditor();
+      saveSettings();
     });
     document.getElementById('afWmTextInput')?.addEventListener('input', (e) => {
       cfg.watermark.text = e.target.value;
@@ -1154,6 +1328,10 @@
       pushDecoratorToEditor();
     });
     document.getElementById('afPickWmLogoBtn')?.addEventListener('click', pickLogoImage);
+    document.getElementById('afWmFileInput')?.addEventListener('change', (e) => {
+      const file = e.target && e.target.files ? e.target.files[0] : null;
+      if (file) uploadLogoFile(file);
+    });
     modalEl.querySelectorAll('.af-wm-pos-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
         cfg.watermark.position = btn.dataset.pos;
@@ -1172,7 +1350,9 @@
       const v = parseFloat(e.target.value);
       cfg.watermark.size_ratio = v / 100;
       const lbl = document.getElementById('afWmSizeVal');
-      if (lbl) lbl.textContent = `${v.toFixed(1)}%`;
+      if (lbl) {
+        lbl.textContent = cfg.watermark.type === 'image' ? `${Math.round(v)}%` : `${v.toFixed(1)}%`;
+      }
       pushDecoratorToEditor();
     });
 

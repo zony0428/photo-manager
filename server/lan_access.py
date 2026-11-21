@@ -152,6 +152,7 @@ _LAN_API_EXACT: Dict[str, set] = {
         "/api/mobile/discover",
         "/api/mobile/connection-status",
         "/api/mobile/ui-bundle",
+        "/api/watermarks",
     },
     "POST": {
         "/api/photos/batch-rate",
@@ -168,6 +169,7 @@ _LAN_API_PATTERNS: Dict[str, List[re.Pattern]] = {
     "GET": [
         re.compile(r"^/api/photo/\d+/thumbnail$"),
         re.compile(r"^/api/photo/\d+/view$"),
+        re.compile(r"^/api/watermarks/[A-Za-z0-9_-]+/image$"),
     ],
     "POST": [
         re.compile(r"^/api/photo/\d+/rate$"),

@@ -52,6 +52,8 @@
       enabled: false,
       type: 'text',
       text: '© 2026',
+      asset_id: '',
+      image_url: '',
       image_path: '',
       image_name: '',
       preview_data_url: '',
@@ -70,6 +72,10 @@
       exif_remove_all: false,
     },
   };
+
+  let watermarkAssets = [];
+  let pendingDeleteWmId = '';
+  let pendingDeleteWmTimer = null;
 
   function _showToast(msg, durationMs = 2800) {
     if (typeof global.showToast === 'function') {
@@ -123,6 +129,11 @@
 
   function _saveSettings() {
     try {
+      const wmToSave = {
+        ...cfg.watermark,
+        image_url: String(cfg.watermark.image_url || '').startsWith('data:') ? '' : (cfg.watermark.image_url || ''),
+        preview_data_url: '',
+      };
       const payload = {
         _thmodNamingMigrated: true,
         _faceHazeV2Migrated: true,
@@ -134,7 +145,7 @@
         faceRadius: cfg.faceRadius,
         faceStrength: cfg.faceStrength,
         frame: cfg.frame,
-        watermark: cfg.watermark,
+        watermark: wmToSave,
         output: cfg.output,
       };
       global.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
@@ -340,12 +351,29 @@
                   <span>ウォーターマーク（透かし）を入れる</span>
                 </label>
                 <div id="mAfWmControlsBody" class="t-af-subblock">
-                  <div class="t-af-field-grid2">
-                    <input type="text" id="mAfWmTextInput" class="t-af-input" value="© 2026" placeholder="© Author">
-                    <select id="mAfWmColorSelect" class="t-af-select-sm">
-                      <option value="light">白文字 (Shadow)</option>
-                      <option value="dark">黒文字 (Light)</option>
-                    </select>
+                  <div class="t-af-seg-grid2">
+                    <button type="button" class="t-af-wm-type-btn active" data-wm-type="text">テキスト</button>
+                    <button type="button" class="t-af-wm-type-btn" data-wm-type="image">画像ロゴ (透過PNG)</button>
+                  </div>
+                  <div id="mAfWmTextGroup" class="t-af-subblock" style="gap:8px;">
+                    <div class="t-af-field-grid2">
+                      <input type="text" id="mAfWmTextInput" class="t-af-input" value="© 2026" placeholder="© Author">
+                      <select id="mAfWmColorSelect" class="t-af-select-sm">
+                        <option value="light">白文字 (Shadow)</option>
+                        <option value="dark">黒文字 (Light)</option>
+                      </select>
+                    </div>
+                    <div class="t-af-checks-wrap">
+                      <label class="t-af-check-mini"><input type="checkbox" id="mAfWmShadowCheck" checked><span>ドロップシャドウ</span></label>
+                    </div>
+                  </div>
+                  <div id="mAfWmImageGroup" class="t-af-subblock" style="display:none; gap:8px;">
+                    <div class="t-af-wm-gallery-head">
+                      <span id="mAfWmImageNameLabel" class="t-af-wm-name-label">未選択</span>
+                      <button type="button" id="mAfWmAddLogoBtn" class="t-af-mini-btn">＋ ロゴを追加</button>
+                      <input type="file" id="mAfWmFileInput" accept="image/png,image/webp,image/jpeg" style="display:none;">
+                    </div>
+                    <div id="mAfWmAssetList" class="t-af-wm-asset-grid"></div>
                   </div>
                   <div class="t-af-seg-grid3">
                     <button type="button" class="t-af-wm-pos-btn" data-pos="top-left">左上</button>
@@ -356,7 +384,7 @@
                     <button type="button" class="t-af-wm-pos-btn" data-pos="center">中央</button>
                   </div>
                   <label class="t-af-slider-row">
-                    <span>文字サイズ</span>
+                    <span id="mAfWmSizeLabel">文字サイズ</span>
                     <input type="range" id="mAfWmSizeSlider" min="0.8" max="6.0" step="0.2" value="1.8">
                     <span id="mAfWmSizeVal" class="t-af-slider-val">1.8%</span>
                   </label>
@@ -365,9 +393,6 @@
                     <input type="range" id="mAfWmOpacitySlider" min="10" max="100" step="2" value="58">
                     <span id="mAfWmOpacityVal" class="t-af-slider-val">58%</span>
                   </label>
-                  <div class="t-af-checks-wrap">
-                    <label class="t-af-check-mini"><input type="checkbox" id="mAfWmShadowCheck" checked><span>ドロップシャドウ</span></label>
-                  </div>
                 </div>
               </div>
             </div>
@@ -446,6 +471,181 @@
     return 'for_x';
   }
 
+  function _resolveActiveWatermarkLogoUrl() {
+    if (cfg.watermark.asset_id) {
+      const hit = watermarkAssets.find((a) => a.id === cfg.watermark.asset_id);
+      if (hit && hit.image_url) return hit.image_url;
+    }
+    return cfg.watermark.image_url || cfg.watermark.preview_data_url || '';
+  }
+
+  function _selectWatermarkAsset(asset) {
+    if (!asset) {
+      cfg.watermark.asset_id = '';
+      cfg.watermark.image_url = '';
+      cfg.watermark.image_name = '';
+      cfg.watermark.preview_data_url = '';
+      return;
+    }
+    cfg.watermark.asset_id = asset.id;
+    cfg.watermark.image_url = asset.image_url || '';
+    cfg.watermark.image_name = asset.name || 'logo.png';
+    cfg.watermark.preview_data_url = '';
+  }
+
+  function _renderWatermarkAssetGallery() {
+    const container = document.getElementById('mAfWmAssetList');
+    if (!container) return;
+    container.textContent = '';
+
+    if (!watermarkAssets.length) {
+      const empty = document.createElement('div');
+      empty.className = 't-af-wm-asset-empty';
+      empty.textContent = 'ロゴ未登録。「＋ ロゴを追加」から透過PNGを登録できます。';
+      container.appendChild(empty);
+      return;
+    }
+
+    watermarkAssets.forEach((asset) => {
+      const isSel = cfg.watermark.asset_id === asset.id;
+      const isPendingDel = pendingDeleteWmId === asset.id;
+      const card = document.createElement('div');
+      card.className = `t-af-wm-asset-card${isSel ? ' is-selected' : ''}`;
+      card.setAttribute('role', 'button');
+      card.tabIndex = 0;
+
+      const thumb = document.createElement('div');
+      thumb.className = 't-af-wm-asset-thumb';
+      const img = document.createElement('img');
+      img.src = asset.image_url || '';
+      img.alt = asset.name || 'logo';
+      img.loading = 'lazy';
+      thumb.appendChild(img);
+
+      const nameEl = document.createElement('div');
+      nameEl.className = 't-af-wm-asset-name';
+      nameEl.textContent = asset.name || 'logo.png';
+
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.className = `t-af-wm-asset-del${isPendingDel ? ' is-confirm' : ''}`;
+      delBtn.setAttribute('aria-label', `${asset.name || 'ロゴ'}を削除`);
+      delBtn.textContent = isPendingDel ? '削除?' : '×';
+      delBtn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        if (pendingDeleteWmId !== asset.id) {
+          pendingDeleteWmId = asset.id;
+          clearTimeout(pendingDeleteWmTimer);
+          pendingDeleteWmTimer = setTimeout(() => {
+            pendingDeleteWmId = '';
+            _renderWatermarkAssetGallery();
+          }, 2600);
+          _renderWatermarkAssetGallery();
+          return;
+        }
+        clearTimeout(pendingDeleteWmTimer);
+        pendingDeleteWmId = '';
+        _deleteWatermarkAsset(asset);
+      });
+
+      card.addEventListener('click', () => {
+        pendingDeleteWmId = '';
+        _selectWatermarkAsset(asset);
+        cfg.watermark.type = 'image';
+        if (cfg.watermark.size_ratio < 0.03) cfg.watermark.size_ratio = 0.16;
+        _syncFormFromState();
+        _pushDecoratorToEditor();
+        _saveSettings();
+      });
+
+      card.appendChild(thumb);
+      card.appendChild(nameEl);
+      card.appendChild(delBtn);
+      container.appendChild(card);
+    });
+  }
+
+  async function _loadWatermarkAssets() {
+    const adapter = global.TetheractWatermarkAdapter;
+    if (!adapter || typeof adapter.listWatermarks !== 'function') return;
+    try {
+      const res = await adapter.listWatermarks();
+      watermarkAssets = Array.isArray(res && res.watermarks) ? res.watermarks : [];
+      const curHit = watermarkAssets.find((a) => a.id === cfg.watermark.asset_id);
+      if (curHit) {
+        _selectWatermarkAsset(curHit);
+      } else if (watermarkAssets.length > 0) {
+        _selectWatermarkAsset(watermarkAssets[0]);
+      } else {
+        _selectWatermarkAsset(null);
+      }
+      _renderWatermarkAssetGallery();
+    } catch (e) {
+      console.warn('[TOUCH_ART_FRAMER] ウォーターマーク一覧取得スキップ:', e);
+    }
+  }
+
+  async function _uploadWatermarkLogoFile(file) {
+    if (!file) return;
+    const adapter = global.TetheractWatermarkAdapter;
+    if (!adapter || typeof adapter.saveWatermark !== 'function') {
+      _showToast('ロゴ登録機能を利用できません');
+      return;
+    }
+    const btn = document.getElementById('mAfWmAddLogoBtn');
+    try {
+      if (btn) btn.disabled = true;
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(new Error('画像の読み込みに失敗しました'));
+        reader.readAsDataURL(file);
+      });
+      const res = await adapter.saveWatermark(file.name || 'logo.png', dataUrl);
+      if (!res || !res.ok) {
+        _showToast((res && res.error) || 'ロゴ画像の保存に失敗しました');
+        return;
+      }
+      watermarkAssets = Array.isArray(res.watermarks) ? res.watermarks : watermarkAssets;
+      if (res.asset) {
+        _selectWatermarkAsset(res.asset);
+        cfg.watermark.type = 'image';
+        if (cfg.watermark.size_ratio < 0.03) cfg.watermark.size_ratio = 0.16;
+      }
+      _syncFormFromState();
+      _pushDecoratorToEditor();
+      _saveSettings();
+      _showToast(`ロゴ「${(res.asset && res.asset.name) || file.name}」を保存しました`);
+    } catch (e) {
+      _showToast('ロゴ画像の登録に失敗しました');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  async function _deleteWatermarkAsset(asset) {
+    if (!asset || !asset.id) return;
+    const adapter = global.TetheractWatermarkAdapter;
+    if (!adapter || typeof adapter.deleteWatermark !== 'function') return;
+    try {
+      const res = await adapter.deleteWatermark(asset.id);
+      if (!res || !res.ok) {
+        _showToast((res && res.error) || 'ロゴの削除に失敗しました');
+        return;
+      }
+      watermarkAssets = Array.isArray(res.watermarks) ? res.watermarks : [];
+      if (cfg.watermark.asset_id === asset.id) {
+        _selectWatermarkAsset(watermarkAssets[0] || null);
+      }
+      _syncFormFromState();
+      _pushDecoratorToEditor();
+      _saveSettings();
+      _showToast('ロゴを削除しました');
+    } catch (e) {
+      _showToast('ロゴの削除に失敗しました');
+    }
+  }
+
   function _pushDecoratorToEditor() {
     if (!editor) return;
     editor.setDecoratorState({
@@ -453,7 +653,7 @@
       frameConfig: cfg.frame,
       watermarkConfig: cfg.watermark,
       artPreset: cfg.artPreset,
-      logoDataUrl: cfg.watermark.preview_data_url || '',
+      logoDataUrl: _resolveActiveWatermarkLogoUrl(),
     });
   }
 
@@ -526,9 +726,19 @@
 
     setChk('mAfWmEnableCheck', cfg.watermark.enabled);
     document.getElementById('mAfWmControlsBody')?.classList.toggle('is-disabled', !cfg.watermark.enabled);
+    const isLogo = cfg.watermark.type === 'image';
+    modalEl.querySelectorAll('.t-af-wm-type-btn').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.wmType === (isLogo ? 'image' : 'text'));
+    });
+    const textGrp = document.getElementById('mAfWmTextGroup');
+    const imgGrp = document.getElementById('mAfWmImageGroup');
+    if (textGrp) textGrp.style.display = isLogo ? 'none' : 'flex';
+    if (imgGrp) imgGrp.style.display = isLogo ? 'flex' : 'none';
+
     setVal('mAfWmTextInput', cfg.watermark.text || '');
     setVal('mAfWmColorSelect', cfg.watermark.color || 'light');
     setChk('mAfWmShadowCheck', cfg.watermark.shadow !== false);
+    setTxt('mAfWmImageNameLabel', cfg.watermark.image_name || '未選択');
     modalEl.querySelectorAll('.t-af-wm-pos-btn').forEach((btn) => {
       btn.classList.toggle('active', btn.dataset.pos === cfg.watermark.position);
     });
@@ -537,10 +747,20 @@
     setVal('mAfWmOpacitySlider', opPct);
     setTxt('mAfWmOpacityVal', `${opPct}%`);
 
-    const szRatio = cfg.watermark.type === 'image' ? 0.018 : (cfg.watermark.size_ratio || 0.018);
-    const szPct = Math.max(0.8, Math.min(6.0, szRatio * 100)).toFixed(1);
-    setVal('mAfWmSizeSlider', szPct);
+    const szRatio = isLogo
+      ? Math.max(0.03, Math.min(0.50, Number(cfg.watermark.size_ratio || 0.16)))
+      : Math.max(0.008, Math.min(0.06, Number(cfg.watermark.size_ratio || 0.018)));
+    const szPct = isLogo ? Math.round(szRatio * 100).toString() : (szRatio * 100).toFixed(1);
+    const szSlider = document.getElementById('mAfWmSizeSlider');
+    if (szSlider) {
+      szSlider.min = isLogo ? '3' : '0.8';
+      szSlider.max = isLogo ? '50' : '6.0';
+      szSlider.step = isLogo ? '1' : '0.2';
+      szSlider.value = szPct;
+    }
+    setTxt('mAfWmSizeLabel', isLogo ? '大きさ(長辺)' : '文字サイズ');
     setTxt('mAfWmSizeVal', `${szPct}%`);
+    _renderWatermarkAssetGallery();
 
     setVal('mAfNamingSelect', cfg.output.naming_rule === 'framed' ? 'framed' : 'thmod_original');
     setVal('mAfFormatSelect', cfg.output.format === 'png' ? 'png' : 'jpeg');
@@ -2439,6 +2659,32 @@
       _pushDecoratorToEditor();
       _saveSettings();
     });
+    modalEl.querySelectorAll('.t-af-wm-type-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const nextType = btn.dataset.wmType === 'image' ? 'image' : 'text';
+        if (cfg.watermark.type !== nextType) {
+          cfg.watermark.type = nextType;
+          cfg.watermark.size_ratio = nextType === 'image' ? 0.16 : 0.018;
+        }
+        if (nextType === 'image' && !cfg.watermark.asset_id && watermarkAssets.length > 0) {
+          _selectWatermarkAsset(watermarkAssets[0]);
+        }
+        _syncFormFromState();
+        _pushDecoratorToEditor();
+        _saveSettings();
+      });
+    });
+    document.getElementById('mAfWmAddLogoBtn')?.addEventListener('click', () => {
+      const inp = document.getElementById('mAfWmFileInput');
+      if (inp) {
+        inp.value = '';
+        inp.click();
+      }
+    });
+    document.getElementById('mAfWmFileInput')?.addEventListener('change', (e) => {
+      const file = e.target && e.target.files ? e.target.files[0] : null;
+      if (file) _uploadWatermarkLogoFile(file);
+    });
     document.getElementById('mAfWmTextInput')?.addEventListener('input', (e) => {
       cfg.watermark.type = 'text';
       cfg.watermark.text = e.target.value;
@@ -2473,10 +2719,11 @@
     document.getElementById('mAfWmOpacitySlider')?.addEventListener('change', _saveSettings);
     document.getElementById('mAfWmSizeSlider')?.addEventListener('input', (e) => {
       const v = parseFloat(e.target.value);
-      cfg.watermark.type = 'text';
       cfg.watermark.size_ratio = v / 100;
       const lbl = document.getElementById('mAfWmSizeVal');
-      if (lbl) lbl.textContent = `${v.toFixed(1)}%`;
+      if (lbl) {
+        lbl.textContent = cfg.watermark.type === 'image' ? `${Math.round(v)}%` : `${v.toFixed(1)}%`;
+      }
       _pushDecoratorToEditor();
     });
     document.getElementById('mAfWmSizeSlider')?.addEventListener('change', _saveSettings);
@@ -2596,6 +2843,7 @@
     if (!_initModalOnce()) return false;
 
     _loadSavedSettings();
+    await _loadWatermarkAssets();
     photoQueue = targets;
     queueIndex = 0;
     exportedCount = 0;

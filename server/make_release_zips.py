@@ -39,6 +39,12 @@ def _is_excluded(rel_path: Path) -> bool:
         return True
     if any(p in EXCLUDED_DIR_NAMES for p in parts):
         return True
+    if len(parts) >= 4 and [p.lower() for p in parts[:3]] == ["python", "lib", "site-packages"]:
+        pkg_dir = parts[3].lower()
+        if any(pkg_dir == name or pkg_dir.startswith(f"{name}-") for name in ("httpx2", "httpcore2", "truststore")):
+            return True
+    if len(parts) >= 3 and [p.lower() for p in parts[:2]] == ["python", "scripts"] and parts[2].lower().startswith("httpx2"):
+        return True
     return any(rel_path.match(pattern) for pattern in EXCLUDED_FILE_PATTERNS)
 
 

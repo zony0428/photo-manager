@@ -159,7 +159,13 @@ goto :FAILED
 :COPY_PYTHON
 if not exist "%SRC%python" goto :COPY_LICENSES
 echo        python/         -^> dist/ (incremental sync)
-robocopy "%SRC%python" "%DIST%\python" /MIR /XD __pycache__ /R:1 /W:1 /NJH /NJS /NDL /NFL /NC /NS >nul
+:: テスト専用パッケージが前回ビルドの dist 内に残っていれば先に削除する
+for %%P in (httpx2 httpcore2 truststore) do (
+    if exist "%DIST%\python\Lib\site-packages\%%P" rmdir /s /q "%DIST%\python\Lib\site-packages\%%P" >nul 2>&1
+    for /d %%D in ("%DIST%\python\Lib\site-packages\%%P-*.dist-info") do rmdir /s /q "%%~D" >nul 2>&1
+)
+if exist "%DIST%\python\Scripts\httpx2.exe" del /f /q "%DIST%\python\Scripts\httpx2.exe" >nul 2>&1
+robocopy "%SRC%python" "%DIST%\python" /MIR /XD __pycache__ httpx2 httpcore2 truststore httpx2-*.dist-info httpcore2-*.dist-info truststore-*.dist-info /XF httpx2.exe /R:1 /W:1 /NJH /NJS /NDL /NFL /NC /NS >nul
 if %errorlevel% geq 8 goto :ERR_PYTHON
 goto :COPY_LICENSES
 

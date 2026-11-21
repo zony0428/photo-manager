@@ -3396,6 +3396,7 @@
 
   function closeViewer(animateToGrid = true) {
     if (!mState.viewerOpen) return;
+    window.TetheractTouchUI?.viewerLauncher?.close?.();
     mState.viewerOpen = false;
     const closingPhoto = mState.photos[mState.viewerIndex];
     mState.viewerStackMember = null;
@@ -3441,6 +3442,7 @@
   }
 
   function stepViewer(delta) {
+    window.TetheractTouchUI?.viewerLauncher?.close?.();
     const nextIdx = mState.viewerIndex + delta;
     if (nextIdx < 0 || nextIdx >= mState.photos.length) {
       if (delta > 0) showToast('最後の写真です');
@@ -5638,7 +5640,10 @@
       const chk = document.getElementById('mAutoAdvanceCheck');
       if (chk) chk.checked = mState.autoAdvance;
       const btn = document.getElementById('mViewerAutoAdvanceBtn');
-      if (btn) btn.classList.toggle('active', mState.autoAdvance);
+      if (btn) {
+        btn.classList.toggle('active', mState.autoAdvance);
+        btn.setAttribute('aria-checked', mState.autoAdvance ? 'true' : 'false');
+      }
       if (notify) {
         showToast(mState.autoAdvance ? '⚡ 評価後の自動次送りをONにしました' : '評価後の自動次送りをOFFにしました', 1800);
       }
@@ -5874,20 +5879,33 @@
     if (window.TetheractNative) return;
     const banner = document.getElementById('mOpenInNativeAppBanner');
     const btn = document.getElementById('mOpenInNativeAppBtn');
+    const apkBtn = document.getElementById('mDownloadApkBannerBtn');
     if (!banner || !btn) return;
     try {
       const u = new URL(window.location.href);
       const qToken = u.searchParams.get('t') || '';
       const serverOrigin = `${u.protocol}//${u.host}`;
       let deepLink = `tetheract://pair?server=${encodeURIComponent(serverOrigin)}&token=${encodeURIComponent(qToken)}`;
+      let effectiveToken = qToken;
       try {
         const res = await fetch('/api/mobile/pair-info');
         if (res.ok) {
           const info = await res.json();
-          if (info && info.deep_link) deepLink = info.deep_link;
+          if (info && info.deep_link) {
+            deepLink = info.deep_link;
+            if (!effectiveToken) {
+              try {
+                effectiveToken = new URL(info.deep_link).searchParams.get('token') || '';
+              } catch (parseErr) {}
+            }
+          }
         }
       } catch (e) {}
       btn.setAttribute('href', deepLink);
+      // LANダウンロードは認証トークン必須のためAPKリンクにも有効トークンを付与する
+      if (apkBtn && effectiveToken) {
+        apkBtn.setAttribute('href', `/api/mobile/apk?t=${encodeURIComponent(effectiveToken)}`);
+      }
       banner.style.display = 'flex';
     } catch (e) {}
   }

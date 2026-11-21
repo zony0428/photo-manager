@@ -1958,6 +1958,190 @@ html.is-native-app .m-browser-only {
   border-style: dashed;
 }
 
+/* ライトボックス アクションランチャー */
+.m-viewer-launcher-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background-color: rgba(255, 255, 255, 0.08);
+  color: #f0f2f5;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.12s ease;
+}
+
+.m-viewer-launcher-btn.is-open,
+.m-viewer-launcher-btn.has-active-tool {
+  background-color: var(--accent-subtle, rgba(225, 77, 42, 0.24));
+  border-color: var(--accent-primary, #e14d2a);
+  color: #ffffff;
+}
+
+.m-viewer-launcher-dot {
+  display: none;
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background-color: var(--accent-primary, #e14d2a);
+}
+
+.m-viewer-launcher-btn.has-active-tool .m-viewer-launcher-dot {
+  display: block;
+}
+
+.m-viewer-launcher-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 44;
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.m-viewer-launcher-menu {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 56px);
+  right: 10px;
+  width: min(268px, calc(100vw - 20px));
+  z-index: 45;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  border-radius: 13px;
+  background: rgba(22, 24, 29, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  transform-origin: top right;
+  opacity: 0;
+  transform: translateY(-6px) scale(0.96);
+  transition: opacity 0.14s ease, transform 0.14s ease;
+}
+
+.m-viewer-launcher-menu.is-open {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.m-launcher-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: #f0f2f5;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+
+.m-launcher-item:active {
+  background-color: rgba(255, 255, 255, 0.10);
+}
+
+.m-launcher-item-primary {
+  background-color: rgba(225, 77, 42, 0.15);
+  border-color: rgba(225, 77, 42, 0.35);
+}
+
+.m-launcher-item-primary .m-launcher-icon {
+  color: var(--accent-primary, #e14d2a);
+}
+
+.m-launcher-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.07);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #e2e6ee;
+}
+
+.m-launcher-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+
+.m-launcher-title {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.m-launcher-sub {
+  font-size: 10.5px;
+  color: #9ca6b5;
+  line-height: 1.25;
+}
+
+.m-launcher-divider {
+  height: 1px;
+  margin: 3px 6px;
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.m-launcher-state-pill {
+  display: none;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--accent-primary, #e14d2a);
+  color: #ffffff;
+}
+
+.m-launcher-item.active .m-launcher-state-pill {
+  display: inline-block;
+}
+
+.m-launcher-toggle-pill {
+  position: relative;
+  width: 34px;
+  height: 19px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  flex-shrink: 0;
+  transition: background-color 0.15s ease;
+}
+
+.m-launcher-toggle-pill::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 15px;
+  height: 15px;
+  border-radius: 999px;
+  background: #ffffff;
+  transition: transform 0.15s ease;
+}
+
+.m-launcher-toggle.active .m-launcher-toggle-pill {
+  background: var(--accent-primary, #e14d2a);
+}
+
+.m-launcher-toggle.active .m-launcher-toggle-pill::after {
+  transform: translateX(15px);
+}
+
+
 </style>
   <style>
 /* === Inlined css/touch-responsive.css === */
@@ -3706,6 +3890,150 @@ body.is-af-pick-mode .m-card:active {
   }
 }
 
+/* モバイル Art Framer ウォーターマークロゴライブラリ */
+.t-af-seg-grid2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.t-af-wm-type-btn {
+  height: 32px;
+  border-radius: 7px;
+  border: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.t-af-wm-type-btn.active {
+  background: rgba(var(--accent-rgb), 0.18);
+  border-color: var(--accent-primary);
+  color: var(--text-main);
+}
+
+.t-af-wm-gallery-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.t-af-wm-name-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.t-af-wm-asset-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  max-height: 168px;
+  overflow-y: auto;
+}
+
+.t-af-wm-asset-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 5px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.03);
+  cursor: pointer;
+}
+
+.t-af-wm-asset-card.is-selected {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.35);
+}
+
+.t-af-wm-asset-thumb {
+  width: 100%;
+  height: 44px;
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  overflow: hidden;
+  background-color: #2b2f36;
+  background-image:
+    linear-gradient(45deg, #3a3f47 25%, transparent 25%),
+    linear-gradient(-45deg, #3a3f47 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #3a3f47 75%),
+    linear-gradient(-45deg, transparent 75%, #3a3f47 75%);
+  background-size: 12px 12px;
+  background-position: 0 0, 0 6px, 6px -6px, -6px 0;
+}
+
+.t-af-wm-asset-thumb img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.t-af-wm-asset-name {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-right: 18px;
+}
+
+.t-af-wm-asset-card.is-selected .t-af-wm-asset-name {
+  color: var(--text-main);
+  font-weight: 600;
+}
+
+.t-af-wm-asset-del {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(16, 18, 22, 0.82);
+  color: #e5e7eb;
+  font-size: 11px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.t-af-wm-asset-del.is-confirm {
+  background: #dc2626;
+  border-color: #ef4444;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.t-af-wm-asset-empty {
+  grid-column: 1 / -1;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 10px 6px;
+  border: 1px dashed var(--border-color);
+  border-radius: 7px;
+}
+
+
 
 </style>
   <style>
@@ -4601,7 +4929,7 @@ else if (typeof exports === 'object'){
               <span id="mModeBadge" class="m-mode-badge mode-checking">○ UNLINK</span>
               <span id="mPhotoCount" class="m-photo-count">0枚</span>
               <span id="mPendingBadge" class="m-pending-badge" style="display:none;">0</span>
-              <span id="mAppBuildBadge" class="m-build-badge" style="display:none;">v2.5.0 (11/18 23:35)</span>
+              <span id="mAppBuildBadge" class="m-build-badge" style="display:none;">v2.5.1 (11/21 23:05)</span>
             </div>
           </div>
         </div>
@@ -4844,22 +5172,74 @@ else if (typeof exports === 'object'){
         </div>
 
         <div class="m-viewer-top-actions">
-          <button id="mViewerAutoAdvanceBtn" class="m-viewer-info-btn active" title="評価した直後に次の写真へ自動進行 (ON/OFF)">
-            <span>⚡次送</span>
-          </button>
-          <button id="mViewerArtFramerBtn" class="m-viewer-info-btn" title="Art Framer（プライバシーマスク・プリント枠・共有）">
-            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="7" y="7" width="10" height="10" rx="1"/><circle cx="15" cy="9" r="0.9"/></svg>
-            <span>枠</span>
-          </button>
-          <button id="mViewerAdjustBtn" class="m-viewer-info-btn" title="非破壊調整 (露出・コントラスト・彩度・傾き)">
-            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.75"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/></svg>
-            <span>調整</span>
-          </button>
-          <button id="mViewerOpenInfoBtn" class="m-viewer-info-btn" title="タグ編集・Exif詳細を開く（上スワイプでも起動）">
-            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
-            <span>詳細</span>
+          <button id="mViewerLauncherBtn" class="m-viewer-launcher-btn" aria-label="ツールメニューを開く" aria-expanded="false" aria-controls="mViewerLauncherMenu" title="SNS共有・Art Framer・調整・詳細">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/>
+              <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/>
+              <circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/>
+            </svg>
+            <span class="m-viewer-launcher-dot" aria-hidden="true"></span>
           </button>
         </div>
+      </div>
+
+      <!-- ライトボックス アクションランチャーポップオーバー -->
+      <div id="mViewerLauncherBackdrop" class="m-viewer-launcher-backdrop" style="display:none;"></div>
+      <div id="mViewerLauncherMenu" class="m-viewer-launcher-menu" role="menu" aria-label="写真アクション" style="display:none;">
+        <button id="mViewerQuickShareBtn" type="button" class="m-launcher-item m-launcher-item-primary" role="menuitem">
+          <span class="m-launcher-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+          </span>
+          <span class="m-launcher-text">
+            <span class="m-launcher-title">SNSへ共有</span>
+            <span class="m-launcher-sub">調整反映・GPS除去して一時共有</span>
+          </span>
+        </button>
+
+        <div class="m-launcher-divider" role="separator"></div>
+
+        <button id="mViewerArtFramerBtn" type="button" class="m-launcher-item" role="menuitem">
+          <span class="m-launcher-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="7" y="7" width="10" height="10" rx="1"/><circle cx="15" cy="9" r="0.9"/></svg>
+          </span>
+          <span class="m-launcher-text">
+            <span class="m-launcher-title">Art Framer</span>
+            <span class="m-launcher-sub">枠・ロゴ透かし・マスク仕上げ</span>
+          </span>
+        </button>
+
+        <button id="mViewerAdjustBtn" type="button" class="m-launcher-item" role="menuitem">
+          <span class="m-launcher-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/></svg>
+          </span>
+          <span class="m-launcher-text">
+            <span class="m-launcher-title">非破壊調整</span>
+            <span class="m-launcher-sub">露出・コントラスト・彩度・傾き</span>
+          </span>
+          <span class="m-launcher-state-pill">ON</span>
+        </button>
+
+        <button id="mViewerOpenInfoBtn" type="button" class="m-launcher-item" role="menuitem">
+          <span class="m-launcher-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+          </span>
+          <span class="m-launcher-text">
+            <span class="m-launcher-title">タグ・Exif詳細</span>
+            <span class="m-launcher-sub">上スワイプでも開けます</span>
+          </span>
+        </button>
+
+        <div class="m-launcher-divider" role="separator"></div>
+
+        <button id="mViewerAutoAdvanceBtn" type="button" class="m-launcher-item m-launcher-toggle active" role="menuitemcheckbox" aria-checked="true">
+          <span class="m-launcher-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          </span>
+          <span class="m-launcher-text">
+            <span class="m-launcher-title">評価後の自動次送り</span>
+          </span>
+          <span class="m-launcher-toggle-pill" aria-hidden="true"></span>
+        </button>
       </div>
 
       <!-- 中央画像ステージ（シングルタップで没入表示、左右スワイプ移動、上下スワイプで一覧/詳細、ダブルタップ/ピンチズーム） -->
@@ -4948,7 +5328,7 @@ else if (typeof exports === 'object'){
         <div class="m-sheet-header">
           <div>
             <div class="m-sheet-title"><span class="m-native-only">Wi-Fi同期 &amp; 設定</span><span class="m-browser-only">DB読込 &amp; 選別データの保存</span></div>
-            <div id="mModalAppBuildInfo" style="font-size:0.70rem; color:var(--text-muted, #9ca6b5); margin-top:2px;">TETHERACT pm · v2.5.0 (Build 2026-11-18 23:35)</div>
+            <div id="mModalAppBuildInfo" style="font-size:0.70rem; color:var(--text-muted, #9ca6b5); margin-top:2px;">TETHERACT pm · v2.5.1 (Build 2026-11-21 23:05)</div>
           </div>
           <button id="mCloseDbSyncBtn" class="m-icon-btn">✕</button>
         </div>
@@ -7762,6 +8142,345 @@ else if (typeof exports === 'object'){
     onFolderPicked,
     onTransferProgress,
     onTransferCompleted,
+  };
+})(window);
+
+</script>
+  <script>
+/* === Inlined js/adapters/watermark_adapter.js === */
+/**
+ * Tetheract Photo Manager - Layer 1: Watermark & Quick Share Adapter (window.TetheractWatermarkAdapter)
+ *
+ * library.db (watermark_assets) のロゴ画像一覧取得・登録・削除、および
+ * Android FileProvider / Web Share API を用いた SNS クイック共有を抽象化する。
+ * Layer 1 規約に基づき DOM 参照・操作および Date.toISOString() は使用しない。
+ */
+(function (global) {
+  'use strict';
+
+  const IDB_NAME = 'tetheract_watermark_local_v1';
+  const IDB_STORE = 'assets';
+  const IDB_META_STORE = 'meta';
+  const DEFAULT_ID = 'default_tetheract_logo';
+  const DEFAULT_SEED_KEY = 'default_watermark_seeded_v1';
+
+  function _safeParseJson(raw, fallback) {
+    if (raw === null || raw === undefined) return fallback;
+    if (typeof raw === 'object') return raw;
+    if (typeof raw !== 'string' || !raw.trim()) return fallback;
+    try {
+      return JSON.parse(raw);
+    } catch (err) {
+      console.warn('WatermarkAdapter JSON parse error:', err);
+      return fallback;
+    }
+  }
+
+  function _formatLocalNow() {
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  }
+
+  function _isNativeWatermarkAvailable() {
+    return Boolean(
+      global.TetheractNative &&
+        typeof global.TetheractNative.listWatermarkAssetsJson === 'function' &&
+        typeof global.TetheractNative.saveWatermarkAssetJson === 'function' &&
+        typeof global.TetheractNative.deleteWatermarkAssetJson === 'function'
+    );
+  }
+
+  function _isNativeShareAvailable() {
+    return Boolean(
+      global.TetheractNative &&
+        typeof global.TetheractNative.sharePhotoToSnsJson === 'function'
+    );
+  }
+
+  function _isHttpServerOrigin() {
+    try {
+      const proto = String(global.location && global.location.protocol || '');
+      const host = String(global.location && global.location.hostname || '');
+      return (proto === 'http:' || proto === 'https:') && host !== 'appassets.tetheract.local';
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function _openIdb() {
+    return new Promise((resolve, reject) => {
+      if (!global.indexedDB) {
+        reject(new Error('IndexedDB unavailable'));
+        return;
+      }
+      const req = global.indexedDB.open(IDB_NAME, 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(IDB_STORE)) {
+          db.createObjectStore(IDB_STORE, { keyPath: 'id' });
+        }
+        if (!db.objectStoreNames.contains(IDB_META_STORE)) {
+          db.createObjectStore(IDB_META_STORE, { keyPath: 'key' });
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error || new Error('IndexedDB open failed'));
+    });
+  }
+
+  async function _idbGetAll(storeName) {
+    try {
+      const db = await _openIdb();
+      return await new Promise((resolve) => {
+        const tx = db.transaction(storeName, 'readonly');
+        const req = tx.objectStore(storeName).getAll();
+        req.onsuccess = () => resolve(Array.isArray(req.result) ? req.result : []);
+        req.onerror = () => resolve([]);
+      });
+    } catch (e) {
+      return [];
+    }
+  }
+
+  async function _idbPut(storeName, value) {
+    const db = await _openIdb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(storeName, 'readwrite');
+      tx.objectStore(storeName).put(value);
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => reject(tx.error || new Error('IndexedDB put failed'));
+    });
+  }
+
+  async function _idbDelete(storeName, key) {
+    const db = await _openIdb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(storeName, 'readwrite');
+      tx.objectStore(storeName).delete(key);
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => reject(tx.error || new Error('IndexedDB delete failed'));
+    });
+  }
+
+  async function _idbGet(storeName, key) {
+    try {
+      const db = await _openIdb();
+      return await new Promise((resolve) => {
+        const tx = db.transaction(storeName, 'readonly');
+        const req = tx.objectStore(storeName).get(key);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => resolve(null);
+      });
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function _dataUrlToBlob(dataUrl) {
+    const raw = String(dataUrl || '');
+    const commaIdx = raw.indexOf(',');
+    if (commaIdx < 0) return null;
+    const header = raw.slice(0, commaIdx);
+    const m = header.match(/data:([^;]+);/i);
+    const mime = m ? m[1] : 'image/jpeg';
+    const bin = global.atob(raw.slice(commaIdx + 1));
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
+    return { blob: new Blob([bytes], { type: mime }), mime };
+  }
+
+  async function listWatermarks() {
+    if (_isNativeWatermarkAvailable()) {
+      try {
+        const res = _safeParseJson(global.TetheractNative.listWatermarkAssetsJson(), { ok: false, watermarks: [] });
+        return {
+          ok: Boolean(res && res.ok),
+          mode: 'native',
+          watermarks: Array.isArray(res && res.watermarks) ? res.watermarks : [],
+          error: res && res.error ? String(res.error) : '',
+        };
+      } catch (err) {
+        return { ok: false, mode: 'native', watermarks: [], error: String(err) };
+      }
+    }
+
+    const merged = [];
+    const seen = new Set();
+
+    if (_isHttpServerOrigin()) {
+      try {
+        const resp = await global.fetch('/api/watermarks', { credentials: 'same-origin' });
+        if (resp.ok) {
+          const data = await resp.json();
+          const list = Array.isArray(data && data.watermarks) ? data.watermarks : [];
+          list.forEach((item) => {
+            if (item && item.id && !seen.has(item.id)) {
+              seen.add(item.id);
+              merged.push(item);
+            }
+          });
+        }
+      } catch (e) {
+        console.warn('WatermarkAdapter HTTP list skip:', e);
+      }
+    }
+
+    const localItems = await _idbGetAll(IDB_STORE);
+    localItems.forEach((item) => {
+      if (item && item.id && !seen.has(item.id)) {
+        seen.add(item.id);
+        merged.push(item);
+      }
+    });
+
+    // 非ネイティブかつ HTTP 未取得時のみ、初回デフォルトロゴをアイコンURLから補完
+    if (merged.length === 0 && _isHttpServerOrigin()) {
+      const seeded = await _idbGet(IDB_META_STORE, DEFAULT_SEED_KEY);
+      if (!seeded) {
+        merged.push({
+          id: DEFAULT_ID,
+          name: 'TETHERACT',
+          mime_type: 'image/png',
+          width: 1068,
+          height: 234,
+          origin: 'default',
+          image_url: '/icons/tetheract-watermark-default.png',
+          created_at: _formatLocalNow(),
+        });
+      }
+    }
+
+    return { ok: true, mode: _isHttpServerOrigin() ? 'http' : 'local', watermarks: merged };
+  }
+
+  async function saveWatermark(name, dataUrl) {
+    const cleanName = String(name || 'logo.png').trim() || 'logo.png';
+    if (_isNativeWatermarkAvailable()) {
+      try {
+        const res = _safeParseJson(
+          global.TetheractNative.saveWatermarkAssetJson(JSON.stringify({ name: cleanName, dataUrl: String(dataUrl || '') })),
+          { ok: false }
+        );
+        return {
+          ok: Boolean(res && res.ok),
+          asset: res && res.asset ? res.asset : null,
+          watermarks: Array.isArray(res && res.watermarks) ? res.watermarks : [],
+          error: res && res.error ? String(res.error) : '',
+        };
+      } catch (err) {
+        return { ok: false, asset: null, watermarks: [], error: String(err) };
+      }
+    }
+
+    const aid = `mob_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    const item = {
+      id: aid,
+      name: cleanName,
+      mime_type: 'image/png',
+      width: 0,
+      height: 0,
+      origin: 'mobile',
+      image_url: String(dataUrl || ''),
+      created_at: _formatLocalNow(),
+    };
+    try {
+      await _idbPut(IDB_STORE, item);
+      const listRes = await listWatermarks();
+      return { ok: true, asset: item, watermarks: listRes.watermarks || [item] };
+    } catch (err) {
+      return { ok: false, asset: null, watermarks: [], error: String(err) };
+    }
+  }
+
+  async function deleteWatermark(assetId) {
+    const aid = String(assetId || '').trim();
+    if (!aid) return { ok: false, watermarks: [], error: 'IDが未指定です' };
+
+    if (_isNativeWatermarkAvailable()) {
+      try {
+        const res = _safeParseJson(global.TetheractNative.deleteWatermarkAssetJson(aid), { ok: false });
+        return {
+          ok: Boolean(res && res.ok),
+          deleted_id: aid,
+          watermarks: Array.isArray(res && res.watermarks) ? res.watermarks : [],
+          error: res && res.error ? String(res.error) : '',
+        };
+      } catch (err) {
+        return { ok: false, watermarks: [], error: String(err) };
+      }
+    }
+
+    try {
+      await _idbDelete(IDB_STORE, aid);
+      if (aid === DEFAULT_ID) {
+        await _idbPut(IDB_META_STORE, { key: DEFAULT_SEED_KEY, value: '1' });
+      }
+      if (_isHttpServerOrigin() && !aid.startsWith('mob_')) {
+        await global.fetch(`/api/watermarks/${encodeURIComponent(aid)}`, {
+          method: 'DELETE',
+          credentials: 'same-origin',
+        }).catch(() => {});
+      }
+      const listRes = await listWatermarks();
+      return { ok: true, deleted_id: aid, watermarks: listRes.watermarks || [] };
+    } catch (err) {
+      return { ok: false, watermarks: [], error: String(err) };
+    }
+  }
+
+  /**
+   * 調整・GPS除去済みの画像 DataURL を OS 共有シートへ引き渡す
+   */
+  async function sharePhotoToSns(payload) {
+    const req = payload && typeof payload === 'object' ? payload : {};
+    if (_isNativeShareAvailable()) {
+      try {
+        const res = _safeParseJson(
+          global.TetheractNative.sharePhotoToSnsJson(JSON.stringify(req)),
+          { ok: false }
+        );
+        return {
+          ok: Boolean(res && res.ok),
+          mode: 'native',
+          fileName: res && res.fileName ? String(res.fileName) : '',
+          error: res && res.error ? String(res.error) : '',
+        };
+      } catch (err) {
+        return { ok: false, mode: 'native', error: String(err) };
+      }
+    }
+
+    const parsed = _dataUrlToBlob(req.dataUrl);
+    if (!parsed) {
+      return { ok: false, mode: 'browser', error: '共有用画像データを生成できませんでした' };
+    }
+    const fileName = String(req.fileName || 'tetheract_share.jpg');
+    const file = new File([parsed.blob], fileName, { type: parsed.mime });
+
+    if (global.navigator && typeof global.navigator.share === 'function') {
+      try {
+        if (!global.navigator.canShare || global.navigator.canShare({ files: [file] })) {
+          await global.navigator.share({ files: [file], title: fileName });
+          return { ok: true, mode: 'web_share', fileName };
+        }
+      } catch (err) {
+        if (err && err.name === 'AbortError') {
+          return { ok: true, mode: 'cancelled', fileName };
+        }
+        return { ok: false, mode: 'web_share', error: String(err && err.message || err) };
+      }
+    }
+    return { ok: false, mode: 'fallback_download', fileName, error: 'Web Share API 未対応のためダウンロードに切替えます' };
+  }
+
+  global.TetheractWatermarkAdapter = {
+    isNativeWatermarkAvailable: _isNativeWatermarkAvailable,
+    isNativeShareAvailable: _isNativeShareAvailable,
+    listWatermarks,
+    saveWatermark,
+    deleteWatermark,
+    sharePhotoToSns,
   };
 })(window);
 
@@ -12485,6 +13204,321 @@ else if (typeof exports === 'object'){
 
 </script>
   <script>
+/* === Inlined js/views/touch/touch_viewer_launcher.js === */
+/**
+ * Tetheract Touch Viewer Action Launcher & Quick SNS Share (Layer 3)
+ * モバイル版ライトボックス上部バーのアクション群を単一メインボタンから展開する
+ * ポップオーバーランチャーへ集約し、ワンタップSNSクイック共有（非破壊調整反映・GPS除去・FileProvider）を提供する。
+ */
+(function (global) {
+  'use strict';
+
+  const QUICK_SHARE_MAX_LONG_EDGE = 2048;
+  const QUICK_SHARE_JPEG_QUALITY = 0.92;
+
+  let isOpen = false;
+  let isSharing = false;
+  let initialized = false;
+
+  function _showToast(msg, durationMs = 2600) {
+    if (typeof global.showToast === 'function') {
+      global.showToast(msg, durationMs);
+      return;
+    }
+    const toast = document.getElementById('mToast');
+    if (!toast) return;
+    toast.textContent = String(msg || '');
+    toast.style.display = 'block';
+    clearTimeout(_showToast._timer);
+    _showToast._timer = setTimeout(() => {
+      toast.style.display = 'none';
+    }, durationMs);
+  }
+
+  function _updateLauncherTriggerState() {
+    const btn = document.getElementById('mViewerLauncherBtn');
+    if (!btn) return;
+    btn.classList.toggle('is-open', isOpen);
+    btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+
+    const adjBtn = document.getElementById('mViewerAdjustBtn');
+    const isAdjustActive = Boolean(adjBtn && adjBtn.classList.contains('active'));
+    btn.classList.toggle('has-active-tool', isAdjustActive);
+  }
+
+  function openMenu() {
+    const menu = document.getElementById('mViewerLauncherMenu');
+    const backdrop = document.getElementById('mViewerLauncherBackdrop');
+    if (!menu) return;
+    isOpen = true;
+    if (backdrop) backdrop.style.display = 'block';
+    menu.style.display = 'flex';
+    global.requestAnimationFrame(() => {
+      menu.classList.add('is-open');
+    });
+    _updateLauncherTriggerState();
+  }
+
+  function closeMenu() {
+    const menu = document.getElementById('mViewerLauncherMenu');
+    const backdrop = document.getElementById('mViewerLauncherBackdrop');
+    if (!isOpen && (!menu || menu.style.display === 'none')) return;
+    isOpen = false;
+    if (menu) {
+      menu.classList.remove('is-open');
+      menu.style.display = 'none';
+    }
+    if (backdrop) backdrop.style.display = 'none';
+    _updateLauncherTriggerState();
+  }
+
+  function toggleMenu() {
+    if (isOpen) closeMenu();
+    else openMenu();
+  }
+
+  function _loadImageWithFallback(primaryUrl, fallbackUrl) {
+    return new Promise((resolve, reject) => {
+      const tryLoad = (url, isFallback) => {
+        if (!url) {
+          reject(new Error('共有対象の画像URLが見つかりません'));
+          return;
+        }
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => resolve({ img, isFallback });
+        img.onerror = () => {
+          if (!isFallback && fallbackUrl && fallbackUrl !== url) {
+            tryLoad(fallbackUrl, true);
+          } else {
+            reject(new Error('画像の読み込みに失敗しました'));
+          }
+        };
+        img.src = url;
+      };
+      tryLoad(primaryUrl, false);
+    });
+  }
+
+  /**
+   * 原本画像へ非破壊調整（露出・コントラスト・彩度・傾き・90°回転）を適用し、
+   * SNS投稿向けに長辺上限2048px・GPS非含有のJPEG DataURLを生成する。
+   */
+  function _renderAdjustedJpegDataUrl(img, photo, isUnbakedSource) {
+    const srcW = Math.max(1, img.naturalWidth || img.width || 1);
+    const srcH = Math.max(1, img.naturalHeight || img.height || 1);
+
+    const baked = (photo && photo._bakedAdjust) || {
+      brightness: 0,
+      contrast: 0,
+      saturation: 0,
+      fine_angle: 0,
+      rotation: 0,
+    };
+    const curEv = Number((photo && photo.brightness) || 0) / 10.0;
+    const curCt = Number((photo && photo.contrast) || 0);
+    const curSat = Number((photo && photo.saturation) || 0);
+    const curTilt = Number((photo && photo.fine_angle) || 0);
+    const curRot = Number((photo && photo.rotation) || 0);
+
+    const effEv = isUnbakedSource ? curEv : (curEv - Number(baked.brightness || 0) / 10.0);
+    const effCt = isUnbakedSource ? curCt : (curCt - Number(baked.contrast || 0));
+    const effSat = isUnbakedSource ? curSat : (curSat - Number(baked.saturation || 0));
+    const effTilt = isUnbakedSource ? curTilt : (curTilt - Number(baked.fine_angle || 0));
+    const effRot90 = isUnbakedSource ? ((curRot % 360) + 360) % 360 : 0;
+
+    const isSwap90 = effRot90 === 90 || effRot90 === 270;
+    const baseOutW = isSwap90 ? srcH : srcW;
+    const baseOutH = isSwap90 ? srcW : srcH;
+    const longEdge = Math.max(baseOutW, baseOutH);
+    const resizeScale = longEdge > QUICK_SHARE_MAX_LONG_EDGE ? (QUICK_SHARE_MAX_LONG_EDGE / longEdge) : 1.0;
+
+    const outW = Math.max(1, Math.round(baseOutW * resizeScale));
+    const outH = Math.max(1, Math.round(baseOutH * resizeScale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = outW;
+    canvas.height = outH;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Canvasコンテキストを取得できませんでした');
+
+    const br = Math.max(0.25, Math.min(2.4, Math.pow(2, effEv * 0.45)));
+    const ct = Math.max(0.25, Math.min(2.2, 1 + effCt / 100));
+    const sa = Math.max(0, Math.min(2.4, 1 + effSat / 100));
+    const hasFilter = Math.abs(br - 1) > 0.005 || Math.abs(ct - 1) > 0.005 || Math.abs(sa - 1) > 0.005;
+
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, outW, outH);
+    ctx.save();
+    if (hasFilter && typeof ctx.filter === 'string') {
+      ctx.filter = `brightness(${br.toFixed(3)}) contrast(${ct.toFixed(3)}) saturate(${sa.toFixed(3)})`;
+    }
+
+    ctx.translate(outW * 0.5, outH * 0.5);
+    let totalRad = (effRot90 * Math.PI) / 180;
+    let tiltScale = 1.0;
+    if (Math.abs(effTilt) > 0.05) {
+      const tiltRad = (effTilt * Math.PI) / 180;
+      totalRad += tiltRad;
+      const absSin = Math.abs(Math.sin(tiltRad));
+      const absCos = Math.abs(Math.cos(tiltRad));
+      const rAspect = outW / Math.max(1, outH);
+      tiltScale = Math.max(absCos + absSin * rAspect, absCos + absSin / Math.max(0.01, rAspect));
+    }
+    if (Math.abs(totalRad) > 0.0001) ctx.rotate(totalRad);
+    if (tiltScale > 1.0001) ctx.scale(tiltScale, tiltScale);
+
+    const drawW = Math.max(1, Math.round(srcW * resizeScale));
+    const drawH = Math.max(1, Math.round(srcH * resizeScale));
+    ctx.drawImage(img, -drawW * 0.5, -drawH * 0.5, drawW, drawH);
+    ctx.restore();
+
+    return {
+      dataUrl: canvas.toDataURL('image/jpeg', QUICK_SHARE_JPEG_QUALITY),
+      width: outW,
+      height: outH,
+    };
+  }
+
+  function _fallbackBrowserDownload(dataUrl, fileName) {
+    const a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
+  async function executeQuickShare() {
+    if (isSharing) return;
+    closeMenu();
+
+    const targets = typeof global.__getMobileArtFramerTargets === 'function'
+      ? global.__getMobileArtFramerTargets()
+      : [];
+    const photo = Array.isArray(targets) && targets.length > 0 ? targets[0] : null;
+    if (!photo) {
+      _showToast('共有する写真が見つかりません');
+      return;
+    }
+
+    const viewerImg = document.getElementById('mViewerImg');
+    const isUnbakedSource = Boolean(viewerImg && viewerImg.dataset.unbakedSource === '1');
+    const primaryUrl = photo.hdUrl || (viewerImg && viewerImg.currentSrc) || photo.thumbUrl || '';
+    const fallbackUrl = photo.thumbUrl || (viewerImg && viewerImg.currentSrc) || '';
+
+    isSharing = true;
+    _showToast('共有用の画像を準備中（GPS除去・調整反映）...', 2000);
+    try {
+      const { img, isFallback } = await _loadImageWithFallback(primaryUrl, fallbackUrl);
+      if (isFallback || (img.naturalWidth <= 480 && img.naturalHeight <= 480)) {
+        _showToast('オフラインのためサムネイル画質で共有します', 2600);
+      }
+      const rendered = _renderAdjustedJpegDataUrl(img, photo, isUnbakedSource);
+      const origName = String(photo.file_name || `photo_${photo.id || Date.now()}`);
+      const stem = origName.replace(/\.[^.]+$/, '');
+      const shareFileName = `${stem}_share.jpg`;
+
+      const adapter = global.TetheractWatermarkAdapter;
+      if (adapter && typeof adapter.sharePhotoToSns === 'function') {
+        const res = await adapter.sharePhotoToSns({
+          dataUrl: rendered.dataUrl,
+          fileName: shareFileName,
+          mimeType: 'image/jpeg',
+          dateTaken: photo.date_taken || '',
+          cameraModel: photo.camera_model || '',
+        });
+        if (res && res.ok) {
+          return;
+        }
+        if (res && res.mode === 'fallback_download') {
+          _fallbackBrowserDownload(rendered.dataUrl, shareFileName);
+          _showToast('共有用画像を保存しました（GPS除去済）');
+          return;
+        }
+        _showToast((res && res.error) || '共有シートを開けませんでした');
+      } else {
+        _fallbackBrowserDownload(rendered.dataUrl, shareFileName);
+        _showToast('共有用画像を保存しました（GPS除去済）');
+      }
+    } catch (err) {
+      console.warn('[VIEWER_LAUNCHER] クイックSNS共有エラー:', err);
+      _showToast((err && err.message) || '共有の準備に失敗しました');
+    } finally {
+      isSharing = false;
+    }
+  }
+
+  function init() {
+    if (initialized) return;
+    const launcherBtn = document.getElementById('mViewerLauncherBtn');
+    const menu = document.getElementById('mViewerLauncherMenu');
+    if (!launcherBtn || !menu) return;
+    initialized = true;
+
+    launcherBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleMenu();
+    });
+
+    document.getElementById('mViewerLauncherBackdrop')?.addEventListener('click', () => {
+      closeMenu();
+    });
+
+    document.getElementById('mViewerQuickShareBtn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      executeQuickShare();
+    });
+
+    // 他のツール項目押下時はランチャーを閉じる（元イベントハンドラはそのまま実行される）
+    ['mViewerArtFramerBtn', 'mViewerAdjustBtn', 'mViewerOpenInfoBtn'].forEach((id) => {
+      document.getElementById(id)?.addEventListener('click', () => {
+        closeMenu();
+      });
+    });
+
+    // 調整ボタンの active 状態変化をランチャーボタンのドット表示へ同期
+    const adjBtn = document.getElementById('mViewerAdjustBtn');
+    if (adjBtn && typeof global.MutationObserver === 'function') {
+      const obs = new global.MutationObserver(() => _updateLauncherTriggerState());
+      obs.observe(adjBtn, { attributes: true, attributeFilter: ['class'] });
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && isOpen) {
+        closeMenu();
+      }
+    });
+
+    global.__extraBackHandlers = global.__extraBackHandlers || [];
+    global.__extraBackHandlers.push(() => {
+      if (!isOpen) return undefined;
+      closeMenu();
+      return 'handled';
+    });
+
+    _updateLauncherTriggerState();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+  global.TetheractTouchUI = Object.assign(global.TetheractTouchUI || {}, {
+    viewerLauncher: {
+      open: openMenu,
+      close: closeMenu,
+      toggle: toggleMenu,
+      isOpen: () => isOpen,
+      quickShare: executeQuickShare,
+    },
+  });
+})(window);
+
+</script>
+  <script>
 /* === Inlined js/privacy_mask_editor.js === */
 /**
  * privacy_mask_editor.js - Art Framer 共通インタラクティブ Canvas 編集・プレビューエンジン
@@ -12718,11 +13752,20 @@ else if (typeof exports === 'object'){
           this.render();
         } else if (!this.logoImageEl || this.logoImageEl._srcKey !== logoDataUrl) {
           const img = new Image();
+          img.crossOrigin = 'anonymous';
           img._srcKey = logoDataUrl;
           img.onload = () => {
+            if (this._pendingLogoKey && this._pendingLogoKey !== logoDataUrl) return;
             this.logoImageEl = img;
             this.render();
           };
+          img.onerror = () => {
+            if (this._pendingLogoKey === logoDataUrl) {
+              this.logoImageEl = null;
+              this.render();
+            }
+          };
+          this._pendingLogoKey = logoDataUrl;
           img.src = logoDataUrl;
           return;
         }
@@ -13477,9 +14520,14 @@ else if (typeof exports === 'object'){
         dCtx.globalAlpha = opacity;
 
         if (wc.type === 'image' && this.logoImageEl) {
-          const scaleRatio = clamp(Number(wc.size_ratio || 0.12), 0.03, 0.45);
-          const lw = Math.max(24, Math.round(drawLong * scaleRatio));
-          const lh = Math.max(12, Math.round(lw * (this.logoImageEl.naturalHeight / Math.max(1, this.logoImageEl.naturalWidth))));
+          const scaleRatio = clamp(Number(wc.size_ratio || 0.16), 0.03, 0.50);
+          const natW = Math.max(1, this.logoImageEl.naturalWidth || 1);
+          const natH = Math.max(1, this.logoImageEl.naturalHeight || 1);
+          const natLong = Math.max(natW, natH);
+          const targetLong = Math.max(24, drawLong * scaleRatio);
+          const sc = targetLong / natLong;
+          const lw = Math.max(12, Math.round(natW * sc));
+          const lh = Math.max(12, Math.round(natH * sc));
           const { x: lx, y: ly } = this._anchorRect(ox, oy, drawPw, drawPh, lw, lh, pos, margin);
           dCtx.drawImage(this.logoImageEl, lx, ly, lw, lh);
         } else if ((wc.text || '').trim()) {
@@ -14268,6 +15316,8 @@ else if (typeof exports === 'object'){
       enabled: false,
       type: 'text',
       text: '© 2026',
+      asset_id: '',
+      image_url: '',
       image_path: '',
       image_name: '',
       preview_data_url: '',
@@ -14286,6 +15336,10 @@ else if (typeof exports === 'object'){
       exif_remove_all: false,
     },
   };
+
+  let watermarkAssets = [];
+  let pendingDeleteWmId = '';
+  let pendingDeleteWmTimer = null;
 
   function _showToast(msg, durationMs = 2800) {
     if (typeof global.showToast === 'function') {
@@ -14339,6 +15393,11 @@ else if (typeof exports === 'object'){
 
   function _saveSettings() {
     try {
+      const wmToSave = {
+        ...cfg.watermark,
+        image_url: String(cfg.watermark.image_url || '').startsWith('data:') ? '' : (cfg.watermark.image_url || ''),
+        preview_data_url: '',
+      };
       const payload = {
         _thmodNamingMigrated: true,
         _faceHazeV2Migrated: true,
@@ -14350,7 +15409,7 @@ else if (typeof exports === 'object'){
         faceRadius: cfg.faceRadius,
         faceStrength: cfg.faceStrength,
         frame: cfg.frame,
-        watermark: cfg.watermark,
+        watermark: wmToSave,
         output: cfg.output,
       };
       global.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
@@ -14556,12 +15615,29 @@ else if (typeof exports === 'object'){
                   <span>ウォーターマーク（透かし）を入れる</span>
                 </label>
                 <div id="mAfWmControlsBody" class="t-af-subblock">
-                  <div class="t-af-field-grid2">
-                    <input type="text" id="mAfWmTextInput" class="t-af-input" value="© 2026" placeholder="© Author">
-                    <select id="mAfWmColorSelect" class="t-af-select-sm">
-                      <option value="light">白文字 (Shadow)</option>
-                      <option value="dark">黒文字 (Light)</option>
-                    </select>
+                  <div class="t-af-seg-grid2">
+                    <button type="button" class="t-af-wm-type-btn active" data-wm-type="text">テキスト</button>
+                    <button type="button" class="t-af-wm-type-btn" data-wm-type="image">画像ロゴ (透過PNG)</button>
+                  </div>
+                  <div id="mAfWmTextGroup" class="t-af-subblock" style="gap:8px;">
+                    <div class="t-af-field-grid2">
+                      <input type="text" id="mAfWmTextInput" class="t-af-input" value="© 2026" placeholder="© Author">
+                      <select id="mAfWmColorSelect" class="t-af-select-sm">
+                        <option value="light">白文字 (Shadow)</option>
+                        <option value="dark">黒文字 (Light)</option>
+                      </select>
+                    </div>
+                    <div class="t-af-checks-wrap">
+                      <label class="t-af-check-mini"><input type="checkbox" id="mAfWmShadowCheck" checked><span>ドロップシャドウ</span></label>
+                    </div>
+                  </div>
+                  <div id="mAfWmImageGroup" class="t-af-subblock" style="display:none; gap:8px;">
+                    <div class="t-af-wm-gallery-head">
+                      <span id="mAfWmImageNameLabel" class="t-af-wm-name-label">未選択</span>
+                      <button type="button" id="mAfWmAddLogoBtn" class="t-af-mini-btn">＋ ロゴを追加</button>
+                      <input type="file" id="mAfWmFileInput" accept="image/png,image/webp,image/jpeg" style="display:none;">
+                    </div>
+                    <div id="mAfWmAssetList" class="t-af-wm-asset-grid"></div>
                   </div>
                   <div class="t-af-seg-grid3">
                     <button type="button" class="t-af-wm-pos-btn" data-pos="top-left">左上</button>
@@ -14572,7 +15648,7 @@ else if (typeof exports === 'object'){
                     <button type="button" class="t-af-wm-pos-btn" data-pos="center">中央</button>
                   </div>
                   <label class="t-af-slider-row">
-                    <span>文字サイズ</span>
+                    <span id="mAfWmSizeLabel">文字サイズ</span>
                     <input type="range" id="mAfWmSizeSlider" min="0.8" max="6.0" step="0.2" value="1.8">
                     <span id="mAfWmSizeVal" class="t-af-slider-val">1.8%</span>
                   </label>
@@ -14581,9 +15657,6 @@ else if (typeof exports === 'object'){
                     <input type="range" id="mAfWmOpacitySlider" min="10" max="100" step="2" value="58">
                     <span id="mAfWmOpacityVal" class="t-af-slider-val">58%</span>
                   </label>
-                  <div class="t-af-checks-wrap">
-                    <label class="t-af-check-mini"><input type="checkbox" id="mAfWmShadowCheck" checked><span>ドロップシャドウ</span></label>
-                  </div>
                 </div>
               </div>
             </div>
@@ -14662,6 +15735,181 @@ else if (typeof exports === 'object'){
     return 'for_x';
   }
 
+  function _resolveActiveWatermarkLogoUrl() {
+    if (cfg.watermark.asset_id) {
+      const hit = watermarkAssets.find((a) => a.id === cfg.watermark.asset_id);
+      if (hit && hit.image_url) return hit.image_url;
+    }
+    return cfg.watermark.image_url || cfg.watermark.preview_data_url || '';
+  }
+
+  function _selectWatermarkAsset(asset) {
+    if (!asset) {
+      cfg.watermark.asset_id = '';
+      cfg.watermark.image_url = '';
+      cfg.watermark.image_name = '';
+      cfg.watermark.preview_data_url = '';
+      return;
+    }
+    cfg.watermark.asset_id = asset.id;
+    cfg.watermark.image_url = asset.image_url || '';
+    cfg.watermark.image_name = asset.name || 'logo.png';
+    cfg.watermark.preview_data_url = '';
+  }
+
+  function _renderWatermarkAssetGallery() {
+    const container = document.getElementById('mAfWmAssetList');
+    if (!container) return;
+    container.textContent = '';
+
+    if (!watermarkAssets.length) {
+      const empty = document.createElement('div');
+      empty.className = 't-af-wm-asset-empty';
+      empty.textContent = 'ロゴ未登録。「＋ ロゴを追加」から透過PNGを登録できます。';
+      container.appendChild(empty);
+      return;
+    }
+
+    watermarkAssets.forEach((asset) => {
+      const isSel = cfg.watermark.asset_id === asset.id;
+      const isPendingDel = pendingDeleteWmId === asset.id;
+      const card = document.createElement('div');
+      card.className = `t-af-wm-asset-card${isSel ? ' is-selected' : ''}`;
+      card.setAttribute('role', 'button');
+      card.tabIndex = 0;
+
+      const thumb = document.createElement('div');
+      thumb.className = 't-af-wm-asset-thumb';
+      const img = document.createElement('img');
+      img.src = asset.image_url || '';
+      img.alt = asset.name || 'logo';
+      img.loading = 'lazy';
+      thumb.appendChild(img);
+
+      const nameEl = document.createElement('div');
+      nameEl.className = 't-af-wm-asset-name';
+      nameEl.textContent = asset.name || 'logo.png';
+
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.className = `t-af-wm-asset-del${isPendingDel ? ' is-confirm' : ''}`;
+      delBtn.setAttribute('aria-label', `${asset.name || 'ロゴ'}を削除`);
+      delBtn.textContent = isPendingDel ? '削除?' : '×';
+      delBtn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        if (pendingDeleteWmId !== asset.id) {
+          pendingDeleteWmId = asset.id;
+          clearTimeout(pendingDeleteWmTimer);
+          pendingDeleteWmTimer = setTimeout(() => {
+            pendingDeleteWmId = '';
+            _renderWatermarkAssetGallery();
+          }, 2600);
+          _renderWatermarkAssetGallery();
+          return;
+        }
+        clearTimeout(pendingDeleteWmTimer);
+        pendingDeleteWmId = '';
+        _deleteWatermarkAsset(asset);
+      });
+
+      card.addEventListener('click', () => {
+        pendingDeleteWmId = '';
+        _selectWatermarkAsset(asset);
+        cfg.watermark.type = 'image';
+        if (cfg.watermark.size_ratio < 0.03) cfg.watermark.size_ratio = 0.16;
+        _syncFormFromState();
+        _pushDecoratorToEditor();
+        _saveSettings();
+      });
+
+      card.appendChild(thumb);
+      card.appendChild(nameEl);
+      card.appendChild(delBtn);
+      container.appendChild(card);
+    });
+  }
+
+  async function _loadWatermarkAssets() {
+    const adapter = global.TetheractWatermarkAdapter;
+    if (!adapter || typeof adapter.listWatermarks !== 'function') return;
+    try {
+      const res = await adapter.listWatermarks();
+      watermarkAssets = Array.isArray(res && res.watermarks) ? res.watermarks : [];
+      const curHit = watermarkAssets.find((a) => a.id === cfg.watermark.asset_id);
+      if (curHit) {
+        _selectWatermarkAsset(curHit);
+      } else if (watermarkAssets.length > 0) {
+        _selectWatermarkAsset(watermarkAssets[0]);
+      } else {
+        _selectWatermarkAsset(null);
+      }
+      _renderWatermarkAssetGallery();
+    } catch (e) {
+      console.warn('[TOUCH_ART_FRAMER] ウォーターマーク一覧取得スキップ:', e);
+    }
+  }
+
+  async function _uploadWatermarkLogoFile(file) {
+    if (!file) return;
+    const adapter = global.TetheractWatermarkAdapter;
+    if (!adapter || typeof adapter.saveWatermark !== 'function') {
+      _showToast('ロゴ登録機能を利用できません');
+      return;
+    }
+    const btn = document.getElementById('mAfWmAddLogoBtn');
+    try {
+      if (btn) btn.disabled = true;
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(new Error('画像の読み込みに失敗しました'));
+        reader.readAsDataURL(file);
+      });
+      const res = await adapter.saveWatermark(file.name || 'logo.png', dataUrl);
+      if (!res || !res.ok) {
+        _showToast((res && res.error) || 'ロゴ画像の保存に失敗しました');
+        return;
+      }
+      watermarkAssets = Array.isArray(res.watermarks) ? res.watermarks : watermarkAssets;
+      if (res.asset) {
+        _selectWatermarkAsset(res.asset);
+        cfg.watermark.type = 'image';
+        if (cfg.watermark.size_ratio < 0.03) cfg.watermark.size_ratio = 0.16;
+      }
+      _syncFormFromState();
+      _pushDecoratorToEditor();
+      _saveSettings();
+      _showToast(`ロゴ「${(res.asset && res.asset.name) || file.name}」を保存しました`);
+    } catch (e) {
+      _showToast('ロゴ画像の登録に失敗しました');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  async function _deleteWatermarkAsset(asset) {
+    if (!asset || !asset.id) return;
+    const adapter = global.TetheractWatermarkAdapter;
+    if (!adapter || typeof adapter.deleteWatermark !== 'function') return;
+    try {
+      const res = await adapter.deleteWatermark(asset.id);
+      if (!res || !res.ok) {
+        _showToast((res && res.error) || 'ロゴの削除に失敗しました');
+        return;
+      }
+      watermarkAssets = Array.isArray(res.watermarks) ? res.watermarks : [];
+      if (cfg.watermark.asset_id === asset.id) {
+        _selectWatermarkAsset(watermarkAssets[0] || null);
+      }
+      _syncFormFromState();
+      _pushDecoratorToEditor();
+      _saveSettings();
+      _showToast('ロゴを削除しました');
+    } catch (e) {
+      _showToast('ロゴの削除に失敗しました');
+    }
+  }
+
   function _pushDecoratorToEditor() {
     if (!editor) return;
     editor.setDecoratorState({
@@ -14669,7 +15917,7 @@ else if (typeof exports === 'object'){
       frameConfig: cfg.frame,
       watermarkConfig: cfg.watermark,
       artPreset: cfg.artPreset,
-      logoDataUrl: cfg.watermark.preview_data_url || '',
+      logoDataUrl: _resolveActiveWatermarkLogoUrl(),
     });
   }
 
@@ -14742,9 +15990,19 @@ else if (typeof exports === 'object'){
 
     setChk('mAfWmEnableCheck', cfg.watermark.enabled);
     document.getElementById('mAfWmControlsBody')?.classList.toggle('is-disabled', !cfg.watermark.enabled);
+    const isLogo = cfg.watermark.type === 'image';
+    modalEl.querySelectorAll('.t-af-wm-type-btn').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.wmType === (isLogo ? 'image' : 'text'));
+    });
+    const textGrp = document.getElementById('mAfWmTextGroup');
+    const imgGrp = document.getElementById('mAfWmImageGroup');
+    if (textGrp) textGrp.style.display = isLogo ? 'none' : 'flex';
+    if (imgGrp) imgGrp.style.display = isLogo ? 'flex' : 'none';
+
     setVal('mAfWmTextInput', cfg.watermark.text || '');
     setVal('mAfWmColorSelect', cfg.watermark.color || 'light');
     setChk('mAfWmShadowCheck', cfg.watermark.shadow !== false);
+    setTxt('mAfWmImageNameLabel', cfg.watermark.image_name || '未選択');
     modalEl.querySelectorAll('.t-af-wm-pos-btn').forEach((btn) => {
       btn.classList.toggle('active', btn.dataset.pos === cfg.watermark.position);
     });
@@ -14753,10 +16011,20 @@ else if (typeof exports === 'object'){
     setVal('mAfWmOpacitySlider', opPct);
     setTxt('mAfWmOpacityVal', `${opPct}%`);
 
-    const szRatio = cfg.watermark.type === 'image' ? 0.018 : (cfg.watermark.size_ratio || 0.018);
-    const szPct = Math.max(0.8, Math.min(6.0, szRatio * 100)).toFixed(1);
-    setVal('mAfWmSizeSlider', szPct);
+    const szRatio = isLogo
+      ? Math.max(0.03, Math.min(0.50, Number(cfg.watermark.size_ratio || 0.16)))
+      : Math.max(0.008, Math.min(0.06, Number(cfg.watermark.size_ratio || 0.018)));
+    const szPct = isLogo ? Math.round(szRatio * 100).toString() : (szRatio * 100).toFixed(1);
+    const szSlider = document.getElementById('mAfWmSizeSlider');
+    if (szSlider) {
+      szSlider.min = isLogo ? '3' : '0.8';
+      szSlider.max = isLogo ? '50' : '6.0';
+      szSlider.step = isLogo ? '1' : '0.2';
+      szSlider.value = szPct;
+    }
+    setTxt('mAfWmSizeLabel', isLogo ? '大きさ(長辺)' : '文字サイズ');
     setTxt('mAfWmSizeVal', `${szPct}%`);
+    _renderWatermarkAssetGallery();
 
     setVal('mAfNamingSelect', cfg.output.naming_rule === 'framed' ? 'framed' : 'thmod_original');
     setVal('mAfFormatSelect', cfg.output.format === 'png' ? 'png' : 'jpeg');
@@ -16655,6 +17923,32 @@ else if (typeof exports === 'object'){
       _pushDecoratorToEditor();
       _saveSettings();
     });
+    modalEl.querySelectorAll('.t-af-wm-type-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const nextType = btn.dataset.wmType === 'image' ? 'image' : 'text';
+        if (cfg.watermark.type !== nextType) {
+          cfg.watermark.type = nextType;
+          cfg.watermark.size_ratio = nextType === 'image' ? 0.16 : 0.018;
+        }
+        if (nextType === 'image' && !cfg.watermark.asset_id && watermarkAssets.length > 0) {
+          _selectWatermarkAsset(watermarkAssets[0]);
+        }
+        _syncFormFromState();
+        _pushDecoratorToEditor();
+        _saveSettings();
+      });
+    });
+    document.getElementById('mAfWmAddLogoBtn')?.addEventListener('click', () => {
+      const inp = document.getElementById('mAfWmFileInput');
+      if (inp) {
+        inp.value = '';
+        inp.click();
+      }
+    });
+    document.getElementById('mAfWmFileInput')?.addEventListener('change', (e) => {
+      const file = e.target && e.target.files ? e.target.files[0] : null;
+      if (file) _uploadWatermarkLogoFile(file);
+    });
     document.getElementById('mAfWmTextInput')?.addEventListener('input', (e) => {
       cfg.watermark.type = 'text';
       cfg.watermark.text = e.target.value;
@@ -16689,10 +17983,11 @@ else if (typeof exports === 'object'){
     document.getElementById('mAfWmOpacitySlider')?.addEventListener('change', _saveSettings);
     document.getElementById('mAfWmSizeSlider')?.addEventListener('input', (e) => {
       const v = parseFloat(e.target.value);
-      cfg.watermark.type = 'text';
       cfg.watermark.size_ratio = v / 100;
       const lbl = document.getElementById('mAfWmSizeVal');
-      if (lbl) lbl.textContent = `${v.toFixed(1)}%`;
+      if (lbl) {
+        lbl.textContent = cfg.watermark.type === 'image' ? `${Math.round(v)}%` : `${v.toFixed(1)}%`;
+      }
       _pushDecoratorToEditor();
     });
     document.getElementById('mAfWmSizeSlider')?.addEventListener('change', _saveSettings);
@@ -16812,6 +18107,7 @@ else if (typeof exports === 'object'){
     if (!_initModalOnce()) return false;
 
     _loadSavedSettings();
+    await _loadWatermarkAssets();
     photoQueue = targets;
     queueIndex = 0;
     exportedCount = 0;
@@ -20242,6 +21538,7 @@ else if (typeof exports === 'object'){
 
   function closeViewer(animateToGrid = true) {
     if (!mState.viewerOpen) return;
+    window.TetheractTouchUI?.viewerLauncher?.close?.();
     mState.viewerOpen = false;
     const closingPhoto = mState.photos[mState.viewerIndex];
     mState.viewerStackMember = null;
@@ -20287,6 +21584,7 @@ else if (typeof exports === 'object'){
   }
 
   function stepViewer(delta) {
+    window.TetheractTouchUI?.viewerLauncher?.close?.();
     const nextIdx = mState.viewerIndex + delta;
     if (nextIdx < 0 || nextIdx >= mState.photos.length) {
       if (delta > 0) showToast('最後の写真です');
@@ -22484,7 +23782,10 @@ else if (typeof exports === 'object'){
       const chk = document.getElementById('mAutoAdvanceCheck');
       if (chk) chk.checked = mState.autoAdvance;
       const btn = document.getElementById('mViewerAutoAdvanceBtn');
-      if (btn) btn.classList.toggle('active', mState.autoAdvance);
+      if (btn) {
+        btn.classList.toggle('active', mState.autoAdvance);
+        btn.setAttribute('aria-checked', mState.autoAdvance ? 'true' : 'false');
+      }
       if (notify) {
         showToast(mState.autoAdvance ? '⚡ 評価後の自動次送りをONにしました' : '評価後の自動次送りをOFFにしました', 1800);
       }
@@ -22720,20 +24021,33 @@ else if (typeof exports === 'object'){
     if (window.TetheractNative) return;
     const banner = document.getElementById('mOpenInNativeAppBanner');
     const btn = document.getElementById('mOpenInNativeAppBtn');
+    const apkBtn = document.getElementById('mDownloadApkBannerBtn');
     if (!banner || !btn) return;
     try {
       const u = new URL(window.location.href);
       const qToken = u.searchParams.get('t') || '';
       const serverOrigin = `${u.protocol}//${u.host}`;
       let deepLink = `tetheract://pair?server=${encodeURIComponent(serverOrigin)}&token=${encodeURIComponent(qToken)}`;
+      let effectiveToken = qToken;
       try {
         const res = await fetch('/api/mobile/pair-info');
         if (res.ok) {
           const info = await res.json();
-          if (info && info.deep_link) deepLink = info.deep_link;
+          if (info && info.deep_link) {
+            deepLink = info.deep_link;
+            if (!effectiveToken) {
+              try {
+                effectiveToken = new URL(info.deep_link).searchParams.get('token') || '';
+              } catch (parseErr) {}
+            }
+          }
         }
       } catch (e) {}
       btn.setAttribute('href', deepLink);
+      // LANダウンロードは認証トークン必須のためAPKリンクにも有効トークンを付与する
+      if (apkBtn && effectiveToken) {
+        apkBtn.setAttribute('href', `/api/mobile/apk?t=${encodeURIComponent(effectiveToken)}`);
+      }
       banner.style.display = 'flex';
     } catch (e) {}
   }

@@ -466,6 +466,163 @@ class TestPhase3Architecture(unittest.TestCase):
                 f"frontend/js/{fname} が共通 TreeBuilder を利用していません",
             )
 
+    def test_08_cloud_drive_original_view_and_vsn_isolation(self):
+        """Google ドライブ仮想ドライブ解決・権限エラー耐性・原本/view応答・物理SDカードVSN隔離を検証"""
+        from io import BytesIO
+        from PIL import Image
+        import server.app as app_mod
+
+        def make_jpeg_bytes(color=(120, 180, 60)):
+            buf = BytesIO()
+            Image.new("RGB", (64, 48), color).save(buf, format="JPEG", quality=95)
+            return buf.getvalue()
+
+        scanner_mod.clear_online_cache()
+        try:
+            # 1. 未アクセスパスで PermissionError が発生しても _safe_exists が落ちずに False を返す
+            with unittest.mock.patch.object(Path, "exists", side_effect=PermissionError("Access is denied")):
+                self.assertFalse(scanner_mod._safe_exists(self.tmp_root / "blocked_gdrive"))
+
+            # 2. "\その他のパソコン" マーカー + 仮想VSN 19831116 で別ドライブレターへ追従解決する
+            cloud_stored = r"G:\その他のパソコン\StudioPC\Shoot\IMG_9001.JPG"
+            expected_resolved = Path(r"H:\その他のパソコン\StudioPC\Shoot\IMG_9001.JPG")
+            with unittest.mock.patch.object(
+                scanner_mod,
+                "_get_connected_drive_serial_map",
+                return_value=({"19831116": "H:"}, {"H:": "19831116"}),
+            ), unittest.mock.patch.object(
+                scanner_mod, "_iter_cloud_candidate_drives", return_value=["H:"]
+            ), unittest.mock.patch.object(
+                scanner_mod, "_get_gdrive_letters", return_value={"H:"}
+            ), unittest.mock.patch.object(
+                scanner_mod,
+                "_safe_exists",
+                side_effect=lambda p: str(p).replace("/", "\\").lower() == str(expected_resolved).lower(),
+            ):
+                resolved_p, is_online = scanner_mod.resolve_portable_path(
+                    cloud_stored, expected_serial="19831116"
+                )
+                self.assertTrue(is_online)
+                self.assertEqual(str(resolved_p).lower(), str(expected_resolved).lower())
+
+            # 3. マーカー外のカスタムパスでも Google Drive ラベルドライブ + 仮想VSN 19831116 で追従解決する
+            custom_stored = r"G:\ClientArchive\shot.jpg"
+            expected_custom = Path(r"H:\ClientArchive\shot.jpg")
+            with unittest.mock.patch.object(
+                scanner_mod, "_get_connected_drive_serial_map", return_value=({}, {})
+            ), unittest.mock.patch.object(
+                scanner_mod, "_iter_cloud_candidate_drives", return_value=["H:"]
+            ), unittest.mock.patch.object(
+                scanner_mod, "_get_gdrive_letters", return_value={"H:"}
+            ), unittest.mock.patch.object(
+                scanner_mod,
+                "_safe_exists",
+                side_effect=lambda p: str(p).replace("/", "\\").lower() == str(expected_custom).lower(),
+            ):
+                resolved_c, is_c_online = scanner_mod.resolve_portable_path(
+                    custom_stored, expected_serial="19831116"
+                )
+                self.assertTrue(is_c_online)
+                self.assertEqual(str(resolved_c).lower(), str(expected_custom).lower())
+
+            # 4. 物理 SD カード（VSN 違いの EOS_DIGITAL 等）は別シリアルの同ドライブ文字へ誤一致しない
+            sd_stored = r"E:\DCIM\100CANON\IMG_0001.JPG"
+            with unittest.mock.patch.object(
+                scanner_mod,
+                "_get_connected_drive_serial_map",
+                return_value=({"BBBB-2222": "E:"}, {"E:": "BBBB-2222"}),
+            ), unittest.mock.patch.object(
+                scanner_mod, "_iter_cloud_candidate_drives", return_value=["H:"]
+            ), unittest.mock.patch.object(
+                scanner_mod, "_get_gdrive_letters", return_value={"H:"}
+            ), unittest.mock.patch.object(
+                scanner_mod, "_safe_exists", return_value=True
+            ):
+                _, is_sd_online = scanner_mod.resolve_portable_path(
+                    sd_stored, expected_serial="AAAA-1111"
+                )
+                self.assertFalse(is_sd_online)
+
+            # 5. /api/photo/{id}/view のクラウドオンデマンド読込・ペアJPEGフォールバック・オフラインETag非固定を検証
+            cloud_jpg = self.tmp_root / "cloud_ondemand.jpg"
+            cloud_bytes = make_jpeg_bytes((10, 160, 220))
+            cloud_jpg.write_bytes(cloud_bytes)
+            pid_cloud = upsert_photo({
+                "file_path": str(cloud_jpg),
+                "directory_path": str(cloud_jpg.parent),
+                "file_name": cloud_jpg.name,
+                "file_size": len(cloud_bytes),
+                "is_raw": 0,
+            })
+            with unittest.mock.patch.object(app_mod, "is_cloud_or_ondemand_path", return_value=True):
+                res_cloud = self.local_client.get(f"/api/photo/{pid_cloud}/view")
+            self.assertEqual(res_cloud.status_code, 200)
+            self.assertEqual(res_cloud.headers.get("X-Photo-View-Source"), "original")
+            self.assertEqual(res_cloud.content, cloud_bytes)
+
+            # 6. 主パス RAW がオフラインでも、オンラインな paired_raw_path（JPEG）があればフォールバック配信する
+            paired_jpg = self.tmp_root / "paired_online.jpg"
+            paired_bytes = make_jpeg_bytes((220, 90, 40))
+            paired_jpg.write_bytes(paired_bytes)
+            offline_raw = self.tmp_root / "missing_raw_dir" / "IMG_PAIR_01.CR3"
+            pid_pair = upsert_photo({
+                "file_path": str(offline_raw),
+                "directory_path": str(offline_raw.parent),
+                "file_name": offline_raw.name,
+                "file_size": 12345,
+                "is_raw": 1,
+                "raw_format": "CR3",
+                "paired_raw_path": str(paired_jpg),
+            })
+            res_pair = self.local_client.get(f"/api/photo/{pid_pair}/view")
+            self.assertEqual(res_pair.status_code, 200)
+            self.assertEqual(res_pair.content, paired_bytes)
+
+            # 7. 完全オフライン＋サムネイルのみ存在時は X-Photo-Offline: true & Cache-Control: no-store かつ ETag なし
+            offline_only = self.tmp_root / "missing_offline_dir" / "OFFLINE_ONLY.JPG"
+            pid_off = upsert_photo({
+                "file_path": str(offline_only),
+                "directory_path": str(offline_only.parent),
+                "file_name": offline_only.name,
+                "file_size": 9999,
+                "is_raw": 0,
+            })
+            thumb_bytes = make_jpeg_bytes((40, 40, 40))
+            with get_connection() as conn:
+                conn.execute(
+                    "INSERT OR REPLACE INTO thumbnails (photo_id, file_hash, data, width, height) VALUES (?, ?, ?, ?, ?)",
+                    (pid_off, "offline_test_hash", thumb_bytes, 64, 48),
+                )
+                conn.commit()
+            res_off = self.local_client.get(f"/api/photo/{pid_off}/view")
+            self.assertEqual(res_off.status_code, 200)
+            self.assertEqual(res_off.headers.get("X-Photo-Offline"), "true")
+            self.assertIn("no-store", res_off.headers.get("Cache-Control", ""))
+            self.assertIsNone(res_off.headers.get("ETag"))
+        finally:
+            scanner_mod.clear_online_cache()
+
+    def test_09_android_native_revision_guard_and_download_wiring(self):
+        """Android UIホットアップデートの native_revision 互換ガードと APK ダウンロード配線を検証"""
+        usb_kt = (
+            PROJECT_ROOT / "android" / "app" / "src" / "main" / "java" / "com" / "tetheract" / "pm" / "UsbOfflineUpdater.kt"
+        ).read_text(encoding="utf-8")
+        wifi_kt = (
+            PROJECT_ROOT / "android" / "app" / "src" / "main" / "java" / "com" / "tetheract" / "pm" / "WifiLockerSyncManager.kt"
+        ).read_text(encoding="utf-8")
+        main_kt = (
+            PROJECT_ROOT / "android" / "app" / "src" / "main" / "java" / "com" / "tetheract" / "pm" / "MainActivity.kt"
+        ).read_text(encoding="utf-8")
+        mobile_js = (PROJECT_ROOT / "frontend" / "js" / "mobile.js").read_text(encoding="utf-8")
+
+        for sym in ("native_revision", "needsNativeApkUpdate", "hasIncompatibleNativeRev", "applyUiBundleFromZipFile", "applyUiBundleFromDocument"):
+            self.assertIn(sym, usb_kt)
+        self.assertIn("isNativeApkUpdateAvailable()", wifi_kt)
+        self.assertIn("setDownloadListener", main_kt)
+        self.assertIn("isNativeApkUpdateAvailable()", main_kt)
+        self.assertIn("mDownloadApkBannerBtn", mobile_js)
+        self.assertIn("/api/mobile/apk?t=", mobile_js)
+
 
 if __name__ == "__main__":
     unittest.main()
