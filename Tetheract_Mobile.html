@@ -2566,25 +2566,254 @@ html.is-native-app button.m-native-only {
 .t-filter-row.is-swiping-left .t-swipe-exclude-indicator { opacity: 1; }
 .t-drag-select-pulse { transform: scale(0.96); transition: transform 0.12s ease; }
 
-/* ==================== 6. キャンバス全面スクラブ調整 HUD ==================== */
-.t-canvas-scrub-hud {
-  position: fixed; top: 50%; left: 50%;
-  transform: translate(-50%, -50%) scale(0.96);
-  min-width: 210px; padding: 14px 18px; border-radius: 10px;
-  background-color: rgba(20, 20, 20, 0.78);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-  color: #f0f2f5; display: flex; flex-direction: column; gap: 10px;
-  z-index: 140; pointer-events: none; opacity: 0;
-  transition: opacity 0.14s ease, transform 0.14s ease;
+/* ==================== 6. 非破壊調整コントロールストリップ ＆ 写真枠内ガイドライン ==================== */
+.m-viewer-photo-frame {
+  position: relative;
+  flex: 0 0 auto;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
-.t-canvas-scrub-hud.is-visible { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-.t-scrub-hud-header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-.t-scrub-hud-label { font-size: 12px; font-weight: 600; color: #a39e93; }
-.t-scrub-hud-value { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--accent-primary); }
-.t-scrub-hud-track { position: relative; height: 4px; border-radius: 2px; background-color: rgba(255, 255, 255, 0.16); overflow: hidden; }
-.t-scrub-hud-center-tick { position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; background-color: rgba(255, 255, 255, 0.5); }
-.t-scrub-hud-fill { position: absolute; top: 0; bottom: 0; background-color: var(--accent-primary); }
+
+.t-viewer-level-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 4;
+  transition: opacity 0.14s ease;
+}
+.t-viewer-level-grid.is-visible {
+  opacity: 0.72;
+}
+.t-viewer-level-grid.is-visible.is-scrubbing {
+  opacity: 0.96;
+}
+
+.t-level-line {
+  position: absolute;
+  pointer-events: none;
+}
+.t-level-line.is-h {
+  left: 0;
+  right: 0;
+  height: 1px;
+  transform: translateY(-0.5px);
+}
+.t-level-line.is-v {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  transform: translateX(-0.5px);
+}
+.t-level-line.is-sub {
+  display: none;
+  background-color: rgba(255, 255, 255, 0.24);
+  box-shadow: 0 0 1px rgba(0, 0, 0, 0.5);
+}
+.t-viewer-level-grid.is-tilt-mode .t-level-line.is-sub {
+  display: block;
+}
+.t-viewer-level-grid.is-tilt-mode.is-scrubbing .t-level-line.is-sub {
+  background-color: rgba(255, 255, 255, 0.42);
+}
+.t-level-line.is-major {
+  background-color: rgba(255, 255, 255, 0.46);
+  box-shadow: 0 0 1.5px rgba(0, 0, 0, 0.65);
+}
+.t-level-line.is-center {
+  background-color: rgba(255, 255, 255, 0.62);
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.78);
+}
+.t-viewer-level-grid.is-tilt-mode .t-level-line.is-center {
+  background-color: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.65);
+}
+
+.t-adjust-control-strip {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 14px 10px;
+  background-color: rgba(16, 19, 24, 0.94);
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  color: #f0f2f5;
+  z-index: 120;
+  user-select: none;
+}
+
+.t-adjust-strip-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.t-adjust-value-btn {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background-color: rgba(255, 255, 255, 0.06);
+  color: #f0f2f5;
+  cursor: pointer;
+}
+.t-adjust-value-btn:active {
+  transform: scale(0.97);
+}
+.t-adjust-value-btn.is-modified {
+  border-color: rgba(255, 255, 255, 0.16);
+}
+.t-adjust-param-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #a39e93;
+  white-space: nowrap;
+}
+.t-adjust-param-value {
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #f0f2f5;
+  white-space: nowrap;
+}
+.t-adjust-param-value.is-modified {
+  color: var(--accent-primary);
+}
+.t-adjust-reset-hint {
+  display: none;
+  font-size: 10px;
+  font-weight: 500;
+  color: #9ca3af;
+  white-space: nowrap;
+}
+.t-adjust-value-btn.is-modified .t-adjust-reset-hint {
+  display: inline;
+}
+
+.t-adjust-strip-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+.t-adjust-mini-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 30px;
+  height: 28px;
+  padding: 0 7px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background-color: rgba(255, 255, 255, 0.07);
+  color: #e5e7eb;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.t-adjust-mini-btn:active {
+  transform: scale(0.95);
+}
+.t-adjust-mini-btn.is-active,
+.t-adjust-mini-btn.is-holding {
+  background-color: var(--accent-subtle);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
+.t-adjust-dial-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.t-adjust-dial-scale-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.45);
+  padding: 0 2px;
+}
+.t-adjust-dial-track {
+  position: relative;
+  height: 28px;
+  border-radius: 6px;
+  background-color: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+  touch-action: none;
+  cursor: ew-resize;
+}
+.t-adjust-dial-ticks {
+  position: absolute;
+  inset: 0 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  pointer-events: none;
+}
+.t-adjust-dial-tick {
+  width: 1px;
+  height: 7px;
+  background-color: rgba(255, 255, 255, 0.24);
+}
+.t-adjust-dial-tick.is-major {
+  height: 12px;
+  background-color: rgba(255, 255, 255, 0.48);
+}
+.t-adjust-dial-tick.is-zero {
+  width: 1.5px;
+  height: 18px;
+  background-color: rgba(255, 255, 255, 0.78);
+}
+.t-adjust-dial-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background-color: var(--accent-subtle, rgba(59, 130, 246, 0.28));
+  pointer-events: none;
+}
+.t-adjust-dial-thumb {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  width: 3px;
+  margin-left: -1.5px;
+  border-radius: 2px;
+  background-color: var(--accent-primary);
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+}
+
+body.is-viewer-adjust-mode .m-viewer-modal {
+  padding-bottom: calc(var(--thumb-bar-height, 56px) + env(safe-area-inset-bottom, 0px));
+}
+body.is-viewer-adjust-mode .m-viewer-nav {
+  display: none;
+}
+
+.t-thumb-btn.is-modified {
+  position: relative;
+}
+.t-thumb-btn.is-modified::after {
+  content: '';
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background-color: var(--accent-primary);
+}
 
 /* ==================== 7. 変身する親指バー (Context-Morphing Thumb Bar, 56px) ==================== */
 .t-morph-thumb-bar {
@@ -3738,6 +3967,77 @@ body.has-open-nav-sheet .t-center-dial-slot {
   font-size: 11.5px;
   color: var(--text-primary);
   cursor: pointer;
+}
+
+.t-af-expander {
+  border: 1px solid var(--border-color);
+  border-radius: 7px;
+  background-color: rgba(255, 255, 255, 0.025);
+  overflow: hidden;
+}
+[data-theme="paper"] .t-af-expander {
+  background-color: rgba(0, 0, 0, 0.02);
+}
+.t-af-expander.is-disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.t-af-expander-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 36px;
+  padding: 6px 10px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.t-af-expander-summary::-webkit-details-marker {
+  display: none;
+}
+
+.t-af-expander-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.t-af-expander-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.t-af-expander-meta {
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 170px;
+}
+
+.t-af-expander-chevron {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: transform 0.16s ease;
+}
+.t-af-expander[open] .t-af-expander-chevron {
+  transform: rotate(180deg);
+}
+
+.t-af-expander-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 10px 10px;
+  border-top: 1px solid var(--border-color);
 }
 
 .t-af-summary-grid {
@@ -5246,11 +5546,15 @@ else if (typeof exports === 'object'){
       <div id="mViewerStage" class="m-viewer-stage">
         <button id="mViewerPrevBtn" class="m-viewer-nav prev" aria-label="前の写真">‹</button>
         <div id="mViewerImgWrapper" class="m-viewer-img-wrapper">
-          <img id="mViewerImg" class="m-viewer-img" src="" alt="プレビュー" draggable="false">
+          <div id="mViewerPhotoFrame" class="m-viewer-photo-frame">
+            <img id="mViewerImg" class="m-viewer-img" src="" alt="プレビュー" draggable="false">
+            <div id="tViewerLevelGrid" class="t-viewer-level-grid" aria-hidden="true"></div>
+          </div>
         </div>
         <span id="mViewerZoomBadge" class="m-viewer-zoom-badge" style="display:none;">1.0x</span>
         <button id="mViewerNextBtn" class="m-viewer-nav next" aria-label="次の写真">›</button>
       </div>
+      <div id="tAdjustControlStrip" class="t-adjust-control-strip" style="display:none;"></div>
 
       <!-- スタック（連写・ブラケット・RAW+JPG）内コマ比較バー -->
       <div id="mViewerStackBar" class="m-viewer-stack-bar" style="display:none;">
@@ -9284,38 +9588,16 @@ else if (typeof exports === 'object'){
 /**
  * Tetheract Touch Gestures Controller (Layer 3)
  * PC向けの極小ボタン群（[×]・チェックボックス・[+][-]・細スライダー）を廃止し、
- * 1) ビューア全面スワイプ（下＝縮小透過クローズ / 上＝EXIF・ヒストグラムシート / 左右＝前後移動）
- * 2) グリッド長押し（350ms）＋なぞり連続選択（elementFromPoint）
+ * 1) グリッド長押し（350ms）＋なぞり連続選択（elementFromPoint）
+ * 2) グリッドの2本指ピンチイン・ピンチアウトによる列数変更
  * 3) フィルタ行（44px高）タップ＝含む[+]/AND ＆ 左スワイプ/長押し＝除外[-]/NOT
- * 4) 画像調整のキャンバス全面スクラブ（中央透過HUD表示・指を離すとHUD自動消去）
- * に置き換えるジェスチャー制御モジュール。
+ * に置き換えるジェスチャー制御モジュール（非破壊調整・ガイドラインは touch_adjust.js に分離）。
  */
 (function (global) {
   'use strict';
 
   const LONG_PRESS_MS = 350;
   const FILTER_SWIPE_EXCLUDE_PX = -54;
-
-  // 非破壊画像調整項目の仕様定義
-  const ADJUST_SPECS = {
-    exposure: { key: 'exposure', label: '露光量', shortLabel: 'EV', min: -3.0, max: 3.0, step: 0.1, defaultVal: 0.0, sensitivity: 0.015, format: (v) => `EV ${v >= 0 ? '+' : ''}${v.toFixed(1)}` },
-    contrast: { key: 'contrast', label: 'コントラスト', shortLabel: 'Contrast', min: -100, max: 100, step: 1, defaultVal: 0, sensitivity: 0.45, format: (v) => `Contrast ${v >= 0 ? '+' : ''}${Math.round(v)}` },
-    saturation: { key: 'saturation', label: '彩度', shortLabel: 'Saturation', min: -100, max: 100, step: 1, defaultVal: 0, sensitivity: 0.45, format: (v) => `Saturation ${v >= 0 ? '+' : ''}${Math.round(v)}` },
-    tilt: { key: 'tilt', label: '水平傾き', shortLabel: 'Tilt', min: -15.0, max: 15.0, step: 0.1, defaultVal: 0.0, sensitivity: 0.06, format: (v) => `Tilt ${v >= 0 ? '+' : ''}${v.toFixed(1)}°` },
-  };
-
-  function _escHtml(val) {
-    if (val === null || val === undefined) return '';
-    return String(val).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-  }
-
-  const adjustState = {
-    enabled: false,
-    activeParam: 'exposure',
-    values: { exposure: 0.0, contrast: 0, saturation: 0, tilt: 0.0 },
-    bakedValues: { exposure: 0.0, contrast: 0, saturation: 0, tilt: 0.0, rotation: 0 },
-    onChange: null,
-  };
 
   /**
    * 1. グリッドの長押し＋なぞり連続選択 (`bindGridDragSelect`)
@@ -9685,77 +9967,154 @@ else if (typeof exports === 'object'){
     container.addEventListener('touchcancel', endRowTouch, { passive: true });
   }
 
-  /**
-   * 4. 画像調整のキャンバス全面スクラブ (`bindCanvasScrubAdjust`)
-   * - 細いスライダーつまみを廃止し、画像調整モード中は写真のどこでも左右に指を滑らせるだけで
-   *   選択中の項目（露光量 EV / コントラスト / 彩度 / 水平傾き）を微調整する。
-   * - ドラッグ中は画面中央に現在値HUD（例: `EV +0.7`）を透過表示し、指を離すとHUDが消えて写真全体を確認できる。
-   */
-  function _ensureScrubHud(stageEl) {
-    let hud = document.getElementById('tCanvasScrubHud');
-    if (!hud) {
-      hud = document.createElement('div');
-      hud.id = 'tCanvasScrubHud';
-      hud.className = 't-canvas-scrub-hud';
-      hud.style.display = 'none';
-      hud.innerHTML = `
-        <div class="t-scrub-hud-header">
-          <span class="t-scrub-hud-label" id="tScrubHudLabel">露光量</span>
-          <span class="t-scrub-hud-value" id="tScrubHudValue">EV +0.0</span>
-        </div>
-        <div class="t-scrub-hud-track">
-          <div class="t-scrub-hud-center-tick"></div>
-          <div class="t-scrub-hud-fill" id="tScrubHudFill"></div>
-        </div>
-      `;
-      (stageEl || document.body).appendChild(hud);
+  function initTouchGestures() {
+    // ビューアのピンチ拡大・ダブルタップ拡大・上下左右スワイプ・シングルタップ没入切替は
+    // mobile.js の setupViewerTouchGestures() に一元化（二重発火・ズーム解除競合を防止）
+    bindGridDragSelect('#mPhotoGrid');
+    bindGridPinchZoom('#mPhotoGrid');
+    bindFilterRowGestures('.m-drawer-body');
+    bindFilterRowGestures('#tPerspectivePanel_tags');
+  }
+
+  const gesturesApi = {
+    initTouchGestures,
+    bindGridDragSelect,
+    bindGridPinchZoom,
+    bindFilterRowGestures,
+  };
+
+  const existingUi = global.TetheractTouchUI || {};
+  global.TetheractTouchUI = Object.assign(existingUi, gesturesApi, {
+    gestures: Object.assign({}, existingUi.gestures || {}, gesturesApi),
+  });
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initTouchGestures);
+  } else {
+    initTouchGestures();
+  }
+})(window);
+
+</script>
+  <script>
+/* === Inlined js/views/touch/touch_adjust.js === */
+/**
+ * Tetheract Touch Image Adjustment Controller (Layer 3)
+ * モバイル版ライトボックス向けの非破壊調整（露光量・コントラスト・彩度・水平傾き）を制御する。
+ * - 画面中央を覆うHUDを廃止し、下部ダイヤルストリップ（#tAdjustControlStrip）に数値・±微調整・元画像比較を集約する。
+ * - 水平傾きモード時は写真枠内（#mViewerPhotoFrame）に水平・垂直ガイドライン（#tViewerLevelGrid）を重ね、内接自動ズーム付きで傾きプレビューを行う。
+ */
+(function (global) {
+  'use strict';
+
+  const ADJUST_SPECS = {
+    exposure: {
+      key: 'exposure',
+      label: '露光量',
+      shortLabel: 'EV',
+      min: -3.0,
+      max: 3.0,
+      step: 0.1,
+      defaultVal: 0.0,
+      sensitivity: 0.015,
+      minLabel: '-3.0',
+      zeroLabel: '0',
+      maxLabel: '+3.0',
+      format: (v) => `${v > 0.005 ? '+' : ''}${v.toFixed(1)} EV`,
+    },
+    contrast: {
+      key: 'contrast',
+      label: 'コントラスト',
+      shortLabel: 'Contrast',
+      min: -100,
+      max: 100,
+      step: 1,
+      defaultVal: 0,
+      sensitivity: 0.45,
+      minLabel: '-100',
+      zeroLabel: '0',
+      maxLabel: '+100',
+      format: (v) => `${Math.round(v) > 0 ? '+' : ''}${Math.round(v)}`,
+    },
+    saturation: {
+      key: 'saturation',
+      label: '彩度',
+      shortLabel: 'Saturation',
+      min: -100,
+      max: 100,
+      step: 1,
+      defaultVal: 0,
+      sensitivity: 0.45,
+      minLabel: '-100',
+      zeroLabel: '0',
+      maxLabel: '+100',
+      format: (v) => `${Math.round(v) > 0 ? '+' : ''}${Math.round(v)}`,
+    },
+    tilt: {
+      key: 'tilt',
+      label: '水平傾き',
+      shortLabel: 'Tilt',
+      min: -15.0,
+      max: 15.0,
+      step: 0.1,
+      defaultVal: 0.0,
+      sensitivity: 0.055,
+      minLabel: '-15°',
+      zeroLabel: '0°',
+      maxLabel: '+15°',
+      format: (v) => `${v > 0.005 ? '+' : ''}${v.toFixed(1)}°`,
+    },
+  };
+
+  const MAJOR_GRID_PCTS = ['33.3333', '66.6667'];
+  const SUB_GRID_PCTS = ['11.1111', '22.2222', '44.4444', '55.5556', '77.7778', '88.8889'];
+
+  const adjustState = {
+    enabled: false,
+    activeParam: 'exposure',
+    values: { exposure: 0.0, contrast: 0, saturation: 0, tilt: 0.0 },
+    bakedValues: { exposure: 0.0, contrast: 0, saturation: 0, tilt: 0.0, rotation: 0 },
+    aspectRatio: 1.3333,
+    tiltGridEnabled: true,
+    toneGridEnabled: false,
+    isScrubbing: false,
+    isComparingOriginal: false,
+    onChange: null,
+  };
+
+  let compareResetTimer = null;
+
+  function _isGridActiveForParam(paramKey) {
+    return paramKey === 'tilt' ? adjustState.tiltGridEnabled : adjustState.toneGridEnabled;
+  }
+
+  function isParamModified(paramKey, valuesObj) {
+    const spec = ADJUST_SPECS[paramKey];
+    if (!spec) return false;
+    const src = valuesObj || adjustState.values;
+    const cur = Number(src[paramKey] || 0);
+    return Math.abs(cur - spec.defaultVal) > (spec.step < 1 ? 0.01 : 0.4);
+  }
+
+  function _resolveAspectRatio(imgEl, photo) {
+    if (imgEl && imgEl.naturalWidth > 0 && imgEl.naturalHeight > 0) {
+      return imgEl.naturalWidth / imgEl.naturalHeight;
     }
-    return hud;
-  }
-
-  function _renderScrubHud(spec, val) {
-    const hud = _ensureScrubHud(document.getElementById('mViewerStage'));
-    const labelEl = hud.querySelector('#tScrubHudLabel');
-    const valEl = hud.querySelector('#tScrubHudValue');
-    const fillEl = hud.querySelector('#tScrubHudFill');
-
-    if (labelEl) labelEl.textContent = spec.label;
-    if (valEl) valEl.textContent = spec.format(val);
-    if (fillEl) {
-      const span = spec.max - spec.min;
-      const ratio = ((val - spec.min) / span) * 100;
-      const clamped = Math.max(0, Math.min(100, ratio));
-      const left = Math.min(50, clamped);
-      const width = Math.abs(clamped - 50);
-      fillEl.style.left = `${left}%`;
-      fillEl.style.width = `${width}%`;
+    if (photo && Number(photo.width) > 0 && Number(photo.height) > 0) {
+      return Number(photo.width) / Number(photo.height);
     }
-
-    hud.style.display = 'flex';
-    hud.classList.add('is-visible');
-  }
-
-  function _hideScrubHud() {
-    const hud = document.getElementById('tCanvasScrubHud');
-    if (!hud) return;
-    hud.classList.remove('is-visible');
-    setTimeout(() => {
-      if (!hud.classList.contains('is-visible')) {
-        hud.style.display = 'none';
-      }
-    }, 150);
+    return adjustState.aspectRatio || 1.3333;
   }
 
   /**
-   * 調整パラメータの視覚プレビュー（CSS filter & rotate）を対象画像にリアルタイム反映する
+   * 調整パラメータの視覚プレビュー（CSS filter と内接自動ズーム付き回転）を計算する
+   * ※ server/scanner.py および frontend/js/adjust.js と同じ座標・拡大式に揃える
    */
-  function _computeCssFilterAndTransform(cur, baked, isUnbaked) {
+  function _computeCssFilterAndTransform(cur, baked, isUnbaked, aspectRatio) {
     const effEv = isUnbaked ? (cur.exposure || 0) : (cur.exposure || 0) - (baked.exposure || 0);
     const effCt = isUnbaked ? (cur.contrast || 0) : (cur.contrast || 0) - (baked.contrast || 0);
     const effSat = isUnbaked ? (cur.saturation || 0) : (cur.saturation || 0) - (baked.saturation || 0);
-    const effDeg = isUnbaked
-      ? (baked.rotation || 0) + (cur.tilt || 0)
-      : (cur.tilt || 0) - (baked.tilt || 0);
+    const effTilt = isUnbaked ? (cur.tilt || 0) : (cur.tilt || 0) - (baked.tilt || 0);
+    const effDeg = isUnbaked ? (baked.rotation || 0) + effTilt : effTilt;
 
     let filterStr = '';
     if (Math.abs(effEv) > 0.005 || Math.abs(effCt) > 0.1 || Math.abs(effSat) > 0.1) {
@@ -9764,7 +10123,22 @@ else if (typeof exports === 'object'){
       const sFactor = Math.max(0.0, Math.min(3.0, 1.0 + effSat / 100.0)).toFixed(3);
       filterStr = `brightness(${bFactor}) contrast(${cFactor}) saturate(${sFactor})`;
     }
-    const transformStr = Math.abs(effDeg) > 0.01 ? `rotate(${effDeg.toFixed(2)}deg)` : '';
+
+    let autoScale = 1.0;
+    if (Math.abs(effTilt) > 0.01) {
+      const rad = (Math.abs(effTilt) * Math.PI) / 180.0;
+      const ar = Number(aspectRatio) > 0 ? Number(aspectRatio) : 1.3333;
+      const aspectMax = Math.max(ar, 1.0 / ar);
+      autoScale = Math.cos(rad) + Math.sin(rad) * aspectMax;
+    }
+
+    let transformStr = '';
+    if (Math.abs(effDeg) > 0.01 || autoScale > 1.0005) {
+      const parts = [];
+      if (Math.abs(effDeg) > 0.01) parts.push(`rotate(${effDeg.toFixed(2)}deg)`);
+      if (autoScale > 1.0005) parts.push(`scale(${autoScale.toFixed(4)})`);
+      transformStr = parts.join(' ');
+    }
     return { filterStr, transformStr };
   }
 
@@ -9772,7 +10146,16 @@ else if (typeof exports === 'object'){
     const target = imgEl || document.getElementById('mViewerImg');
     if (!target) return;
     const isUnbaked = target.dataset.unbakedSource === '1';
-    const { filterStr, transformStr } = _computeCssFilterAndTransform(adjustState.values, adjustState.bakedValues, isUnbaked);
+    const displayValues = adjustState.isComparingOriginal
+      ? { exposure: 0.0, contrast: 0, saturation: 0, tilt: 0.0 }
+      : adjustState.values;
+    const ar = _resolveAspectRatio(target, null);
+    const { filterStr, transformStr } = _computeCssFilterAndTransform(
+      displayValues,
+      adjustState.bakedValues,
+      isUnbaked,
+      ar
+    );
     target.style.filter = filterStr;
     target.style.transform = transformStr;
   }
@@ -9794,17 +10177,339 @@ else if (typeof exports === 'object'){
       saturation: Number(photo.saturation || 0),
       tilt: Number(photo.fine_angle || 0),
     };
+    const isViewerImg = imgEl.id === 'mViewerImg';
+    const bakedSrc = isViewerImg && photo._viewerLoadedBakedAdjust ? photo._viewerLoadedBakedAdjust : photo._bakedAdjust;
     const baked = {
-      exposure: Number(photo._bakedAdjust.brightness || 0) / 10.0,
-      contrast: Number(photo._bakedAdjust.contrast || 0),
-      saturation: Number(photo._bakedAdjust.saturation || 0),
-      tilt: Number(photo._bakedAdjust.fine_angle || 0),
-      rotation: Number(photo.rotation ?? photo._bakedAdjust.rotation ?? 0),
+      exposure: Number(bakedSrc.brightness || 0) / 10.0,
+      contrast: Number(bakedSrc.contrast || 0),
+      saturation: Number(bakedSrc.saturation || 0),
+      tilt: Number(bakedSrc.fine_angle || 0),
+      rotation: Number(photo.rotation ?? bakedSrc.rotation ?? 0),
     };
     const isUnbaked = imgEl.dataset.unbakedSource === '1';
-    const { filterStr, transformStr } = _computeCssFilterAndTransform(cur, baked, isUnbaked);
+    const ar = _resolveAspectRatio(imgEl, photo);
+    const { filterStr, transformStr } = _computeCssFilterAndTransform(cur, baked, isUnbaked, ar);
     imgEl.style.filter = filterStr;
     imgEl.style.transform = transformStr;
+  }
+
+  function _ensureLevelGrid() {
+    const gridEl = document.getElementById('tViewerLevelGrid');
+    if (!gridEl) return null;
+    if (gridEl.dataset.populated === '1') return gridEl;
+
+    const lines = [];
+    SUB_GRID_PCTS.forEach((pct) => {
+      lines.push(`<span class="t-level-line is-h is-sub" style="top:${pct}%;"></span>`);
+      lines.push(`<span class="t-level-line is-v is-sub" style="left:${pct}%;"></span>`);
+    });
+    MAJOR_GRID_PCTS.forEach((pct) => {
+      lines.push(`<span class="t-level-line is-h is-major" style="top:${pct}%;"></span>`);
+      lines.push(`<span class="t-level-line is-v is-major" style="left:${pct}%;"></span>`);
+    });
+    lines.push('<span class="t-level-line is-h is-center" style="top:50%;"></span>');
+    lines.push('<span class="t-level-line is-v is-center" style="left:50%;"></span>');
+
+    gridEl.innerHTML = lines.join('');
+    gridEl.dataset.populated = '1';
+    return gridEl;
+  }
+
+  function _syncLevelGrid() {
+    const gridEl = _ensureLevelGrid();
+    if (!gridEl) return;
+    const isTilt = adjustState.activeParam === 'tilt';
+    const shouldShow =
+      adjustState.enabled &&
+      !adjustState.isComparingOriginal &&
+      _isGridActiveForParam(adjustState.activeParam);
+
+    gridEl.classList.toggle('is-visible', shouldShow);
+    gridEl.classList.toggle('is-tilt-mode', shouldShow && isTilt);
+    gridEl.classList.toggle('is-scrubbing', shouldShow && adjustState.isScrubbing);
+  }
+
+  function _buildDialTicksHtml() {
+    const items = [];
+    for (let i = 0; i <= 30; i += 1) {
+      const cls = ['t-adjust-dial-tick'];
+      if (i === 15) cls.push('is-zero');
+      else if (i % 5 === 0) cls.push('is-major');
+      items.push(`<span class="${cls.join(' ')}"></span>`);
+    }
+    return items.join('');
+  }
+
+  function _ensureControlStrip() {
+    const strip = document.getElementById('tAdjustControlStrip');
+    if (!strip) return null;
+    if (strip.dataset.populated === '1') return strip;
+
+    strip.innerHTML = `
+      <div class="t-adjust-strip-header">
+        <button type="button" id="tAdjustValueResetBtn" class="t-adjust-value-btn" title="タップでこの項目を0に戻す">
+          <span id="tAdjustParamLabel" class="t-adjust-param-label">露光量</span>
+          <span id="tAdjustParamValue" class="t-adjust-param-value">0.0 EV</span>
+          <span id="tAdjustResetHint" class="t-adjust-reset-hint">0に戻す</span>
+        </button>
+        <div class="t-adjust-strip-actions">
+          <button type="button" id="tAdjustStepMinusBtn" class="t-adjust-mini-btn" aria-label="1ステップ減らす" title="1ステップ減らす">−</button>
+          <button type="button" id="tAdjustStepPlusBtn" class="t-adjust-mini-btn" aria-label="1ステップ増やす" title="1ステップ増やす">＋</button>
+          <button type="button" id="tAdjustGridToggleBtn" class="t-adjust-mini-btn t-adjust-pill-btn" aria-label="ガイドライン表示切替" title="水平・三分割ガイド">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+              <rect x="3" y="3" width="18" height="18" rx="1.5"/>
+              <line x1="3" y1="9" x2="21" y2="9"/>
+              <line x1="3" y1="15" x2="21" y2="15"/>
+              <line x1="9" y1="3" x2="9" y2="21"/>
+              <line x1="15" y1="3" x2="15" y2="21"/>
+            </svg>
+            <span>ガイド</span>
+          </button>
+          <button type="button" id="tAdjustCompareBtn" class="t-adjust-mini-btn t-adjust-pill-btn" aria-label="長押しで元画像と比較" title="長押しで調整前と比較">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+              <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+            <span>元画像</span>
+          </button>
+        </div>
+      </div>
+      <div class="t-adjust-dial-wrap">
+        <div class="t-adjust-dial-scale-labels" aria-hidden="true">
+          <span id="tAdjustMinLabel">-3.0</span>
+          <span id="tAdjustZeroLabel">0</span>
+          <span id="tAdjustMaxLabel">+3.0</span>
+        </div>
+        <div id="tAdjustDialTrack" class="t-adjust-dial-track" role="slider" aria-label="非破壊調整ダイヤル" aria-valuemin="-3" aria-valuemax="3" aria-valuenow="0">
+          <div class="t-adjust-dial-ticks" aria-hidden="true">${_buildDialTicksHtml()}</div>
+          <div id="tAdjustDialFill" class="t-adjust-dial-fill"></div>
+          <div id="tAdjustDialThumb" class="t-adjust-dial-thumb"></div>
+        </div>
+      </div>
+    `;
+    strip.dataset.populated = '1';
+    _bindControlStripEvents(strip);
+    return strip;
+  }
+
+  function _emitAdjustChange(spec, val) {
+    const detail = {
+      param: spec.key,
+      value: val,
+      formatted: spec.format(val),
+      values: { ...adjustState.values },
+    };
+    if (typeof adjustState.onChange === 'function') {
+      adjustState.onChange(detail);
+    }
+    global.dispatchEvent(new CustomEvent('tetheract:canvas-scrub-change', { detail }));
+  }
+
+  function _commitAdjustValue(spec, nextVal) {
+    const clamped = Math.max(spec.min, Math.min(spec.max, nextVal));
+    const normalized = spec.step < 1 ? Number(clamped.toFixed(1)) : Math.round(clamped);
+    adjustState.values[spec.key] = normalized;
+    _applyLivePreviewToImage();
+    _syncAdjustUi();
+    _emitAdjustChange(spec, normalized);
+  }
+
+  function _setCompareHolding(isHolding) {
+    const next = Boolean(isHolding);
+    if (compareResetTimer) {
+      clearTimeout(compareResetTimer);
+      compareResetTimer = null;
+    }
+    if (adjustState.isComparingOriginal === next) return;
+    adjustState.isComparingOriginal = next;
+    _applyLivePreviewToImage();
+    _syncAdjustUi();
+  }
+
+  function _bindControlStripEvents(strip) {
+    if (!strip || strip.dataset.eventsBound === '1') return;
+    strip.dataset.eventsBound = '1';
+
+    strip.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
+    strip.addEventListener('touchend', (e) => e.stopPropagation(), { passive: true });
+    strip.addEventListener('click', (e) => e.stopPropagation());
+
+    strip.querySelector('#tAdjustValueResetBtn')?.addEventListener('click', () => {
+      resetSingleAdjustParam(adjustState.activeParam);
+    });
+    strip.querySelector('#tAdjustStepMinusBtn')?.addEventListener('click', () => {
+      stepActiveAdjustParam(-1);
+    });
+    strip.querySelector('#tAdjustStepPlusBtn')?.addEventListener('click', () => {
+      stepActiveAdjustParam(1);
+    });
+    strip.querySelector('#tAdjustGridToggleBtn')?.addEventListener('click', () => {
+      if (adjustState.activeParam === 'tilt') {
+        adjustState.tiltGridEnabled = !adjustState.tiltGridEnabled;
+      } else {
+        adjustState.toneGridEnabled = !adjustState.toneGridEnabled;
+      }
+      _syncAdjustUi();
+    });
+
+    const compareBtn = strip.querySelector('#tAdjustCompareBtn');
+    if (compareBtn) {
+      const startHold = () => _setCompareHolding(true);
+      const endHold = () => _setCompareHolding(false);
+      compareBtn.addEventListener('touchstart', startHold, { passive: true });
+      compareBtn.addEventListener('touchend', endHold, { passive: true });
+      compareBtn.addEventListener('touchcancel', endHold, { passive: true });
+      compareBtn.addEventListener('pointerdown', (e) => {
+        if (e.pointerType !== 'touch') startHold();
+      });
+      compareBtn.addEventListener('pointerup', (e) => {
+        if (e.pointerType !== 'touch') endHold();
+      });
+      compareBtn.addEventListener('pointercancel', endHold);
+      compareBtn.addEventListener('pointerleave', (e) => {
+        if (e.pointerType !== 'touch') endHold();
+      });
+      compareBtn.addEventListener('contextmenu', (e) => e.preventDefault());
+    }
+
+    const dialTrack = strip.querySelector('#tAdjustDialTrack');
+    if (dialTrack) {
+      let dialScrubbing = false;
+      let startX = 0;
+      let initialVal = 0;
+
+      const onDialStart = (clientX) => {
+        if (!adjustState.enabled) return;
+        const spec = ADJUST_SPECS[adjustState.activeParam] || ADJUST_SPECS.exposure;
+        dialScrubbing = true;
+        adjustState.isScrubbing = true;
+        startX = clientX;
+        initialVal = Number(adjustState.values[spec.key] || 0);
+        _syncLevelGrid();
+      };
+
+      const onDialMove = (clientX) => {
+        if (!dialScrubbing || !adjustState.enabled) return;
+        const spec = ADJUST_SPECS[adjustState.activeParam] || ADJUST_SPECS.exposure;
+        const rect = dialTrack.getBoundingClientRect();
+        const spanPx = Math.max(200, rect.width * 0.85);
+        const perPx = (spec.max - spec.min) / spanPx;
+        const rawNext = initialVal + (clientX - startX) * perPx;
+        const stepped = _snapWithZeroDetent(spec, rawNext, initialVal);
+        _commitAdjustValue(spec, stepped);
+      };
+
+      const onDialEnd = () => {
+        if (!dialScrubbing) return;
+        dialScrubbing = false;
+        adjustState.isScrubbing = false;
+        _syncLevelGrid();
+      };
+
+      dialTrack.addEventListener(
+        'touchstart',
+        (e) => {
+          e.stopPropagation();
+          if (e.touches.length !== 1) return;
+          onDialStart(e.touches[0].clientX);
+        },
+        { passive: true }
+      );
+      dialTrack.addEventListener(
+        'touchmove',
+        (e) => {
+          e.stopPropagation();
+          if (!dialScrubbing || e.touches.length !== 1) return;
+          if (e.cancelable) e.preventDefault();
+          onDialMove(e.touches[0].clientX);
+        },
+        { passive: false }
+      );
+      dialTrack.addEventListener('touchend', onDialEnd, { passive: true });
+      dialTrack.addEventListener('touchcancel', onDialEnd, { passive: true });
+
+      dialTrack.addEventListener('pointerdown', (e) => {
+        if (e.pointerType === 'touch') return;
+        e.stopPropagation();
+        onDialStart(e.clientX);
+      });
+      dialTrack.addEventListener('pointermove', (e) => {
+        if (!dialScrubbing || e.pointerType === 'touch') return;
+        onDialMove(e.clientX);
+      });
+      dialTrack.addEventListener('pointerup', onDialEnd);
+      dialTrack.addEventListener('pointercancel', onDialEnd);
+    }
+  }
+
+  function _snapWithZeroDetent(spec, rawNext, initialVal) {
+    // すでに0以外の値から戻すときのみゼロ付近に軽い吸着を持たせ、0からの±0.1°微調整を妨げない
+    if (Math.abs(initialVal) > spec.step * 1.5 && Math.abs(rawNext) < spec.step * 0.75) {
+      return spec.defaultVal;
+    }
+    const stepped = Math.round(rawNext / spec.step) * spec.step;
+    return Math.max(spec.min, Math.min(spec.max, Number(stepped.toFixed(2))));
+  }
+
+  function _syncAdjustUi() {
+    _syncLevelGrid();
+
+    const strip = _ensureControlStrip();
+    if (!strip) return;
+
+    strip.style.display = adjustState.enabled ? 'flex' : 'none';
+    if (!adjustState.enabled) return;
+
+    const spec = ADJUST_SPECS[adjustState.activeParam] || ADJUST_SPECS.exposure;
+    const val = Number(adjustState.values[spec.key] || 0);
+    const modified = isParamModified(spec.key);
+
+    const labelEl = strip.querySelector('#tAdjustParamLabel');
+    const valEl = strip.querySelector('#tAdjustParamValue');
+    const resetBtn = strip.querySelector('#tAdjustValueResetBtn');
+    const minEl = strip.querySelector('#tAdjustMinLabel');
+    const zeroEl = strip.querySelector('#tAdjustZeroLabel');
+    const maxEl = strip.querySelector('#tAdjustMaxLabel');
+    const trackEl = strip.querySelector('#tAdjustDialTrack');
+    const fillEl = strip.querySelector('#tAdjustDialFill');
+    const thumbEl = strip.querySelector('#tAdjustDialThumb');
+    const gridBtn = strip.querySelector('#tAdjustGridToggleBtn');
+    const compareBtn = strip.querySelector('#tAdjustCompareBtn');
+
+    if (labelEl) labelEl.textContent = spec.label;
+    if (valEl) {
+      valEl.textContent = spec.format(val);
+      valEl.classList.toggle('is-modified', modified);
+    }
+    if (resetBtn) resetBtn.classList.toggle('is-modified', modified);
+    if (minEl) minEl.textContent = spec.minLabel;
+    if (zeroEl) zeroEl.textContent = spec.zeroLabel;
+    if (maxEl) maxEl.textContent = spec.maxLabel;
+
+    const span = spec.max - spec.min;
+    const pct = span > 0 ? Math.max(0, Math.min(100, ((val - spec.min) / span) * 100)) : 50;
+    const zeroPct = span > 0 ? Math.max(0, Math.min(100, ((0 - spec.min) / span) * 100)) : 50;
+    if (fillEl) {
+      fillEl.style.left = `${Math.min(zeroPct, pct)}%`;
+      fillEl.style.width = `${Math.abs(pct - zeroPct)}%`;
+    }
+    if (thumbEl) thumbEl.style.left = `${pct}%`;
+    if (trackEl) {
+      trackEl.setAttribute('aria-valuemin', String(spec.min));
+      trackEl.setAttribute('aria-valuemax', String(spec.max));
+      trackEl.setAttribute('aria-valuenow', String(val));
+      trackEl.setAttribute('aria-valuetext', spec.format(val));
+    }
+
+    if (gridBtn) {
+      const gridOn = _isGridActiveForParam(spec.key);
+      gridBtn.classList.toggle('is-active', gridOn);
+      gridBtn.setAttribute('aria-pressed', gridOn ? 'true' : 'false');
+    }
+    if (compareBtn) {
+      compareBtn.classList.toggle('is-holding', adjustState.isComparingOriginal);
+      compareBtn.setAttribute('aria-pressed', adjustState.isComparingOriginal ? 'true' : 'false');
+    }
   }
 
   function bindCanvasScrubAdjust(stageElOrSelector, callbacks = {}) {
@@ -9817,62 +10522,54 @@ else if (typeof exports === 'object'){
 
     if (callbacks.onChange) adjustState.onChange = callbacks.onChange;
 
-    let scrubbing = false;
+    let pointerActive = false;
+    let scrubCommitted = false;
     let startX = 0;
     let initialVal = 0;
 
-    const onStart = (clientX) => {
+    const beginCandidate = (clientX) => {
       if (!adjustState.enabled) return;
       const spec = ADJUST_SPECS[adjustState.activeParam] || ADJUST_SPECS.exposure;
-      scrubbing = true;
+      pointerActive = true;
+      scrubCommitted = false;
       startX = clientX;
       initialVal = Number(adjustState.values[spec.key] || 0);
-      _renderScrubHud(spec, initialVal);
     };
 
-    const onMove = (clientX) => {
-      if (!scrubbing || !adjustState.enabled) return;
-      const spec = ADJUST_SPECS[adjustState.activeParam] || ADJUST_SPECS.exposure;
+    const moveCandidate = (clientX) => {
+      if (!pointerActive || !adjustState.enabled) return;
       const dx = clientX - startX;
-      const rawNext = initialVal + dx * spec.sensitivity;
-      const stepped = Math.round(rawNext / spec.step) * spec.step;
-      const clamped = Math.max(spec.min, Math.min(spec.max, Number(stepped.toFixed(2))));
-
-      adjustState.values[spec.key] = clamped;
-      _renderScrubHud(spec, clamped);
-      _applyLivePreviewToImage(callbacks.imageEl);
-
-      if (typeof adjustState.onChange === 'function') {
-        adjustState.onChange({
-          param: spec.key,
-          value: clamped,
-          formatted: spec.format(clamped),
-          values: { ...adjustState.values },
-        });
+      if (!scrubCommitted) {
+        if (Math.abs(dx) < 4) return;
+        scrubCommitted = true;
+        adjustState.isScrubbing = true;
+        _syncLevelGrid();
       }
-      global.dispatchEvent(
-        new CustomEvent('tetheract:canvas-scrub-change', {
-          detail: {
-            param: spec.key,
-            value: clamped,
-            formatted: spec.format(clamped),
-            values: { ...adjustState.values },
-          },
-        })
-      );
+      const spec = ADJUST_SPECS[adjustState.activeParam] || ADJUST_SPECS.exposure;
+      const rawNext = initialVal + dx * spec.sensitivity;
+      const stepped = _snapWithZeroDetent(spec, rawNext, initialVal);
+      _commitAdjustValue(spec, stepped);
     };
 
-    const onEnd = () => {
-      if (!scrubbing) return;
-      scrubbing = false;
-      _hideScrubHud();
+    const finishCandidate = () => {
+      if (!pointerActive) return;
+      pointerActive = false;
+      scrubCommitted = false;
+      if (adjustState.isScrubbing) {
+        adjustState.isScrubbing = false;
+        _syncLevelGrid();
+      }
     };
 
     stageEl.addEventListener(
       'touchstart',
       (e) => {
-        if (!adjustState.enabled || e.touches.length !== 1) return;
-        onStart(e.touches[0].clientX);
+        if (!adjustState.enabled) return;
+        if (e.touches.length !== 1) {
+          finishCandidate();
+          return;
+        }
+        beginCandidate(e.touches[0].clientX);
       },
       { passive: true }
     );
@@ -9880,53 +10577,74 @@ else if (typeof exports === 'object'){
     stageEl.addEventListener(
       'touchmove',
       (e) => {
-        if (!scrubbing || !adjustState.enabled || e.touches.length !== 1) return;
+        if (!pointerActive || !adjustState.enabled) return;
+        if (e.touches.length !== 1) {
+          finishCandidate();
+          return;
+        }
         if (e.cancelable) e.preventDefault();
-        onMove(e.touches[0].clientX);
+        moveCandidate(e.touches[0].clientX);
       },
       { passive: false }
     );
 
-    stageEl.addEventListener('touchend', onEnd, { passive: true });
-    stageEl.addEventListener('touchcancel', onEnd, { passive: true });
+    stageEl.addEventListener('touchend', finishCandidate, { passive: true });
+    stageEl.addEventListener('touchcancel', finishCandidate, { passive: true });
 
-    // タブレットでのスタイラス / マウスドラッグにも共通対応
     stageEl.addEventListener('pointerdown', (e) => {
       if (!adjustState.enabled || e.pointerType === 'touch') return;
-      onStart(e.clientX);
+      beginCandidate(e.clientX);
     });
     stageEl.addEventListener('pointermove', (e) => {
-      if (!scrubbing || !adjustState.enabled || e.pointerType === 'touch') return;
-      onMove(e.clientX);
+      if (!pointerActive || !adjustState.enabled || e.pointerType === 'touch') return;
+      moveCandidate(e.clientX);
     });
-    stageEl.addEventListener('pointerup', onEnd);
+    stageEl.addEventListener('pointerup', finishCandidate);
+    stageEl.addEventListener('pointercancel', finishCandidate);
   }
 
   function setAdjustModeEnabled(enabled, initialParam) {
     adjustState.enabled = Boolean(enabled);
-    if (initialParam && ADJUST_SPECS[initialParam]) adjustState.activeParam = initialParam;
-    if (!adjustState.enabled) _hideScrubHud();
+    adjustState.isScrubbing = false;
+    adjustState.isComparingOriginal = false;
+    if (initialParam && ADJUST_SPECS[initialParam]) {
+      adjustState.activeParam = initialParam;
+    }
+    _applyLivePreviewToImage();
+    _syncAdjustUi();
   }
 
   function setActiveAdjustParam(paramKey) {
     if (!ADJUST_SPECS[paramKey]) return;
     adjustState.activeParam = paramKey;
+    _setCompareHolding(false);
+    _syncAdjustUi();
+  }
+
+  function resetSingleAdjustParam(paramKey) {
     const spec = ADJUST_SPECS[paramKey];
-    _renderScrubHud(spec, Number(adjustState.values[paramKey] || 0));
-    setTimeout(_hideScrubHud, 950);
+    if (!spec) return;
+    _setCompareHolding(false);
+    _commitAdjustValue(spec, spec.defaultVal);
+  }
+
+  function stepActiveAdjustParam(direction) {
+    const spec = ADJUST_SPECS[adjustState.activeParam] || ADJUST_SPECS.exposure;
+    _setCompareHolding(false);
+    const cur = Number(adjustState.values[spec.key] || 0);
+    const dir = direction >= 0 ? 1 : -1;
+    const raw = cur + dir * spec.step;
+    const stepped = Math.round(raw / spec.step) * spec.step;
+    _commitAdjustValue(spec, Number(stepped.toFixed(2)));
   }
 
   function resetAdjustValues() {
     adjustState.values = { exposure: 0.0, contrast: 0, saturation: 0, tilt: 0.0 };
+    adjustState.isComparingOriginal = false;
     _applyLivePreviewToImage();
+    _syncAdjustUi();
     const spec = ADJUST_SPECS[adjustState.activeParam] || ADJUST_SPECS.exposure;
-    _renderScrubHud(spec, 0);
-    setTimeout(_hideScrubHud, 700);
-    global.dispatchEvent(
-      new CustomEvent('tetheract:canvas-scrub-change', {
-        detail: { param: spec.key, value: 0, formatted: spec.format(0), values: { ...adjustState.values } },
-      })
-    );
+    _emitAdjustChange(spec, adjustState.values[spec.key]);
   }
 
   function getAdjustValues() {
@@ -9937,6 +10655,7 @@ else if (typeof exports === 'object'){
     if (!photo) {
       adjustState.values = { exposure: 0.0, contrast: 0, saturation: 0, tilt: 0.0 };
       adjustState.bakedValues = { exposure: 0.0, contrast: 0, saturation: 0, tilt: 0.0, rotation: 0 };
+      adjustState.aspectRatio = 1.3333;
     } else {
       if (!photo._bakedAdjust) {
         photo._bakedAdjust = {
@@ -9947,6 +10666,9 @@ else if (typeof exports === 'object'){
           rotation: Number(photo.rotation || 0),
         };
       }
+      const imgEl = document.getElementById('mViewerImg');
+      adjustState.aspectRatio = _resolveAspectRatio(imgEl, photo);
+
       const b = Number(photo.brightness || 0);
       adjustState.values = {
         exposure: Number((b / 10.0).toFixed(2)),
@@ -9954,39 +10676,54 @@ else if (typeof exports === 'object'){
         saturation: Math.round(Number(photo.saturation || 0)),
         tilt: Number(Number(photo.fine_angle || 0).toFixed(2)),
       };
+      const viewerBaked = photo._viewerLoadedBakedAdjust || photo._bakedAdjust;
       adjustState.bakedValues = {
-        exposure: Number((Number(photo._bakedAdjust.brightness || 0) / 10.0).toFixed(2)),
-        contrast: Math.round(Number(photo._bakedAdjust.contrast || 0)),
-        saturation: Math.round(Number(photo._bakedAdjust.saturation || 0)),
-        tilt: Number(Number(photo._bakedAdjust.fine_angle || 0).toFixed(2)),
-        rotation: Number(photo.rotation ?? photo._bakedAdjust.rotation ?? 0),
+        exposure: Number((Number(viewerBaked.brightness || 0) / 10.0).toFixed(2)),
+        contrast: Math.round(Number(viewerBaked.contrast || 0)),
+        saturation: Math.round(Number(viewerBaked.saturation || 0)),
+        tilt: Number(Number(viewerBaked.fine_angle || 0).toFixed(2)),
+        rotation: Number(photo.rotation ?? viewerBaked.rotation ?? 0),
       };
     }
+    adjustState.isComparingOriginal = false;
+    adjustState.isScrubbing = false;
     _applyLivePreviewToImage();
+    _syncAdjustUi();
+    global.dispatchEvent(new CustomEvent('tetheract:adjust-values-loaded', { detail: { values: { ...adjustState.values } } }));
   }
 
-  function initTouchGestures() {
-    // ビューアのピンチ拡大・ダブルタップ拡大・上下左右スワイプ・シングルタップ没入切替は
-    // mobile.js の setupViewerTouchGestures() に一元化（二重発火・ズーム解除競合を防止）
-    bindGridDragSelect('#mPhotoGrid');
-    bindGridPinchZoom('#mPhotoGrid');
-    bindFilterRowGestures('.m-drawer-body');
-    bindFilterRowGestures('#tPerspectivePanel_tags');
+  function initTouchAdjust() {
+    _ensureLevelGrid();
+    _ensureControlStrip();
     bindCanvasScrubAdjust('#mViewerStage');
+    _syncAdjustUi();
   }
 
-  const gesturesApi = {
-    ADJUST_SPECS, initTouchGestures, bindGridDragSelect,
-    bindGridPinchZoom, bindFilterRowGestures, bindCanvasScrubAdjust,
-    setAdjustModeEnabled, setActiveAdjustParam, resetAdjustValues, getAdjustValues,
-    loadPhotoAdjustValues, applyPhotoCssAdjustmentsToElement,
+  const adjustApi = {
+    ADJUST_SPECS,
+    bindCanvasScrubAdjust,
+    setAdjustModeEnabled,
+    setActiveAdjustParam,
+    resetAdjustValues,
+    resetSingleAdjustParam,
+    stepActiveAdjustParam,
+    getAdjustValues,
+    isParamModified,
+    loadPhotoAdjustValues,
+    applyPhotoCssAdjustmentsToElement,
+    syncAdjustUi: _syncAdjustUi,
   };
 
-  global.TetheractTouchUI = Object.assign(global.TetheractTouchUI || {}, gesturesApi, { gestures: gesturesApi });
+  const existing = global.TetheractTouchUI || {};
+  global.TetheractTouchUI = Object.assign(existing, adjustApi, {
+    adjust: adjustApi,
+    gestures: Object.assign({}, existing.gestures || {}, adjustApi),
+  });
+
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initTouchGestures);
+    document.addEventListener('DOMContentLoaded', initTouchAdjust);
   } else {
-    initTouchGestures();
+    initTouchAdjust();
   }
 })(window);
 
@@ -10076,18 +10813,19 @@ else if (typeof exports === 'object'){
 
     if (mode === 'adjust') {
       const p = state.activeAdjustParam;
+      const isMod = (k) => (global.TetheractTouchUI?.isParamModified?.(k) ? 'is-modified' : '');
       return `
         <div class="t-thumb-slot-group t-thumb-group-adjust" data-morph-mode="adjust">
-          <button type="button" class="t-thumb-btn ${p === 'exposure' ? 'is-active' : ''}" data-thumb-action="adjust-param" data-param="exposure">
+          <button type="button" class="t-thumb-btn ${p === 'exposure' ? 'is-active' : ''} ${isMod('exposure')}" data-thumb-action="adjust-param" data-param="exposure">
             <span>露光量</span>
           </button>
-          <button type="button" class="t-thumb-btn ${p === 'contrast' ? 'is-active' : ''}" data-thumb-action="adjust-param" data-param="contrast">
+          <button type="button" class="t-thumb-btn ${p === 'contrast' ? 'is-active' : ''} ${isMod('contrast')}" data-thumb-action="adjust-param" data-param="contrast">
             <span>コントラスト</span>
           </button>
-          <button type="button" class="t-thumb-btn ${p === 'saturation' ? 'is-active' : ''}" data-thumb-action="adjust-param" data-param="saturation">
+          <button type="button" class="t-thumb-btn ${p === 'saturation' ? 'is-active' : ''} ${isMod('saturation')}" data-thumb-action="adjust-param" data-param="saturation">
             <span>彩度</span>
           </button>
-          <button type="button" class="t-thumb-btn ${p === 'tilt' ? 'is-active' : ''}" data-thumb-action="adjust-param" data-param="tilt">
+          <button type="button" class="t-thumb-btn ${p === 'tilt' ? 'is-active' : ''} ${isMod('tilt')}" data-thumb-action="adjust-param" data-param="tilt">
             <span>傾き</span>
           </button>
           <button type="button" class="t-thumb-btn" data-thumb-action="adjust-reset" title="調整値を初期状態にリセット">
@@ -10696,6 +11434,17 @@ else if (typeof exports === 'object'){
       const selectedCards = document.querySelectorAll('.m-card.selected, .photo-card.selected');
       updateSelectionCount(selectedCards.length);
     });
+
+    const syncAdjustModifiedPills = () => {
+      const bar = document.getElementById('tMorphThumbBar');
+      if (!bar || state.mode !== 'adjust') return;
+      bar.querySelectorAll('[data-thumb-action="adjust-param"]').forEach((el) => {
+        const key = el.getAttribute('data-param');
+        el.classList.toggle('is-modified', Boolean(global.TetheractTouchUI?.isParamModified?.(key)));
+      });
+    };
+    global.addEventListener('tetheract:canvas-scrub-change', syncAdjustModifiedPills);
+    global.addEventListener('tetheract:adjust-values-loaded', syncAdjustModifiedPills);
   }
 
   const thumbBarApi = {
@@ -15581,28 +16330,50 @@ else if (typeof exports === 'object'){
                       </select>
                     </label>
                   </div>
-                  <label class="t-af-slider-row">
-                    <span>余白幅</span>
-                    <input type="range" id="mAfBorderSlider" min="1.5" max="15.0" step="0.5" value="5.0">
-                    <span id="mAfBorderVal" class="t-af-slider-val">5.0%</span>
-                  </label>
-                  <label class="t-af-slider-row">
-                    <span>文字サイズ</span>
-                    <input type="range" id="mAfFontScaleSlider" min="70" max="140" step="5" value="100">
-                    <span id="mAfFontScaleVal" class="t-af-slider-val">100%</span>
-                  </label>
                   <div class="t-af-checks-wrap">
                     <label class="t-af-check-mini"><input type="checkbox" id="mAfInnerBorderCheck" checked><span>極細内枠</span></label>
                     <label class="t-af-check-mini"><input type="checkbox" id="mAfPhotoShadowCheck"><span>落とし影</span></label>
                   </div>
-                  <div id="mAfCaptionFieldsGroup" class="t-af-checks-wrap">
-                    <label class="t-af-check-mini"><input type="checkbox" id="mAfShowCameraCheck" checked><span>カメラ機種</span></label>
-                    <label class="t-af-check-mini"><input type="checkbox" id="mAfShowLensCheck" checked><span>レンズ名</span></label>
-                    <label class="t-af-check-mini"><input type="checkbox" id="mAfShowExposureCheck" checked><span>露出設定</span></label>
-                    <label class="t-af-check-mini"><input type="checkbox" id="mAfShowDateCheck"><span>撮影日</span></label>
-                    <label class="t-af-check-mini"><input type="checkbox" id="mAfShowLocationCheck"><span>撮影地</span></label>
-                    <label class="t-af-check-mini"><input type="checkbox" id="mAfShowNoteCheck"><span>メモ</span></label>
-                  </div>
+                  <details id="mAfFrameSizeExpander" class="t-af-expander">
+                    <summary class="t-af-expander-summary">
+                      <span class="t-af-expander-title">余白幅・文字サイズ</span>
+                      <span class="t-af-expander-right">
+                        <span id="mAfFrameSizeSummary" class="t-af-expander-meta">5.0% · 100%</span>
+                        <svg class="t-af-expander-chevron" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                      </span>
+                    </summary>
+                    <div class="t-af-expander-body">
+                      <label class="t-af-slider-row">
+                        <span>余白幅</span>
+                        <input type="range" id="mAfBorderSlider" min="1.5" max="15.0" step="0.5" value="5.0">
+                        <span id="mAfBorderVal" class="t-af-slider-val">5.0%</span>
+                      </label>
+                      <label class="t-af-slider-row">
+                        <span>文字サイズ</span>
+                        <input type="range" id="mAfFontScaleSlider" min="70" max="140" step="5" value="100">
+                        <span id="mAfFontScaleVal" class="t-af-slider-val">100%</span>
+                      </label>
+                    </div>
+                  </details>
+                  <details id="mAfCaptionFieldsExpander" class="t-af-expander">
+                    <summary class="t-af-expander-summary">
+                      <span class="t-af-expander-title">表示項目</span>
+                      <span class="t-af-expander-right">
+                        <span id="mAfCaptionFieldsSummary" class="t-af-expander-meta">機種・レンズ・露出</span>
+                        <svg class="t-af-expander-chevron" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                      </span>
+                    </summary>
+                    <div class="t-af-expander-body">
+                      <div id="mAfCaptionFieldsGroup" class="t-af-checks-wrap">
+                        <label class="t-af-check-mini"><input type="checkbox" id="mAfShowCameraCheck" checked><span>カメラ機種</span></label>
+                        <label class="t-af-check-mini"><input type="checkbox" id="mAfShowLensCheck" checked><span>レンズ名</span></label>
+                        <label class="t-af-check-mini"><input type="checkbox" id="mAfShowExposureCheck" checked><span>露出設定</span></label>
+                        <label class="t-af-check-mini"><input type="checkbox" id="mAfShowDateCheck"><span>撮影日</span></label>
+                        <label class="t-af-check-mini"><input type="checkbox" id="mAfShowLocationCheck"><span>撮影地</span></label>
+                        <label class="t-af-check-mini"><input type="checkbox" id="mAfShowNoteCheck"><span>メモ</span></label>
+                      </div>
+                    </div>
+                  </details>
                   <div id="mAfCustomNoteRow" style="display:none;">
                     <input type="text" id="mAfCustomNoteInput" class="t-af-input" placeholder="キャプション右端に表示する一言...">
                   </div>
@@ -15921,6 +16692,35 @@ else if (typeof exports === 'object'){
     });
   }
 
+  function _syncFrameExpanderSummaries() {
+    const sizeSum = document.getElementById('mAfFrameSizeSummary');
+    if (sizeSum) {
+      const bPct = (cfg.frame.border_ratio * 100).toFixed(1);
+      const fPct = Math.round((cfg.frame.font_scale || 1.0) * 100);
+      sizeSum.textContent = `${bPct}% · ${fPct}%`;
+    }
+    const isBorderOnly = cfg.frame.layout === 'border_only';
+    const capExp = document.getElementById('mAfCaptionFieldsExpander');
+    if (capExp) {
+      capExp.classList.toggle('is-disabled', isBorderOnly);
+    }
+    const capSum = document.getElementById('mAfCaptionFieldsSummary');
+    if (capSum) {
+      if (isBorderOnly) {
+        capSum.textContent = '枠のみ';
+      } else {
+        const labels = [];
+        if (cfg.frame.show_camera) labels.push('機種');
+        if (cfg.frame.show_lens) labels.push('レンズ');
+        if (cfg.frame.show_exposure) labels.push('露出');
+        if (cfg.frame.show_date) labels.push('撮影日');
+        if (cfg.frame.show_location) labels.push('撮影地');
+        if (cfg.frame.show_note) labels.push('メモ');
+        capSum.textContent = labels.length > 0 ? labels.join('・') : 'なし';
+      }
+    }
+  }
+
   function _syncFormFromState() {
     if (!modalEl) return;
     const activePill = _getActivePresetPillKey();
@@ -15987,6 +16787,7 @@ else if (typeof exports === 'object'){
     const noteRow = document.getElementById('mAfCustomNoteRow');
     if (noteRow) noteRow.style.display = cfg.frame.show_note ? 'block' : 'none';
     document.getElementById('mAfCaptionFieldsGroup')?.classList.toggle('is-disabled', cfg.frame.layout === 'border_only');
+    _syncFrameExpanderSummaries();
 
     setChk('mAfWmEnableCheck', cfg.watermark.enabled);
     document.getElementById('mAfWmControlsBody')?.classList.toggle('is-disabled', !cfg.watermark.enabled);
@@ -17882,6 +18683,7 @@ else if (typeof exports === 'object'){
       cfg.frame.border_ratio = v / 100;
       const lbl = document.getElementById('mAfBorderVal');
       if (lbl) lbl.textContent = `${v.toFixed(1)}%`;
+      _syncFrameExpanderSummaries();
       _pushDecoratorToEditor();
     });
     document.getElementById('mAfBorderSlider')?.addEventListener('change', _saveSettings);
@@ -17890,6 +18692,7 @@ else if (typeof exports === 'object'){
       cfg.frame.font_scale = v / 100;
       const lbl = document.getElementById('mAfFontScaleVal');
       if (lbl) lbl.textContent = `${v}%`;
+      _syncFrameExpanderSummaries();
       _pushDecoratorToEditor();
     });
     document.getElementById('mAfFontScaleSlider')?.addEventListener('change', _saveSettings);
@@ -18113,6 +18916,8 @@ else if (typeof exports === 'object'){
     exportedCount = 0;
     isBusy = false;
 
+    document.getElementById('mAfFrameSizeExpander')?.removeAttribute('open');
+    document.getElementById('mAfCaptionFieldsExpander')?.removeAttribute('open');
     modalEl.style.display = 'flex';
     _applyTargetPreset(presetKey || 'for_x');
     await _loadCurrentQueuePhoto();
@@ -19352,21 +20157,24 @@ else if (typeof exports === 'object'){
     return results;
   }
 
+  function _buildMobilePhotoVersionKey(photo) {
+    const rot = photo.rotation || 0;
+    const fa = Math.round((Number(photo.fine_angle) || 0) * 10);
+    const mtime = Math.floor(photo.file_mtime || 0);
+    const crop = photo.crop_w
+      ? `${Math.round((photo.crop_x || 0) * 1000)}_${Math.round((photo.crop_y || 0) * 1000)}_${Math.round(photo.crop_w * 1000)}_${Math.round((photo.crop_h || 0) * 1000)}`
+      : '0';
+    const tone = `${photo.brightness || 0}_${photo.contrast || 0}_${photo.saturation || 0}`;
+    return `${photo.file_size || photo.id}_${mtime}_r${rot}_fa${fa}_c${crop}_t${tone}`;
+  }
+
   /**
    * 写真のサムネイルURLを取得する（serverモード時はAPI URL、localdbモード時はBLOBからObjectURLを生成）
    */
   function getMobileThumbnailUrl(photo) {
     if (!photo) return '';
     if (mState.mode === 'server') {
-      const rot = photo.rotation || 0;
-      const fa = Math.round((Number(photo.fine_angle) || 0) * 10);
-      const mtime = Math.floor(photo.file_mtime || 0);
-      const crop = photo.crop_w
-        ? `${Math.round((photo.crop_x || 0) * 1000)}_${Math.round((photo.crop_y || 0) * 1000)}_${Math.round(photo.crop_w * 1000)}_${Math.round((photo.crop_h || 0) * 1000)}`
-        : '0';
-      const tone = `${photo.brightness || 0}_${photo.contrast || 0}_${photo.saturation || 0}`;
-      const ver = `${photo.file_size || photo.id}_${mtime}_r${rot}_fa${fa}_c${crop}_t${tone}`;
-      return `/api/photo/${photo.id}/thumbnail?v=${ver}`;
+      return `/api/photo/${photo.id}/thumbnail?v=${_buildMobilePhotoVersionKey(photo)}`;
     }
 
     // localdb モード: thumbnails テーブルの BLOB (WebP) から ObjectURL を生成してキャッシュ
@@ -19412,7 +20220,7 @@ else if (typeof exports === 'object'){
     if (!photo || !photo.id) return '';
     const pid = Number(photo.id);
     if (mState.mode === 'server') {
-      return `/api/photo/${pid}/view`;
+      return `/api/photo/${pid}/view?v=${_buildMobilePhotoVersionKey(photo)}`;
     }
     if (window.TetheractNative || (mState.localDb && mState.localDb.isAndroidNative)) {
       return `https://appassets.tetheract.local/usb_photo/${pid}?only_hd=1`;
@@ -21634,9 +22442,18 @@ else if (typeof exports === 'object'){
     const isPhotoOnline = isMobilePhotoOriginalOnline(activePhoto);
     activePhoto._loadedNaturalW = 0;
     activePhoto._loadedNaturalH = 0;
+    const bakedSnap = activePhoto._bakedAdjust || {
+      brightness: Number(activePhoto.brightness || 0),
+      contrast: Number(activePhoto.contrast || 0),
+      saturation: Number(activePhoto.saturation || 0),
+      fine_angle: Number(activePhoto.fine_angle || 0),
+      rotation: Number(activePhoto.rotation || 0),
+    };
+    activePhoto._bakedAdjust = { ...bakedSnap };
+    activePhoto._viewerLoadedBakedAdjust = { ...bakedSnap };
     if (imgEl) {
       imgEl.dataset.photoId = String(activePhoto.id);
-      imgEl.dataset.unbakedSource = '0';
+      imgEl.dataset.unbakedSource = activePhoto.is_phone_case ? '1' : '0';
       imgEl.dataset.hdLoaded = '0';
       imgEl.src = thumbUrl;
     }
@@ -21666,8 +22483,9 @@ else if (typeof exports === 'object'){
           const srcKind = window.TetheractNative?.getLastPhotoSource
             ? window.TetheractNative.getLastPhotoSource(Number(activePhoto.id))
             : '';
-          imgEl.dataset.unbakedSource = srcKind === 'usb' ? '1' : '0';
+          imgEl.dataset.unbakedSource = (srcKind === 'usb' || srcKind === 'phone' || Boolean(activePhoto.is_phone_case)) ? '1' : '0';
           imgEl.dataset.hdLoaded = '1';
+          activePhoto._viewerLoadedBakedAdjust = { ...(activePhoto._bakedAdjust || bakedSnap) };
           imgEl.src = hdUrl;
           if (srcBadge) {
             srcBadge.textContent = srcKind === 'phone' ? '📱 スマホ原本' : 'HD 実ファイル';
@@ -21944,13 +22762,20 @@ else if (typeof exports === 'object'){
 
   function applyViewerTransform(animate = false) {
     const wrap = document.getElementById('mViewerImgWrapper');
+    const photoFrame = document.getElementById('mViewerPhotoFrame');
     const imgEl = document.getElementById('mViewerImg');
     if (!wrap) return;
     const m = _getViewerPhotoMetrics();
     const z = Math.max(1, mState.zoomScale || 1);
+    const wPx = `${Math.round(m.fitW * z)}px`;
+    const hPx = `${Math.round(m.fitH * z)}px`;
+    if (photoFrame) {
+      photoFrame.style.width = wPx;
+      photoFrame.style.height = hPx;
+    }
     if (imgEl) {
-      imgEl.style.width = `${Math.round(m.fitW * z)}px`;
-      imgEl.style.height = `${Math.round(m.fitH * z)}px`;
+      imgEl.style.width = wPx;
+      imgEl.style.height = hPx;
     }
     wrap.classList.toggle('is-animating', Boolean(animate));
     wrap.style.opacity = '1';
@@ -23755,6 +24580,19 @@ else if (typeof exports === 'object'){
         ? window.TetheractTouchUI.getThumbBarMode()
         : 'cull';
       window.TetheractTouchUI.setThumbBarMode(curMode === 'adjust' ? 'cull' : 'adjust');
+    });
+    window.addEventListener('tetheract:thumb-mode-change', (e) => {
+      const modal = document.getElementById('mViewerModal');
+      if (modal && e && e.detail && e.detail.mode === 'adjust') {
+        modal.classList.remove('is-immersive');
+        window.TetheractTouchUI?.viewerLauncher?.close?.();
+      }
+      requestAnimationFrame(() => {
+        if (mState.viewerOpen) {
+          _updateViewerZoomHint();
+          applyViewerTransform(false);
+        }
+      });
     });
     document
       .getElementById('mViewerOpenInfoBtn')

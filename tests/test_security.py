@@ -792,6 +792,7 @@ def test_red_blue_team_failsafe_and_salvage(tmp_path: Path):
             "frontend/js/adapters/phone_case_adapter.js",
             "frontend/js/views/touch/touch_layout.js",
             "frontend/js/views/touch/touch_gestures.js",
+            "frontend/js/views/touch/touch_adjust.js",
             "frontend/js/views/touch/morph_thumb_bar.js",
             "frontend/js/views/touch/touch_duel.js",
             "frontend/js/views/touch/touch_field_log.js",

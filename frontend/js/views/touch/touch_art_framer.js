@@ -317,28 +317,50 @@
                       </select>
                     </label>
                   </div>
-                  <label class="t-af-slider-row">
-                    <span>余白幅</span>
-                    <input type="range" id="mAfBorderSlider" min="1.5" max="15.0" step="0.5" value="5.0">
-                    <span id="mAfBorderVal" class="t-af-slider-val">5.0%</span>
-                  </label>
-                  <label class="t-af-slider-row">
-                    <span>文字サイズ</span>
-                    <input type="range" id="mAfFontScaleSlider" min="70" max="140" step="5" value="100">
-                    <span id="mAfFontScaleVal" class="t-af-slider-val">100%</span>
-                  </label>
                   <div class="t-af-checks-wrap">
                     <label class="t-af-check-mini"><input type="checkbox" id="mAfInnerBorderCheck" checked><span>極細内枠</span></label>
                     <label class="t-af-check-mini"><input type="checkbox" id="mAfPhotoShadowCheck"><span>落とし影</span></label>
                   </div>
-                  <div id="mAfCaptionFieldsGroup" class="t-af-checks-wrap">
-                    <label class="t-af-check-mini"><input type="checkbox" id="mAfShowCameraCheck" checked><span>カメラ機種</span></label>
-                    <label class="t-af-check-mini"><input type="checkbox" id="mAfShowLensCheck" checked><span>レンズ名</span></label>
-                    <label class="t-af-check-mini"><input type="checkbox" id="mAfShowExposureCheck" checked><span>露出設定</span></label>
-                    <label class="t-af-check-mini"><input type="checkbox" id="mAfShowDateCheck"><span>撮影日</span></label>
-                    <label class="t-af-check-mini"><input type="checkbox" id="mAfShowLocationCheck"><span>撮影地</span></label>
-                    <label class="t-af-check-mini"><input type="checkbox" id="mAfShowNoteCheck"><span>メモ</span></label>
-                  </div>
+                  <details id="mAfFrameSizeExpander" class="t-af-expander">
+                    <summary class="t-af-expander-summary">
+                      <span class="t-af-expander-title">余白幅・文字サイズ</span>
+                      <span class="t-af-expander-right">
+                        <span id="mAfFrameSizeSummary" class="t-af-expander-meta">5.0% · 100%</span>
+                        <svg class="t-af-expander-chevron" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                      </span>
+                    </summary>
+                    <div class="t-af-expander-body">
+                      <label class="t-af-slider-row">
+                        <span>余白幅</span>
+                        <input type="range" id="mAfBorderSlider" min="1.5" max="15.0" step="0.5" value="5.0">
+                        <span id="mAfBorderVal" class="t-af-slider-val">5.0%</span>
+                      </label>
+                      <label class="t-af-slider-row">
+                        <span>文字サイズ</span>
+                        <input type="range" id="mAfFontScaleSlider" min="70" max="140" step="5" value="100">
+                        <span id="mAfFontScaleVal" class="t-af-slider-val">100%</span>
+                      </label>
+                    </div>
+                  </details>
+                  <details id="mAfCaptionFieldsExpander" class="t-af-expander">
+                    <summary class="t-af-expander-summary">
+                      <span class="t-af-expander-title">表示項目</span>
+                      <span class="t-af-expander-right">
+                        <span id="mAfCaptionFieldsSummary" class="t-af-expander-meta">機種・レンズ・露出</span>
+                        <svg class="t-af-expander-chevron" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                      </span>
+                    </summary>
+                    <div class="t-af-expander-body">
+                      <div id="mAfCaptionFieldsGroup" class="t-af-checks-wrap">
+                        <label class="t-af-check-mini"><input type="checkbox" id="mAfShowCameraCheck" checked><span>カメラ機種</span></label>
+                        <label class="t-af-check-mini"><input type="checkbox" id="mAfShowLensCheck" checked><span>レンズ名</span></label>
+                        <label class="t-af-check-mini"><input type="checkbox" id="mAfShowExposureCheck" checked><span>露出設定</span></label>
+                        <label class="t-af-check-mini"><input type="checkbox" id="mAfShowDateCheck"><span>撮影日</span></label>
+                        <label class="t-af-check-mini"><input type="checkbox" id="mAfShowLocationCheck"><span>撮影地</span></label>
+                        <label class="t-af-check-mini"><input type="checkbox" id="mAfShowNoteCheck"><span>メモ</span></label>
+                      </div>
+                    </div>
+                  </details>
                   <div id="mAfCustomNoteRow" style="display:none;">
                     <input type="text" id="mAfCustomNoteInput" class="t-af-input" placeholder="キャプション右端に表示する一言...">
                   </div>
@@ -657,6 +679,35 @@
     });
   }
 
+  function _syncFrameExpanderSummaries() {
+    const sizeSum = document.getElementById('mAfFrameSizeSummary');
+    if (sizeSum) {
+      const bPct = (cfg.frame.border_ratio * 100).toFixed(1);
+      const fPct = Math.round((cfg.frame.font_scale || 1.0) * 100);
+      sizeSum.textContent = `${bPct}% · ${fPct}%`;
+    }
+    const isBorderOnly = cfg.frame.layout === 'border_only';
+    const capExp = document.getElementById('mAfCaptionFieldsExpander');
+    if (capExp) {
+      capExp.classList.toggle('is-disabled', isBorderOnly);
+    }
+    const capSum = document.getElementById('mAfCaptionFieldsSummary');
+    if (capSum) {
+      if (isBorderOnly) {
+        capSum.textContent = '枠のみ';
+      } else {
+        const labels = [];
+        if (cfg.frame.show_camera) labels.push('機種');
+        if (cfg.frame.show_lens) labels.push('レンズ');
+        if (cfg.frame.show_exposure) labels.push('露出');
+        if (cfg.frame.show_date) labels.push('撮影日');
+        if (cfg.frame.show_location) labels.push('撮影地');
+        if (cfg.frame.show_note) labels.push('メモ');
+        capSum.textContent = labels.length > 0 ? labels.join('・') : 'なし';
+      }
+    }
+  }
+
   function _syncFormFromState() {
     if (!modalEl) return;
     const activePill = _getActivePresetPillKey();
@@ -723,6 +774,7 @@
     const noteRow = document.getElementById('mAfCustomNoteRow');
     if (noteRow) noteRow.style.display = cfg.frame.show_note ? 'block' : 'none';
     document.getElementById('mAfCaptionFieldsGroup')?.classList.toggle('is-disabled', cfg.frame.layout === 'border_only');
+    _syncFrameExpanderSummaries();
 
     setChk('mAfWmEnableCheck', cfg.watermark.enabled);
     document.getElementById('mAfWmControlsBody')?.classList.toggle('is-disabled', !cfg.watermark.enabled);
@@ -2618,6 +2670,7 @@
       cfg.frame.border_ratio = v / 100;
       const lbl = document.getElementById('mAfBorderVal');
       if (lbl) lbl.textContent = `${v.toFixed(1)}%`;
+      _syncFrameExpanderSummaries();
       _pushDecoratorToEditor();
     });
     document.getElementById('mAfBorderSlider')?.addEventListener('change', _saveSettings);
@@ -2626,6 +2679,7 @@
       cfg.frame.font_scale = v / 100;
       const lbl = document.getElementById('mAfFontScaleVal');
       if (lbl) lbl.textContent = `${v}%`;
+      _syncFrameExpanderSummaries();
       _pushDecoratorToEditor();
     });
     document.getElementById('mAfFontScaleSlider')?.addEventListener('change', _saveSettings);
@@ -2849,6 +2903,8 @@
     exportedCount = 0;
     isBusy = false;
 
+    document.getElementById('mAfFrameSizeExpander')?.removeAttribute('open');
+    document.getElementById('mAfCaptionFieldsExpander')?.removeAttribute('open');
     modalEl.style.display = 'flex';
     _applyTargetPreset(presetKey || 'for_x');
     await _loadCurrentQueuePhoto();

@@ -1,38 +1,16 @@
 /**
  * Tetheract Touch Gestures Controller (Layer 3)
  * PC向けの極小ボタン群（[×]・チェックボックス・[+][-]・細スライダー）を廃止し、
- * 1) ビューア全面スワイプ（下＝縮小透過クローズ / 上＝EXIF・ヒストグラムシート / 左右＝前後移動）
- * 2) グリッド長押し（350ms）＋なぞり連続選択（elementFromPoint）
+ * 1) グリッド長押し（350ms）＋なぞり連続選択（elementFromPoint）
+ * 2) グリッドの2本指ピンチイン・ピンチアウトによる列数変更
  * 3) フィルタ行（44px高）タップ＝含む[+]/AND ＆ 左スワイプ/長押し＝除外[-]/NOT
- * 4) 画像調整のキャンバス全面スクラブ（中央透過HUD表示・指を離すとHUD自動消去）
- * に置き換えるジェスチャー制御モジュール。
+ * に置き換えるジェスチャー制御モジュール（非破壊調整・ガイドラインは touch_adjust.js に分離）。
  */
 (function (global) {
   'use strict';
 
   const LONG_PRESS_MS = 350;
   const FILTER_SWIPE_EXCLUDE_PX = -54;
-
-  // 非破壊画像調整項目の仕様定義
-  const ADJUST_SPECS = {
-    exposure: { key: 'exposure', label: '露光量', shortLabel: 'EV', min: -3.0, max: 3.0, step: 0.1, defaultVal: 0.0, sensitivity: 0.015, format: (v) => `EV ${v >= 0 ? '+' : ''}${v.toFixed(1)}` },
-    contrast: { key: 'contrast', label: 'コントラスト', shortLabel: 'Contrast', min: -100, max: 100, step: 1, defaultVal: 0, sensitivity: 0.45, format: (v) => `Contrast ${v >= 0 ? '+' : ''}${Math.round(v)}` },
-    saturation: { key: 'saturation', label: '彩度', shortLabel: 'Saturation', min: -100, max: 100, step: 1, defaultVal: 0, sensitivity: 0.45, format: (v) => `Saturation ${v >= 0 ? '+' : ''}${Math.round(v)}` },
-    tilt: { key: 'tilt', label: '水平傾き', shortLabel: 'Tilt', min: -15.0, max: 15.0, step: 0.1, defaultVal: 0.0, sensitivity: 0.06, format: (v) => `Tilt ${v >= 0 ? '+' : ''}${v.toFixed(1)}°` },
-  };
-
-  function _escHtml(val) {
-    if (val === null || val === undefined) return '';
-    return String(val).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-  }
-
-  const adjustState = {
-    enabled: false,
-    activeParam: 'exposure',
-    values: { exposure: 0.0, contrast: 0, saturation: 0, tilt: 0.0 },
-    bakedValues: { exposure: 0.0, contrast: 0, saturation: 0, tilt: 0.0, rotation: 0 },
-    onChange: null,
-  };
 
   /**
    * 1. グリッドの長押し＋なぞり連続選択 (`bindGridDragSelect`)
@@ -402,286 +380,6 @@
     container.addEventListener('touchcancel', endRowTouch, { passive: true });
   }
 
-  /**
-   * 4. 画像調整のキャンバス全面スクラブ (`bindCanvasScrubAdjust`)
-   * - 細いスライダーつまみを廃止し、画像調整モード中は写真のどこでも左右に指を滑らせるだけで
-   *   選択中の項目（露光量 EV / コントラスト / 彩度 / 水平傾き）を微調整する。
-   * - ドラッグ中は画面中央に現在値HUD（例: `EV +0.7`）を透過表示し、指を離すとHUDが消えて写真全体を確認できる。
-   */
-  function _ensureScrubHud(stageEl) {
-    let hud = document.getElementById('tCanvasScrubHud');
-    if (!hud) {
-      hud = document.createElement('div');
-      hud.id = 'tCanvasScrubHud';
-      hud.className = 't-canvas-scrub-hud';
-      hud.style.display = 'none';
-      hud.innerHTML = `
-        <div class="t-scrub-hud-header">
-          <span class="t-scrub-hud-label" id="tScrubHudLabel">露光量</span>
-          <span class="t-scrub-hud-value" id="tScrubHudValue">EV +0.0</span>
-        </div>
-        <div class="t-scrub-hud-track">
-          <div class="t-scrub-hud-center-tick"></div>
-          <div class="t-scrub-hud-fill" id="tScrubHudFill"></div>
-        </div>
-      `;
-      (stageEl || document.body).appendChild(hud);
-    }
-    return hud;
-  }
-
-  function _renderScrubHud(spec, val) {
-    const hud = _ensureScrubHud(document.getElementById('mViewerStage'));
-    const labelEl = hud.querySelector('#tScrubHudLabel');
-    const valEl = hud.querySelector('#tScrubHudValue');
-    const fillEl = hud.querySelector('#tScrubHudFill');
-
-    if (labelEl) labelEl.textContent = spec.label;
-    if (valEl) valEl.textContent = spec.format(val);
-    if (fillEl) {
-      const span = spec.max - spec.min;
-      const ratio = ((val - spec.min) / span) * 100;
-      const clamped = Math.max(0, Math.min(100, ratio));
-      const left = Math.min(50, clamped);
-      const width = Math.abs(clamped - 50);
-      fillEl.style.left = `${left}%`;
-      fillEl.style.width = `${width}%`;
-    }
-
-    hud.style.display = 'flex';
-    hud.classList.add('is-visible');
-  }
-
-  function _hideScrubHud() {
-    const hud = document.getElementById('tCanvasScrubHud');
-    if (!hud) return;
-    hud.classList.remove('is-visible');
-    setTimeout(() => {
-      if (!hud.classList.contains('is-visible')) {
-        hud.style.display = 'none';
-      }
-    }, 150);
-  }
-
-  /**
-   * 調整パラメータの視覚プレビュー（CSS filter & rotate）を対象画像にリアルタイム反映する
-   */
-  function _computeCssFilterAndTransform(cur, baked, isUnbaked) {
-    const effEv = isUnbaked ? (cur.exposure || 0) : (cur.exposure || 0) - (baked.exposure || 0);
-    const effCt = isUnbaked ? (cur.contrast || 0) : (cur.contrast || 0) - (baked.contrast || 0);
-    const effSat = isUnbaked ? (cur.saturation || 0) : (cur.saturation || 0) - (baked.saturation || 0);
-    const effDeg = isUnbaked
-      ? (baked.rotation || 0) + (cur.tilt || 0)
-      : (cur.tilt || 0) - (baked.tilt || 0);
-
-    let filterStr = '';
-    if (Math.abs(effEv) > 0.005 || Math.abs(effCt) > 0.1 || Math.abs(effSat) > 0.1) {
-      const bFactor = Math.max(0.1, Math.min(4.0, Math.pow(2.0, effEv / 2.2))).toFixed(4);
-      const cFactor = Math.max(0.1, Math.min(2.5, 1.0 + (effCt / 100.0) * 0.75)).toFixed(3);
-      const sFactor = Math.max(0.0, Math.min(3.0, 1.0 + effSat / 100.0)).toFixed(3);
-      filterStr = `brightness(${bFactor}) contrast(${cFactor}) saturate(${sFactor})`;
-    }
-    const transformStr = Math.abs(effDeg) > 0.01 ? `rotate(${effDeg.toFixed(2)}deg)` : '';
-    return { filterStr, transformStr };
-  }
-
-  function _applyLivePreviewToImage(imgEl) {
-    const target = imgEl || document.getElementById('mViewerImg');
-    if (!target) return;
-    const isUnbaked = target.dataset.unbakedSource === '1';
-    const { filterStr, transformStr } = _computeCssFilterAndTransform(adjustState.values, adjustState.bakedValues, isUnbaked);
-    target.style.filter = filterStr;
-    target.style.transform = transformStr;
-  }
-
-  function applyPhotoCssAdjustmentsToElement(imgEl, photo) {
-    if (!imgEl || !photo) return;
-    if (!photo._bakedAdjust) {
-      photo._bakedAdjust = {
-        brightness: Number(photo.brightness || 0),
-        contrast: Number(photo.contrast || 0),
-        saturation: Number(photo.saturation || 0),
-        fine_angle: Number(photo.fine_angle || 0),
-        rotation: Number(photo.rotation || 0),
-      };
-    }
-    const cur = {
-      exposure: Number(photo.brightness || 0) / 10.0,
-      contrast: Number(photo.contrast || 0),
-      saturation: Number(photo.saturation || 0),
-      tilt: Number(photo.fine_angle || 0),
-    };
-    const baked = {
-      exposure: Number(photo._bakedAdjust.brightness || 0) / 10.0,
-      contrast: Number(photo._bakedAdjust.contrast || 0),
-      saturation: Number(photo._bakedAdjust.saturation || 0),
-      tilt: Number(photo._bakedAdjust.fine_angle || 0),
-      rotation: Number(photo.rotation ?? photo._bakedAdjust.rotation ?? 0),
-    };
-    const isUnbaked = imgEl.dataset.unbakedSource === '1';
-    const { filterStr, transformStr } = _computeCssFilterAndTransform(cur, baked, isUnbaked);
-    imgEl.style.filter = filterStr;
-    imgEl.style.transform = transformStr;
-  }
-
-  function bindCanvasScrubAdjust(stageElOrSelector, callbacks = {}) {
-    const stageEl =
-      typeof stageElOrSelector === 'string'
-        ? document.querySelector(stageElOrSelector)
-        : stageElOrSelector || document.getElementById('mViewerStage');
-    if (!stageEl || stageEl.dataset.touchCanvasScrubBound === '1') return;
-    stageEl.dataset.touchCanvasScrubBound = '1';
-
-    if (callbacks.onChange) adjustState.onChange = callbacks.onChange;
-
-    let scrubbing = false;
-    let startX = 0;
-    let initialVal = 0;
-
-    const onStart = (clientX) => {
-      if (!adjustState.enabled) return;
-      const spec = ADJUST_SPECS[adjustState.activeParam] || ADJUST_SPECS.exposure;
-      scrubbing = true;
-      startX = clientX;
-      initialVal = Number(adjustState.values[spec.key] || 0);
-      _renderScrubHud(spec, initialVal);
-    };
-
-    const onMove = (clientX) => {
-      if (!scrubbing || !adjustState.enabled) return;
-      const spec = ADJUST_SPECS[adjustState.activeParam] || ADJUST_SPECS.exposure;
-      const dx = clientX - startX;
-      const rawNext = initialVal + dx * spec.sensitivity;
-      const stepped = Math.round(rawNext / spec.step) * spec.step;
-      const clamped = Math.max(spec.min, Math.min(spec.max, Number(stepped.toFixed(2))));
-
-      adjustState.values[spec.key] = clamped;
-      _renderScrubHud(spec, clamped);
-      _applyLivePreviewToImage(callbacks.imageEl);
-
-      if (typeof adjustState.onChange === 'function') {
-        adjustState.onChange({
-          param: spec.key,
-          value: clamped,
-          formatted: spec.format(clamped),
-          values: { ...adjustState.values },
-        });
-      }
-      global.dispatchEvent(
-        new CustomEvent('tetheract:canvas-scrub-change', {
-          detail: {
-            param: spec.key,
-            value: clamped,
-            formatted: spec.format(clamped),
-            values: { ...adjustState.values },
-          },
-        })
-      );
-    };
-
-    const onEnd = () => {
-      if (!scrubbing) return;
-      scrubbing = false;
-      _hideScrubHud();
-    };
-
-    stageEl.addEventListener(
-      'touchstart',
-      (e) => {
-        if (!adjustState.enabled || e.touches.length !== 1) return;
-        onStart(e.touches[0].clientX);
-      },
-      { passive: true }
-    );
-
-    stageEl.addEventListener(
-      'touchmove',
-      (e) => {
-        if (!scrubbing || !adjustState.enabled || e.touches.length !== 1) return;
-        if (e.cancelable) e.preventDefault();
-        onMove(e.touches[0].clientX);
-      },
-      { passive: false }
-    );
-
-    stageEl.addEventListener('touchend', onEnd, { passive: true });
-    stageEl.addEventListener('touchcancel', onEnd, { passive: true });
-
-    // タブレットでのスタイラス / マウスドラッグにも共通対応
-    stageEl.addEventListener('pointerdown', (e) => {
-      if (!adjustState.enabled || e.pointerType === 'touch') return;
-      onStart(e.clientX);
-    });
-    stageEl.addEventListener('pointermove', (e) => {
-      if (!scrubbing || !adjustState.enabled || e.pointerType === 'touch') return;
-      onMove(e.clientX);
-    });
-    stageEl.addEventListener('pointerup', onEnd);
-  }
-
-  function setAdjustModeEnabled(enabled, initialParam) {
-    adjustState.enabled = Boolean(enabled);
-    if (initialParam && ADJUST_SPECS[initialParam]) adjustState.activeParam = initialParam;
-    if (!adjustState.enabled) _hideScrubHud();
-  }
-
-  function setActiveAdjustParam(paramKey) {
-    if (!ADJUST_SPECS[paramKey]) return;
-    adjustState.activeParam = paramKey;
-    const spec = ADJUST_SPECS[paramKey];
-    _renderScrubHud(spec, Number(adjustState.values[paramKey] || 0));
-    setTimeout(_hideScrubHud, 950);
-  }
-
-  function resetAdjustValues() {
-    adjustState.values = { exposure: 0.0, contrast: 0, saturation: 0, tilt: 0.0 };
-    _applyLivePreviewToImage();
-    const spec = ADJUST_SPECS[adjustState.activeParam] || ADJUST_SPECS.exposure;
-    _renderScrubHud(spec, 0);
-    setTimeout(_hideScrubHud, 700);
-    global.dispatchEvent(
-      new CustomEvent('tetheract:canvas-scrub-change', {
-        detail: { param: spec.key, value: 0, formatted: spec.format(0), values: { ...adjustState.values } },
-      })
-    );
-  }
-
-  function getAdjustValues() {
-    return { ...adjustState.values };
-  }
-
-  function loadPhotoAdjustValues(photo) {
-    if (!photo) {
-      adjustState.values = { exposure: 0.0, contrast: 0, saturation: 0, tilt: 0.0 };
-      adjustState.bakedValues = { exposure: 0.0, contrast: 0, saturation: 0, tilt: 0.0, rotation: 0 };
-    } else {
-      if (!photo._bakedAdjust) {
-        photo._bakedAdjust = {
-          brightness: Number(photo.brightness || 0),
-          contrast: Number(photo.contrast || 0),
-          saturation: Number(photo.saturation || 0),
-          fine_angle: Number(photo.fine_angle || 0),
-          rotation: Number(photo.rotation || 0),
-        };
-      }
-      const b = Number(photo.brightness || 0);
-      adjustState.values = {
-        exposure: Number((b / 10.0).toFixed(2)),
-        contrast: Math.round(Number(photo.contrast || 0)),
-        saturation: Math.round(Number(photo.saturation || 0)),
-        tilt: Number(Number(photo.fine_angle || 0).toFixed(2)),
-      };
-      adjustState.bakedValues = {
-        exposure: Number((Number(photo._bakedAdjust.brightness || 0) / 10.0).toFixed(2)),
-        contrast: Math.round(Number(photo._bakedAdjust.contrast || 0)),
-        saturation: Math.round(Number(photo._bakedAdjust.saturation || 0)),
-        tilt: Number(Number(photo._bakedAdjust.fine_angle || 0).toFixed(2)),
-        rotation: Number(photo.rotation ?? photo._bakedAdjust.rotation ?? 0),
-      };
-    }
-    _applyLivePreviewToImage();
-  }
-
   function initTouchGestures() {
     // ビューアのピンチ拡大・ダブルタップ拡大・上下左右スワイプ・シングルタップ没入切替は
     // mobile.js の setupViewerTouchGestures() に一元化（二重発火・ズーム解除競合を防止）
@@ -689,17 +387,19 @@
     bindGridPinchZoom('#mPhotoGrid');
     bindFilterRowGestures('.m-drawer-body');
     bindFilterRowGestures('#tPerspectivePanel_tags');
-    bindCanvasScrubAdjust('#mViewerStage');
   }
 
   const gesturesApi = {
-    ADJUST_SPECS, initTouchGestures, bindGridDragSelect,
-    bindGridPinchZoom, bindFilterRowGestures, bindCanvasScrubAdjust,
-    setAdjustModeEnabled, setActiveAdjustParam, resetAdjustValues, getAdjustValues,
-    loadPhotoAdjustValues, applyPhotoCssAdjustmentsToElement,
+    initTouchGestures,
+    bindGridDragSelect,
+    bindGridPinchZoom,
+    bindFilterRowGestures,
   };
 
-  global.TetheractTouchUI = Object.assign(global.TetheractTouchUI || {}, gesturesApi, { gestures: gesturesApi });
+  const existingUi = global.TetheractTouchUI || {};
+  global.TetheractTouchUI = Object.assign(existingUi, gesturesApi, {
+    gestures: Object.assign({}, existingUi.gestures || {}, gesturesApi),
+  });
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initTouchGestures);
   } else {

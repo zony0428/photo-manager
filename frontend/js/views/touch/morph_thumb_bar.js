@@ -81,18 +81,19 @@
 
     if (mode === 'adjust') {
       const p = state.activeAdjustParam;
+      const isMod = (k) => (global.TetheractTouchUI?.isParamModified?.(k) ? 'is-modified' : '');
       return `
         <div class="t-thumb-slot-group t-thumb-group-adjust" data-morph-mode="adjust">
-          <button type="button" class="t-thumb-btn ${p === 'exposure' ? 'is-active' : ''}" data-thumb-action="adjust-param" data-param="exposure">
+          <button type="button" class="t-thumb-btn ${p === 'exposure' ? 'is-active' : ''} ${isMod('exposure')}" data-thumb-action="adjust-param" data-param="exposure">
             <span>露光量</span>
           </button>
-          <button type="button" class="t-thumb-btn ${p === 'contrast' ? 'is-active' : ''}" data-thumb-action="adjust-param" data-param="contrast">
+          <button type="button" class="t-thumb-btn ${p === 'contrast' ? 'is-active' : ''} ${isMod('contrast')}" data-thumb-action="adjust-param" data-param="contrast">
             <span>コントラスト</span>
           </button>
-          <button type="button" class="t-thumb-btn ${p === 'saturation' ? 'is-active' : ''}" data-thumb-action="adjust-param" data-param="saturation">
+          <button type="button" class="t-thumb-btn ${p === 'saturation' ? 'is-active' : ''} ${isMod('saturation')}" data-thumb-action="adjust-param" data-param="saturation">
             <span>彩度</span>
           </button>
-          <button type="button" class="t-thumb-btn ${p === 'tilt' ? 'is-active' : ''}" data-thumb-action="adjust-param" data-param="tilt">
+          <button type="button" class="t-thumb-btn ${p === 'tilt' ? 'is-active' : ''} ${isMod('tilt')}" data-thumb-action="adjust-param" data-param="tilt">
             <span>傾き</span>
           </button>
           <button type="button" class="t-thumb-btn" data-thumb-action="adjust-reset" title="調整値を初期状態にリセット">
@@ -701,6 +702,17 @@
       const selectedCards = document.querySelectorAll('.m-card.selected, .photo-card.selected');
       updateSelectionCount(selectedCards.length);
     });
+
+    const syncAdjustModifiedPills = () => {
+      const bar = document.getElementById('tMorphThumbBar');
+      if (!bar || state.mode !== 'adjust') return;
+      bar.querySelectorAll('[data-thumb-action="adjust-param"]').forEach((el) => {
+        const key = el.getAttribute('data-param');
+        el.classList.toggle('is-modified', Boolean(global.TetheractTouchUI?.isParamModified?.(key)));
+      });
+    };
+    global.addEventListener('tetheract:canvas-scrub-change', syncAdjustModifiedPills);
+    global.addEventListener('tetheract:adjust-values-loaded', syncAdjustModifiedPills);
   }
 
   const thumbBarApi = {

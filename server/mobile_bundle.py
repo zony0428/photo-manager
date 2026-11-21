@@ -84,6 +84,7 @@ MOBILE_JS_REL_PATHS: List[str] = [
     "js/adapters/watermark_adapter.js",
     "js/views/touch/touch_layout.js",
     "js/views/touch/touch_gestures.js",
+    "js/views/touch/touch_adjust.js",
     "js/views/touch/morph_thumb_bar.js",
     "js/views/touch/touch_duel.js",
     "js/views/touch/touch_field_log.js",

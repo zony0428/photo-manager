@@ -1210,21 +1210,24 @@
     return results;
   }
 
+  function _buildMobilePhotoVersionKey(photo) {
+    const rot = photo.rotation || 0;
+    const fa = Math.round((Number(photo.fine_angle) || 0) * 10);
+    const mtime = Math.floor(photo.file_mtime || 0);
+    const crop = photo.crop_w
+      ? `${Math.round((photo.crop_x || 0) * 1000)}_${Math.round((photo.crop_y || 0) * 1000)}_${Math.round(photo.crop_w * 1000)}_${Math.round((photo.crop_h || 0) * 1000)}`
+      : '0';
+    const tone = `${photo.brightness || 0}_${photo.contrast || 0}_${photo.saturation || 0}`;
+    return `${photo.file_size || photo.id}_${mtime}_r${rot}_fa${fa}_c${crop}_t${tone}`;
+  }
+
   /**
    * 写真のサムネイルURLを取得する（serverモード時はAPI URL、localdbモード時はBLOBからObjectURLを生成）
    */
   function getMobileThumbnailUrl(photo) {
     if (!photo) return '';
     if (mState.mode === 'server') {
-      const rot = photo.rotation || 0;
-      const fa = Math.round((Number(photo.fine_angle) || 0) * 10);
-      const mtime = Math.floor(photo.file_mtime || 0);
-      const crop = photo.crop_w
-        ? `${Math.round((photo.crop_x || 0) * 1000)}_${Math.round((photo.crop_y || 0) * 1000)}_${Math.round(photo.crop_w * 1000)}_${Math.round((photo.crop_h || 0) * 1000)}`
-        : '0';
-      const tone = `${photo.brightness || 0}_${photo.contrast || 0}_${photo.saturation || 0}`;
-      const ver = `${photo.file_size || photo.id}_${mtime}_r${rot}_fa${fa}_c${crop}_t${tone}`;
-      return `/api/photo/${photo.id}/thumbnail?v=${ver}`;
+      return `/api/photo/${photo.id}/thumbnail?v=${_buildMobilePhotoVersionKey(photo)}`;
     }
 
     // localdb モード: thumbnails テーブルの BLOB (WebP) から ObjectURL を生成してキャッシュ
@@ -1270,7 +1273,7 @@
     if (!photo || !photo.id) return '';
     const pid = Number(photo.id);
     if (mState.mode === 'server') {
-      return `/api/photo/${pid}/view`;
+      return `/api/photo/${pid}/view?v=${_buildMobilePhotoVersionKey(photo)}`;
     }
     if (window.TetheractNative || (mState.localDb && mState.localDb.isAndroidNative)) {
       return `https://appassets.tetheract.local/usb_photo/${pid}?only_hd=1`;
@@ -3492,9 +3495,18 @@
     const isPhotoOnline = isMobilePhotoOriginalOnline(activePhoto);
     activePhoto._loadedNaturalW = 0;
     activePhoto._loadedNaturalH = 0;
+    const bakedSnap = activePhoto._bakedAdjust || {
+      brightness: Number(activePhoto.brightness || 0),
+      contrast: Number(activePhoto.contrast || 0),
+      saturation: Number(activePhoto.saturation || 0),
+      fine_angle: Number(activePhoto.fine_angle || 0),
+      rotation: Number(activePhoto.rotation || 0),
+    };
+    activePhoto._bakedAdjust = { ...bakedSnap };
+    activePhoto._viewerLoadedBakedAdjust = { ...bakedSnap };
     if (imgEl) {
       imgEl.dataset.photoId = String(activePhoto.id);
-      imgEl.dataset.unbakedSource = '0';
+      imgEl.dataset.unbakedSource = activePhoto.is_phone_case ? '1' : '0';
       imgEl.dataset.hdLoaded = '0';
       imgEl.src = thumbUrl;
     }
@@ -3524,8 +3536,9 @@
           const srcKind = window.TetheractNative?.getLastPhotoSource
             ? window.TetheractNative.getLastPhotoSource(Number(activePhoto.id))
             : '';
-          imgEl.dataset.unbakedSource = srcKind === 'usb' ? '1' : '0';
+          imgEl.dataset.unbakedSource = (srcKind === 'usb' || srcKind === 'phone' || Boolean(activePhoto.is_phone_case)) ? '1' : '0';
           imgEl.dataset.hdLoaded = '1';
+          activePhoto._viewerLoadedBakedAdjust = { ...(activePhoto._bakedAdjust || bakedSnap) };
           imgEl.src = hdUrl;
           if (srcBadge) {
             srcBadge.textContent = srcKind === 'phone' ? '📱 スマホ原本' : 'HD 実ファイル';
@@ -3802,13 +3815,20 @@
 
   function applyViewerTransform(animate = false) {
     const wrap = document.getElementById('mViewerImgWrapper');
+    const photoFrame = document.getElementById('mViewerPhotoFrame');
     const imgEl = document.getElementById('mViewerImg');
     if (!wrap) return;
     const m = _getViewerPhotoMetrics();
     const z = Math.max(1, mState.zoomScale || 1);
+    const wPx = `${Math.round(m.fitW * z)}px`;
+    const hPx = `${Math.round(m.fitH * z)}px`;
+    if (photoFrame) {
+      photoFrame.style.width = wPx;
+      photoFrame.style.height = hPx;
+    }
     if (imgEl) {
-      imgEl.style.width = `${Math.round(m.fitW * z)}px`;
-      imgEl.style.height = `${Math.round(m.fitH * z)}px`;
+      imgEl.style.width = wPx;
+      imgEl.style.height = hPx;
     }
     wrap.classList.toggle('is-animating', Boolean(animate));
     wrap.style.opacity = '1';
@@ -5613,6 +5633,19 @@
         ? window.TetheractTouchUI.getThumbBarMode()
         : 'cull';
       window.TetheractTouchUI.setThumbBarMode(curMode === 'adjust' ? 'cull' : 'adjust');
+    });
+    window.addEventListener('tetheract:thumb-mode-change', (e) => {
+      const modal = document.getElementById('mViewerModal');
+      if (modal && e && e.detail && e.detail.mode === 'adjust') {
+        modal.classList.remove('is-immersive');
+        window.TetheractTouchUI?.viewerLauncher?.close?.();
+      }
+      requestAnimationFrame(() => {
+        if (mState.viewerOpen) {
+          _updateViewerZoomHint();
+          applyViewerTransform(false);
+        }
+      });
     });
     document
       .getElementById('mViewerOpenInfoBtn')

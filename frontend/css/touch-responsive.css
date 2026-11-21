@@ -419,25 +419,254 @@ html.is-native-app button.m-native-only {
 .t-filter-row.is-swiping-left .t-swipe-exclude-indicator { opacity: 1; }
 .t-drag-select-pulse { transform: scale(0.96); transition: transform 0.12s ease; }
 
-/* ==================== 6. キャンバス全面スクラブ調整 HUD ==================== */
-.t-canvas-scrub-hud {
-  position: fixed; top: 50%; left: 50%;
-  transform: translate(-50%, -50%) scale(0.96);
-  min-width: 210px; padding: 14px 18px; border-radius: 10px;
-  background-color: rgba(20, 20, 20, 0.78);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-  color: #f0f2f5; display: flex; flex-direction: column; gap: 10px;
-  z-index: 140; pointer-events: none; opacity: 0;
-  transition: opacity 0.14s ease, transform 0.14s ease;
+/* ==================== 6. 非破壊調整コントロールストリップ ＆ 写真枠内ガイドライン ==================== */
+.m-viewer-photo-frame {
+  position: relative;
+  flex: 0 0 auto;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
-.t-canvas-scrub-hud.is-visible { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-.t-scrub-hud-header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-.t-scrub-hud-label { font-size: 12px; font-weight: 600; color: #a39e93; }
-.t-scrub-hud-value { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--accent-primary); }
-.t-scrub-hud-track { position: relative; height: 4px; border-radius: 2px; background-color: rgba(255, 255, 255, 0.16); overflow: hidden; }
-.t-scrub-hud-center-tick { position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; background-color: rgba(255, 255, 255, 0.5); }
-.t-scrub-hud-fill { position: absolute; top: 0; bottom: 0; background-color: var(--accent-primary); }
+
+.t-viewer-level-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 4;
+  transition: opacity 0.14s ease;
+}
+.t-viewer-level-grid.is-visible {
+  opacity: 0.72;
+}
+.t-viewer-level-grid.is-visible.is-scrubbing {
+  opacity: 0.96;
+}
+
+.t-level-line {
+  position: absolute;
+  pointer-events: none;
+}
+.t-level-line.is-h {
+  left: 0;
+  right: 0;
+  height: 1px;
+  transform: translateY(-0.5px);
+}
+.t-level-line.is-v {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  transform: translateX(-0.5px);
+}
+.t-level-line.is-sub {
+  display: none;
+  background-color: rgba(255, 255, 255, 0.24);
+  box-shadow: 0 0 1px rgba(0, 0, 0, 0.5);
+}
+.t-viewer-level-grid.is-tilt-mode .t-level-line.is-sub {
+  display: block;
+}
+.t-viewer-level-grid.is-tilt-mode.is-scrubbing .t-level-line.is-sub {
+  background-color: rgba(255, 255, 255, 0.42);
+}
+.t-level-line.is-major {
+  background-color: rgba(255, 255, 255, 0.46);
+  box-shadow: 0 0 1.5px rgba(0, 0, 0, 0.65);
+}
+.t-level-line.is-center {
+  background-color: rgba(255, 255, 255, 0.62);
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.78);
+}
+.t-viewer-level-grid.is-tilt-mode .t-level-line.is-center {
+  background-color: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.65);
+}
+
+.t-adjust-control-strip {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 14px 10px;
+  background-color: rgba(16, 19, 24, 0.94);
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  color: #f0f2f5;
+  z-index: 120;
+  user-select: none;
+}
+
+.t-adjust-strip-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.t-adjust-value-btn {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background-color: rgba(255, 255, 255, 0.06);
+  color: #f0f2f5;
+  cursor: pointer;
+}
+.t-adjust-value-btn:active {
+  transform: scale(0.97);
+}
+.t-adjust-value-btn.is-modified {
+  border-color: rgba(255, 255, 255, 0.16);
+}
+.t-adjust-param-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #a39e93;
+  white-space: nowrap;
+}
+.t-adjust-param-value {
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #f0f2f5;
+  white-space: nowrap;
+}
+.t-adjust-param-value.is-modified {
+  color: var(--accent-primary);
+}
+.t-adjust-reset-hint {
+  display: none;
+  font-size: 10px;
+  font-weight: 500;
+  color: #9ca3af;
+  white-space: nowrap;
+}
+.t-adjust-value-btn.is-modified .t-adjust-reset-hint {
+  display: inline;
+}
+
+.t-adjust-strip-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+.t-adjust-mini-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 30px;
+  height: 28px;
+  padding: 0 7px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background-color: rgba(255, 255, 255, 0.07);
+  color: #e5e7eb;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.t-adjust-mini-btn:active {
+  transform: scale(0.95);
+}
+.t-adjust-mini-btn.is-active,
+.t-adjust-mini-btn.is-holding {
+  background-color: var(--accent-subtle);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
+.t-adjust-dial-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.t-adjust-dial-scale-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.45);
+  padding: 0 2px;
+}
+.t-adjust-dial-track {
+  position: relative;
+  height: 28px;
+  border-radius: 6px;
+  background-color: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+  touch-action: none;
+  cursor: ew-resize;
+}
+.t-adjust-dial-ticks {
+  position: absolute;
+  inset: 0 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  pointer-events: none;
+}
+.t-adjust-dial-tick {
+  width: 1px;
+  height: 7px;
+  background-color: rgba(255, 255, 255, 0.24);
+}
+.t-adjust-dial-tick.is-major {
+  height: 12px;
+  background-color: rgba(255, 255, 255, 0.48);
+}
+.t-adjust-dial-tick.is-zero {
+  width: 1.5px;
+  height: 18px;
+  background-color: rgba(255, 255, 255, 0.78);
+}
+.t-adjust-dial-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background-color: var(--accent-subtle, rgba(59, 130, 246, 0.28));
+  pointer-events: none;
+}
+.t-adjust-dial-thumb {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  width: 3px;
+  margin-left: -1.5px;
+  border-radius: 2px;
+  background-color: var(--accent-primary);
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+}
+
+body.is-viewer-adjust-mode .m-viewer-modal {
+  padding-bottom: calc(var(--thumb-bar-height, 56px) + env(safe-area-inset-bottom, 0px));
+}
+body.is-viewer-adjust-mode .m-viewer-nav {
+  display: none;
+}
+
+.t-thumb-btn.is-modified {
+  position: relative;
+}
+.t-thumb-btn.is-modified::after {
+  content: '';
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background-color: var(--accent-primary);
+}
 
 /* ==================== 7. 変身する親指バー (Context-Morphing Thumb Bar, 56px) ==================== */
 .t-morph-thumb-bar {
@@ -1591,6 +1820,77 @@ body.has-open-nav-sheet .t-center-dial-slot {
   font-size: 11.5px;
   color: var(--text-primary);
   cursor: pointer;
+}
+
+.t-af-expander {
+  border: 1px solid var(--border-color);
+  border-radius: 7px;
+  background-color: rgba(255, 255, 255, 0.025);
+  overflow: hidden;
+}
+[data-theme="paper"] .t-af-expander {
+  background-color: rgba(0, 0, 0, 0.02);
+}
+.t-af-expander.is-disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.t-af-expander-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 36px;
+  padding: 6px 10px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.t-af-expander-summary::-webkit-details-marker {
+  display: none;
+}
+
+.t-af-expander-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.t-af-expander-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.t-af-expander-meta {
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 170px;
+}
+
+.t-af-expander-chevron {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: transform 0.16s ease;
+}
+.t-af-expander[open] .t-af-expander-chevron {
+  transform: rotate(180deg);
+}
+
+.t-af-expander-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 10px 10px;
+  border-top: 1px solid var(--border-color);
 }
 
 .t-af-summary-grid {

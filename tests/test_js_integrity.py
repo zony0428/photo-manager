@@ -557,6 +557,55 @@ class TestFrontendJsIntegrity(unittest.TestCase):
         self.assertNotIn("t-pcase-modal", touch_css)
         self.assertIn("triggerQuickDeltaUplink", pcase_raw)
 
+    def test_mobile_adjust_non_blocking_dial_and_level_grid(self) -> None:
+        """モバイル非破壊調整の中央HUD撤去・下部ダイヤル＆写真枠内ガイドライン・内接ズーム配線を検証"""
+        self.assertIn("js/views/touch/touch_adjust.js", MOBILE_JS_REL_PATHS)
+        mobile_html = (FRONTEND_DIR / "mobile.html").read_text(encoding="utf-8")
+        adjust_raw = (FRONTEND_DIR / "js" / "views" / "touch" / "touch_adjust.js").read_text(encoding="utf-8")
+        mobile_js = (FRONTEND_DIR / "js" / "mobile.js").read_text(encoding="utf-8")
+        touch_css = (FRONTEND_DIR / "css" / "touch-responsive.css").read_text(encoding="utf-8")
+
+        self.assertIn("views/touch/touch_adjust.js", mobile_html)
+        for js_file in (FRONTEND_DIR / "js").rglob("*.js"):
+            txt = js_file.read_text(encoding="utf-8")
+            self.assertNotIn("tCanvasScrubHud", txt, f"{js_file} に中央HUDが残存しています")
+            self.assertNotIn("t-canvas-scrub-hud", txt, f"{js_file} に中央HUDクラスが残存しています")
+        for css_file in (FRONTEND_DIR / "css").rglob("*.css"):
+            txt = css_file.read_text(encoding="utf-8")
+            self.assertNotIn("t-canvas-scrub-hud", txt, f"{css_file} に中央HUD CSSが残存しています")
+
+        for dom_id in ("mViewerPhotoFrame", "tViewerLevelGrid", "tAdjustControlStrip"):
+            self.assertIn(f'id="{dom_id}"', mobile_html)
+        for sym in ("tViewerLevelGrid", "tAdjustControlStrip", "tAdjustDialTrack", "autoScale"):
+            self.assertIn(sym, adjust_raw)
+        for sym in ("mViewerPhotoFrame", "tetheract:thumb-mode-change"):
+            self.assertIn(sym, mobile_js)
+        for cls in (".m-viewer-photo-frame", ".t-viewer-level-grid", ".t-adjust-control-strip", ".t-adjust-dial-track"):
+            self.assertIn(cls, touch_css)
+
+    def test_mobile_art_framer_frame_expanders(self) -> None:
+        """モバイルArt Framerの余白/文字サイズスライダと表示項目チェックのエキスパンダ化を検証"""
+        af_raw = (FRONTEND_DIR / "js" / "views" / "touch" / "touch_art_framer.js").read_text(encoding="utf-8")
+        touch_css = (FRONTEND_DIR / "css" / "touch-responsive.css").read_text(encoding="utf-8")
+
+        self.assertIn('<details id="mAfFrameSizeExpander" class="t-af-expander">', af_raw)
+        self.assertIn('<details id="mAfCaptionFieldsExpander" class="t-af-expander">', af_raw)
+        size_start = af_raw.index('id="mAfFrameSizeExpander"')
+        size_end = af_raw.index("</details>", size_start)
+        size_block = af_raw[size_start:size_end]
+        self.assertIn('id="mAfBorderSlider"', size_block)
+        self.assertIn('id="mAfFontScaleSlider"', size_block)
+
+        cap_start = af_raw.index('id="mAfCaptionFieldsExpander"')
+        cap_end = af_raw.index("</details>", cap_start)
+        cap_block = af_raw[cap_start:cap_end]
+        self.assertIn('id="mAfCaptionFieldsGroup"', cap_block)
+        note_pos = af_raw.index('id="mAfCustomNoteRow"')
+        self.assertGreater(note_pos, cap_end, "フリーテキスト欄 mAfCustomNoteRow はエキスパンダの外に配置する必要があります")
+
+        for cls in (".t-af-expander", ".t-af-expander-summary", ".t-af-expander-body"):
+            self.assertIn(cls, touch_css)
+
 
 if __name__ == "__main__":
     unittest.main()
