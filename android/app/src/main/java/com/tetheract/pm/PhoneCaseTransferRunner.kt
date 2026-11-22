@@ -97,14 +97,24 @@ class PhoneCaseTransferRunner(
             val preflightItems = mutableListOf<JSONObject>()
             var lastProgEmitMs = 0L
 
-            fun emitProgress(cur: Int, tot: Int, fileName: String, imp: Int, skp: Int, err: Int = 0, force: Boolean = false) {
+            fun emitProgress(
+                cur: Int,
+                tot: Int,
+                fileName: String,
+                imp: Int,
+                skp: Int,
+                err: Int = 0,
+                sig: Int = 0,
+                force: Boolean = false
+            ) {
                 val now = SystemClock.elapsedRealtime()
                 if (!force && now - lastProgEmitMs < PROGRESS_MIN_INTERVAL_MS) return
                 lastProgEmitMs = now
                 onProgress(
                     JSONObject()
                         .put("current", cur).put("total", tot).put("fileName", fileName)
-                        .put("importedCount", imp).put("skippedCount", skp).put("errorCount", err)
+                        .put("importedCount", imp).put("skippedCount", skp)
+                        .put("errorCount", err).put("signalSyncedCount", sig)
                 )
             }
 
@@ -282,8 +292,6 @@ class PhoneCaseTransferRunner(
                 val normKey = "${PhoneCatalogEngine.normalizeDupFileName(fileName)}|$fileSize"
                 val isSkip = docKey in skipSet
 
-                emitProgress(idx + 1, total, fileName, importedCount, skippedCount, errorCount, force = idx == 0 || idx == total - 1 || !isSkip)
-
                 if (isSkip) {
                     if (folderMode == PhoneCaseManager.FOLDER_MODE_WORKING && !isThmod) {
                         signalSyncedCount += 1
@@ -298,8 +306,19 @@ class PhoneCaseTransferRunner(
                         newlyUploadedKeys.add(normKey)
                     }
                     succeededDocKeys.put(docKey)
+                    emitProgress(
+                        idx + 1, total, fileName,
+                        importedCount, skippedCount, errorCount, signalSyncedCount,
+                        force = idx == 0 || idx == total - 1
+                    )
                     continue
                 }
+
+                emitProgress(
+                    idx + 1, total, fileName,
+                    importedCount, skippedCount, errorCount, signalSyncedCount,
+                    force = idx == 0
+                )
 
                 val (upRes, updatedEndpoint) = uploadSinglePhotoWithRetry(serverUrl, token, cand)
                 if (updatedEndpoint != null) {
@@ -326,15 +345,21 @@ class PhoneCaseTransferRunner(
                         break
                     }
                 }
+                emitProgress(
+                    idx + 1, total, fileName,
+                    importedCount, skippedCount, errorCount, signalSyncedCount,
+                    force = idx == total - 1
+                )
             }
 
             emitProgress(
-                minOf(total, importedCount + skippedCount + errorCount),
+                minOf(total, importedCount + skippedCount + signalSyncedCount + errorCount),
                 total,
                 if (aborted) "通信中断 — 収納済み分を記録中..." else "カタログ状態を更新中...",
                 importedCount,
                 skippedCount,
                 errorCount,
+                signalSyncedCount,
                 force = true
             )
 

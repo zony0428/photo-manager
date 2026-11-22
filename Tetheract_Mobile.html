@@ -5768,15 +5768,26 @@ else if (typeof exports === 'object'){
             <div id="mDeviceModeSwitchMount"></div>
           </div>
 
-          <!-- Androidネイティブ専用: Loome USB 原本リンク（読み取り専用・鍵付き対応） -->
+          <!-- Androidネイティブ専用: Loome USB 原本リンク・自動差分取込（ダウンリンク専用） -->
           <details class="m-sync-card m-native-only" id="mNativeUsbSubCard" open style="padding:10px 12px;">
-            <summary style="font-size:0.78rem; font-weight:600; color:var(--text-muted, #9ca6b5); cursor:pointer;">Loome USB 原本リンク（読み取り専用・鍵付き対応）</summary>
+            <summary style="font-size:0.78rem; font-weight:600; color:var(--text-muted, #9ca6b5); cursor:pointer;">Loome USB 原本リンク・自動差分取込（ダウンリンク専用）</summary>
             <div style="margin-top:8px; display:flex; flex-direction:column; gap:8px;">
               <div style="font-size:0.74rem; color:var(--text-muted, #9ca6b5); line-height:1.5;">
-                初回のみUSB内の Loome（または Tetheract）フォルダの読み取りを許可すると、以降はUSBを挿すだけで原本（鍵付きLoome含む）を直接表示できます。※USBへは一切書き込まないため、いつでもそのまま取り外せます。
+                初回のみUSB内の <code>cache</code> と <code>Loome</code> を含む親フォルダ（USBルートまたは <code>Tetheract</code> フォルダ）の読み取りを許可すると、以降はUSBを挿すだけで原本表示（鍵付きLoome含む）と母艦カタログの自動差分取込を行います。
+              </div>
+              <div id="mNativeUsbDownlinkNotice" style="background:rgba(245, 158, 11, 0.12); border:1px solid rgba(245, 158, 11, 0.45); border-radius:8px; padding:9px 10px;">
+                <div style="display:flex; align-items:center; gap:6px; font-size:0.76rem; font-weight:700; color:#fbbf24; margin-bottom:4px;">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                  <span>USB同期は「母艦 → モバイル」のダウンリンク専用です（完全 Read-Only）</span>
+                </div>
+                <div style="font-size:0.72rem; color:var(--text-main, #eceae4); line-height:1.55;">
+                  USBメディア破損防止のため、Android側からUSBへは1バイトも書き込みません（いつでも安全に取り外せます）。<br>
+                  母艦PCで追加・スキャンした写真はUSB接続時に自動取り込みされますが、スマホ側で行った評価・タグ・調整・PhoneCase写真の母艦反映は <strong>Wi-Fi同期</strong> をご利用ください（スマホ内の未送信変更は自動保護されます）。<br>
+                  <span style="color:var(--text-muted, #9ca6b5);">※ <code>Loome</code> フォルダ単体を選んでいる場合は自動取込できないため、<code>cache</code> と <code>Loome</code> を含む親フォルダを選び直してください。</span>
+                </div>
               </div>
               <div style="display:flex; gap:6px; width:100%;">
-                <button type="button" id="mNativeUsbPickFolderBtn" class="m-btn m-btn-secondary" style="flex:1; font-size:0.75rem; padding:8px;">Loome USBフォルダを選択</button>
+                <button type="button" id="mNativeUsbPickFolderBtn" class="m-btn m-btn-secondary" style="flex:1; font-size:0.75rem; padding:8px;">USBフォルダを選択（Loome / 自動取込）</button>
               </div>
               <button type="button" id="mOpenFieldLogFromSettingsBtn" class="m-btn m-btn-secondary" style="width:100%; font-size:0.75rem; padding:8px;">GPSフィールドログ管理・設定を開く</button>
               <button type="button" id="mNativeClearPendingProxyBtn" class="m-text-btn" style="align-self:flex-end; font-size:0.72rem;">未送信の変更履歴をリセット</button>
@@ -8071,21 +8082,27 @@ else if (typeof exports === 'object'){
       const f = fileList[i];
       const meta = preflightItems[i];
       const isSkip = skipSet.has(meta.client_id);
-      const nowTs = Date.now();
-      if (!isSkip || i === 0 || i === total - 1 || nowTs - lastProgTs >= 120) {
-        lastProgTs = nowTs;
-        progressListeners.forEach((fn) => {
-          try {
-            fn({ current: i + 1, total, fileName: f.name, importedCount, skippedCount, errorCount });
-          } catch (e) {}
-        });
-      }
-
       if (isSkip) {
         skippedCount += 1;
         succeededDocKeys.push(meta.client_id);
+        const nowTs = Date.now();
+        if (i === 0 || i === total - 1 || nowTs - lastProgTs >= 120) {
+          lastProgTs = nowTs;
+          progressListeners.forEach((fn) => {
+            try {
+              fn({ current: i + 1, total, fileName: f.name, importedCount, skippedCount, errorCount });
+            } catch (e) {}
+          });
+        }
         continue;
       }
+
+      lastProgTs = Date.now();
+      progressListeners.forEach((fn) => {
+        try {
+          fn({ current: i + 1, total, fileName: f.name, importedCount, skippedCount, errorCount });
+        } catch (e) {}
+      });
 
       const qs = new URLSearchParams({
         file_name: f.name,
@@ -8131,6 +8148,13 @@ else if (typeof exports === 'object'){
           aborted = true;
           break;
         }
+      }
+      if (i === total - 1) {
+        progressListeners.forEach((fn) => {
+          try {
+            fn({ current: i + 1, total, fileName: f.name, importedCount, skippedCount, errorCount });
+          } catch (e) {}
+        });
       }
     }
 
@@ -11305,6 +11329,7 @@ else if (typeof exports === 'object'){
   let _origPcDiscovered =
     typeof global.__onTetheractPcDiscovered === 'function' ? global.__onTetheractPcDiscovered : null;
   let _usbHookInstalled = false;
+  let _lastUsbSkipReason = '';
 
   /**
    * Loome USB の読み取り専用マウント・鍵解錠・取り外し通知および PC 検出通知を購読する
@@ -11341,6 +11366,7 @@ else if (typeof exports === 'object'){
     global.addEventListener('tetheract:usb-sync-completed', (ev) => {
       const res = (ev && ev.detail) || {};
       if (res && (res.syncMode === 'loome_detached' || res.usbDetached)) {
+        _lastUsbSkipReason = '';
         const loadingEl = document.getElementById('mLoadingState');
         if (loadingEl) loadingEl.style.display = 'none';
         if (global.TetheractTouchUI && typeof global.TetheractTouchUI.updateLockerStatus === 'function') {
@@ -11357,12 +11383,20 @@ else if (typeof exports === 'object'){
         _pcOnlineOverride = false;
       }
 
-      if (res && res.ok && res.syncMode === 'loome_mount') {
+      const isUsbDownlink = Boolean(res && typeof res.syncMode === 'string' && res.syncMode.startsWith('usb_downlink_'));
+      if (isUsbDownlink || (res && res.ok && res.syncMode === 'loome_mount')) {
+        _lastUsbSkipReason = String((res && res.catalogSkipReason) || '');
+      }
+      if (res && res.ok && isUsbDownlink) {
         _syncBrandLinkBadge(true);
-        const msg = res.unlocked
-          ? '鍵付きLoomeを解錠しました（抜くと自動ロック）'
-          : '● Loome USB直結：原本データを直接表示できます';
-        _showUsbMountToast(msg, 3600);
+      } else if (res && res.ok && res.syncMode === 'loome_mount') {
+        _syncBrandLinkBadge(true);
+        if (res.catalogSkipReason !== 'cache_not_accessible') {
+          const msg = res.unlocked
+            ? '鍵付きLoomeを解錠しました（抜くと自動ロック）'
+            : '● Loome USB直結：原本データを直接表示できます';
+          _showUsbMountToast(msg, 3600);
+        }
       } else {
         _syncBrandLinkBadge();
       }
@@ -11407,7 +11441,15 @@ else if (typeof exports === 'object'){
       }
       const pickBtn = e.target.closest('#mNativeUsbPickFolderBtn');
       if (pickBtn) {
-        if (global.TetheractNative && typeof global.TetheractNative.triggerUsbSyncAsyncJson === 'function') {
+        if (
+          _lastUsbSkipReason === 'cache_not_accessible' &&
+          global.TetheractNative &&
+          typeof global.TetheractNative.selectUsbFolderAndSync === 'function'
+        ) {
+          _lastUsbSkipReason = '';
+          document.getElementById('mCloseDbSyncBtn')?.click();
+          global.TetheractNative.selectUsbFolderAndSync();
+        } else if (global.TetheractNative && typeof global.TetheractNative.triggerUsbSyncAsyncJson === 'function') {
           const res = JSON.parse(global.TetheractNative.triggerUsbSyncAsyncJson() || '{}');
           if (res.status === 'usb_sync_started' || res.status === 'picker_launched') {
             document.getElementById('mCloseDbSyncBtn')?.click();
@@ -12716,7 +12758,7 @@ else if (typeof exports === 'object'){
     transferring: false,
     quickUplinkRunning: false,
     quickUplinkResolver: null,
-    transferProgress: { current: 0, total: 0, fileName: '', importedCount: 0, skippedCount: 0, errorCount: 0 },
+    transferProgress: { current: 0, total: 0, fileName: '', importedCount: 0, skippedCount: 0, errorCount: 0, signalSyncedCount: 0, signalOnly: false },
     activeSlotEl: null,
   };
 
@@ -13115,6 +13157,53 @@ else if (typeof exports === 'object'){
     if (overlay) overlay.style.display = 'none';
   }
 
+  /** 転送進捗オーバーレイ用の件数サマリー文字列を組み立てる（0件の重複スキップは非表示） */
+  function _formatTransferProgressSub(p) {
+    const prog = p || {};
+    const imp = Number(prog.importedCount || 0);
+    const sig = Number(prog.signalSyncedCount || 0);
+    const skp = Number(prog.skippedCount || 0);
+    const err = Number(prog.errorCount || 0);
+    const parts = [];
+    if (imp > 0 || (!prog.signalOnly && sig === 0)) {
+      parts.push(`新規収納: ${imp}枚`);
+    }
+    if (sig > 0 || prog.signalOnly) {
+      parts.push(`信号送信: ${sig}件`);
+    }
+    if (skp > 0) {
+      parts.push(`重複スキップ: ${skp}枚`);
+    }
+    if (err > 0) {
+      parts.push(`リトライ失敗: ${err}枚`);
+    }
+    return parts.join(' / ');
+  }
+
+  function _formatPartialUplinkToast(imp, totalSignalSynced, skp, rem, errorText) {
+    const parts = [];
+    if (imp > 0) parts.push(`${imp}枚収納`);
+    if (totalSignalSynced > 0) parts.push(`信号${totalSignalSynced}件`);
+    if (skp > 0) parts.push(`${skp}枚重複スキップ`);
+    const head = parts.length > 0 ? parts.join('・') : '未完了';
+    const errPart = errorText ? ` (${errorText})` : '';
+    return `一部未完了: ${head} / 残り${rem}件が未送信です${errPart}`;
+  }
+
+  function _formatCompleteUplinkToast(imp, totalSignalSynced, skp) {
+    const skipSuffix = skp > 0 ? `（重複スキップ: ${skp}枚）` : '';
+    if (imp > 0 && totalSignalSynced > 0) {
+      return `完了: ${imp}枚を母艦 \\Loome\\case へ収納・信号 ${totalSignalSynced}件を同期しました${skipSuffix}`;
+    }
+    if (imp === 0 && totalSignalSynced > 0) {
+      return `完了: 評価・タグ信号 ${totalSignalSynced}件を母艦へ同期しました${skipSuffix}`;
+    }
+    if (imp === 0 && totalSignalSynced === 0 && skp > 0) {
+      return `完了: ${skp}枚は母艦に既存のため重複スキップしました`;
+    }
+    return `完了: ${imp}枚を母艦 \\Loome\\case へ収納しました${skipSuffix}`;
+  }
+
   /**
    * リンク済みスマホフォルダの未収納写真を走査し、未収納分があれば母艦 \Loome\case へ自動転送する
    */
@@ -13145,13 +13234,6 @@ else if (typeof exports === 'object'){
     }
 
     const allSignalOnly = unstored.every((it) => _isWorkingOnlyItem(it));
-    _showQuickUplinkOverlay(
-      allSignalOnly ? '母艦へ評価・タグ信号を送信中...' : '母艦 \\Loome\\case へ未収納写真・信号を送信中...',
-      `0 / ${unstored.length} 件 · 母艦DBと照合中...`,
-      '新規収納: 0枚 / 重複スキップ: 0枚',
-      12
-    );
-
     state.transferring = true;
     state.transferProgress = {
       current: 0,
@@ -13160,7 +13242,15 @@ else if (typeof exports === 'object'){
       importedCount: 0,
       skippedCount: 0,
       errorCount: 0,
+      signalSyncedCount: 0,
+      signalOnly: allSignalOnly,
     };
+    _showQuickUplinkOverlay(
+      allSignalOnly ? '母艦へ評価・タグ信号を送信中...' : '母艦 \\Loome\\case へ未収納写真・信号を送信中...',
+      `0 / ${unstored.length} 件 · 母艦DBと照合中...`,
+      _formatTransferProgressSub(state.transferProgress),
+      12
+    );
 
     let timeoutId = null;
     const donePromise = new Promise((resolve) => {
@@ -13298,7 +13388,7 @@ else if (typeof exports === 'object'){
           return false;
         }
         if (upRes.aborted) {
-          if (imp > 0 || totalSignalSynced > 0) {
+          if (imp > 0 || totalSignalSynced > 0 || skp > 0) {
             global.__pendingQuickUplinkSummary = {
               importedCount: imp,
               skippedCount: skp,
@@ -13308,10 +13398,7 @@ else if (typeof exports === 'object'){
               partialRemaining: rem,
             };
           }
-          _showToast(
-            `一部未完了: ${imp}枚収納・信号${totalSignalSynced}件・${skp}枚重複スキップ / 残り${rem}件が未送信です${upRes.error ? ` (${upRes.error})` : ''}`,
-            5500
-          );
+          _showToast(_formatPartialUplinkToast(imp, totalSignalSynced, skp, rem, upRes.error), 5500);
           return false;
         }
 
@@ -13351,8 +13438,22 @@ else if (typeof exports === 'object'){
     if (!adapter || !files || !files.length || state.transferring) return;
     state.transferring = true;
     state.quickUplinkRunning = true;
-    state.transferProgress = { current: 0, total: files.length, fileName: '母艦DBと照合中...', importedCount: 0, skippedCount: 0, errorCount: 0 };
-    _showQuickUplinkOverlay('母艦 \\Loome\\case へ写真を転送中...', `0 / ${files.length} 枚 · 準備中...`, '新規収納: 0枚 / 重複スキップ: 0枚', 12);
+    state.transferProgress = {
+      current: 0,
+      total: files.length,
+      fileName: '母艦DBと照合中...',
+      importedCount: 0,
+      skippedCount: 0,
+      errorCount: 0,
+      signalSyncedCount: 0,
+      signalOnly: false,
+    };
+    _showQuickUplinkOverlay(
+      '母艦 \\Loome\\case へ写真を転送中...',
+      `0 / ${files.length} 枚 · 準備中...`,
+      _formatTransferProgressSub(state.transferProgress),
+      12
+    );
     try {
       const docKeys = files.map((f, idx) => `bf_${idx}_${f.name}_${f.size}`);
       await adapter.transferBrowserFiles(files, { commonTags: [], draftMap: {}, docKeys });
@@ -13405,17 +13506,23 @@ else if (typeof exports === 'object'){
 
       adapter.onTransferProgress((prog) => {
         if (!prog) return;
+        const prevSignalOnly = Boolean(state.transferProgress && state.transferProgress.signalOnly);
         state.transferProgress = {
-          current: Number(prog.current || 0), total: Number(prog.total || state.transferProgress.total || 0),
-          fileName: String(prog.fileName || ''), importedCount: Number(prog.importedCount || 0),
-          skippedCount: Number(prog.skippedCount || 0), errorCount: Number(prog.errorCount || 0),
+          current: Number(prog.current || 0),
+          total: Number(prog.total || state.transferProgress.total || 0),
+          fileName: String(prog.fileName || ''),
+          importedCount: Number(prog.importedCount || 0),
+          skippedCount: Number(prog.skippedCount || 0),
+          errorCount: Number(prog.errorCount || 0),
+          signalSyncedCount: Number(prog.signalSyncedCount || 0),
+          signalOnly: prevSignalOnly,
         };
         if (state.quickUplinkRunning) {
           const p = state.transferProgress;
           const pct = p.total > 0 ? Math.min(100, Math.round((p.current / p.total) * 100)) : 20;
-          const sub = `新規収納: ${p.importedCount}枚 / 重複スキップ: ${p.skippedCount}枚${p.errorCount > 0 ? ` / リトライ失敗: ${p.errorCount}枚` : ''}`;
+          const sub = _formatTransferProgressSub(p);
           _showQuickUplinkOverlay(
-            '母艦 \\Loome\\case へ未収納写真を転送中...',
+            p.signalOnly ? '母艦へ評価・タグ信号を送信中...' : '母艦 \\Loome\\case へ未収納写真を転送中...',
             `${p.current} / ${p.total} 枚 · ${p.fileName || '照合中...'}`,
             sub,
             pct
@@ -13448,16 +13555,10 @@ else if (typeof exports === 'object'){
         }
         if (!res.ok || errCnt > 0) {
           const rem = Number(res.remainingCount || 0);
-          _showToast(`一部未完了: ${imp}枚収納・信号${totalSignalSynced}件・${skp}枚重複スキップ / 残り${rem}件が未送信です${res.error ? ` (${res.error})` : ''}。再度押すと続きから再開できます`, 5500);
+          _showToast(`${_formatPartialUplinkToast(imp, totalSignalSynced, skp, rem, res.error)}。再度押すと続きから再開できます`, 5500);
           return;
         }
-        if (imp > 0 && totalSignalSynced > 0) {
-          _showToast(`完了: ${imp}枚を母艦 \\Loome\\case へ収納・信号 ${totalSignalSynced}件を同期しました（重複スキップ: ${skp}枚）`, 4000);
-        } else if (imp === 0 && totalSignalSynced > 0) {
-          _showToast(`完了: 評価・タグ信号 ${totalSignalSynced}件を母艦へ同期しました（重複スキップ: ${skp}枚）`, 3800);
-        } else {
-          _showToast(`完了: ${imp}枚を母艦 \\Loome\\case へ収納しました（重複スキップ: ${skp}枚）`, 3800);
-        }
+        _showToast(_formatCompleteUplinkToast(imp, totalSignalSynced, skp), imp > 0 && totalSignalSynced > 0 ? 4000 : 3800);
       });
     }
   }
@@ -19644,10 +19745,12 @@ else if (typeof exports === 'object'){
     const pushed = Number((res && res.pushedCount) || 0);
     const logDays = Number((res && res.uploadedFieldLogDays) || 0);
     const importedPhotos = Number((quickSum && quickSum.importedCount) || 0);
+    const skippedPhotos = Number((quickSum && quickSum.skippedCount) || 0);
     const signalCount = Number((quickSum && quickSum.signalCount) || 0);
     const partialRem = Number((quickSum && quickSum.partialRemaining) || 0);
     const parts = [];
     if (importedPhotos > 0) parts.push(`写真${importedPhotos}枚収納`);
+    if (skippedPhotos > 0) parts.push(`重複スキップ${skippedPhotos}枚`);
     if (signalCount > 0) parts.push(`信号${signalCount}件`);
     if (pushed > 0) parts.push(`選別${pushed}件`);
     if (logDays > 0) parts.push(`GPSログ${logDays}日分`);
@@ -19656,13 +19759,40 @@ else if (typeof exports === 'object'){
       return `✓ 母艦と同期完了（${parts.join('・') || '差分同期'} / 未転送残り${partialRem}枚）`;
     }
     if (parts.length > 0) {
-      return (importedPhotos > 0 || signalCount > 0)
+      return (importedPhotos > 0 || signalCount > 0 || skippedPhotos > 0)
         ? `✓ 母艦に収納完了（${parts.join('・')}）`
         : `✓ 母艦と同期完了（${parts.join('・')}）`;
     }
     return hasDbChanges
       ? '✓ PCからWi-Fiで最新ロッカーへ高速同期しました'
       : '✓ Wi-Fi同期完了（変更なし・最新状態です）';
+  }
+
+  function _formatUsbDownlinkToast(res) {
+    const syncMode = String((res && res.syncMode) || '');
+    const added = Number((res && res.addedCount) || 0);
+    const removed = Number((res && res.removedCount) || 0);
+    const total = Number((res && res.dbPhotoCount) || 0);
+    const pending = Number((res && res.pendingChangeCount) || 0);
+    const unlockPrefix = res && res.unlocked ? '鍵付きLoome解錠＋' : '';
+    const pendingWarn = pending > 0 ? ` / 未送信${pending}件の母艦反映はWi-Fi同期をご利用ください` : '';
+
+    if (syncMode === 'usb_downlink_full') {
+      return `✓ ${unlockPrefix}母艦USBからカタログを取込完了（全${total}枚・ダウンリンク専用）${pendingWarn}`;
+    }
+    if (syncMode === 'usb_downlink_delta' || syncMode === 'usb_downlink_diff') {
+      if (added > 0) {
+        return `✓ ${unlockPrefix}母艦USBから差分自動取込（+${added}枚・ダウンリンク専用）${pendingWarn}`;
+      }
+      if (removed > 0) {
+        return `✓ ${unlockPrefix}母艦USBから差分自動取込（-${removed}枚整理・ダウンリンク専用）${pendingWarn}`;
+      }
+      return `✓ ${unlockPrefix}母艦USBから最新カタログを自動反映しました（ダウンリンク専用）${pendingWarn}`;
+    }
+    if (pending > 0) {
+      return `● ${unlockPrefix}Loome USB直結（ダウンリンク専用・最新）${pendingWarn}`;
+    }
+    return `● ${unlockPrefix}Loome USB直結：原本表示可（母艦→モバイル専用・最新）`;
   }
 
   async function _handleNativeUsbSyncCompleted(res) {
@@ -19672,7 +19802,9 @@ else if (typeof exports === 'object'){
       return;
     }
     setLoading(false);
-    const isWifiMode = Boolean(res && String(res.syncMode || '').startsWith('wifi_'));
+    const syncMode = String((res && res.syncMode) || '');
+    const isWifiMode = syncMode.startsWith('wifi_');
+    const isUsbDownlink = syncMode.startsWith('usb_downlink_');
     const quickSum = isWifiMode ? (window.__pendingQuickUplinkSummary || null) : null;
     if (isWifiMode) window.__pendingQuickUplinkSummary = null;
 
@@ -19684,22 +19816,37 @@ else if (typeof exports === 'object'){
           showToast(`! ${skipped}件の変更はPC側で該当写真が見つからず反映できませんでした`, 5000);
         }, 4200);
       }
-      if (res.syncMode === 'wifi_noop' && mState.localDb && mState.photos.length > 0) {
+      if (isUsbDownlink || syncMode === 'loome_mount') {
+        if (mState.nativeLinkState) mState.nativeLinkState.usbConnected = true;
+      }
+      if (syncMode === 'wifi_noop' && mState.localDb && mState.photos.length > 0) {
         _refreshWifiStatusBox();
         showToast(_formatWifiSyncDoneToast(res, quickSum, false), 3600);
         return;
       }
-      if (res.syncMode === 'loome_mount' && mState.localDb && mState.photos.length > 0) {
-        if (mState.nativeLinkState) mState.nativeLinkState.usbConnected = true;
+      if (syncMode === 'usb_downlink_noop' && mState.localDb && mState.photos.length > 0) {
+        _refreshWifiStatusBox();
+        showToast(_formatUsbDownlinkToast(res), Number(res.pendingChangeCount || 0) > 0 ? 5200 : 3800);
+        return;
+      }
+      if (syncMode === 'loome_mount' && mState.localDb && mState.photos.length > 0) {
+        if (res.catalogSkipReason === 'cache_not_accessible') {
+          showToast('● Loome USB直結（原本表示可）※カタログ自動取込には cache を含む親フォルダを選択してください', 5200);
+        }
         return;
       }
       await new Promise((r) => requestAnimationFrame(r));
       await _syncLinkedPhoneFoldersToLockerDb('all');
       const opened = await _activateAndroidNativeLockerDb();
       if (opened) {
-        if (res.syncMode === 'wifi_delta' || res.syncMode === 'wifi_full' || res.syncMode === 'wifi_noop') {
-          showToast(_formatWifiSyncDoneToast(res, quickSum, res.syncMode !== 'wifi_noop'), 4000);
-        } else if (res.syncMode !== 'loome_mount') {
+        if (syncMode === 'wifi_delta' || syncMode === 'wifi_full' || syncMode === 'wifi_noop') {
+          showToast(_formatWifiSyncDoneToast(res, quickSum, syncMode !== 'wifi_noop'), 4000);
+        } else if (isUsbDownlink) {
+          _refreshWifiStatusBox();
+          showToast(_formatUsbDownlinkToast(res), Number(res.pendingChangeCount || 0) > 0 ? 5200 : 4200);
+        } else if (syncMode === 'loome_mount' && res.catalogSkipReason === 'cache_not_accessible') {
+          showToast('● Loome USB直結（原本表示可）※カタログ自動取込には cache を含む親フォルダを選択してください', 5200);
+        } else if (syncMode !== 'loome_mount') {
           showToast('✓ USBから専用ロッカーへ高速同期しました', 3500);
         }
       }
@@ -19718,6 +19865,15 @@ else if (typeof exports === 'object'){
       const titleText = customTitle || `PC (${serverUrl || 'Wi-Fi'}) と双方向同期中...`;
       const subText = customSub || '選別データの送信と最新差分の取得を行っています';
       setLoading(true, titleText, subText);
+    };
+    window.__onTetheractUsbDownlinkStarted = (customTitle, customSub) => {
+      const dbOverlay = document.getElementById('mDbSyncOverlay');
+      if (dbOverlay) dbOverlay.style.display = 'none';
+      setLoading(
+        true,
+        customTitle || '母艦USBからカタログを自動取込中（読み取り専用）...',
+        customSub || '安全のため母艦 → モバイルのダウンリンク専用です。USBへは書き込みません'
+      );
     };
     window.__onTetheractPcDiscovered = (disc) => {
       if (!disc || !disc.found) return;
@@ -24685,7 +24841,7 @@ else if (typeof exports === 'object'){
     document.getElementById('mSelectDbFileBtn')?.addEventListener('click', () => {
       if (window.TetheractNative && typeof window.TetheractNative.selectUsbFolderAndSync === 'function') {
         closeDbModal();
-        setLoading(true, 'USBフォルダを選択してください...', 'Tetheract フォルダ（または cache の親フォルダ）を選択すると専用ロッカーへ高速コピーします');
+        setLoading(true, 'USBフォルダを選択してください...', 'Tetheract フォルダ（cache と Loome を含む親フォルダ）を選択すると原本リンクとカタログ自動取込（母艦→モバイル専用）が有効になります');
         window.TetheractNative.selectUsbFolderAndSync();
         return;
       }
@@ -24740,7 +24896,7 @@ else if (typeof exports === 'object'){
     document.getElementById('mWelcomeLoadDbBtn')?.addEventListener('click', () => {
       if (window.TetheractNative && typeof window.TetheractNative.selectUsbFolderAndSync === 'function') {
         closeDbModal();
-        setLoading(true, 'USBフォルダを選択してください...', 'Tetheract フォルダ（または cache の親フォルダ）を選択すると専用ロッカーへ高速コピーします');
+        setLoading(true, 'USBフォルダを選択してください...', 'Tetheract フォルダ（cache と Loome を含む親フォルダ）を選択すると原本リンクとカタログ自動取込（母艦→モバイル専用）が有効になります');
         window.TetheractNative.selectUsbFolderAndSync();
         return;
       }

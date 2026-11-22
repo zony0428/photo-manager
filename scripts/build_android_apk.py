@@ -73,6 +73,7 @@ REQUIRED_ANDROID_FILES = [
     JAVA_PKG_DIR / "TetheractNativeBridge.kt",
     JAVA_PKG_DIR / "LockerDatabaseManager.kt",
     JAVA_PKG_DIR / "SafUsbManager.kt",
+    JAVA_PKG_DIR / "UsbDownlinkSyncManager.kt",
     JAVA_PKG_DIR / "LoomeVaultCrypto.kt",
     JAVA_PKG_DIR / "PendingJournalStore.kt",
     JAVA_PKG_DIR / "WifiLockerSyncManager.kt",

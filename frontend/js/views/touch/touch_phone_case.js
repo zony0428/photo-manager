@@ -17,7 +17,7 @@
     transferring: false,
     quickUplinkRunning: false,
     quickUplinkResolver: null,
-    transferProgress: { current: 0, total: 0, fileName: '', importedCount: 0, skippedCount: 0, errorCount: 0 },
+    transferProgress: { current: 0, total: 0, fileName: '', importedCount: 0, skippedCount: 0, errorCount: 0, signalSyncedCount: 0, signalOnly: false },
     activeSlotEl: null,
   };
 
@@ -416,6 +416,53 @@
     if (overlay) overlay.style.display = 'none';
   }
 
+  /** 転送進捗オーバーレイ用の件数サマリー文字列を組み立てる（0件の重複スキップは非表示） */
+  function _formatTransferProgressSub(p) {
+    const prog = p || {};
+    const imp = Number(prog.importedCount || 0);
+    const sig = Number(prog.signalSyncedCount || 0);
+    const skp = Number(prog.skippedCount || 0);
+    const err = Number(prog.errorCount || 0);
+    const parts = [];
+    if (imp > 0 || (!prog.signalOnly && sig === 0)) {
+      parts.push(`新規収納: ${imp}枚`);
+    }
+    if (sig > 0 || prog.signalOnly) {
+      parts.push(`信号送信: ${sig}件`);
+    }
+    if (skp > 0) {
+      parts.push(`重複スキップ: ${skp}枚`);
+    }
+    if (err > 0) {
+      parts.push(`リトライ失敗: ${err}枚`);
+    }
+    return parts.join(' / ');
+  }
+
+  function _formatPartialUplinkToast(imp, totalSignalSynced, skp, rem, errorText) {
+    const parts = [];
+    if (imp > 0) parts.push(`${imp}枚収納`);
+    if (totalSignalSynced > 0) parts.push(`信号${totalSignalSynced}件`);
+    if (skp > 0) parts.push(`${skp}枚重複スキップ`);
+    const head = parts.length > 0 ? parts.join('・') : '未完了';
+    const errPart = errorText ? ` (${errorText})` : '';
+    return `一部未完了: ${head} / 残り${rem}件が未送信です${errPart}`;
+  }
+
+  function _formatCompleteUplinkToast(imp, totalSignalSynced, skp) {
+    const skipSuffix = skp > 0 ? `（重複スキップ: ${skp}枚）` : '';
+    if (imp > 0 && totalSignalSynced > 0) {
+      return `完了: ${imp}枚を母艦 \\Loome\\case へ収納・信号 ${totalSignalSynced}件を同期しました${skipSuffix}`;
+    }
+    if (imp === 0 && totalSignalSynced > 0) {
+      return `完了: 評価・タグ信号 ${totalSignalSynced}件を母艦へ同期しました${skipSuffix}`;
+    }
+    if (imp === 0 && totalSignalSynced === 0 && skp > 0) {
+      return `完了: ${skp}枚は母艦に既存のため重複スキップしました`;
+    }
+    return `完了: ${imp}枚を母艦 \\Loome\\case へ収納しました${skipSuffix}`;
+  }
+
   /**
    * リンク済みスマホフォルダの未収納写真を走査し、未収納分があれば母艦 \Loome\case へ自動転送する
    */
@@ -446,13 +493,6 @@
     }
 
     const allSignalOnly = unstored.every((it) => _isWorkingOnlyItem(it));
-    _showQuickUplinkOverlay(
-      allSignalOnly ? '母艦へ評価・タグ信号を送信中...' : '母艦 \\Loome\\case へ未収納写真・信号を送信中...',
-      `0 / ${unstored.length} 件 · 母艦DBと照合中...`,
-      '新規収納: 0枚 / 重複スキップ: 0枚',
-      12
-    );
-
     state.transferring = true;
     state.transferProgress = {
       current: 0,
@@ -461,7 +501,15 @@
       importedCount: 0,
       skippedCount: 0,
       errorCount: 0,
+      signalSyncedCount: 0,
+      signalOnly: allSignalOnly,
     };
+    _showQuickUplinkOverlay(
+      allSignalOnly ? '母艦へ評価・タグ信号を送信中...' : '母艦 \\Loome\\case へ未収納写真・信号を送信中...',
+      `0 / ${unstored.length} 件 · 母艦DBと照合中...`,
+      _formatTransferProgressSub(state.transferProgress),
+      12
+    );
 
     let timeoutId = null;
     const donePromise = new Promise((resolve) => {
@@ -599,7 +647,7 @@
           return false;
         }
         if (upRes.aborted) {
-          if (imp > 0 || totalSignalSynced > 0) {
+          if (imp > 0 || totalSignalSynced > 0 || skp > 0) {
             global.__pendingQuickUplinkSummary = {
               importedCount: imp,
               skippedCount: skp,
@@ -609,10 +657,7 @@
               partialRemaining: rem,
             };
           }
-          _showToast(
-            `一部未完了: ${imp}枚収納・信号${totalSignalSynced}件・${skp}枚重複スキップ / 残り${rem}件が未送信です${upRes.error ? ` (${upRes.error})` : ''}`,
-            5500
-          );
+          _showToast(_formatPartialUplinkToast(imp, totalSignalSynced, skp, rem, upRes.error), 5500);
           return false;
         }
 
@@ -652,8 +697,22 @@
     if (!adapter || !files || !files.length || state.transferring) return;
     state.transferring = true;
     state.quickUplinkRunning = true;
-    state.transferProgress = { current: 0, total: files.length, fileName: '母艦DBと照合中...', importedCount: 0, skippedCount: 0, errorCount: 0 };
-    _showQuickUplinkOverlay('母艦 \\Loome\\case へ写真を転送中...', `0 / ${files.length} 枚 · 準備中...`, '新規収納: 0枚 / 重複スキップ: 0枚', 12);
+    state.transferProgress = {
+      current: 0,
+      total: files.length,
+      fileName: '母艦DBと照合中...',
+      importedCount: 0,
+      skippedCount: 0,
+      errorCount: 0,
+      signalSyncedCount: 0,
+      signalOnly: false,
+    };
+    _showQuickUplinkOverlay(
+      '母艦 \\Loome\\case へ写真を転送中...',
+      `0 / ${files.length} 枚 · 準備中...`,
+      _formatTransferProgressSub(state.transferProgress),
+      12
+    );
     try {
       const docKeys = files.map((f, idx) => `bf_${idx}_${f.name}_${f.size}`);
       await adapter.transferBrowserFiles(files, { commonTags: [], draftMap: {}, docKeys });
@@ -706,17 +765,23 @@
 
       adapter.onTransferProgress((prog) => {
         if (!prog) return;
+        const prevSignalOnly = Boolean(state.transferProgress && state.transferProgress.signalOnly);
         state.transferProgress = {
-          current: Number(prog.current || 0), total: Number(prog.total || state.transferProgress.total || 0),
-          fileName: String(prog.fileName || ''), importedCount: Number(prog.importedCount || 0),
-          skippedCount: Number(prog.skippedCount || 0), errorCount: Number(prog.errorCount || 0),
+          current: Number(prog.current || 0),
+          total: Number(prog.total || state.transferProgress.total || 0),
+          fileName: String(prog.fileName || ''),
+          importedCount: Number(prog.importedCount || 0),
+          skippedCount: Number(prog.skippedCount || 0),
+          errorCount: Number(prog.errorCount || 0),
+          signalSyncedCount: Number(prog.signalSyncedCount || 0),
+          signalOnly: prevSignalOnly,
         };
         if (state.quickUplinkRunning) {
           const p = state.transferProgress;
           const pct = p.total > 0 ? Math.min(100, Math.round((p.current / p.total) * 100)) : 20;
-          const sub = `新規収納: ${p.importedCount}枚 / 重複スキップ: ${p.skippedCount}枚${p.errorCount > 0 ? ` / リトライ失敗: ${p.errorCount}枚` : ''}`;
+          const sub = _formatTransferProgressSub(p);
           _showQuickUplinkOverlay(
-            '母艦 \\Loome\\case へ未収納写真を転送中...',
+            p.signalOnly ? '母艦へ評価・タグ信号を送信中...' : '母艦 \\Loome\\case へ未収納写真を転送中...',
             `${p.current} / ${p.total} 枚 · ${p.fileName || '照合中...'}`,
             sub,
             pct
@@ -749,16 +814,10 @@
         }
         if (!res.ok || errCnt > 0) {
           const rem = Number(res.remainingCount || 0);
-          _showToast(`一部未完了: ${imp}枚収納・信号${totalSignalSynced}件・${skp}枚重複スキップ / 残り${rem}件が未送信です${res.error ? ` (${res.error})` : ''}。再度押すと続きから再開できます`, 5500);
+          _showToast(`${_formatPartialUplinkToast(imp, totalSignalSynced, skp, rem, res.error)}。再度押すと続きから再開できます`, 5500);
           return;
         }
-        if (imp > 0 && totalSignalSynced > 0) {
-          _showToast(`完了: ${imp}枚を母艦 \\Loome\\case へ収納・信号 ${totalSignalSynced}件を同期しました（重複スキップ: ${skp}枚）`, 4000);
-        } else if (imp === 0 && totalSignalSynced > 0) {
-          _showToast(`完了: 評価・タグ信号 ${totalSignalSynced}件を母艦へ同期しました（重複スキップ: ${skp}枚）`, 3800);
-        } else {
-          _showToast(`完了: ${imp}枚を母艦 \\Loome\\case へ収納しました（重複スキップ: ${skp}枚）`, 3800);
-        }
+        _showToast(_formatCompleteUplinkToast(imp, totalSignalSynced, skp), imp > 0 && totalSignalSynced > 0 ? 4000 : 3800);
       });
     }
   }

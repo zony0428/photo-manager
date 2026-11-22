@@ -587,6 +587,41 @@ class SafUsbManager(
         }
     }
 
+    private fun hasCatalogDbFile(dir: DocumentFile): Boolean {
+        val libDoc = dir.findFile("library.db")
+        if (libDoc != null && libDoc.isFile && libDoc.canRead()) return true
+        val deltaDoc = dir.findFile("mobile_delta.db")
+        return deltaDoc != null && deltaDoc.isFile && deltaDoc.canRead()
+    }
+
+    /** 選択された USB ルート DocumentFile から読み取り専用の cache ディレクトリを探索する */
+    fun findCacheDirectory(rootDoc: DocumentFile): DocumentFile? {
+        if (!rootDoc.isDirectory || !rootDoc.canRead()) return null
+        val rootName = (rootDoc.name ?: "").trim()
+        if (rootName.equals("cache", ignoreCase = true) && hasCatalogDbFile(rootDoc)) {
+            return rootDoc
+        }
+        val directCache = rootDoc.findFile("cache")
+        if (directCache != null && directCache.isDirectory && directCache.canRead() && hasCatalogDbFile(directCache)) {
+            return directCache
+        }
+        return try {
+            for (child in rootDoc.listFiles()) {
+                if (!child.isDirectory || !child.canRead()) continue
+                val childName = (child.name ?: "").lowercase(Locale.US)
+                if (childName.isEmpty() || childName.startsWith(".") || childName in SKIP_SUBDIR_NAMES) continue
+                val nestedCache = child.findFile("cache")
+                if (nestedCache != null && nestedCache.isDirectory && nestedCache.canRead() && hasCatalogDbFile(nestedCache)) {
+                    return nestedCache
+                }
+            }
+            null
+        } catch (e: Exception) {
+            Log.w(TAG, "サブフォルダからの cache 探索警告", e)
+            null
+        }
+    }
+
     private fun readLoomeSealJson(rootDoc: DocumentFile, loomeDir: DocumentFile?): JSONObject? {
         val sealDoc = loomeDir?.findFile(".loome_seal")?.takeIf { it.isFile }
             ?: rootDoc.findFile(".loome_seal")?.takeIf { it.isFile }

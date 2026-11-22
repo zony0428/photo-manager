@@ -63,6 +63,7 @@ GitHub Releases 投稿用に作成されたバージョン別リリースノー�
 
 | バージョン | 主な更新内容 | ファイル |
 | :--- | :--- | :--- |
+| **v2.5.3** | Android USB接続時の母艦カタログ完全Read-Only自動差分ダウンリンク（母艦→モバイル片方向専用警告付き）＆モバイル版「母艦へ収納」の重複スキップ表示整理・計上修正 | [RELEASE_NOTES_v2.5.3.md](release_notes/RELEASE_NOTES_v2.5.3.md) |
 | **v2.5.2** | モバイル非破壊調整の中央HUD撤廃＆下部ダイヤル・写真枠内水平垂直ガイドライン・内接自動ズーム対応、モバイルArt Framerの余白/文字サイズ＆表示項目エキスパンダ整理 | [RELEASE_NOTES_v2.5.2.md](release_notes/RELEASE_NOTES_v2.5.2.md) |
 | **v2.5.1** | モバイルライトボックスのアクションランチャー集約＆ギャラリー非汚染クイックSNS共有、`library.db` 複数画像ウォーターマーク管理＆PC⇄スマホ同期・サイズ比率統一、Google ドライブ原本表示＆Android ホット更新互換ガード修正 | [RELEASE_NOTES_v2.5.1.md](release_notes/RELEASE_NOTES_v2.5.1.md) |
 | **v2.5.0** | 母艦Wi-Fiリンク連動Android UI自動ホットアップデート・`native_revision`更新通知＆APK取得導線・PC母艦GitHub連動アップデータ＆ポータブル`diff.zip`書き出し・RAW解析＆並列サムネイル再取得強化 | [RELEASE_NOTES_v2.5.0.md](release_notes/RELEASE_NOTES_v2.5.0.md) |

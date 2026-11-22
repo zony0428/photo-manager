@@ -697,10 +697,12 @@
     const pushed = Number((res && res.pushedCount) || 0);
     const logDays = Number((res && res.uploadedFieldLogDays) || 0);
     const importedPhotos = Number((quickSum && quickSum.importedCount) || 0);
+    const skippedPhotos = Number((quickSum && quickSum.skippedCount) || 0);
     const signalCount = Number((quickSum && quickSum.signalCount) || 0);
     const partialRem = Number((quickSum && quickSum.partialRemaining) || 0);
     const parts = [];
     if (importedPhotos > 0) parts.push(`写真${importedPhotos}枚収納`);
+    if (skippedPhotos > 0) parts.push(`重複スキップ${skippedPhotos}枚`);
     if (signalCount > 0) parts.push(`信号${signalCount}件`);
     if (pushed > 0) parts.push(`選別${pushed}件`);
     if (logDays > 0) parts.push(`GPSログ${logDays}日分`);
@@ -709,13 +711,40 @@
       return `✓ 母艦と同期完了（${parts.join('・') || '差分同期'} / 未転送残り${partialRem}枚）`;
     }
     if (parts.length > 0) {
-      return (importedPhotos > 0 || signalCount > 0)
+      return (importedPhotos > 0 || signalCount > 0 || skippedPhotos > 0)
         ? `✓ 母艦に収納完了（${parts.join('・')}）`
         : `✓ 母艦と同期完了（${parts.join('・')}）`;
     }
     return hasDbChanges
       ? '✓ PCからWi-Fiで最新ロッカーへ高速同期しました'
       : '✓ Wi-Fi同期完了（変更なし・最新状態です）';
+  }
+
+  function _formatUsbDownlinkToast(res) {
+    const syncMode = String((res && res.syncMode) || '');
+    const added = Number((res && res.addedCount) || 0);
+    const removed = Number((res && res.removedCount) || 0);
+    const total = Number((res && res.dbPhotoCount) || 0);
+    const pending = Number((res && res.pendingChangeCount) || 0);
+    const unlockPrefix = res && res.unlocked ? '鍵付きLoome解錠＋' : '';
+    const pendingWarn = pending > 0 ? ` / 未送信${pending}件の母艦反映はWi-Fi同期をご利用ください` : '';
+
+    if (syncMode === 'usb_downlink_full') {
+      return `✓ ${unlockPrefix}母艦USBからカタログを取込完了（全${total}枚・ダウンリンク専用）${pendingWarn}`;
+    }
+    if (syncMode === 'usb_downlink_delta' || syncMode === 'usb_downlink_diff') {
+      if (added > 0) {
+        return `✓ ${unlockPrefix}母艦USBから差分自動取込（+${added}枚・ダウンリンク専用）${pendingWarn}`;
+      }
+      if (removed > 0) {
+        return `✓ ${unlockPrefix}母艦USBから差分自動取込（-${removed}枚整理・ダウンリンク専用）${pendingWarn}`;
+      }
+      return `✓ ${unlockPrefix}母艦USBから最新カタログを自動反映しました（ダウンリンク専用）${pendingWarn}`;
+    }
+    if (pending > 0) {
+      return `● ${unlockPrefix}Loome USB直結（ダウンリンク専用・最新）${pendingWarn}`;
+    }
+    return `● ${unlockPrefix}Loome USB直結：原本表示可（母艦→モバイル専用・最新）`;
   }
 
   async function _handleNativeUsbSyncCompleted(res) {
@@ -725,7 +754,9 @@
       return;
     }
     setLoading(false);
-    const isWifiMode = Boolean(res && String(res.syncMode || '').startsWith('wifi_'));
+    const syncMode = String((res && res.syncMode) || '');
+    const isWifiMode = syncMode.startsWith('wifi_');
+    const isUsbDownlink = syncMode.startsWith('usb_downlink_');
     const quickSum = isWifiMode ? (window.__pendingQuickUplinkSummary || null) : null;
     if (isWifiMode) window.__pendingQuickUplinkSummary = null;
 
@@ -737,22 +768,37 @@
           showToast(`! ${skipped}件の変更はPC側で該当写真が見つからず反映できませんでした`, 5000);
         }, 4200);
       }
-      if (res.syncMode === 'wifi_noop' && mState.localDb && mState.photos.length > 0) {
+      if (isUsbDownlink || syncMode === 'loome_mount') {
+        if (mState.nativeLinkState) mState.nativeLinkState.usbConnected = true;
+      }
+      if (syncMode === 'wifi_noop' && mState.localDb && mState.photos.length > 0) {
         _refreshWifiStatusBox();
         showToast(_formatWifiSyncDoneToast(res, quickSum, false), 3600);
         return;
       }
-      if (res.syncMode === 'loome_mount' && mState.localDb && mState.photos.length > 0) {
-        if (mState.nativeLinkState) mState.nativeLinkState.usbConnected = true;
+      if (syncMode === 'usb_downlink_noop' && mState.localDb && mState.photos.length > 0) {
+        _refreshWifiStatusBox();
+        showToast(_formatUsbDownlinkToast(res), Number(res.pendingChangeCount || 0) > 0 ? 5200 : 3800);
+        return;
+      }
+      if (syncMode === 'loome_mount' && mState.localDb && mState.photos.length > 0) {
+        if (res.catalogSkipReason === 'cache_not_accessible') {
+          showToast('● Loome USB直結（原本表示可）※カタログ自動取込には cache を含む親フォルダを選択してください', 5200);
+        }
         return;
       }
       await new Promise((r) => requestAnimationFrame(r));
       await _syncLinkedPhoneFoldersToLockerDb('all');
       const opened = await _activateAndroidNativeLockerDb();
       if (opened) {
-        if (res.syncMode === 'wifi_delta' || res.syncMode === 'wifi_full' || res.syncMode === 'wifi_noop') {
-          showToast(_formatWifiSyncDoneToast(res, quickSum, res.syncMode !== 'wifi_noop'), 4000);
-        } else if (res.syncMode !== 'loome_mount') {
+        if (syncMode === 'wifi_delta' || syncMode === 'wifi_full' || syncMode === 'wifi_noop') {
+          showToast(_formatWifiSyncDoneToast(res, quickSum, syncMode !== 'wifi_noop'), 4000);
+        } else if (isUsbDownlink) {
+          _refreshWifiStatusBox();
+          showToast(_formatUsbDownlinkToast(res), Number(res.pendingChangeCount || 0) > 0 ? 5200 : 4200);
+        } else if (syncMode === 'loome_mount' && res.catalogSkipReason === 'cache_not_accessible') {
+          showToast('● Loome USB直結（原本表示可）※カタログ自動取込には cache を含む親フォルダを選択してください', 5200);
+        } else if (syncMode !== 'loome_mount') {
           showToast('✓ USBから専用ロッカーへ高速同期しました', 3500);
         }
       }
@@ -771,6 +817,15 @@
       const titleText = customTitle || `PC (${serverUrl || 'Wi-Fi'}) と双方向同期中...`;
       const subText = customSub || '選別データの送信と最新差分の取得を行っています';
       setLoading(true, titleText, subText);
+    };
+    window.__onTetheractUsbDownlinkStarted = (customTitle, customSub) => {
+      const dbOverlay = document.getElementById('mDbSyncOverlay');
+      if (dbOverlay) dbOverlay.style.display = 'none';
+      setLoading(
+        true,
+        customTitle || '母艦USBからカタログを自動取込中（読み取り専用）...',
+        customSub || '安全のため母艦 → モバイルのダウンリンク専用です。USBへは書き込みません'
+      );
     };
     window.__onTetheractPcDiscovered = (disc) => {
       if (!disc || !disc.found) return;
@@ -5738,7 +5793,7 @@
     document.getElementById('mSelectDbFileBtn')?.addEventListener('click', () => {
       if (window.TetheractNative && typeof window.TetheractNative.selectUsbFolderAndSync === 'function') {
         closeDbModal();
-        setLoading(true, 'USBフォルダを選択してください...', 'Tetheract フォルダ（または cache の親フォルダ）を選択すると専用ロッカーへ高速コピーします');
+        setLoading(true, 'USBフォルダを選択してください...', 'Tetheract フォルダ（cache と Loome を含む親フォルダ）を選択すると原本リンクとカタログ自動取込（母艦→モバイル専用）が有効になります');
         window.TetheractNative.selectUsbFolderAndSync();
         return;
       }
@@ -5793,7 +5848,7 @@
     document.getElementById('mWelcomeLoadDbBtn')?.addEventListener('click', () => {
       if (window.TetheractNative && typeof window.TetheractNative.selectUsbFolderAndSync === 'function') {
         closeDbModal();
-        setLoading(true, 'USBフォルダを選択してください...', 'Tetheract フォルダ（または cache の親フォルダ）を選択すると専用ロッカーへ高速コピーします');
+        setLoading(true, 'USBフォルダを選択してください...', 'Tetheract フォルダ（cache と Loome を含む親フォルダ）を選択すると原本リンクとカタログ自動取込（母艦→モバイル専用）が有効になります');
         window.TetheractNative.selectUsbFolderAndSync();
         return;
       }

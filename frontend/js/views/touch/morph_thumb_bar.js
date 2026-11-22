@@ -573,6 +573,7 @@
   let _origPcDiscovered =
     typeof global.__onTetheractPcDiscovered === 'function' ? global.__onTetheractPcDiscovered : null;
   let _usbHookInstalled = false;
+  let _lastUsbSkipReason = '';
 
   /**
    * Loome USB の読み取り専用マウント・鍵解錠・取り外し通知および PC 検出通知を購読する
@@ -609,6 +610,7 @@
     global.addEventListener('tetheract:usb-sync-completed', (ev) => {
       const res = (ev && ev.detail) || {};
       if (res && (res.syncMode === 'loome_detached' || res.usbDetached)) {
+        _lastUsbSkipReason = '';
         const loadingEl = document.getElementById('mLoadingState');
         if (loadingEl) loadingEl.style.display = 'none';
         if (global.TetheractTouchUI && typeof global.TetheractTouchUI.updateLockerStatus === 'function') {
@@ -625,12 +627,20 @@
         _pcOnlineOverride = false;
       }
 
-      if (res && res.ok && res.syncMode === 'loome_mount') {
+      const isUsbDownlink = Boolean(res && typeof res.syncMode === 'string' && res.syncMode.startsWith('usb_downlink_'));
+      if (isUsbDownlink || (res && res.ok && res.syncMode === 'loome_mount')) {
+        _lastUsbSkipReason = String((res && res.catalogSkipReason) || '');
+      }
+      if (res && res.ok && isUsbDownlink) {
         _syncBrandLinkBadge(true);
-        const msg = res.unlocked
-          ? '鍵付きLoomeを解錠しました（抜くと自動ロック）'
-          : '● Loome USB直結：原本データを直接表示できます';
-        _showUsbMountToast(msg, 3600);
+      } else if (res && res.ok && res.syncMode === 'loome_mount') {
+        _syncBrandLinkBadge(true);
+        if (res.catalogSkipReason !== 'cache_not_accessible') {
+          const msg = res.unlocked
+            ? '鍵付きLoomeを解錠しました（抜くと自動ロック）'
+            : '● Loome USB直結：原本データを直接表示できます';
+          _showUsbMountToast(msg, 3600);
+        }
       } else {
         _syncBrandLinkBadge();
       }
@@ -675,7 +685,15 @@
       }
       const pickBtn = e.target.closest('#mNativeUsbPickFolderBtn');
       if (pickBtn) {
-        if (global.TetheractNative && typeof global.TetheractNative.triggerUsbSyncAsyncJson === 'function') {
+        if (
+          _lastUsbSkipReason === 'cache_not_accessible' &&
+          global.TetheractNative &&
+          typeof global.TetheractNative.selectUsbFolderAndSync === 'function'
+        ) {
+          _lastUsbSkipReason = '';
+          document.getElementById('mCloseDbSyncBtn')?.click();
+          global.TetheractNative.selectUsbFolderAndSync();
+        } else if (global.TetheractNative && typeof global.TetheractNative.triggerUsbSyncAsyncJson === 'function') {
           const res = JSON.parse(global.TetheractNative.triggerUsbSyncAsyncJson() || '{}');
           if (res.status === 'usb_sync_started' || res.status === 'picker_launched') {
             document.getElementById('mCloseDbSyncBtn')?.click();

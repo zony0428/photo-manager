@@ -56,6 +56,7 @@ class MainActivity : Activity() {
     private lateinit var webView: WebView
     private lateinit var lockerDbManager: LockerDatabaseManager
     private lateinit var safUsbManager: SafUsbManager
+    private lateinit var usbDownlinkSyncManager: UsbDownlinkSyncManager
     private lateinit var wifiSyncManager: WifiLockerSyncManager
     private lateinit var usbOfflineUpdater: UsbOfflineUpdater
     private lateinit var phoneCaseManager: PhoneCaseManager
@@ -70,6 +71,7 @@ class MainActivity : Activity() {
     private var backInvokedCallback: OnBackInvokedCallback? = null
     private var usbAttachReceiver: BroadcastReceiver? = null
     private val usbAutoSyncRunning = java.util.concurrent.atomic.AtomicBoolean(false)
+    @Volatile private var lastUsbDownlinkConnectedState: Boolean = false
 
     @Volatile private var webPageLoaded: Boolean = false
     @Volatile private var pendingOpenFieldLog: Boolean = false
@@ -95,6 +97,7 @@ class MainActivity : Activity() {
         try {
             lockerDbManager = LockerDatabaseManager(applicationContext)
             safUsbManager = SafUsbManager(applicationContext, lockerDbManager)
+            usbDownlinkSyncManager = UsbDownlinkSyncManager(applicationContext, lockerDbManager, safUsbManager)
             usbOfflineUpdater = UsbOfflineUpdater(applicationContext, safUsbManager) {
                 runOnUiThread { if (::webView.isInitialized) { webPageLoaded = false; webView.reload() } }
             }
@@ -203,7 +206,10 @@ class MainActivity : Activity() {
             if (!handledDeepLink) {
                 bgExecutor.execute {
                     try {
-                        if (safUsbManager.isUsbConnected()) handleConnectedUsbAutoSync()
+                        if (safUsbManager.isUsbConnected()) {
+                            lastUsbDownlinkConnectedState = true
+                            handleConnectedUsbAutoSync()
+                        }
                         autoScanLinkedPhoneFoldersIfNeeded(forceNotify = !lockerDbManager.hasLockerDatabase())
                         val disc = wifiSyncManager.discoverPcOnLan(requestPair = false)
                         notifyWebViewPcDiscovered(disc)
@@ -225,6 +231,13 @@ class MainActivity : Activity() {
         bgExecutor.execute {
             try {
                 if (::wifiSyncManager.isInitialized) wifiSyncManager.probePcLinkOnline()
+                val nowUsbConnected = ::safUsbManager.isInitialized && safUsbManager.isUsbConnected()
+                if (nowUsbConnected && !lastUsbDownlinkConnectedState) {
+                    lastUsbDownlinkConnectedState = true
+                    handleConnectedUsbAutoSync()
+                } else if (!nowUsbConnected) {
+                    lastUsbDownlinkConnectedState = false
+                }
                 notifyWebViewLinkStateChanged(force = true)
                 triggerWifiUiAutoUpdateIfNeeded()
                 autoScanLinkedPhoneFoldersIfNeeded(forceNotify = false)
@@ -342,10 +355,10 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun autoScanLinkedPhoneFoldersIfNeeded(forceNotify: Boolean = false) {
+    private fun autoScanLinkedPhoneFoldersIfNeeded(forceNotify: Boolean = false, minFreshMs: Long = 15_000L) {
         if (!::phoneCaseManager.isInitialized || !phoneCaseManager.hasLinkedFolders() || phoneCaseManager.isTransferRunning()) return
         if (android.os.SystemClock.elapsedRealtime() < suppressAutoScanUntilMs) return
-        val res = JSONObject(phoneCaseManager.scanFolderPhotosJson("all", includeItems = false, allowLiveReconcile = false, minFreshMs = 15_000L))
+        val res = JSONObject(phoneCaseManager.scanFolderPhotosJson("all", includeItems = false, allowLiveReconcile = false, minFreshMs = minFreshMs))
         if (forceNotify || res.optBoolean("catalogChanged", false)) {
             runOnUiThread { if (::webView.isInitialized) webView.evaluateJavascript("if(window.__onTetheractPhoneCatalogSynced){window.__onTetheractPhoneCatalogSynced();}", null) }
         }
@@ -726,35 +739,54 @@ class MainActivity : Activity() {
             bgExecutor.execute {
                 val mountRes = safUsbManager.onUsbTreeSelected(treeUri)
                 usbOfflineUpdater.checkAndTriggerUpdate(autoApplyUi = true, triggerApkInstall = false)
-                handleLoomeMountResult(mountRes)
+                completeConnectedUsbMountAndDownlink(mountRes)
             }
         }
     }
 
     private fun promptLibrarySwitchConfirmation(mismatchRes: JSONObject) {
+        val isUsbSwitch = mismatchRes.optString("syncType", "wifi") == "usb"
         val curSrc = mismatchRes.optString("currentSource", "現在のロッカー")
         val tgtSrc = mismatchRes.optString("targetSource", "新しい接続先")
         val pendingCnt = mismatchRes.optInt("pendingChangeCount", 0)
         val pendingNote = if (pendingCnt > 0) "\n・未送信の評価・タグ変更: ${pendingCnt}件（破棄されます）" else ""
+        val downlinkNote = if (isUsbSwitch) "\n（※USB接続は安全のため「母艦 → モバイル」のダウンリンク専用です）" else ""
         val msg = "スマホ内の現在のカタログとは別のTetheractライブラリです。\n\n" +
             "・現在: $curSrc\n・切替先: $tgtSrc$pendingNote\n\n" +
             "このまま同期すると、スマホ内の現在のロッカーデータと未送信の変更はすべて破棄され、切替先のカタログに置き換わります。\n" +
-            "すべて破棄して切り替えますか？\n（※元のPC本体側の写真やデータは消えません）"
+            "すべて破棄して切り替えますか？\n（※元のPC本体側の写真やデータは消えません）$downlinkNote"
         runOnUiThread {
             if (isFinishing || isDestroyed) return@runOnUiThread
             AlertDialog.Builder(this)
                 .setTitle("別のライブラリへの切り替え確認")
                 .setMessage(msg)
-                .setNegativeButton("キャンセル") { _, _ -> wifiSyncManager.rollbackPendingSwitch() }
-                .setOnCancelListener { wifiSyncManager.rollbackPendingSwitch() }
+                .setNegativeButton("キャンセル") { _, _ -> if (!isUsbSwitch) wifiSyncManager.rollbackPendingSwitch() }
+                .setOnCancelListener { if (!isUsbSwitch) wifiSyncManager.rollbackPendingSwitch() }
                 .setPositiveButton("すべて破棄して切り替える") { _, _ ->
                     bgExecutor.execute {
                         lockerDbManager.resetLockerAndJournalForSwitch()
                         FieldLogStore.get(applicationContext).resetUploadStateForSwitch()
-                        runOnUiThread { runWifiSyncInBackground(forceFull = true, allowLibrarySwitch = true) }
+                        if (isUsbSwitch) {
+                            handleConnectedUsbAutoSync(allowLibrarySwitch = true)
+                        } else {
+                            runOnUiThread { runWifiSyncInBackground(forceFull = true, allowLibrarySwitch = true) }
+                        }
                     }
                 }
                 .show()
+        }
+    }
+
+    private fun notifyWebViewUsbDownlinkStarted(title: String, sub: String) {
+        val escTitle = JSONObject.quote(title)
+        val escSub = JSONObject.quote(sub)
+        runOnUiThread {
+            if (::webView.isInitialized) {
+                webView.evaluateJavascript(
+                    "if(window.__onTetheractUsbDownlinkStarted){window.__onTetheractUsbDownlinkStarted($escTitle,$escSub);}",
+                    null
+                )
+            }
         }
     }
 
@@ -776,6 +808,7 @@ class MainActivity : Activity() {
                 when (intent?.action) {
                     UsbManager.ACTION_USB_DEVICE_ATTACHED -> handleUsbDeviceAttached()
                     UsbManager.ACTION_USB_DEVICE_DETACHED -> {
+                        lastUsbDownlinkConnectedState = false
                         safUsbManager.onUsbDetached()
                         notifyWebViewLinkStateChanged(force = true)
                         notifyWebViewUsbSyncCompleted(JSONObject().put("ok", true).put("usbDetached", true).put("syncMode", "loome_detached"))
@@ -806,8 +839,11 @@ class MainActivity : Activity() {
                     runOnUiThread {
                         if (isFinishing || isDestroyed) return@runOnUiThread
                         AlertDialog.Builder(this)
-                            .setTitle("USBストレージを検出")
-                            .setMessage("USB内の Loome（または Tetheract）フォルダの読み取りを許可すると、以降はUSBを挿すだけで原本データを直接表示できます。今すぐフォルダを選択しますか？")
+                            .setTitle("Loome USBストレージを検出")
+                            .setMessage(
+                                "USB内の「cache」と「Loome」を含む親フォルダ（例: Tetheract フォルダまたはUSBルート）の読み取りを許可すると、USBを挿すだけで原本表示と母艦カタログの自動差分取込を行います。\n\n" +
+                                    "※安全のためUSB接続は「母艦 → モバイル」のダウンリンク専用（完全読み取り専用）です。スマホ側で行った変更の母艦反映は Wi-Fi同期をご利用ください。今すぐフォルダを選択しますか？"
+                            )
                             .setNegativeButton("あとで", null)
                             .setPositiveButton("フォルダを選択") { _, _ -> launchSafUsbFolderPicker() }
                             .show()
@@ -821,12 +857,31 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun handleConnectedUsbAutoSync() {
-        val res = safUsbManager.mountConnectedLoome()
-        usbOfflineUpdater.checkAndTriggerUpdate(autoApplyUi = true, triggerApkInstall = false)
-        autoScanLinkedPhoneFoldersIfNeeded(forceNotify = false)
+    private fun completeConnectedUsbMountAndDownlink(
+        mountRes: JSONObject,
+        allowLibrarySwitch: Boolean = false
+    ): JSONObject {
+        val finalRes = if (mountRes.optBoolean("ok", false) && !mountRes.optBoolean("needsPassword", false)) {
+            lastUsbDownlinkConnectedState = true
+            usbDownlinkSyncManager.syncCatalogFromConnectedUsb(
+                mountRes,
+                allowLibrarySwitch = allowLibrarySwitch,
+                onProgress = { t, s -> notifyWebViewUsbDownlinkStarted(t, s) }
+            )
+        } else {
+            mountRes
+        }
+        val phoneFreshMs = if (finalRes.optString("syncMode") == "usb_downlink_full") 0L else 15_000L
+        autoScanLinkedPhoneFoldersIfNeeded(forceNotify = false, minFreshMs = phoneFreshMs)
         notifyWebViewLinkStateChanged(force = true)
-        handleLoomeMountResult(res)
+        handleLoomeMountResult(finalRes)
+        return finalRes
+    }
+
+    private fun handleConnectedUsbAutoSync(allowLibrarySwitch: Boolean = false) {
+        val mountRes = safUsbManager.mountConnectedLoome()
+        usbOfflineUpdater.checkAndTriggerUpdate(autoApplyUi = true, triggerApkInstall = false)
+        completeConnectedUsbMountAndDownlink(mountRes, allowLibrarySwitch = allowLibrarySwitch)
     }
 
     private fun handleLoomeMountResult(res: JSONObject) {
@@ -834,6 +889,9 @@ class MainActivity : Activity() {
         if (reason == "ethical_foreign_owner") {
             notifyWebViewUsbSyncCompleted(JSONObject().put("ok", false).put("cancelled", true))
             showEthicalBlockDialog(res.optString("error"))
+        } else if (reason == "library_mismatch") {
+            notifyWebViewUsbSyncCompleted(JSONObject().put("ok", false).put("cancelled", true))
+            promptLibrarySwitchConfirmation(res)
         } else if (res.optBoolean("needsPassword", false)) {
             notifyWebViewUsbSyncCompleted(JSONObject().put("ok", false).put("cancelled", true))
             promptLoomePasswordDialog(res)
@@ -865,13 +923,16 @@ class MainActivity : Activity() {
                     bgExecutor.execute {
                         val uRes = safUsbManager.unlockLoomeWithPassword(pw)
                         if (uRes.optBoolean("ok", false)) {
-                            notifyWebViewUsbSyncCompleted(uRes)
-                            runOnUiThread {
-                                if (::webView.isInitialized) {
-                                    webView.evaluateJavascript(
-                                        "document.querySelectorAll('img[src*=\"/usb_photo/\"],img[src*=\"/thumb/\"]').forEach(function(i){var s=i.getAttribute('src');if(s){i.setAttribute('src',s.split('&t=')[0]+(s.indexOf('?')>=0?'&':'?')+'t='+Date.now());}});",
-                                        null
-                                    )
+                            val unlockedBase = JSONObject(uRes.toString()).put("unlocked", true)
+                            val finalRes = completeConnectedUsbMountAndDownlink(unlockedBase)
+                            if (finalRes.optBoolean("ok", false)) {
+                                runOnUiThread {
+                                    if (::webView.isInitialized) {
+                                        webView.evaluateJavascript(
+                                            "document.querySelectorAll('img[src*=\"/usb_photo/\"],img[src*=\"/thumb/\"]').forEach(function(i){var s=i.getAttribute('src');if(s){i.setAttribute('src',s.split('&t=')[0]+(s.indexOf('?')>=0?'&':'?')+'t='+Date.now());}});",
+                                            null
+                                        )
+                                    }
                                 }
                             }
                         } else {

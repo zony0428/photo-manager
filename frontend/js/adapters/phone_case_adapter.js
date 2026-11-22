@@ -296,21 +296,27 @@
       const f = fileList[i];
       const meta = preflightItems[i];
       const isSkip = skipSet.has(meta.client_id);
-      const nowTs = Date.now();
-      if (!isSkip || i === 0 || i === total - 1 || nowTs - lastProgTs >= 120) {
-        lastProgTs = nowTs;
-        progressListeners.forEach((fn) => {
-          try {
-            fn({ current: i + 1, total, fileName: f.name, importedCount, skippedCount, errorCount });
-          } catch (e) {}
-        });
-      }
-
       if (isSkip) {
         skippedCount += 1;
         succeededDocKeys.push(meta.client_id);
+        const nowTs = Date.now();
+        if (i === 0 || i === total - 1 || nowTs - lastProgTs >= 120) {
+          lastProgTs = nowTs;
+          progressListeners.forEach((fn) => {
+            try {
+              fn({ current: i + 1, total, fileName: f.name, importedCount, skippedCount, errorCount });
+            } catch (e) {}
+          });
+        }
         continue;
       }
+
+      lastProgTs = Date.now();
+      progressListeners.forEach((fn) => {
+        try {
+          fn({ current: i + 1, total, fileName: f.name, importedCount, skippedCount, errorCount });
+        } catch (e) {}
+      });
 
       const qs = new URLSearchParams({
         file_name: f.name,
@@ -356,6 +362,13 @@
           aborted = true;
           break;
         }
+      }
+      if (i === total - 1) {
+        progressListeners.forEach((fn) => {
+          try {
+            fn({ current: i + 1, total, fileName: f.name, importedCount, skippedCount, errorCount });
+          } catch (e) {}
+        });
       }
     }
 

@@ -302,6 +302,23 @@ class LockerDatabaseManager(private val context: Context) {
         return schemaModified
     }
 
+    /** アプリ専用一時領域にコピーした library.db の _v170_guard 参照等を無害化し、Android SQLite で安全に読める状態にする */
+    internal fun prepareTempDatabaseForAndroidRead(srcDbFile: File): Boolean {
+        if (!srcDbFile.exists() || srcDbFile.length() < 4096L) return false
+        var tmpDb: SQLiteDatabase? = null
+        return try {
+            tmpDb = SQLiteDatabase.openDatabase(srcDbFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE)
+            execPragmaSafe(tmpDb, "PRAGMA journal_mode = DELETE")
+            prepareV170GuardCompatibility(tmpDb)
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "一時DB互換前処理スキップ: ${e.message}")
+            false
+        } finally {
+            try { tmpDb?.close() } catch (_: Exception) {}
+        }
+    }
+
     private fun ensurePhotoLinksTable(db: SQLiteDatabase) {
         try {
             db.execSQL(
@@ -342,6 +359,17 @@ class LockerDatabaseManager(private val context: Context) {
         return withReadableDatabase { db ->
             try {
                 db.rawQuery("SELECT COUNT(*) FROM photos WHERE IFNULL(is_unlinked, 0) = 0 AND $NOT_PAIRED_RAW", null).use { c -> if (c.moveToFirst()) c.getInt(0) else 0 }
+            } catch (_: Exception) { 0 }
+        } ?: 0
+    }
+
+    /** スマホローカル取込 (PhoneCase) を除いた母艦由来の有効写真枚数を返す */
+    fun getMotherPhotoCount(): Int {
+        return withReadableDatabase { db ->
+            try {
+                db.rawQuery("SELECT COUNT(*) FROM photos WHERE id < 900000000 AND IFNULL(is_unlinked, 0) = 0 AND $NOT_PAIRED_RAW", null).use { c ->
+                    if (c.moveToFirst()) c.getInt(0) else 0
+                }
             } catch (_: Exception) { 0 }
         } ?: 0
     }
@@ -929,6 +957,184 @@ class LockerDatabaseManager(private val context: Context) {
             false
         } finally {
             if (attached) try { db.execSQL("DETACH DATABASE delta") } catch (_: Exception) {}
+        }
+    }
+
+    private fun hasAttachedTable(db: SQLiteDatabase, alias: String, tableName: String): Boolean {
+        return try {
+            db.rawQuery("SELECT 1 FROM $alias.sqlite_master WHERE type='table' AND name=?", arrayOf(tableName)).use {
+                it.moveToFirst()
+            }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun getTableColumnNames(
+        db: SQLiteDatabase,
+        alias: String,
+        tableName: String,
+        excludeCols: Set<String> = emptySet(),
+    ): List<String> {
+        val cols = mutableListOf<String>()
+        db.rawQuery("PRAGMA $alias.table_info(\"$tableName\")", null).use { c ->
+            val nameIdx = c.getColumnIndex("name")
+            while (c.moveToNext()) {
+                val name = if (nameIdx >= 0) c.getString(nameIdx) ?: "" else ""
+                if (name.isNotEmpty() && name !in excludeCols) cols.add(name)
+            }
+        }
+        return cols
+    }
+
+    private fun getCommonTableColumns(
+        db: SQLiteDatabase,
+        aliasA: String,
+        aliasB: String,
+        tableName: String,
+        excludeCols: Set<String> = emptySet(),
+    ): List<String> {
+        val colsA = getTableColumnNames(db, aliasA, tableName, excludeCols)
+        if (colsA.isEmpty()) return emptyList()
+        val colsBSet = getTableColumnNames(db, aliasB, tableName, excludeCols).toHashSet()
+        return colsA.filter { it in colsBSet }
+    }
+
+    /**
+     * 一時コピー済みの完全版 library.db から既存ロッカーDBへ差分（追加・更新・削除）をマージする。
+     * 新規カラム追加などでスキーマ差異がある場合は false を返し、丸ごと差し替えへ安全にフォールバックする。
+     */
+    fun applyFullLibraryDiffFromTemp(srcDbFile: File): Boolean = withWriteLock {
+        val db = ensureLibraryDbOpen() ?: return@withWriteLock false
+        prepareTempDatabaseForAndroidRead(srcDbFile)
+        var attached = false
+        try {
+            db.execSQL("ATTACH DATABASE '${srcDbFile.absolutePath.replace("'", "''")}' AS src")
+            attached = true
+
+            var srcLibId = ""
+            if (hasAttachedTable(db, "src", "app_meta")) {
+                db.rawQuery("SELECT value FROM src.app_meta WHERE key = 'library_id' LIMIT 1", null).use { c ->
+                    if (c.moveToFirst()) srcLibId = (c.getString(0) ?: "").trim()
+                }
+            }
+            val localLibId = readLocalLibraryId()
+            if (localLibId.isNotEmpty() && srcLibId.isNotEmpty() && localLibId != srcLibId) {
+                return@withWriteLock false
+            }
+
+            val mainPhotoCols = getTableColumnNames(db, "main", "photos", setOf("_v170_guard")).toHashSet()
+            val srcPhotoCols = getTableColumnNames(db, "src", "photos", setOf("_v170_guard"))
+            if (srcPhotoCols.isEmpty() || srcPhotoCols.any { it !in mainPhotoCols }) {
+                return@withWriteLock false
+            }
+            val thumbCols = getCommonTableColumns(db, "main", "src", "thumbnails")
+            if ("photo_id" !in thumbCols || "data" !in thumbCols) {
+                return@withWriteLock false
+            }
+
+            val photoColList = srcPhotoCols.joinToString(", ") { "\"$it\"" }
+            execPragmaSafe(db, "PRAGMA foreign_keys = OFF")
+            db.beginTransaction()
+            try {
+                db.execSQL("DROP TRIGGER IF EXISTS main.trg_photos_after_delete")
+                db.execSQL("DELETE FROM main.thumbnails WHERE photo_id < 900000000 AND photo_id NOT IN (SELECT id FROM src.photos WHERE IFNULL(is_unlinked, 0) = 0)")
+                db.execSQL("DELETE FROM main.photos WHERE id < 900000000 AND id NOT IN (SELECT id FROM src.photos WHERE IFNULL(is_unlinked, 0) = 0)")
+                db.execSQL("INSERT OR REPLACE INTO main.photos ($photoColList) SELECT $photoColList FROM src.photos WHERE IFNULL(is_unlinked, 0) = 0")
+
+                if (hasAttachedTable(db, "src", "photo_tags") && hasAttachedTable(db, "main", "photo_tags")) {
+                    db.execSQL("DELETE FROM main.photo_tags WHERE photo_id < 900000000")
+                    db.execSQL(
+                        "INSERT OR REPLACE INTO main.photo_tags (photo_id, tag, source, confidence) " +
+                            "SELECT pt.photo_id, pt.tag, pt.source, pt.confidence " +
+                            "FROM src.photo_tags pt INNER JOIN src.photos p ON p.id = pt.photo_id WHERE IFNULL(p.is_unlinked, 0) = 0"
+                    )
+                }
+
+                if (hasAttachedTable(db, "src", "photo_links") && hasAttachedTable(db, "main", "photo_links")) {
+                    val linkCols = getCommonTableColumns(db, "main", "src", "photo_links")
+                    if ("photo_id" in linkCols) {
+                        db.execSQL("DELETE FROM main.photo_links WHERE IFNULL(volume_serial, '') != 'ANDROID_LOCAL'")
+                        val lColsSql = linkCols.joinToString(", ") { "\"$it\"" }
+                        val lSelectSql = linkCols.joinToString(", ") { "pl.\"$it\"" }
+                        db.execSQL(
+                            "INSERT OR REPLACE INTO main.photo_links ($lColsSql) " +
+                                "SELECT $lSelectSql FROM src.photo_links pl INNER JOIN src.photos p ON p.id = pl.photo_id WHERE IFNULL(p.is_unlinked, 0) = 0"
+                        )
+                    }
+                }
+
+                for (optTable in arrayOf("tag_definitions", "filter_presets", "security_meta", "volumes")) {
+                    if (hasAttachedTable(db, "src", optTable) && hasAttachedTable(db, "main", optTable)) {
+                        val optCols = getCommonTableColumns(db, "main", "src", optTable)
+                        if (optCols.isNotEmpty()) {
+                            val oColsSql = optCols.joinToString(", ") { "\"$it\"" }
+                            db.execSQL("DELETE FROM main.\"$optTable\"")
+                            db.execSQL("INSERT OR REPLACE INTO main.\"$optTable\" ($oColsSql) SELECT $oColsSql FROM src.\"$optTable\"")
+                        }
+                    }
+                }
+
+                if (hasAttachedTable(db, "src", "app_meta") && hasAttachedTable(db, "main", "app_meta")) {
+                    val metaCols = getCommonTableColumns(db, "main", "src", "app_meta")
+                    if ("key" in metaCols && "value" in metaCols) {
+                        val mColsSql = metaCols.joinToString(", ") { "\"$it\"" }
+                        db.execSQL("INSERT OR REPLACE INTO main.app_meta ($mColsSql) SELECT $mColsSql FROM src.app_meta")
+                    }
+                }
+
+                if (hasAttachedTable(db, "src", "watermark_assets")) {
+                    db.execSQL(
+                        """
+                        CREATE TABLE IF NOT EXISTS main.watermark_assets (
+                            id TEXT PRIMARY KEY,
+                            name TEXT NOT NULL,
+                            mime_type TEXT NOT NULL,
+                            width INTEGER NOT NULL,
+                            height INTEGER NOT NULL,
+                            data BLOB NOT NULL,
+                            origin TEXT NOT NULL DEFAULT 'pc',
+                            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                        )
+                        """.trimIndent()
+                    )
+                    val wmCols = getCommonTableColumns(db, "main", "src", "watermark_assets")
+                    if (wmCols.isNotEmpty()) {
+                        val wmColsSql = wmCols.joinToString(", ") { "\"$it\"" }
+                        db.execSQL("DELETE FROM main.watermark_assets WHERE IFNULL(origin, 'pc') != 'mobile'")
+                        db.execSQL("INSERT OR REPLACE INTO main.watermark_assets ($wmColsSql) SELECT $wmColsSql FROM src.watermark_assets")
+                        db.execSQL("INSERT OR REPLACE INTO main.app_meta (key, value) VALUES ('${WatermarkAssetStore.DEFAULT_WATERMARK_SEED_KEY}', '1')")
+                    }
+                }
+
+                val tColsSql = thumbCols.joinToString(", ") { "\"$it\"" }
+                val tSelectSql = thumbCols.joinToString(", ") { "t.\"$it\"" }
+                val diffConds = mutableListOf("m.photo_id IS NULL")
+                if ("created_at" in thumbCols) {
+                    diffConds.add("(t.created_at IS NOT NULL AND (m.created_at IS NULL OR t.created_at > m.created_at))")
+                }
+                if ("file_hash" in thumbCols) {
+                    diffConds.add("(m.file_hash IS NOT NULL AND t.file_hash IS NOT NULL AND m.file_hash != t.file_hash)")
+                }
+                db.execSQL(
+                    "INSERT OR REPLACE INTO main.thumbnails ($tColsSql) " +
+                        "SELECT $tSelectSql FROM src.thumbnails t " +
+                        "INNER JOIN src.photos p ON p.id = t.photo_id " +
+                        "LEFT JOIN main.thumbnails m ON m.photo_id = t.photo_id " +
+                        "WHERE IFNULL(p.is_unlinked, 0) = 0 AND (${diffConds.joinToString(" OR ")})"
+                )
+
+                db.setTransactionSuccessful()
+            } finally {
+                db.endTransaction()
+            }
+            safePhotoColumnExpr = buildSafePhotoSelectColumns(db)
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "完全版library.db差分マージ失敗（差し替えフォールバック）: ${e.message}")
+            false
+        } finally {
+            if (attached) try { db.execSQL("DETACH DATABASE src") } catch (_: Exception) {}
         }
     }
 

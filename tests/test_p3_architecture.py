@@ -623,6 +623,65 @@ class TestPhase3Architecture(unittest.TestCase):
         self.assertIn("mDownloadApkBannerBtn", mobile_js)
         self.assertIn("/api/mobile/apk?t=", mobile_js)
 
+    def test_10_android_usb_readonly_auto_downlink_wiring(self):
+        """Android USB 自動差分ダウンリンクの完全Read-Only設計・安全ガード・UI警告配線を検証"""
+        pkg_dir = PROJECT_ROOT / "android" / "app" / "src" / "main" / "java" / "com" / "tetheract" / "pm"
+        usb_dl_path = pkg_dir / "UsbDownlinkSyncManager.kt"
+        self.assertTrue(usb_dl_path.exists())
+        self.assertIn(usb_dl_path, build_android_apk.REQUIRED_ANDROID_FILES)
+
+        usb_dl_kt = usb_dl_path.read_text(encoding="utf-8")
+        # USB SAF URI への書き込みAPIを一切持たない完全 Read-Only 実装を検証
+        self.assertIn("openInputStream", usb_dl_kt)
+        for forbidden_write in ("openOutputStream", "createFile", "createDirectory"):
+            self.assertNotIn(forbidden_write, usb_dl_kt)
+
+        for sym in (
+            "owner_id",
+            "ethical_foreign_owner",
+            "library_mismatch",
+            "applyDeltaDatabase",
+            "applyFullLibraryDiffFromTemp",
+            "replayPendingJournal",
+            "usb_last_downlink_sig",
+        ):
+            self.assertIn(sym, usb_dl_kt)
+
+        saf_kt = (pkg_dir / "SafUsbManager.kt").read_text(encoding="utf-8")
+        locker_kt = (pkg_dir / "LockerDatabaseManager.kt").read_text(encoding="utf-8")
+        main_kt = (pkg_dir / "MainActivity.kt").read_text(encoding="utf-8")
+        mobile_html = (PROJECT_ROOT / "frontend" / "mobile.html").read_text(encoding="utf-8")
+        mobile_js = (PROJECT_ROOT / "frontend" / "js" / "mobile.js").read_text(encoding="utf-8")
+        morph_js = (PROJECT_ROOT / "frontend" / "js" / "views" / "touch" / "morph_thumb_bar.js").read_text(encoding="utf-8")
+
+        self.assertIn("findCacheDirectory", saf_kt)
+        for sym in ("prepareTempDatabaseForAndroidRead", "getMotherPhotoCount", "applyFullLibraryDiffFromTemp"):
+            self.assertIn(sym, locker_kt)
+        for sym in ("usbDownlinkSyncManager", "completeConnectedUsbMountAndDownlink", "__onTetheractUsbDownlinkStarted"):
+            self.assertIn(sym, main_kt)
+
+        self.assertIn("mNativeUsbDownlinkNotice", mobile_html)
+        self.assertIn("ダウンリンク専用", mobile_html)
+        self.assertIn("__onTetheractUsbDownlinkStarted", mobile_js)
+        self.assertIn("_formatUsbDownlinkToast", mobile_js)
+        self.assertIn("usb_downlink_", morph_js)
+
+    def test_11_phone_case_duplicate_skip_display_and_progress(self):
+        """モバイル「母艦へ収納」の0件重複スキップ非表示・進捗signalSyncedCount/skippedCount反映を検証"""
+        touch_case_js = (
+            PROJECT_ROOT / "frontend" / "js" / "views" / "touch" / "touch_phone_case.js"
+        ).read_text(encoding="utf-8")
+        mobile_js = (PROJECT_ROOT / "frontend" / "js" / "mobile.js").read_text(encoding="utf-8")
+        runner_kt = (
+            PROJECT_ROOT / "android" / "app" / "src" / "main" / "java" / "com" / "tetheract" / "pm" / "PhoneCaseTransferRunner.kt"
+        ).read_text(encoding="utf-8")
+
+        self.assertNotIn("重複スキップ: 0枚", touch_case_js)
+        self.assertIn("_formatTransferProgressSub", touch_case_js)
+        self.assertIn("if (skp > 0)", touch_case_js)
+        self.assertIn('.put("signalSyncedCount", sig)', runner_kt)
+        self.assertIn("quickSum.skippedCount", mobile_js)
+
 
 if __name__ == "__main__":
     unittest.main()
