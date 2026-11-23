@@ -1555,6 +1555,8 @@ def refresh_photo_thumbnail_transform(photo_id: int, delta_degrees: int = 0) -> 
                     data, w, h = res
                     file_hash = compute_thumbnail_hash(str(target_path))
                     save_thumbnail(photo_id, data, w, h, file_hash)
+                    from .database.connection import bump_db_commit_seq
+                    bump_db_commit_seq(("thumbnails",))
                     return True
             except Exception as e:
                 logger.warning(f"元画像からのサムネイル再生成失敗 ({photo_id}): {e}")
@@ -1575,6 +1577,8 @@ def refresh_photo_thumbnail_transform(photo_id: int, delta_degrees: int = 0) -> 
                 buf = io.BytesIO()
                 img.save(buf, format="WEBP", quality=85)
                 save_thumbnail(photo_id, buf.getvalue(), img.width, img.height, existing.get("file_hash"))
+                from .database.connection import bump_db_commit_seq
+                bump_db_commit_seq(("thumbnails",))
                 return True
         except Exception as e:
             logger.warning(f"既存サムネイルのメモリ回転に失敗しました: {e}")

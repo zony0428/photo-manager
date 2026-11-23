@@ -64,7 +64,7 @@ class PendingJournalStore(
         }
     }
 
-    /** 既存の pending_journal.db に後から追加した列（rev・タグキー）を補う */
+    /** 既存の pending_journal.db に後から追加した列（rev・タグキー・編集前調整基準値）を補う */
     private fun migrateColumns(db: SQLiteDatabase) {
         val existing = mutableSetOf<String>()
         db.rawQuery("PRAGMA table_info(pending_changes)", null).use { c ->
@@ -74,7 +74,8 @@ class PendingJournalStore(
             "rev" to "INTEGER DEFAULT 0",
             "add_tag_keys_json" to "TEXT DEFAULT '{}'",
             "remove_tag_keys_json" to "TEXT DEFAULT '{}'",
-            "camera_model" to "TEXT DEFAULT ''"
+            "camera_model" to "TEXT DEFAULT ''",
+            "base_adjustments_json" to "TEXT DEFAULT '{}'"
         )
         for ((col, def) in required) {
             if (col !in existing) {
@@ -83,8 +84,23 @@ class PendingJournalStore(
         }
     }
 
+    private fun hasAnyAdjustmentKey(obj: JSONObject): Boolean {
+        for (k in INT_ADJUST_COLUMNS) {
+            if (obj.has(k) && !obj.isNull(k)) return true
+        }
+        for (k in REAL_ADJUST_COLUMNS) {
+            if (obj.has(k) && !obj.isNull(k)) return true
+        }
+        return false
+    }
+
     /** 写真1枚分の変更を既存エントリへ統合し、新しい rev を振って記録する */
-    fun record(photoId: Long, identity: JournalPhotoIdentity, payload: JSONObject) = synchronized(lock) {
+    fun record(
+        photoId: Long,
+        identity: JournalPhotoIdentity,
+        payload: JSONObject,
+        preEditAdjustments: JSONObject? = null
+    ) = synchronized(lock) {
         val jDb = ensureOpen()
         val journalKey = identity.contentKey.ifEmpty { "pid:$photoId:${identity.fileName}" }
         val addSet = linkedSetOf<String>()
@@ -94,9 +110,10 @@ class PendingJournalStore(
         var mergedRating: Int? = if (payload.has("rating") && !payload.isNull("rating")) payload.optInt("rating") else null
         var mergedFavorite: Int? = if (payload.has("is_favorite") && !payload.isNull("is_favorite")) payload.optInt("is_favorite") else null
         var adjObj = JSONObject()
+        var baseAdjObj = JSONObject()
 
         jDb.rawQuery(
-            "SELECT rating, add_tags_json, remove_tags_json, adjustments_json, is_favorite, add_tag_keys_json, remove_tag_keys_json " +
+            "SELECT rating, add_tags_json, remove_tags_json, adjustments_json, is_favorite, add_tag_keys_json, remove_tag_keys_json, base_adjustments_json " +
                 "FROM pending_changes WHERE journal_key = ? LIMIT 1",
             arrayOf(journalKey)
         ).use { c ->
@@ -110,7 +127,12 @@ class PendingJournalStore(
                 if (mergedFavorite == null && !c.isNull(4)) mergedFavorite = c.getInt(4)
                 addKeys = parseJsonObjectOrEmpty(c.getString(5))
                 removeKeys = parseJsonObjectOrEmpty(c.getString(6))
+                baseAdjObj = parseJsonObjectOrEmpty(c.getString(7))
             }
+        }
+        // 初回の調整編集時のみ編集前（サムネイル/PC側の焼き込み済み基準値）を確定保存する
+        if (baseAdjObj.length() == 0 && hasAnyAdjustmentKey(payload) && preEditAdjustments != null && preEditAdjustments.length() > 0) {
+            baseAdjObj = JSONObject(preEditAdjustments.toString())
         }
         for (intCol in INT_ADJUST_COLUMNS) {
             if (payload.has(intCol) && !payload.isNull(intCol)) adjObj.put(intCol, payload.optInt(intCol, 0))
@@ -158,10 +180,55 @@ class PendingJournalStore(
             put("add_tag_keys_json", addKeys.toString())
             put("remove_tag_keys_json", removeKeys.toString())
             put("adjustments_json", adjObj.toString())
+            put("base_adjustments_json", baseAdjObj.toString())
             put("rev", nextRev)
             put("updated_at", nowProvider())
         }
         jDb.insertWithOnConflict("pending_changes", null, cv, SQLiteDatabase.CONFLICT_REPLACE)
+    }
+
+    /** USBダウンリンク等の再適用後、新しいカタログ側の焼き込み基準値と photo_id をジャーナルへ反映する */
+    fun updateBaseAdjustmentsForJournalKey(journalKey: String, newPhotoId: Long, baseAdjustments: JSONObject) = synchronized(lock) {
+        if (journalKey.isBlank()) return@synchronized
+        val jDb = ensureOpen()
+        val cv = ContentValues().apply {
+            if (newPhotoId > 0L) put("photo_id", newPhotoId)
+            put("base_adjustments_json", baseAdjustments.toString())
+        }
+        jDb.update("pending_changes", cv, "journal_key = ?", arrayOf(journalKey))
+    }
+
+    /** WebView向けに未同期調整の編集前焼き込み基準値マップ {byId, byKey} を返す */
+    fun readBaseAdjustmentsMapJson(): String = synchronized(lock) {
+        val byId = JSONObject()
+        val byKey = JSONObject()
+        try {
+            ensureOpen().rawQuery(
+                "SELECT photo_id, content_key, adjustments_json, base_adjustments_json FROM pending_changes",
+                null
+            ).use { c ->
+                while (c.moveToNext()) {
+                    val pid = c.getLong(0)
+                    val cKey = (c.getString(1) ?: "").trim()
+                    val adjObj = parseJsonObjectOrEmpty(c.getString(2))
+                    if (!hasAnyAdjustmentKey(adjObj)) continue
+                    var baseObj = parseJsonObjectOrEmpty(c.getString(3))
+                    if (baseObj.length() == 0) {
+                        baseObj = JSONObject()
+                            .put("rotation", 0)
+                            .put("brightness", 0)
+                            .put("contrast", 0)
+                            .put("saturation", 0)
+                            .put("fine_angle", 0.0)
+                    }
+                    if (pid > 0L) byId.put(pid.toString(), baseObj)
+                    if (cKey.isNotEmpty()) byKey.put(cKey, baseObj)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "未同期基準値マップ読取エラー: ${e.message}")
+        }
+        JSONObject().put("byId", byId).put("byKey", byKey).toString()
     }
 
     /** 再適用（リプレイ）用に全エントリを返す。adjustments_json はトップレベルへ展開済み */

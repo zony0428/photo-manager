@@ -332,6 +332,14 @@ class TetheractNativeBridge(
     }
 
     /**
+     * 未同期調整の編集前焼き込み基準値マップ {byId, byKey} を取得する
+     */
+    @JavascriptInterface
+    fun getPendingBakedAdjustmentsMapJson(): String {
+        return lockerDbManager.getPendingBakedAdjustmentsMapJson()
+    }
+
+    /**
      * PCサーバー同期完了後に、送信時点の journal_rev 以下のジャーナルだけをクリアする
      */
     @JavascriptInterface

@@ -557,6 +557,41 @@ class LockerDatabaseManager(private val context: Context) {
         return result.toString()
     }
 
+    private fun payloadHasAdjustmentKeys(payload: JSONObject): Boolean {
+        for (k in arrayOf("rotation", "brightness", "contrast", "saturation", "fine_angle", "crop_x", "crop_y", "crop_w", "crop_h")) {
+            if (payload.has(k) && !payload.isNull(k)) return true
+        }
+        return false
+    }
+
+    /** 編集前の非破壊調整カラムを安全に読み取り、焼き込み基準値スナップショットとして返す */
+    private fun readPhotoAdjustmentsSnapshot(db: SQLiteDatabase, photoId: Long): JSONObject? {
+        return try {
+            db.rawQuery("SELECT * FROM photos WHERE id = ? LIMIT 1", arrayOf(photoId.toString())).use { c ->
+                if (!c.moveToFirst()) return null
+                val snap = JSONObject()
+                for (intCol in arrayOf("rotation", "brightness", "contrast", "saturation")) {
+                    val idx = c.getColumnIndex(intCol)
+                    snap.put(intCol, if (idx >= 0 && !c.isNull(idx)) c.getInt(idx) else 0)
+                }
+                val faIdx = c.getColumnIndex("fine_angle")
+                snap.put("fine_angle", if (faIdx >= 0 && !c.isNull(faIdx)) c.getDouble(faIdx) else 0.0)
+                for (cropCol in arrayOf("crop_x", "crop_y", "crop_w", "crop_h")) {
+                    val idx = c.getColumnIndex(cropCol)
+                    if (idx >= 0 && !c.isNull(idx)) {
+                        snap.put(cropCol, c.getDouble(idx))
+                    } else {
+                        snap.put(cropCol, JSONObject.NULL)
+                    }
+                }
+                snap
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "調整基準値読取スキップ (id=$photoId): ${e.message}")
+            null
+        }
+    }
+
     /** 評価・タグ・非破壊調整をロッカーDBへ即時反映し、同時に pending_journal.db へ永続記録する */
     fun savePhotoChangeJson(payloadJson: String): String = withWriteLock {
         try {
@@ -564,8 +599,9 @@ class LockerDatabaseManager(private val context: Context) {
             val photoId = payload.optLong("photo_id", 0L)
             if (photoId <= 0L) return@withWriteLock JSONObject().put("ok", false).put("error", "Invalid photo_id").toString()
             val db = ensureLibraryDbOpen()
+            val preEditAdj = if (db != null && payloadHasAdjustmentKeys(payload)) readPhotoAdjustmentsSnapshot(db, photoId) else null
             if (db != null) applyChangeToLibraryDb(db, photoId, payload)
-            recordChangeToJournalDb(db, photoId, payload)
+            recordChangeToJournalDb(db, photoId, payload, preEditAdj)
             JSONObject().put("ok", true).put("photo_id", photoId).put("pendingChangeCount", getPendingChangeCount()).toString()
         } catch (e: Exception) {
             Log.e(TAG, "変更保存エラー", e)
@@ -623,6 +659,7 @@ class LockerDatabaseManager(private val context: Context) {
 
             val db = ensureLibraryDbOpen()
             val preloadedIdentities = HashMap<Long, JournalPhotoIdentity>()
+            val preEditAdjMap = HashMap<Long, JSONObject>()
             if (db != null) {
                 val needMetaIds = batchEntries.mapNotNull { (pid, obj) ->
                     val missing = obj.optString("content_key", "").isEmpty() ||
@@ -653,6 +690,12 @@ class LockerDatabaseManager(private val context: Context) {
                     }
                 }
 
+                for ((pid, merged) in batchEntries) {
+                    if (payloadHasAdjustmentKeys(merged) && !preEditAdjMap.containsKey(pid)) {
+                        readPhotoAdjustmentsSnapshot(db, pid)?.let { preEditAdjMap[pid] = it }
+                    }
+                }
+
                 db.beginTransaction()
                 try {
                     for ((pid, merged) in batchEntries) {
@@ -674,7 +717,7 @@ class LockerDatabaseManager(private val context: Context) {
                     dateTaken = merged.optString("date_taken", "").trim().ifEmpty { fallback?.dateTaken ?: "" },
                     cameraModel = merged.optString("camera_model", "").trim().ifEmpty { fallback?.cameraModel ?: "" }
                 )
-                journal.record(pid, identity, merged)
+                journal.record(pid, identity, merged, preEditAdjMap[pid])
             }
 
             JSONObject()
@@ -766,7 +809,12 @@ class LockerDatabaseManager(private val context: Context) {
     }
 
     /** ペイロードに欠けている識別情報をロッカーDBから補ってジャーナルへ記録する（単体運用時のスマホローカル写真も対象） */
-    private fun recordChangeToJournalDb(libDb: SQLiteDatabase?, photoId: Long, payload: JSONObject) {
+    private fun recordChangeToJournalDb(
+        libDb: SQLiteDatabase?,
+        photoId: Long,
+        payload: JSONObject,
+        preEditAdjustments: JSONObject? = null
+    ) {
         var contentKey = payload.optString("content_key", "").trim()
         var filePath = payload.optString("file_path", "").trim()
         var fileName = payload.optString("file_name", "").trim()
@@ -789,7 +837,7 @@ class LockerDatabaseManager(private val context: Context) {
                 }
             }
         }
-        journal.record(photoId, JournalPhotoIdentity(contentKey, filePath, fileName, fileSize, dateTaken, cameraModel), payload)
+        journal.record(photoId, JournalPhotoIdentity(contentKey, filePath, fileName, fileSize, dateTaken, cameraModel), payload, preEditAdjustments)
     }
 
     /** USBやWi-Fiで新しい library.db をロッカーに反映した際、未同期ジャーナルを content_key / 撮影日時+サイズ優先で再適用する */
@@ -798,16 +846,25 @@ class LockerDatabaseManager(private val context: Context) {
         val patches = journal.readReplayPatches()
         if (patches.isEmpty()) return@withWriteLock 0
         var replayed = 0
+        val refreshedBases = mutableListOf<Triple<String, Long, JSONObject>>()
         libDb.beginTransaction()
         try {
             for ((entry, replayPatch) in patches) {
                 val targetId = resolveTargetPhotoIdForReplay(libDb, entry) ?: continue
+                if (payloadHasAdjustmentKeys(replayPatch)) {
+                    readPhotoAdjustmentsSnapshot(libDb, targetId)?.let { snap ->
+                        refreshedBases.add(Triple(entry.optString("journal_key", ""), targetId, snap))
+                    }
+                }
                 applyChangeOperationsInTx(libDb, targetId, replayPatch)
                 replayed++
             }
             libDb.setTransactionSuccessful()
         } finally {
             libDb.endTransaction()
+        }
+        for ((jKey, tgtId, snap) in refreshedBases) {
+            journal.updateBaseAdjustmentsForJournalKey(jKey, tgtId, snap)
         }
         replayed
     }
@@ -842,6 +899,8 @@ class LockerDatabaseManager(private val context: Context) {
     }
 
     fun getPendingChangeCount(): Int = journal.count()
+
+    fun getPendingBakedAdjustmentsMapJson(): String = withReadLock { journal.readBaseAdjustmentsMapJson() }
 
     fun buildMobileSyncJsonPayload(): String = buildMobileSyncSnapshot().first
 

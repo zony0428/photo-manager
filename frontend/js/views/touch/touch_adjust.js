@@ -74,6 +74,7 @@
     activeParam: 'exposure',
     values: { exposure: 0.0, contrast: 0, saturation: 0, tilt: 0.0 },
     bakedValues: { exposure: 0.0, contrast: 0, saturation: 0, tilt: 0.0, rotation: 0 },
+    currentRotation: 0,
     aspectRatio: 1.3333,
     tiltGridEnabled: true,
     toneGridEnabled: false,
@@ -115,11 +116,15 @@
     const effCt = isUnbaked ? (cur.contrast || 0) : (cur.contrast || 0) - (baked.contrast || 0);
     const effSat = isUnbaked ? (cur.saturation || 0) : (cur.saturation || 0) - (baked.saturation || 0);
     const effTilt = isUnbaked ? (cur.tilt || 0) : (cur.tilt || 0) - (baked.tilt || 0);
-    const effDeg = isUnbaked ? (baked.rotation || 0) + effTilt : effTilt;
+    const curRot = ((Math.round(Number(cur.rotation !== undefined ? cur.rotation : (baked.rotation || 0))) % 360) + 360) % 360;
+    const bakedRot = ((Math.round(Number(baked.rotation || 0)) % 360) + 360) % 360;
+    const effRot90 = isUnbaked ? curRot : (((curRot - bakedRot) % 360) + 360) % 360;
+    const effDeg = effRot90 + effTilt;
 
     let filterStr = '';
     if (Math.abs(effEv) > 0.005 || Math.abs(effCt) > 0.1 || Math.abs(effSat) > 0.1) {
-      const bFactor = Math.max(0.1, Math.min(4.0, Math.pow(2.0, effEv / 2.2))).toFixed(4);
+      const clampedEv = Math.max(-3.0, Math.min(3.0, effEv));
+      const bFactor = Math.max(0.1, Math.min(4.0, Math.pow(2.0, clampedEv / 2.2))).toFixed(4);
       const cFactor = Math.max(0.1, Math.min(2.5, 1.0 + (effCt / 100.0) * 0.75)).toFixed(3);
       const sFactor = Math.max(0.0, Math.min(3.0, 1.0 + effSat / 100.0)).toFixed(3);
       filterStr = `brightness(${bFactor}) contrast(${cFactor}) saturate(${sFactor})`;
@@ -143,13 +148,169 @@
     return { filterStr, transformStr };
   }
 
+  /**
+   * サムネイルも含めて完全に未焼き込みのスマホ原本写真かどうかを判定する
+   */
+  function isPhoneUnbakedPhoto(photo) {
+    if (!photo) return false;
+    return Boolean(
+      photo.is_phone_case ||
+      Number(photo.id) >= 900000000 ||
+      photo.volume_serial === 'ANDROID_LOCAL' ||
+      String(photo.file_path || '').startsWith('phone://')
+    );
+  }
+
+  /**
+   * 読み込んだ画像（HD原本またはサムネイル）が非破壊調整未適用の生画像かどうかを判定する
+   */
+  function resolveImageUnbakedState(photo, options = {}) {
+    const isFallback = Boolean(options && options.isFallback);
+    const isServerMode = Boolean(options && options.isServerMode);
+    if (isServerMode) return false;
+    if (isFallback) return isPhoneUnbakedPhoto(photo);
+    const nativeSrc = (options && options.nativeSource) ||
+      (global.TetheractNative?.getLastPhotoSource ? global.TetheractNative.getLastPhotoSource(Number((photo && photo.id) || 0)) : '');
+    return nativeSrc === 'usb' || nativeSrc === 'phone' || isPhoneUnbakedPhoto(photo);
+  }
+
+  /**
+   * server/scanner.py の apply_photo_adjustments_pil と同一座標・計算式で
+   * 非破壊調整（90°回転・水平傾き内接クロップ・トリミング・露出/コントラスト/彩度）を Canvas へ描画する
+   */
+  function renderAdjustedPhotoCanvas(img, photo, options = {}) {
+    const srcW = Math.max(1, (img && (img.naturalWidth || img.width)) || 1);
+    const srcH = Math.max(1, (img && (img.naturalHeight || img.height)) || 1);
+    const isUnbaked = Boolean(options && options.isUnbaked);
+    const maxLong = Math.max(0, Number((options && options.maxLongEdge) || 0));
+
+    const baked = (photo && photo._bakedAdjust) || {
+      brightness: 0,
+      contrast: 0,
+      saturation: 0,
+      fine_angle: 0,
+      rotation: 0,
+    };
+
+    const curEv = Number((photo && photo.brightness) || 0) / 10.0;
+    const bakedEv = Number(baked.brightness || 0) / 10.0;
+    const effEv = isUnbaked ? curEv : (curEv - bakedEv);
+    const effCt = isUnbaked ? Number((photo && photo.contrast) || 0) : (Number((photo && photo.contrast) || 0) - Number(baked.contrast || 0));
+    const effSat = isUnbaked ? Number((photo && photo.saturation) || 0) : (Number((photo && photo.saturation) || 0) - Number(baked.saturation || 0));
+    const effTilt = isUnbaked ? Number((photo && photo.fine_angle) || 0) : (Number((photo && photo.fine_angle) || 0) - Number(baked.fine_angle || 0));
+    const curRot = ((Math.round(Number((photo && photo.rotation) || 0)) % 360) + 360) % 360;
+    const bakedRot = ((Math.round(Number(baked.rotation || 0)) % 360) + 360) % 360;
+    const effRot90 = isUnbaked ? curRot : (((curRot - bakedRot) % 360) + 360) % 360;
+
+    let cx = 0.0;
+    let cy = 0.0;
+    let cw = 1.0;
+    let ch = 1.0;
+    let hasCrop = false;
+    const rawCw = photo && photo.crop_w;
+    const rawCh = photo && photo.crop_h;
+    if (rawCw != null && rawCh != null && Number(rawCw) > 0 && Number(rawCh) > 0) {
+      cx = Math.max(0.0, Math.min(1.0, Number(photo.crop_x || 0)));
+      cy = Math.max(0.0, Math.min(1.0, Number(photo.crop_y || 0)));
+      cw = Math.max(0.01, Math.min(1.0 - cx, Number(rawCw)));
+      ch = Math.max(0.01, Math.min(1.0 - cy, Number(rawCh)));
+      const hasGeomCrop = cw < 0.999 || ch < 0.999 || cx > 0.001 || cy > 0.001;
+      if (hasGeomCrop) {
+        if (isUnbaked) {
+          hasCrop = true;
+        } else {
+          const hasBakedCropFields = baked && (
+            baked.crop_w !== undefined ||
+            baked.crop_h !== undefined ||
+            baked.crop_x !== undefined ||
+            baked.crop_y !== undefined
+          );
+          const cropMatchesBaked = !hasBakedCropFields || (
+            Math.abs(Number(baked.crop_x || 0) - cx) < 0.001 &&
+            Math.abs(Number(baked.crop_y || 0) - cy) < 0.001 &&
+            Math.abs(Number(baked.crop_w || 0) - cw) < 0.001 &&
+            Math.abs(Number(baked.crop_h || 0) - ch) < 0.001
+          );
+          hasCrop = !cropMatchesBaked;
+        }
+      }
+    }
+
+    const hasRot90 = effRot90 !== 0;
+    const hasTilt = Math.abs(effTilt) > 0.01;
+    const hasTone = Math.abs(effEv) > 0.005 || Math.abs(effCt) > 0.1 || Math.abs(effSat) > 0.1;
+    const needsResize = maxLong > 0 && Math.max(srcW, srcH) > maxLong;
+
+    if (!hasRot90 && !hasTilt && !hasCrop && !hasTone && !needsResize) {
+      return { source: img, width: srcW, height: srcH, adjusted: false };
+    }
+
+    const isSwap90 = effRot90 === 90 || effRot90 === 270;
+    const rotW = isSwap90 ? srcH : srcW;
+    const rotH = isSwap90 ? srcW : srcH;
+
+    let autoScale = 1.0;
+    if (hasTilt) {
+      const rad = (Math.abs(effTilt) * Math.PI) / 180.0;
+      const aspectMax = Math.max(rotW / Math.max(1, rotH), rotH / Math.max(1, rotW));
+      autoScale = Math.cos(rad) + Math.sin(rad) * aspectMax;
+    }
+
+    const useCx = hasCrop ? cx : 0.0;
+    const useCy = hasCrop ? cy : 0.0;
+    const useCw = hasCrop ? cw : 1.0;
+    const useCh = hasCrop ? ch : 1.0;
+
+    const baseOutW = Math.max(1, Math.round((rotW / autoScale) * useCw));
+    const baseOutH = Math.max(1, Math.round((rotH / autoScale) * useCh));
+    const baseLong = Math.max(baseOutW, baseOutH);
+    const outScale = maxLong > 0 && baseLong > maxLong ? (maxLong / baseLong) : 1.0;
+    const outW = Math.max(1, Math.round(baseOutW * outScale));
+    const outH = Math.max(1, Math.round(baseOutH * outScale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = outW;
+    canvas.height = outH;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      return { source: img, width: srcW, height: srcH, adjusted: false };
+    }
+
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, outW, outH);
+    ctx.save();
+    if (hasTone && typeof ctx.filter === 'string') {
+      const clampedEv = Math.max(-3.0, Math.min(3.0, effEv));
+      const bFactor = Math.max(0.1, Math.min(4.0, Math.pow(2.0, clampedEv / 2.2))).toFixed(4);
+      const cFactor = Math.max(0.1, Math.min(2.5, 1.0 + (effCt / 100.0) * 0.75)).toFixed(3);
+      const sFactor = Math.max(0.0, Math.min(3.0, 1.0 + effSat / 100.0)).toFixed(3);
+      ctx.filter = `brightness(${bFactor}) contrast(${cFactor}) saturate(${sFactor})`;
+    }
+
+    const fullInscribedW = outW / useCw;
+    const fullInscribedH = outH / useCh;
+    const drawScale = Math.max((fullInscribedW * autoScale) / rotW, (fullInscribedH * autoScale) / rotH);
+    ctx.translate((0.5 - useCx) * fullInscribedW, (0.5 - useCy) * fullInscribedH);
+    const totalRad = ((effRot90 + effTilt) * Math.PI) / 180.0;
+    if (Math.abs(totalRad) > 0.0001) {
+      ctx.rotate(totalRad);
+    }
+    const drawW = srcW * drawScale;
+    const drawH = srcH * drawScale;
+    ctx.drawImage(img, -drawW * 0.5, -drawH * 0.5, drawW, drawH);
+    ctx.restore();
+
+    return { source: canvas, width: outW, height: outH, adjusted: true };
+  }
+
   function _applyLivePreviewToImage(imgEl) {
     const target = imgEl || document.getElementById('mViewerImg');
     if (!target) return;
     const isUnbaked = target.dataset.unbakedSource === '1';
-    const displayValues = adjustState.isComparingOriginal
+    const baseValues = adjustState.isComparingOriginal
       ? { exposure: 0.0, contrast: 0, saturation: 0, tilt: 0.0 }
       : adjustState.values;
+    const displayValues = { ...baseValues, rotation: adjustState.currentRotation || 0 };
     const ar = _resolveAspectRatio(target, null);
     const { filterStr, transformStr } = _computeCssFilterAndTransform(
       displayValues,
@@ -170,6 +331,10 @@
         saturation: Number(photo.saturation || 0),
         fine_angle: Number(photo.fine_angle || 0),
         rotation: Number(photo.rotation || 0),
+        crop_x: photo.crop_x ?? null,
+        crop_y: photo.crop_y ?? null,
+        crop_w: photo.crop_w ?? null,
+        crop_h: photo.crop_h ?? null,
       };
     }
     const cur = {
@@ -177,6 +342,7 @@
       contrast: Number(photo.contrast || 0),
       saturation: Number(photo.saturation || 0),
       tilt: Number(photo.fine_angle || 0),
+      rotation: Number(photo.rotation || 0),
     };
     const isViewerImg = imgEl.id === 'mViewerImg';
     const bakedSrc = isViewerImg && photo._viewerLoadedBakedAdjust ? photo._viewerLoadedBakedAdjust : photo._bakedAdjust;
@@ -185,7 +351,7 @@
       contrast: Number(bakedSrc.contrast || 0),
       saturation: Number(bakedSrc.saturation || 0),
       tilt: Number(bakedSrc.fine_angle || 0),
-      rotation: Number(photo.rotation ?? bakedSrc.rotation ?? 0),
+      rotation: Number(bakedSrc.rotation || 0),
     };
     const isUnbaked = imgEl.dataset.unbakedSource === '1';
     const ar = _resolveAspectRatio(imgEl, photo);
@@ -656,6 +822,7 @@
     if (!photo) {
       adjustState.values = { exposure: 0.0, contrast: 0, saturation: 0, tilt: 0.0 };
       adjustState.bakedValues = { exposure: 0.0, contrast: 0, saturation: 0, tilt: 0.0, rotation: 0 };
+      adjustState.currentRotation = 0;
       adjustState.aspectRatio = 1.3333;
     } else {
       if (!photo._bakedAdjust) {
@@ -665,12 +832,17 @@
           saturation: Number(photo.saturation || 0),
           fine_angle: Number(photo.fine_angle || 0),
           rotation: Number(photo.rotation || 0),
+          crop_x: photo.crop_x ?? null,
+          crop_y: photo.crop_y ?? null,
+          crop_w: photo.crop_w ?? null,
+          crop_h: photo.crop_h ?? null,
         };
       }
       const imgEl = document.getElementById('mViewerImg');
       adjustState.aspectRatio = _resolveAspectRatio(imgEl, photo);
 
       const b = Number(photo.brightness || 0);
+      adjustState.currentRotation = Number(photo.rotation || 0);
       adjustState.values = {
         exposure: Number((b / 10.0).toFixed(2)),
         contrast: Math.round(Number(photo.contrast || 0)),
@@ -683,7 +855,7 @@
         contrast: Math.round(Number(viewerBaked.contrast || 0)),
         saturation: Math.round(Number(viewerBaked.saturation || 0)),
         tilt: Number(Number(viewerBaked.fine_angle || 0).toFixed(2)),
-        rotation: Number(photo.rotation ?? viewerBaked.rotation ?? 0),
+        rotation: Number(viewerBaked.rotation || 0),
       };
     }
     adjustState.isComparingOriginal = false;
@@ -712,6 +884,9 @@
     isParamModified,
     loadPhotoAdjustValues,
     applyPhotoCssAdjustmentsToElement,
+    isPhoneUnbakedPhoto,
+    resolveImageUnbakedState,
+    renderAdjustedPhotoCanvas,
     syncAdjustUi: _syncAdjustUi,
   };
 

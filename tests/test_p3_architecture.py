@@ -682,6 +682,150 @@ class TestPhase3Architecture(unittest.TestCase):
         self.assertIn('.put("signalSyncedCount", sig)', runner_kt)
         self.assertIn("quickSum.skippedCount", mobile_js)
 
+    def test_12_mobile_art_framer_and_adjustments_e2e_wiring(self) -> None:
+        """モバイルArt Framer・クイック共有・Duel・Kotlinジャーナル基準値・サーバー同期サムネイル整合を一気通貫で検証"""
+        import json
+        import sqlite3
+        from server.mobile_sync_apply import apply_mobile_sync_changes
+
+        touch_adjust_js = (
+            PROJECT_ROOT / "frontend" / "js" / "views" / "touch" / "touch_adjust.js"
+        ).read_text(encoding="utf-8")
+        touch_af_js = (
+            PROJECT_ROOT / "frontend" / "js" / "views" / "touch" / "touch_art_framer.js"
+        ).read_text(encoding="utf-8")
+        launcher_js = (
+            PROJECT_ROOT / "frontend" / "js" / "views" / "touch" / "touch_viewer_launcher.js"
+        ).read_text(encoding="utf-8")
+        touch_duel_js = (
+            PROJECT_ROOT / "frontend" / "js" / "views" / "touch" / "touch_duel.js"
+        ).read_text(encoding="utf-8")
+        touch_layout_js = (
+            PROJECT_ROOT / "frontend" / "js" / "views" / "touch" / "touch_layout.js"
+        ).read_text(encoding="utf-8")
+        mobile_js = (PROJECT_ROOT / "frontend" / "js" / "mobile.js").read_text(encoding="utf-8")
+
+        pkg_dir = PROJECT_ROOT / "android" / "app" / "src" / "main" / "java" / "com" / "tetheract" / "pm"
+        journal_kt = (pkg_dir / "PendingJournalStore.kt").read_text(encoding="utf-8")
+        locker_kt = (pkg_dir / "LockerDatabaseManager.kt").read_text(encoding="utf-8")
+        bridge_kt = (pkg_dir / "TetheractNativeBridge.kt").read_text(encoding="utf-8")
+
+        # 1. JS 単一調整エンジンの実装・計算式統一・配線検証
+        for sym in (
+            "isPhoneUnbakedPhoto",
+            "resolveImageUnbakedState",
+            "renderAdjustedPhotoCanvas",
+            "effRot90",
+            "clampedEv / 2.2",
+            "(effCt / 100.0) * 0.75",
+        ):
+            self.assertIn(sym, touch_adjust_js)
+
+        for sym in ("__flushMobilePendingAdjustSave", "resolveImageUnbakedState", "renderAdjustedPhotoCanvas"):
+            self.assertIn(sym, touch_af_js)
+            self.assertIn(sym, launcher_js)
+        self.assertNotIn("effEv * 0.45", launcher_js)
+
+        self.assertIn("resolveImageUnbakedState", touch_duel_js)
+        self.assertIn("isPhoneUnbakedPhoto", touch_layout_js)
+
+        for sym in (
+            "getPendingBakedAdjustmentsMapJson",
+            "_resolveBakedAdjustForPhoto",
+            "_rememberBakedAdjustForPhoto",
+            "__flushMobilePendingAdjustSave",
+            "_buildMobilePhotoBakedVersionKey",
+            "_isPhoneUnbakedPhoto",
+            "p.fine_angle, p.brightness, p.contrast, p.saturation, p.crop_x, p.crop_y",
+            "https://appassets.tetheract.local/thumb/${pid}?v=${_buildMobilePhotoBakedVersionKey(photo)}",
+            "only_hd=1&s=${_NATIVE_SESSION_NONCE}_${linkTag}&v=${_buildMobilePhotoBakedVersionKey(photo)}",
+        ):
+            self.assertIn(sym, mobile_js)
+
+        # 2. Android Kotlin の編集前焼き込み基準値 (base_adjustments_json) 永続化とブリッジ検証
+        for sym in ("base_adjustments_json", "readBaseAdjustmentsMapJson", "updateBaseAdjustmentsForJournalKey"):
+            self.assertIn(sym, journal_kt)
+        for sym in ("readPhotoAdjustmentsSnapshot", "payloadHasAdjustmentKeys", "getPendingBakedAdjustmentsMapJson"):
+            self.assertIn(sym, locker_kt)
+        self.assertIn("fun getPendingBakedAdjustmentsMapJson(): String", bridge_kt)
+
+        # 3. サーバー側: apply_mobile_sync_changes が差分DB作成前にサムネイルを同期再生成すること
+        adj_jpg = self.tmp_root / "SYNC_ADJUST_TEST.JPG"
+        adj_bytes = _make_jpeg_bytes(120, 90, (40, 40, 40))
+        adj_jpg.write_bytes(adj_bytes)
+        pid = upsert_photo({
+            "file_path": str(adj_jpg),
+            "directory_path": str(adj_jpg.parent),
+            "file_name": adj_jpg.name,
+            "file_size": len(adj_bytes),
+            "date_taken": "2026-11-23 12:00:00",
+            "content_key": "ck_sync_adjust_test_01",
+            "is_raw": 0,
+        })
+        old_thumb = b"OLD_THUMB_PLACEHOLDER"
+        with get_connection() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO thumbnails (photo_id, file_hash, data, width, height, created_at) "
+                "VALUES (?, 'h_old', ?, 120, 90, '2025-01-01 00:00:00')",
+                (pid, old_thumb),
+            )
+            conn.execute(
+                "UPDATE photos SET updated_at = '2025-01-01 00:00:00' WHERE id = ?",
+                (pid,),
+            )
+            conn.commit()
+
+        mobile_delta.LOCKER_STATE_PATH.write_text(
+            json.dumps({
+                "max_photo_id": pid,
+                "max_thumb_created_at": "2026-01-01 00:00:00",
+                "synced_via": "wifi",
+            }),
+            encoding="utf-8",
+        )
+
+        # client が保持している古いウォーターマーク (2025-01-01) を指定し、max_photo_id 不変でも再構築されることを検証
+        res_old_delta = self.local_client.get(
+            "/api/mobile/locker-sync",
+            params={"mode": "delta", "max_photo_id": pid, "max_thumb_created_at": "2025-01-01 00:00:00"},
+        )
+        self.assertEqual(res_old_delta.status_code, 200)
+        saved_state = json.loads(mobile_delta.LOCKER_STATE_PATH.read_text(encoding="utf-8"))
+        self.assertEqual(saved_state.get("max_thumb_created_at"), "2025-01-01 00:00:00")
+
+        thumb_during_delta = []
+        orig_ensure_delta = mobile_delta.ensure_mobile_delta_db
+
+        def _spy_ensure_delta(*args, **kwargs):
+            with get_connection() as c_chk:
+                row = c_chk.execute("SELECT data FROM thumbnails WHERE photo_id = ?", (pid,)).fetchone()
+                thumb_during_delta.append(bytes(row["data"]) if row else b"")
+            return orig_ensure_delta(*args, **kwargs)
+
+        with patch("server.mobile_delta.ensure_mobile_delta_db", side_effect=_spy_ensure_delta):
+            sync_res = apply_mobile_sync_changes([
+                {
+                    "photo_id": pid,
+                    "content_key": "ck_sync_adjust_test_01",
+                    "file_name": adj_jpg.name,
+                    "brightness": 15,
+                    "contrast": 20,
+                    "saturation": 10,
+                    "fine_angle": 2.5,
+                }
+            ])
+        self.assertEqual(sync_res.get("applied_count"), 1)
+        self.assertTrue(thumb_during_delta)
+        self.assertNotEqual(thumb_during_delta[0], old_thumb)
+        self.assertTrue(mobile_delta.DELTA_DB_PATH.exists())
+        d_conn = sqlite3.connect(str(mobile_delta.DELTA_DB_PATH))
+        try:
+            d_row = d_conn.execute("SELECT data FROM thumbnails WHERE photo_id = ?", (pid,)).fetchone()
+            self.assertIsNotNone(d_row)
+            self.assertEqual(bytes(d_row[0]), thumb_during_delta[0])
+        finally:
+            d_conn.close()
+
 
 if __name__ == "__main__":
     unittest.main()

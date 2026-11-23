@@ -168,7 +168,10 @@
     photo._loadedNaturalW = 0;
     photo._loadedNaturalH = 0;
     imgEl.dataset.photoId = targetId;
-    imgEl.dataset.unbakedSource = '0';
+    const resolveUnbaked = global.TetheractTouchUI?.resolveImageUnbakedState;
+    imgEl.dataset.unbakedSource = resolveUnbaked
+      ? (resolveUnbaked(photo, { isFallback: true, isServerMode: Boolean(photo.isServerMode) }) ? '1' : '0')
+      : '0';
     imgEl.onload = () => _applyTransforms();
     imgEl.src = photo.src || photo.thumbUrl || '';
     const tryLoadHd = (urlToTry, fallbackUrl) => {
@@ -179,7 +182,9 @@
           photo._loadedNaturalW = pre.naturalWidth;
           photo._loadedNaturalH = pre.naturalHeight;
           const nativeSrc = global.TetheractNative?.getLastPhotoSource ? global.TetheractNative.getLastPhotoSource(Number(photo.id || 0)) : '';
-          imgEl.dataset.unbakedSource = nativeSrc === 'usb' ? '1' : '0';
+          imgEl.dataset.unbakedSource = resolveUnbaked
+            ? (resolveUnbaked(photo, { isFallback: false, isServerMode: Boolean(photo.isServerMode), nativeSource: nativeSrc }) ? '1' : '0')
+            : ((nativeSrc === 'usb' || nativeSrc === 'phone') ? '1' : '0');
           imgEl.src = urlToTry;
           _applyTransforms();
         } else if (fallbackUrl) {

@@ -10,6 +10,15 @@
 
 ---
 
+## v2.5.4 (2026-11-23)
+
+### モバイルArt Framer非破壊調整反映・未同期基準値永続化＆クイック共有/同期サムネイル整合修正
+- モバイル版 Art Framer（`touch_art_framer.js` / `touch_adjust.js`）への非破壊調整の事前反映対応：読み込んだ画像（USB 直結・スマホ原本・Wi-Fi / オフライン画像）に対し、PC 版（`apply_photo_adjustments_pil`）と同一数式の共通レンダラ `renderAdjustedPhotoCanvas()` で 90度回転・水平傾き内接自動ズーム・クロップ・露出/コントラスト/彩度を事前反映するよう修正し、180ms 保存デバウンスを即時フラッシュする `__flushMobilePendingAdjustSave()` を導入しました（AI 自動検出座標・プレビュー・書き出しすべてに反映）。
+- Android ジャーナルの編集前焼き込み基準値（`base_adjustments_json`）永続化（`PendingJournalStore.kt` / `LockerDatabaseManager.kt` / `TetheractNativeBridge.kt` / `mobile.js`）：Art Framer 保存後・フィルタ切替後・アプリ再起動後に `_bakedAdjust` が失われて非破壊調整が消えたように見えていた波及不具合を解消しました（※Kotlin ネイティブ層更新のため `android/Tetheract_Android.apk` の上書き更新が必要です）。
+- クイック SNS 共有・Duel・グリッド・PC 同期サムネイル整合修正（`touch_viewer_launcher.js` / `touch_duel.js` / `touch_layout.js` / `server/mobile_sync_apply.py` / `server/routers/mobile_router.py`）：SNS 共有を共通調整レンダラへ統合（計算式不一致・クロップ未適用・90度回転差分・フォールバック誤判定を解消）、スマホ原本判定と WebView キャッシュバスターを統一し、PC 側同期直後のサムネイル再生成と `mobile_delta.db` 構築のレースを解消しました。
+
+---
+
 ## v2.5.3 (2026-11-23)
 
 ### Android USB自動差分ダウンリンク（完全Read-Only）＆母艦収納の重複スキップ表示改善

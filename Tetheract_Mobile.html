@@ -9541,6 +9541,7 @@ else if (typeof exports === 'object'){
     if (afBtnEl) afBtnEl.style.display = 'flex';
 
     if (imgEl && photo && photo.thumbUrl) {
+      imgEl.dataset.unbakedSource = global.TetheractTouchUI?.isPhoneUnbakedPhoto?.(photo) ? '1' : '0';
       imgEl.src = photo.thumbUrl;
       imgEl.style.display = 'block';
       global.TetheractTouchUI?.applyPhotoCssAdjustmentsToElement?.(imgEl, photo);
@@ -10097,6 +10098,7 @@ else if (typeof exports === 'object'){
     activeParam: 'exposure',
     values: { exposure: 0.0, contrast: 0, saturation: 0, tilt: 0.0 },
     bakedValues: { exposure: 0.0, contrast: 0, saturation: 0, tilt: 0.0, rotation: 0 },
+    currentRotation: 0,
     aspectRatio: 1.3333,
     tiltGridEnabled: true,
     toneGridEnabled: false,
@@ -10138,11 +10140,15 @@ else if (typeof exports === 'object'){
     const effCt = isUnbaked ? (cur.contrast || 0) : (cur.contrast || 0) - (baked.contrast || 0);
     const effSat = isUnbaked ? (cur.saturation || 0) : (cur.saturation || 0) - (baked.saturation || 0);
     const effTilt = isUnbaked ? (cur.tilt || 0) : (cur.tilt || 0) - (baked.tilt || 0);
-    const effDeg = isUnbaked ? (baked.rotation || 0) + effTilt : effTilt;
+    const curRot = ((Math.round(Number(cur.rotation !== undefined ? cur.rotation : (baked.rotation || 0))) % 360) + 360) % 360;
+    const bakedRot = ((Math.round(Number(baked.rotation || 0)) % 360) + 360) % 360;
+    const effRot90 = isUnbaked ? curRot : (((curRot - bakedRot) % 360) + 360) % 360;
+    const effDeg = effRot90 + effTilt;
 
     let filterStr = '';
     if (Math.abs(effEv) > 0.005 || Math.abs(effCt) > 0.1 || Math.abs(effSat) > 0.1) {
-      const bFactor = Math.max(0.1, Math.min(4.0, Math.pow(2.0, effEv / 2.2))).toFixed(4);
+      const clampedEv = Math.max(-3.0, Math.min(3.0, effEv));
+      const bFactor = Math.max(0.1, Math.min(4.0, Math.pow(2.0, clampedEv / 2.2))).toFixed(4);
       const cFactor = Math.max(0.1, Math.min(2.5, 1.0 + (effCt / 100.0) * 0.75)).toFixed(3);
       const sFactor = Math.max(0.0, Math.min(3.0, 1.0 + effSat / 100.0)).toFixed(3);
       filterStr = `brightness(${bFactor}) contrast(${cFactor}) saturate(${sFactor})`;
@@ -10166,13 +10172,169 @@ else if (typeof exports === 'object'){
     return { filterStr, transformStr };
   }
 
+  /**
+   * サムネイルも含めて完全に未焼き込みのスマホ原本写真かどうかを判定する
+   */
+  function isPhoneUnbakedPhoto(photo) {
+    if (!photo) return false;
+    return Boolean(
+      photo.is_phone_case ||
+      Number(photo.id) >= 900000000 ||
+      photo.volume_serial === 'ANDROID_LOCAL' ||
+      String(photo.file_path || '').startsWith('phone://')
+    );
+  }
+
+  /**
+   * 読み込んだ画像（HD原本またはサムネイル）が非破壊調整未適用の生画像かどうかを判定する
+   */
+  function resolveImageUnbakedState(photo, options = {}) {
+    const isFallback = Boolean(options && options.isFallback);
+    const isServerMode = Boolean(options && options.isServerMode);
+    if (isServerMode) return false;
+    if (isFallback) return isPhoneUnbakedPhoto(photo);
+    const nativeSrc = (options && options.nativeSource) ||
+      (global.TetheractNative?.getLastPhotoSource ? global.TetheractNative.getLastPhotoSource(Number((photo && photo.id) || 0)) : '');
+    return nativeSrc === 'usb' || nativeSrc === 'phone' || isPhoneUnbakedPhoto(photo);
+  }
+
+  /**
+   * server/scanner.py の apply_photo_adjustments_pil と同一座標・計算式で
+   * 非破壊調整（90°回転・水平傾き内接クロップ・トリミング・露出/コントラスト/彩度）を Canvas へ描画する
+   */
+  function renderAdjustedPhotoCanvas(img, photo, options = {}) {
+    const srcW = Math.max(1, (img && (img.naturalWidth || img.width)) || 1);
+    const srcH = Math.max(1, (img && (img.naturalHeight || img.height)) || 1);
+    const isUnbaked = Boolean(options && options.isUnbaked);
+    const maxLong = Math.max(0, Number((options && options.maxLongEdge) || 0));
+
+    const baked = (photo && photo._bakedAdjust) || {
+      brightness: 0,
+      contrast: 0,
+      saturation: 0,
+      fine_angle: 0,
+      rotation: 0,
+    };
+
+    const curEv = Number((photo && photo.brightness) || 0) / 10.0;
+    const bakedEv = Number(baked.brightness || 0) / 10.0;
+    const effEv = isUnbaked ? curEv : (curEv - bakedEv);
+    const effCt = isUnbaked ? Number((photo && photo.contrast) || 0) : (Number((photo && photo.contrast) || 0) - Number(baked.contrast || 0));
+    const effSat = isUnbaked ? Number((photo && photo.saturation) || 0) : (Number((photo && photo.saturation) || 0) - Number(baked.saturation || 0));
+    const effTilt = isUnbaked ? Number((photo && photo.fine_angle) || 0) : (Number((photo && photo.fine_angle) || 0) - Number(baked.fine_angle || 0));
+    const curRot = ((Math.round(Number((photo && photo.rotation) || 0)) % 360) + 360) % 360;
+    const bakedRot = ((Math.round(Number(baked.rotation || 0)) % 360) + 360) % 360;
+    const effRot90 = isUnbaked ? curRot : (((curRot - bakedRot) % 360) + 360) % 360;
+
+    let cx = 0.0;
+    let cy = 0.0;
+    let cw = 1.0;
+    let ch = 1.0;
+    let hasCrop = false;
+    const rawCw = photo && photo.crop_w;
+    const rawCh = photo && photo.crop_h;
+    if (rawCw != null && rawCh != null && Number(rawCw) > 0 && Number(rawCh) > 0) {
+      cx = Math.max(0.0, Math.min(1.0, Number(photo.crop_x || 0)));
+      cy = Math.max(0.0, Math.min(1.0, Number(photo.crop_y || 0)));
+      cw = Math.max(0.01, Math.min(1.0 - cx, Number(rawCw)));
+      ch = Math.max(0.01, Math.min(1.0 - cy, Number(rawCh)));
+      const hasGeomCrop = cw < 0.999 || ch < 0.999 || cx > 0.001 || cy > 0.001;
+      if (hasGeomCrop) {
+        if (isUnbaked) {
+          hasCrop = true;
+        } else {
+          const hasBakedCropFields = baked && (
+            baked.crop_w !== undefined ||
+            baked.crop_h !== undefined ||
+            baked.crop_x !== undefined ||
+            baked.crop_y !== undefined
+          );
+          const cropMatchesBaked = !hasBakedCropFields || (
+            Math.abs(Number(baked.crop_x || 0) - cx) < 0.001 &&
+            Math.abs(Number(baked.crop_y || 0) - cy) < 0.001 &&
+            Math.abs(Number(baked.crop_w || 0) - cw) < 0.001 &&
+            Math.abs(Number(baked.crop_h || 0) - ch) < 0.001
+          );
+          hasCrop = !cropMatchesBaked;
+        }
+      }
+    }
+
+    const hasRot90 = effRot90 !== 0;
+    const hasTilt = Math.abs(effTilt) > 0.01;
+    const hasTone = Math.abs(effEv) > 0.005 || Math.abs(effCt) > 0.1 || Math.abs(effSat) > 0.1;
+    const needsResize = maxLong > 0 && Math.max(srcW, srcH) > maxLong;
+
+    if (!hasRot90 && !hasTilt && !hasCrop && !hasTone && !needsResize) {
+      return { source: img, width: srcW, height: srcH, adjusted: false };
+    }
+
+    const isSwap90 = effRot90 === 90 || effRot90 === 270;
+    const rotW = isSwap90 ? srcH : srcW;
+    const rotH = isSwap90 ? srcW : srcH;
+
+    let autoScale = 1.0;
+    if (hasTilt) {
+      const rad = (Math.abs(effTilt) * Math.PI) / 180.0;
+      const aspectMax = Math.max(rotW / Math.max(1, rotH), rotH / Math.max(1, rotW));
+      autoScale = Math.cos(rad) + Math.sin(rad) * aspectMax;
+    }
+
+    const useCx = hasCrop ? cx : 0.0;
+    const useCy = hasCrop ? cy : 0.0;
+    const useCw = hasCrop ? cw : 1.0;
+    const useCh = hasCrop ? ch : 1.0;
+
+    const baseOutW = Math.max(1, Math.round((rotW / autoScale) * useCw));
+    const baseOutH = Math.max(1, Math.round((rotH / autoScale) * useCh));
+    const baseLong = Math.max(baseOutW, baseOutH);
+    const outScale = maxLong > 0 && baseLong > maxLong ? (maxLong / baseLong) : 1.0;
+    const outW = Math.max(1, Math.round(baseOutW * outScale));
+    const outH = Math.max(1, Math.round(baseOutH * outScale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = outW;
+    canvas.height = outH;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      return { source: img, width: srcW, height: srcH, adjusted: false };
+    }
+
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, outW, outH);
+    ctx.save();
+    if (hasTone && typeof ctx.filter === 'string') {
+      const clampedEv = Math.max(-3.0, Math.min(3.0, effEv));
+      const bFactor = Math.max(0.1, Math.min(4.0, Math.pow(2.0, clampedEv / 2.2))).toFixed(4);
+      const cFactor = Math.max(0.1, Math.min(2.5, 1.0 + (effCt / 100.0) * 0.75)).toFixed(3);
+      const sFactor = Math.max(0.0, Math.min(3.0, 1.0 + effSat / 100.0)).toFixed(3);
+      ctx.filter = `brightness(${bFactor}) contrast(${cFactor}) saturate(${sFactor})`;
+    }
+
+    const fullInscribedW = outW / useCw;
+    const fullInscribedH = outH / useCh;
+    const drawScale = Math.max((fullInscribedW * autoScale) / rotW, (fullInscribedH * autoScale) / rotH);
+    ctx.translate((0.5 - useCx) * fullInscribedW, (0.5 - useCy) * fullInscribedH);
+    const totalRad = ((effRot90 + effTilt) * Math.PI) / 180.0;
+    if (Math.abs(totalRad) > 0.0001) {
+      ctx.rotate(totalRad);
+    }
+    const drawW = srcW * drawScale;
+    const drawH = srcH * drawScale;
+    ctx.drawImage(img, -drawW * 0.5, -drawH * 0.5, drawW, drawH);
+    ctx.restore();
+
+    return { source: canvas, width: outW, height: outH, adjusted: true };
+  }
+
   function _applyLivePreviewToImage(imgEl) {
     const target = imgEl || document.getElementById('mViewerImg');
     if (!target) return;
     const isUnbaked = target.dataset.unbakedSource === '1';
-    const displayValues = adjustState.isComparingOriginal
+    const baseValues = adjustState.isComparingOriginal
       ? { exposure: 0.0, contrast: 0, saturation: 0, tilt: 0.0 }
       : adjustState.values;
+    const displayValues = { ...baseValues, rotation: adjustState.currentRotation || 0 };
     const ar = _resolveAspectRatio(target, null);
     const { filterStr, transformStr } = _computeCssFilterAndTransform(
       displayValues,
@@ -10193,6 +10355,10 @@ else if (typeof exports === 'object'){
         saturation: Number(photo.saturation || 0),
         fine_angle: Number(photo.fine_angle || 0),
         rotation: Number(photo.rotation || 0),
+        crop_x: photo.crop_x ?? null,
+        crop_y: photo.crop_y ?? null,
+        crop_w: photo.crop_w ?? null,
+        crop_h: photo.crop_h ?? null,
       };
     }
     const cur = {
@@ -10200,6 +10366,7 @@ else if (typeof exports === 'object'){
       contrast: Number(photo.contrast || 0),
       saturation: Number(photo.saturation || 0),
       tilt: Number(photo.fine_angle || 0),
+      rotation: Number(photo.rotation || 0),
     };
     const isViewerImg = imgEl.id === 'mViewerImg';
     const bakedSrc = isViewerImg && photo._viewerLoadedBakedAdjust ? photo._viewerLoadedBakedAdjust : photo._bakedAdjust;
@@ -10208,7 +10375,7 @@ else if (typeof exports === 'object'){
       contrast: Number(bakedSrc.contrast || 0),
       saturation: Number(bakedSrc.saturation || 0),
       tilt: Number(bakedSrc.fine_angle || 0),
-      rotation: Number(photo.rotation ?? bakedSrc.rotation ?? 0),
+      rotation: Number(bakedSrc.rotation || 0),
     };
     const isUnbaked = imgEl.dataset.unbakedSource === '1';
     const ar = _resolveAspectRatio(imgEl, photo);
@@ -10679,6 +10846,7 @@ else if (typeof exports === 'object'){
     if (!photo) {
       adjustState.values = { exposure: 0.0, contrast: 0, saturation: 0, tilt: 0.0 };
       adjustState.bakedValues = { exposure: 0.0, contrast: 0, saturation: 0, tilt: 0.0, rotation: 0 };
+      adjustState.currentRotation = 0;
       adjustState.aspectRatio = 1.3333;
     } else {
       if (!photo._bakedAdjust) {
@@ -10688,12 +10856,17 @@ else if (typeof exports === 'object'){
           saturation: Number(photo.saturation || 0),
           fine_angle: Number(photo.fine_angle || 0),
           rotation: Number(photo.rotation || 0),
+          crop_x: photo.crop_x ?? null,
+          crop_y: photo.crop_y ?? null,
+          crop_w: photo.crop_w ?? null,
+          crop_h: photo.crop_h ?? null,
         };
       }
       const imgEl = document.getElementById('mViewerImg');
       adjustState.aspectRatio = _resolveAspectRatio(imgEl, photo);
 
       const b = Number(photo.brightness || 0);
+      adjustState.currentRotation = Number(photo.rotation || 0);
       adjustState.values = {
         exposure: Number((b / 10.0).toFixed(2)),
         contrast: Math.round(Number(photo.contrast || 0)),
@@ -10706,7 +10879,7 @@ else if (typeof exports === 'object'){
         contrast: Math.round(Number(viewerBaked.contrast || 0)),
         saturation: Math.round(Number(viewerBaked.saturation || 0)),
         tilt: Number(Number(viewerBaked.fine_angle || 0).toFixed(2)),
-        rotation: Number(photo.rotation ?? viewerBaked.rotation ?? 0),
+        rotation: Number(viewerBaked.rotation || 0),
       };
     }
     adjustState.isComparingOriginal = false;
@@ -10735,6 +10908,9 @@ else if (typeof exports === 'object'){
     isParamModified,
     loadPhotoAdjustValues,
     applyPhotoCssAdjustmentsToElement,
+    isPhoneUnbakedPhoto,
+    resolveImageUnbakedState,
+    renderAdjustedPhotoCanvas,
     syncAdjustUi: _syncAdjustUi,
   };
 
@@ -11693,7 +11869,10 @@ else if (typeof exports === 'object'){
     photo._loadedNaturalW = 0;
     photo._loadedNaturalH = 0;
     imgEl.dataset.photoId = targetId;
-    imgEl.dataset.unbakedSource = '0';
+    const resolveUnbaked = global.TetheractTouchUI?.resolveImageUnbakedState;
+    imgEl.dataset.unbakedSource = resolveUnbaked
+      ? (resolveUnbaked(photo, { isFallback: true, isServerMode: Boolean(photo.isServerMode) }) ? '1' : '0')
+      : '0';
     imgEl.onload = () => _applyTransforms();
     imgEl.src = photo.src || photo.thumbUrl || '';
     const tryLoadHd = (urlToTry, fallbackUrl) => {
@@ -11704,7 +11883,9 @@ else if (typeof exports === 'object'){
           photo._loadedNaturalW = pre.naturalWidth;
           photo._loadedNaturalH = pre.naturalHeight;
           const nativeSrc = global.TetheractNative?.getLastPhotoSource ? global.TetheractNative.getLastPhotoSource(Number(photo.id || 0)) : '';
-          imgEl.dataset.unbakedSource = nativeSrc === 'usb' ? '1' : '0';
+          imgEl.dataset.unbakedSource = resolveUnbaked
+            ? (resolveUnbaked(photo, { isFallback: false, isServerMode: Boolean(photo.isServerMode), nativeSource: nativeSrc }) ? '1' : '0')
+            : ((nativeSrc === 'usb' || nativeSrc === 'phone') ? '1' : '0');
           imgEl.src = urlToTry;
           _applyTransforms();
         } else if (fallbackUrl) {
@@ -14151,83 +14332,35 @@ else if (typeof exports === 'object'){
   }
 
   /**
-   * 原本画像へ非破壊調整（露出・コントラスト・彩度・傾き・90°回転）を適用し、
+   * 原本またはサムネイル画像へ非破壊調整（touch_adjust.js の共通レンダラ）を適用し、
    * SNS投稿向けに長辺上限2048px・GPS非含有のJPEG DataURLを生成する。
    */
   function _renderAdjustedJpegDataUrl(img, photo, isUnbakedSource) {
-    const srcW = Math.max(1, img.naturalWidth || img.width || 1);
-    const srcH = Math.max(1, img.naturalHeight || img.height || 1);
-
-    const baked = (photo && photo._bakedAdjust) || {
-      brightness: 0,
-      contrast: 0,
-      saturation: 0,
-      fine_angle: 0,
-      rotation: 0,
-    };
-    const curEv = Number((photo && photo.brightness) || 0) / 10.0;
-    const curCt = Number((photo && photo.contrast) || 0);
-    const curSat = Number((photo && photo.saturation) || 0);
-    const curTilt = Number((photo && photo.fine_angle) || 0);
-    const curRot = Number((photo && photo.rotation) || 0);
-
-    const effEv = isUnbakedSource ? curEv : (curEv - Number(baked.brightness || 0) / 10.0);
-    const effCt = isUnbakedSource ? curCt : (curCt - Number(baked.contrast || 0));
-    const effSat = isUnbakedSource ? curSat : (curSat - Number(baked.saturation || 0));
-    const effTilt = isUnbakedSource ? curTilt : (curTilt - Number(baked.fine_angle || 0));
-    const effRot90 = isUnbakedSource ? ((curRot % 360) + 360) % 360 : 0;
-
-    const isSwap90 = effRot90 === 90 || effRot90 === 270;
-    const baseOutW = isSwap90 ? srcH : srcW;
-    const baseOutH = isSwap90 ? srcW : srcH;
-    const longEdge = Math.max(baseOutW, baseOutH);
-    const resizeScale = longEdge > QUICK_SHARE_MAX_LONG_EDGE ? (QUICK_SHARE_MAX_LONG_EDGE / longEdge) : 1.0;
-
-    const outW = Math.max(1, Math.round(baseOutW * resizeScale));
-    const outH = Math.max(1, Math.round(baseOutH * resizeScale));
-
-    const canvas = document.createElement('canvas');
-    canvas.width = outW;
-    canvas.height = outH;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('Canvasコンテキストを取得できませんでした');
-
-    const br = Math.max(0.25, Math.min(2.4, Math.pow(2, effEv * 0.45)));
-    const ct = Math.max(0.25, Math.min(2.2, 1 + effCt / 100));
-    const sa = Math.max(0, Math.min(2.4, 1 + effSat / 100));
-    const hasFilter = Math.abs(br - 1) > 0.005 || Math.abs(ct - 1) > 0.005 || Math.abs(sa - 1) > 0.005;
-
-    ctx.fillStyle = '#000000';
-    ctx.fillRect(0, 0, outW, outH);
-    ctx.save();
-    if (hasFilter && typeof ctx.filter === 'string') {
-      ctx.filter = `brightness(${br.toFixed(3)}) contrast(${ct.toFixed(3)}) saturate(${sa.toFixed(3)})`;
+    const touchUi = global.TetheractTouchUI || {};
+    if (typeof touchUi.renderAdjustedPhotoCanvas === 'function') {
+      const rendered = touchUi.renderAdjustedPhotoCanvas(img, photo, {
+        isUnbaked: isUnbakedSource,
+        maxLongEdge: QUICK_SHARE_MAX_LONG_EDGE,
+      });
+      const srcNode = (rendered && rendered.source) || img;
+      let outCanvas = srcNode instanceof HTMLCanvasElement ? srcNode : null;
+      if (!outCanvas) {
+        const w = Math.max(1, (rendered && rendered.width) || img.naturalWidth || img.width || 1);
+        const h = Math.max(1, (rendered && rendered.height) || img.naturalHeight || img.height || 1);
+        outCanvas = document.createElement('canvas');
+        outCanvas.width = w;
+        outCanvas.height = h;
+        const ctx = outCanvas.getContext('2d');
+        if (!ctx) throw new Error('Canvasコンテキストを取得できませんでした');
+        ctx.drawImage(srcNode, 0, 0, w, h);
+      }
+      return {
+        dataUrl: outCanvas.toDataURL('image/jpeg', QUICK_SHARE_JPEG_QUALITY),
+        width: outCanvas.width,
+        height: outCanvas.height,
+      };
     }
-
-    ctx.translate(outW * 0.5, outH * 0.5);
-    let totalRad = (effRot90 * Math.PI) / 180;
-    let tiltScale = 1.0;
-    if (Math.abs(effTilt) > 0.05) {
-      const tiltRad = (effTilt * Math.PI) / 180;
-      totalRad += tiltRad;
-      const absSin = Math.abs(Math.sin(tiltRad));
-      const absCos = Math.abs(Math.cos(tiltRad));
-      const rAspect = outW / Math.max(1, outH);
-      tiltScale = Math.max(absCos + absSin * rAspect, absCos + absSin / Math.max(0.01, rAspect));
-    }
-    if (Math.abs(totalRad) > 0.0001) ctx.rotate(totalRad);
-    if (tiltScale > 1.0001) ctx.scale(tiltScale, tiltScale);
-
-    const drawW = Math.max(1, Math.round(srcW * resizeScale));
-    const drawH = Math.max(1, Math.round(srcH * resizeScale));
-    ctx.drawImage(img, -drawW * 0.5, -drawH * 0.5, drawW, drawH);
-    ctx.restore();
-
-    return {
-      dataUrl: canvas.toDataURL('image/jpeg', QUICK_SHARE_JPEG_QUALITY),
-      width: outW,
-      height: outH,
-    };
+    throw new Error('画像調整エンジンが読み込まれていません');
   }
 
   function _fallbackBrowserDownload(dataUrl, fileName) {
@@ -14242,6 +14375,9 @@ else if (typeof exports === 'object'){
   async function executeQuickShare() {
     if (isSharing) return;
     closeMenu();
+    if (typeof global.__flushMobilePendingAdjustSave === 'function') {
+      await global.__flushMobilePendingAdjustSave();
+    }
 
     const targets = typeof global.__getMobileArtFramerTargets === 'function'
       ? global.__getMobileArtFramerTargets()
@@ -14253,9 +14389,12 @@ else if (typeof exports === 'object'){
     }
 
     const viewerImg = document.getElementById('mViewerImg');
-    const isUnbakedSource = Boolean(viewerImg && viewerImg.dataset.unbakedSource === '1');
-    const primaryUrl = photo.hdUrl || (viewerImg && viewerImg.currentSrc) || photo.thumbUrl || '';
-    const fallbackUrl = photo.thumbUrl || (viewerImg && viewerImg.currentSrc) || '';
+    const matchesViewerImg = Boolean(
+      viewerImg && viewerImg.dataset.photoId === String(photo.id) && viewerImg.currentSrc
+    );
+    const hasHdUrl = Boolean(photo.hdUrl);
+    const primaryUrl = photo.hdUrl || photo.thumbUrl || (matchesViewerImg ? viewerImg.currentSrc : '') || '';
+    const fallbackUrl = photo.thumbUrl || (matchesViewerImg ? viewerImg.currentSrc : '') || '';
 
     isSharing = true;
     _showToast('共有用の画像を準備中（GPS除去・調整反映）...', 2000);
@@ -14264,6 +14403,14 @@ else if (typeof exports === 'object'){
       if (isFallback || (img.naturalWidth <= 480 && img.naturalHeight <= 480)) {
         _showToast('オフラインのためサムネイル画質で共有します', 2600);
       }
+      const isThumbSource = Boolean(isFallback || !hasHdUrl);
+      const touchUi = global.TetheractTouchUI || {};
+      const isUnbakedSource = typeof touchUi.resolveImageUnbakedState === 'function'
+        ? touchUi.resolveImageUnbakedState(photo, {
+            isFallback: isThumbSource,
+            isServerMode: Boolean(photo.isServerMode),
+          })
+        : false;
       const rendered = _renderAdjustedJpegDataUrl(img, photo, isUnbakedSource);
       const origName = String(photo.file_name || `photo_${photo.id || Date.now()}`);
       const stem = origName.replace(/\.[^.]+$/, '');
@@ -18471,6 +18618,7 @@ else if (typeof exports === 'object'){
     _refreshMaskPillsUI({ plates: [], faces: [], selected: null });
     _setStep(1);
 
+    const hasHdUrl = Boolean(meta && meta.hdUrl);
     const primaryUrl = meta.hdUrl || meta.thumbUrl || '';
     const fallbackUrl = meta.thumbUrl && meta.thumbUrl !== primaryUrl ? meta.thumbUrl : '';
     if (!primaryUrl) {
@@ -18484,7 +18632,23 @@ else if (typeof exports === 'object'){
       img.crossOrigin = 'anonymous';
       img.onload = () => {
         if (mySeq !== loadReqSeq) return;
-        editor.setPhotoSource(img, meta, { plates: [], faces: [] });
+        const touchUi = global.TetheractTouchUI || {};
+        const isThumbSource = Boolean(isFallback || !hasHdUrl);
+        const isUnbaked = typeof touchUi.resolveImageUnbakedState === 'function'
+          ? touchUi.resolveImageUnbakedState(meta, {
+              isFallback: isThumbSource,
+              isServerMode: Boolean(meta && meta.isServerMode),
+            })
+          : false;
+        let effectiveSource = img;
+        if (typeof touchUi.renderAdjustedPhotoCanvas === 'function') {
+          const rendered = touchUi.renderAdjustedPhotoCanvas(img, meta, {
+            isUnbaked,
+            maxLongEdge: 4096,
+          });
+          if (rendered && rendered.source) effectiveSource = rendered.source;
+        }
+        editor.setPhotoSource(effectiveSource, meta, { plates: [], faces: [] });
         _pushDecoratorToEditor();
         if (cfg.autoDetectOnOpen) {
           _runAiDetectionForCurrentPhoto(true);
@@ -19001,6 +19165,9 @@ else if (typeof exports === 'object'){
    * 選択写真または表示中の写真を対象に Art Framer モーダルを開く
    */
   async function open(explicitIds = null, presetKey = 'for_x') {
+    if (typeof global.__flushMobilePendingAdjustSave === 'function') {
+      await global.__flushMobilePendingAdjustSave();
+    }
     const targets = typeof global.__getMobileArtFramerTargets === 'function'
       ? global.__getMobileArtFramerTargets(explicitIds)
       : [];
@@ -19061,6 +19228,7 @@ else if (typeof exports === 'object'){
   // ==================== 定数 & 状態管理 ====================
   const GRID_CHUNK_SIZE = 72;
   const PENDING_STORAGE_KEY = 'pm_mobile_pending_changes_v1';
+  const _NATIVE_SESSION_NONCE = Date.now().toString(36);
   const MOBILE_COLOR_TAGS = [
     '赤', '青', '緑', '黄色', '黒', '白',
     '銀・シルバー', '金・ゴールド', '茶色', '紫', 'オレンジ', 'ピンク',
@@ -19135,6 +19303,7 @@ else if (typeof exports === 'object'){
 
     // オフライン変更差分 & DBから取得したPCサーバー接続候補
     pendingChanges: loadPendingChangesFromStorage(),
+    pendingBakedAdjustMap: { byId: {}, byKey: {} },
     lastServerUrl: '',
     serverCandidates: [],
     tagTreeExpandedPaths: new Set(),
@@ -19341,6 +19510,117 @@ else if (typeof exports === 'object'){
   }
 
   /**
+   * サムネイルも含め未焼き込みのスマホ原本写真かどうかを判定する（touch_adjust.js へ委譲可能）
+   */
+  function _isPhoneUnbakedPhoto(photo) {
+    if (!photo) return false;
+    if (window.TetheractTouchUI && typeof window.TetheractTouchUI.isPhoneUnbakedPhoto === 'function') {
+      return window.TetheractTouchUI.isPhoneUnbakedPhoto(photo);
+    }
+    return Boolean(
+      photo.is_phone_case ||
+      Number(photo.id) >= 900000000 ||
+      photo.volume_serial === 'ANDROID_LOCAL' ||
+      String(photo.file_path || '').startsWith('phone://')
+    );
+  }
+
+  /**
+   * 非破壊調整の焼き込み基準値スナップショットを正規化する
+   */
+  function _normalizeAdjustSnapshot(src) {
+    const obj = src || {};
+    const snap = {
+      brightness: Number(obj.brightness || 0),
+      contrast: Number(obj.contrast || 0),
+      saturation: Number(obj.saturation || 0),
+      fine_angle: Number(obj.fine_angle || 0),
+      rotation: Number(obj.rotation || 0),
+    };
+    if (obj.crop_x !== undefined) snap.crop_x = obj.crop_x;
+    if (obj.crop_y !== undefined) snap.crop_y = obj.crop_y;
+    if (obj.crop_w !== undefined) snap.crop_w = obj.crop_w;
+    if (obj.crop_h !== undefined) snap.crop_h = obj.crop_h;
+    return snap;
+  }
+
+  /**
+   * 未同期ジャーナルが保持している「編集前の焼き込み基準値マップ」を再同期する
+   */
+  function _refreshPendingBakedAdjustMap() {
+    if (_hasNativeJournal()) {
+      if (typeof window.TetheractNative.getPendingBakedAdjustmentsMapJson === 'function') {
+        try {
+          const parsed = JSON.parse(window.TetheractNative.getPendingBakedAdjustmentsMapJson() || '{}');
+          mState.pendingBakedAdjustMap = {
+            byId: (parsed && typeof parsed.byId === 'object' && parsed.byId) || {},
+            byKey: (parsed && typeof parsed.byKey === 'object' && parsed.byKey) || {},
+          };
+          return;
+        } catch (e) {
+          console.warn('未同期調整基準マップ読取警告:', e);
+        }
+      }
+      if (getPendingChangesCount() === 0) {
+        mState.pendingBakedAdjustMap = { byId: {}, byKey: {} };
+      }
+      return;
+    }
+
+    const byId = {};
+    const byKey = {};
+    const items = (mState.pendingChanges && mState.pendingChanges.items) || {};
+    for (const item of Object.values(items)) {
+      if (!item || typeof item !== 'object') continue;
+      const hasAdj =
+        item.brightness !== undefined ||
+        item.contrast !== undefined ||
+        item.saturation !== undefined ||
+        item.fine_angle !== undefined ||
+        item.rotation !== undefined;
+      if (!hasAdj) continue;
+      const base = _normalizeAdjustSnapshot(
+        item.base_adjustments || { brightness: 0, contrast: 0, saturation: 0, fine_angle: 0, rotation: 0 }
+      );
+      if (item.photo_id) byId[String(item.photo_id)] = base;
+      if (item.content_key) byKey[String(item.content_key)] = base;
+    }
+    mState.pendingBakedAdjustMap = { byId, byKey };
+  }
+
+  /**
+   * 初回のモバイル調整編集前に現在の焼き込み済み基準値をメモリへ退避する（再描画・保存後リフレッシュ耐性）
+   */
+  function _rememberBakedAdjustForPhoto(photo) {
+    if (!photo || !photo.id) return;
+    if (!mState.pendingBakedAdjustMap || typeof mState.pendingBakedAdjustMap !== 'object') {
+      mState.pendingBakedAdjustMap = { byId: {}, byKey: {} };
+    }
+    const { byId, byKey } = mState.pendingBakedAdjustMap;
+    const pidKey = String(photo.id);
+    const cKey = String(photo.content_key || '').trim();
+    const existing = byId[pidKey] || (cKey ? byKey[cKey] : null);
+    if (existing) return;
+    const snap = _normalizeAdjustSnapshot(photo._bakedAdjust || photo);
+    byId[pidKey] = snap;
+    if (cKey) byKey[cKey] = snap;
+  }
+
+  /**
+   * 写真オブジェクトに対する現在のサムネイル/PC側の焼き込み済み基準値を解決する
+   */
+  function _resolveBakedAdjustForPhoto(photo, fallbackSource = null) {
+    if (!photo) return _normalizeAdjustSnapshot(fallbackSource);
+    const map = mState.pendingBakedAdjustMap || { byId: {}, byKey: {} };
+    const pidKey = photo.id != null ? String(photo.id) : '';
+    const cKey = String(photo.content_key || '').trim();
+    const fromJournal = (pidKey && map.byId[pidKey]) || (cKey && map.byKey[cKey]) || null;
+    if (fromJournal) return _normalizeAdjustSnapshot(fromJournal);
+    if (photo._bakedAdjust) return _normalizeAdjustSnapshot(photo._bakedAdjust);
+    return _normalizeAdjustSnapshot(fallbackSource || photo);
+  }
+
+  /**
    * Android ネイティブ版では変更1件分の差分だけをネイティブジャーナルへ渡す（ロッカーDBへの反映もネイティブ側が行う）
    */
   function _recordNativePendingChange(photo, changeType, value) {
@@ -19426,10 +19706,15 @@ else if (typeof exports === 'object'){
     } else if (changeType === 'stack_primary') {
       item.set_stack_primary = Boolean(value);
     } else if (changeType === 'adjustments' && value && typeof value === 'object') {
+      if (!item.base_adjustments) {
+        item.base_adjustments = _normalizeAdjustSnapshot(photo._bakedAdjust || photo);
+      }
+      if (value.rotation !== undefined) item.rotation = Math.round(Number(value.rotation || 0));
       if (value.brightness !== undefined) item.brightness = Math.round(Number(value.brightness || 0));
       if (value.contrast !== undefined) item.contrast = Math.round(Number(value.contrast || 0));
       if (value.saturation !== undefined) item.saturation = Math.round(Number(value.saturation || 0));
       if (value.fine_angle !== undefined) item.fine_angle = Number(Number(value.fine_angle || 0).toFixed(2));
+      _rememberBakedAdjustForPhoto(photo);
     } else if (changeType === 'add_tag') {
       const tag = String(value).trim();
       const tKey = _findTagKey(tag);
@@ -19810,6 +20095,10 @@ else if (typeof exports === 'object'){
 
     if (res && res.ok) {
       updatePendingBadgeUI();
+      if (getPendingChangesCount() === 0) {
+        mState.pendingBakedAdjustMap = { byId: {}, byKey: {} };
+      }
+      _refreshPendingBakedAdjustMap();
       const skipped = Number(res.skippedCount || 0);
       if (skipped > 0) {
         setTimeout(() => {
@@ -20236,15 +20525,23 @@ else if (typeof exports === 'object'){
           item.brightness !== undefined ||
           item.contrast !== undefined ||
           item.saturation !== undefined ||
-          item.fine_angle !== undefined
+          item.fine_angle !== undefined ||
+          item.rotation !== undefined
         ) {
+          if (!item.base_adjustments) {
+            const baseRows = queryLocalDbObjects('SELECT * FROM photos WHERE id = ? LIMIT 1', [pid]);
+            if (baseRows && baseRows.length > 0) {
+              item.base_adjustments = _normalizeAdjustSnapshot(baseRows[0]);
+            }
+          }
           db.run(
-            'UPDATE photos SET brightness = COALESCE(?, brightness), contrast = COALESCE(?, contrast), saturation = COALESCE(?, saturation), fine_angle = COALESCE(?, fine_angle) WHERE id = ?',
+            'UPDATE photos SET brightness = COALESCE(?, brightness), contrast = COALESCE(?, contrast), saturation = COALESCE(?, saturation), fine_angle = COALESCE(?, fine_angle), rotation = COALESCE(?, rotation) WHERE id = ?',
             [
               item.brightness !== undefined ? Number(item.brightness) : null,
               item.contrast !== undefined ? Number(item.contrast) : null,
               item.saturation !== undefined ? Number(item.saturation) : null,
               item.fine_angle !== undefined ? Number(item.fine_angle) : null,
+              item.rotation !== undefined ? Number(item.rotation) : null,
               pid,
             ]
           );
@@ -20270,6 +20567,7 @@ else if (typeof exports === 'object'){
         }
       }
       db.run('COMMIT');
+      _refreshPendingBakedAdjustMap();
     } catch (e) {
       try {
         db.run('ROLLBACK');
@@ -20325,6 +20623,26 @@ else if (typeof exports === 'object'){
   }
 
   /**
+   * 焼き込み済み基準値に基づくバージョンキーを生成する（スクラブ中URL再読込を抑え、PC同期後のキャッシュだけ破棄する）
+   */
+  function _buildMobilePhotoBakedVersionKey(photo) {
+    if (!photo) return '0';
+    const baked = photo._bakedAdjust || _resolveBakedAdjustForPhoto(photo);
+    return _buildMobilePhotoVersionKey({
+      ...photo,
+      rotation: baked.rotation !== undefined ? baked.rotation : photo.rotation,
+      fine_angle: baked.fine_angle !== undefined ? baked.fine_angle : photo.fine_angle,
+      brightness: baked.brightness !== undefined ? baked.brightness : photo.brightness,
+      contrast: baked.contrast !== undefined ? baked.contrast : photo.contrast,
+      saturation: baked.saturation !== undefined ? baked.saturation : photo.saturation,
+      crop_x: baked.crop_x !== undefined ? baked.crop_x : photo.crop_x,
+      crop_y: baked.crop_y !== undefined ? baked.crop_y : photo.crop_y,
+      crop_w: baked.crop_w !== undefined ? baked.crop_w : photo.crop_w,
+      crop_h: baked.crop_h !== undefined ? baked.crop_h : photo.crop_h,
+    });
+  }
+
+  /**
    * 写真のサムネイルURLを取得する（serverモード時はAPI URL、localdbモード時はBLOBからObjectURLを生成）
    */
   function getMobileThumbnailUrl(photo) {
@@ -20336,7 +20654,7 @@ else if (typeof exports === 'object'){
     // localdb モード: thumbnails テーブルの BLOB (WebP) から ObjectURL を生成してキャッシュ
     const pid = Number(photo.id);
     if (mState.localDb && mState.localDb.isAndroidNative) {
-      return `https://appassets.tetheract.local/thumb/${pid}`;
+      return `https://appassets.tetheract.local/thumb/${pid}?v=${_buildMobilePhotoBakedVersionKey(photo)}`;
     }
     if (mState.thumbUrlCache.has(pid)) {
       return mState.thumbUrlCache.get(pid);
@@ -20379,7 +20697,8 @@ else if (typeof exports === 'object'){
       return `/api/photo/${pid}/view?v=${_buildMobilePhotoVersionKey(photo)}`;
     }
     if (window.TetheractNative || (mState.localDb && mState.localDb.isAndroidNative)) {
-      return `https://appassets.tetheract.local/usb_photo/${pid}?only_hd=1`;
+      const linkTag = `${mState.nativeLinkState?.usbConnected ? 'u1' : 'u0'}_${mState.nativeLinkState?.isPcLinked ? 'w1' : 'w0'}`;
+      return `https://appassets.tetheract.local/usb_photo/${pid}?only_hd=1&s=${_NATIVE_SESSION_NONCE}_${linkTag}&v=${_buildMobilePhotoBakedVersionKey(photo)}`;
     }
     return '';
   }
@@ -20457,7 +20776,10 @@ else if (typeof exports === 'object'){
       const res = await fetch(`/api/photos?${params.toString()}`);
       if (!res.ok) throw new Error('写真一覧取得失敗');
       const data = await res.json();
-      mState.photos = data.photos || [];
+      mState.photos = (data.photos || []).map((p) => {
+        p._bakedAdjust = _normalizeAdjustSnapshot(p);
+        return p;
+      });
       renderPhotoGrid();
       updateHeaderCounters();
       renderActiveFilterChips();
@@ -20500,6 +20822,7 @@ else if (typeof exports === 'object'){
    */
   function fetchPhotosFromLocalDb() {
     if (!mState.localDb) return;
+    _refreshPendingBakedAdjustMap();
 
     if (!mState.stackCountsMap) {
       const stackRows = queryLocalDbObjects(
@@ -20513,9 +20836,12 @@ else if (typeof exports === 'object'){
       : "CASE WHEN p.volume_serial = 'ANDROID_LOCAL' OR p.id >= 900000000 THEN 1 ELSE 0 END AS is_phone_local";
 
     let sql = `
-      SELECT p.id, p.file_name, p.rating, p.width, p.height, p.rotation, p.crop_w, p.crop_h,
+      SELECT p.id, p.file_name, p.rating, p.width, p.height, p.rotation,
+             p.fine_angle, p.brightness, p.contrast, p.saturation, p.crop_x, p.crop_y, p.crop_w, p.crop_h,
              CASE WHEN p.is_raw = 1 OR (p.paired_raw_path IS NOT NULL AND p.paired_raw_path != '') THEN 1 ELSE 0 END AS is_raw,
-             p.stack_id, COALESCE(p.volume_serial, '') AS volume_serial,
+             p.stack_id, COALESCE(p.content_key, '') AS content_key, COALESCE(p.file_path, '') AS file_path,
+             COALESCE(p.file_size, 0) AS file_size, COALESCE(p.file_mtime, 0) AS file_mtime,
+             COALESCE(p.volume_serial, '') AS volume_serial,
              COALESCE(p.directory_path, '') AS directory_path, ${phoneLocalExpr}
       FROM photos p
       WHERE IFNULL(p.is_unlinked, 0) = 0 AND ${SQL_NOT_PAIRED_RAW_P}
@@ -20642,13 +20968,14 @@ else if (typeof exports === 'object'){
 
     const rows = queryLocalDbObjects(sql, params);
 
-    // 一覧グリッド描画を高速化するため、初期状態では8カラム＋stack_countのみ保持し、Exif・tags・stack_photosは選択時にオンデマンド取得する
+    // 一覧グリッド描画を高速化するため、初期状態では必要最小限カラム＋stack_countのみ保持し、Exif・tags・stack_photosはオンデマンド取得する
     const scMap = mState.stackCountsMap;
     for (const r of rows) {
       r.tags = [];
       r.stack_count = mState.stacked && r.stack_id && scMap ? (scMap.get(r.stack_id) || 1) : 1;
       r.stack_photos = [];
       r._detailsLoaded = false;
+      r._bakedAdjust = _resolveBakedAdjustForPhoto(r);
     }
 
     mState.photos = rows;
@@ -20717,13 +21044,7 @@ else if (typeof exports === 'object'){
       if (prevRate !== undefined) photo.rating = prevRate;
     }
     _hydratePhonePhotoExifIfNeeded(photo);
-    photo._bakedAdjust = prevBaked || {
-      brightness: Number(photo.brightness || 0),
-      contrast: Number(photo.contrast || 0),
-      saturation: Number(photo.saturation || 0),
-      fine_angle: Number(photo.fine_angle || 0),
-      rotation: Number(photo.rotation || 0),
-    };
+    photo._bakedAdjust = _resolveBakedAdjustForPhoto(photo, prevBaked || photo);
     const tagRows = queryLocalDbObjects(
       'SELECT tag FROM photo_tags WHERE photo_id = ? ORDER BY tag',
       [photo.id]
@@ -20746,13 +21067,7 @@ else if (typeof exports === 'object'){
             [mr.id]
           );
           mr.tags = mTags.map((r) => r.tag);
-          mr._bakedAdjust = {
-            brightness: Number(mr.brightness || 0),
-            contrast: Number(mr.contrast || 0),
-            saturation: Number(mr.saturation || 0),
-            fine_angle: Number(mr.fine_angle || 0),
-            rotation: Number(mr.rotation || 0),
-          };
+          mr._bakedAdjust = _resolveBakedAdjustForPhoto(mr);
         }
         mr._detailsLoaded = true;
       }
@@ -21446,6 +21761,7 @@ else if (typeof exports === 'object'){
     // 実デコード済みサムネイル寸法 (Exif回転・クロップ反映済み) から正確な縦横比を自動補正
     const imgEl = card.querySelector('img');
     if (imgEl) {
+      imgEl.dataset.unbakedSource = _isPhoneUnbakedPhoto(photo) ? '1' : '0';
       window.TetheractTouchUI?.applyPhotoCssAdjustmentsToElement?.(imgEl, photo);
       const syncNaturalAspect = () => {
         if (!imgEl.naturalWidth || !imgEl.naturalHeight) return;
@@ -22502,6 +22818,7 @@ else if (typeof exports === 'object'){
 
   function closeViewer(animateToGrid = true) {
     if (!mState.viewerOpen) return;
+    window.__flushMobilePendingAdjustSave?.();
     window.TetheractTouchUI?.viewerLauncher?.close?.();
     mState.viewerOpen = false;
     const closingPhoto = mState.photos[mState.viewerIndex];
@@ -22548,6 +22865,7 @@ else if (typeof exports === 'object'){
   }
 
   function stepViewer(delta) {
+    window.__flushMobilePendingAdjustSave?.();
     window.TetheractTouchUI?.viewerLauncher?.close?.();
     const nextIdx = mState.viewerIndex + delta;
     if (nextIdx < 0 || nextIdx >= mState.photos.length) {
@@ -22598,18 +22916,12 @@ else if (typeof exports === 'object'){
     const isPhotoOnline = isMobilePhotoOriginalOnline(activePhoto);
     activePhoto._loadedNaturalW = 0;
     activePhoto._loadedNaturalH = 0;
-    const bakedSnap = activePhoto._bakedAdjust || {
-      brightness: Number(activePhoto.brightness || 0),
-      contrast: Number(activePhoto.contrast || 0),
-      saturation: Number(activePhoto.saturation || 0),
-      fine_angle: Number(activePhoto.fine_angle || 0),
-      rotation: Number(activePhoto.rotation || 0),
-    };
+    const bakedSnap = _resolveBakedAdjustForPhoto(activePhoto);
     activePhoto._bakedAdjust = { ...bakedSnap };
     activePhoto._viewerLoadedBakedAdjust = { ...bakedSnap };
     if (imgEl) {
       imgEl.dataset.photoId = String(activePhoto.id);
-      imgEl.dataset.unbakedSource = activePhoto.is_phone_case ? '1' : '0';
+      imgEl.dataset.unbakedSource = _isPhoneUnbakedPhoto(activePhoto) ? '1' : '0';
       imgEl.dataset.hdLoaded = '0';
       imgEl.src = thumbUrl;
     }
@@ -22639,7 +22951,7 @@ else if (typeof exports === 'object'){
           const srcKind = window.TetheractNative?.getLastPhotoSource
             ? window.TetheractNative.getLastPhotoSource(Number(activePhoto.id))
             : '';
-          imgEl.dataset.unbakedSource = (srcKind === 'usb' || srcKind === 'phone' || Boolean(activePhoto.is_phone_case)) ? '1' : '0';
+          imgEl.dataset.unbakedSource = (srcKind === 'usb' || srcKind === 'phone' || _isPhoneUnbakedPhoto(activePhoto)) ? '1' : '0';
           imgEl.dataset.hdLoaded = '1';
           activePhoto._viewerLoadedBakedAdjust = { ...(activePhoto._bakedAdjust || bakedSnap) };
           imgEl.src = hdUrl;
@@ -24282,6 +24594,7 @@ else if (typeof exports === 'object'){
           if (!p || !p.id) return null;
           return {
             ...p,
+            _bakedAdjust: _resolveBakedAdjustForPhoto(p),
             tags: Array.isArray(p.tags) ? [...p.tags] : [],
             thumbUrl: getMobileThumbnailUrl(p),
             hdUrl: getMobileFullPhotoUrl(p),
@@ -24375,8 +24688,10 @@ else if (typeof exports === 'object'){
         ].filter(Boolean);
         return {
           ...p,
+          _bakedAdjust: _resolveBakedAdjustForPhoto(p),
           thumbUrl: getMobileThumbnailUrl(p),
           hdUrl: getMobileFullPhotoUrl(p),
+          isServerMode: mState.mode === 'server',
           exifSummary: exifParts.join(' · '),
         };
       });
@@ -24626,9 +24941,89 @@ else if (typeof exports === 'object'){
     });
 
     let adjustSaveTimer = null;
+    let pendingAdjustTask = null;
+    let adjustSaveInFlight = null;
+
+    async function _commitAdjustSaveTask(task) {
+      if (!task || !task.photo) return;
+      const { photo, nextBrightness, nextContrast, nextSaturation, nextFineAngle } = task;
+      const cardImg = document.querySelector(`.m-card[data-id="${photo.id}"] img`);
+      if (mState.mode === 'server') {
+        try {
+          const res = await fetch(`/api/photo/${photo.id}/adjustments`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              rotation: Number(photo.rotation || 0),
+              fine_angle: nextFineAngle,
+              brightness: nextBrightness,
+              contrast: nextContrast,
+              saturation: nextSaturation,
+            }),
+          });
+          if (res.ok) {
+            photo._bakedAdjust = _normalizeAdjustSnapshot({
+              ...photo,
+              brightness: nextBrightness,
+              contrast: nextContrast,
+              saturation: nextSaturation,
+              fine_angle: nextFineAngle,
+              rotation: Number(photo.rotation || 0),
+            });
+            if (cardImg) {
+              cardImg.src = getMobileThumbnailUrl(photo);
+              window.TetheractTouchUI?.applyPhotoCssAdjustmentsToElement?.(cardImg, photo);
+            }
+          }
+        } catch (err) {
+          console.warn('サーバー調整値保存エラー:', err);
+        }
+      } else if (mState.mode === 'localdb' && mState.localDb) {
+        try {
+          ensureLocalPhotoDetails(photo);
+          mState.localDb.run(
+            'UPDATE photos SET brightness = ?, contrast = ?, saturation = ?, fine_angle = ? WHERE id = ?',
+            [nextBrightness, nextContrast, nextSaturation, nextFineAngle, photo.id]
+          );
+          recordPendingChange(photo, 'adjustments', {
+            brightness: nextBrightness,
+            contrast: nextContrast,
+            saturation: nextSaturation,
+            fine_angle: nextFineAngle,
+          });
+        } catch (err) {
+          console.warn('ローカルDB調整値保存エラー:', err);
+        }
+      }
+    }
+
+    window.__flushMobilePendingAdjustSave = async () => {
+      if (adjustSaveTimer) {
+        clearTimeout(adjustSaveTimer);
+        adjustSaveTimer = null;
+      }
+      if (adjustSaveInFlight) {
+        try {
+          await adjustSaveInFlight;
+        } catch (e) {}
+      }
+      while (pendingAdjustTask) {
+        const task = pendingAdjustTask;
+        pendingAdjustTask = null;
+        adjustSaveInFlight = _commitAdjustSaveTask(task);
+        try {
+          await adjustSaveInFlight;
+        } finally {
+          adjustSaveInFlight = null;
+        }
+      }
+    };
+
     window.addEventListener('tetheract:canvas-scrub-change', (e) => {
       const photo = getActiveViewerPhoto();
       if (!photo || !e || !e.detail || !e.detail.values) return;
+      _rememberBakedAdjustForPhoto(photo);
+      photo._bakedAdjust = _resolveBakedAdjustForPhoto(photo);
       const vals = e.detail.values;
       const nextBrightness = Math.max(-100, Math.min(100, Math.round(Number(vals.exposure || 0) * 10)));
       const nextContrast = Math.max(-100, Math.min(100, Math.round(Number(vals.contrast || 0))));
@@ -24645,54 +25040,17 @@ else if (typeof exports === 'object'){
       }
       syncTabletInspectorCurrentPhoto();
 
+      pendingAdjustTask = {
+        photo,
+        nextBrightness,
+        nextContrast,
+        nextSaturation,
+        nextFineAngle,
+      };
       if (adjustSaveTimer) clearTimeout(adjustSaveTimer);
-      adjustSaveTimer = setTimeout(async () => {
-        if (mState.mode === 'server') {
-          try {
-            const res = await fetch(`/api/photo/${photo.id}/adjustments`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                rotation: Number(photo.rotation || 0),
-                fine_angle: nextFineAngle,
-                brightness: nextBrightness,
-                contrast: nextContrast,
-                saturation: nextSaturation,
-              }),
-            });
-            if (res.ok) {
-              photo._bakedAdjust = {
-                brightness: nextBrightness,
-                contrast: nextContrast,
-                saturation: nextSaturation,
-                fine_angle: nextFineAngle,
-                rotation: Number(photo.rotation || 0),
-              };
-              if (cardImg) {
-                cardImg.src = getMobileThumbnailUrl(photo);
-                window.TetheractTouchUI?.applyPhotoCssAdjustmentsToElement?.(cardImg, photo);
-              }
-            }
-          } catch (err) {
-            console.warn('サーバー調整値保存エラー:', err);
-          }
-        } else if (mState.mode === 'localdb' && mState.localDb) {
-          try {
-            ensureLocalPhotoDetails(photo);
-            mState.localDb.run(
-              'UPDATE photos SET brightness = ?, contrast = ?, saturation = ?, fine_angle = ? WHERE id = ?',
-              [nextBrightness, nextContrast, nextSaturation, nextFineAngle, photo.id]
-            );
-            recordPendingChange(photo, 'adjustments', {
-              brightness: nextBrightness,
-              contrast: nextContrast,
-              saturation: nextSaturation,
-              fine_angle: nextFineAngle,
-            });
-          } catch (err) {
-            console.warn('ローカルDB調整値保存エラー:', err);
-          }
-        }
+      adjustSaveTimer = setTimeout(() => {
+        adjustSaveTimer = null;
+        window.__flushMobilePendingAdjustSave?.();
       }, 180);
     });
 
@@ -24930,7 +25288,9 @@ else if (typeof exports === 'object'){
         window.TetheractNative.clearPendingChangesJson();
       }
       mState.pendingChanges.items = {};
+      mState.pendingBakedAdjustMap = { byId: {}, byKey: {} };
       savePendingChangesToStorage();
+      _refreshPendingBakedAdjustMap();
       const completeBox = document.getElementById('mExportCompleteBox');
       if (completeBox) completeBox.style.display = 'none';
       showToast('変更履歴をリセットしました');

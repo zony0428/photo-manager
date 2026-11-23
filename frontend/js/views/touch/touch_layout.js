@@ -723,6 +723,7 @@
     if (afBtnEl) afBtnEl.style.display = 'flex';
 
     if (imgEl && photo && photo.thumbUrl) {
+      imgEl.dataset.unbakedSource = global.TetheractTouchUI?.isPhoneUnbakedPhoto?.(photo) ? '1' : '0';
       imgEl.src = photo.thumbUrl;
       imgEl.style.display = 'block';
       global.TetheractTouchUI?.applyPhotoCssAdjustmentsToElement?.(imgEl, photo);

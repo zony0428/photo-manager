@@ -37,20 +37,37 @@ def _sanitize_mobile_tag(raw_tag: Any) -> str:
 
 
 def _schedule_thumbnail_refresh(photo_ids: List[int]) -> None:
-    """モバイル同期で回転・クロップ・トーンが変わった写真のサムネイルを別スレッドで再生成する"""
+    """モバイル同期で調整変更された写真のサムネイルを再生成する（先頭20件は即時完了させ差分DBへ即座に含める）"""
     if not photo_ids:
         return
 
-    def _worker() -> None:
-        from .routers.common import clear_api_photos_cache
-        from .scanner import refresh_photo_thumbnail_transform
+    from .routers.common import clear_api_photos_cache
+    from .scanner import refresh_photo_thumbnail_transform
 
-        for pid in photo_ids:
+    sync_batch = photo_ids[:20]
+    async_tail = photo_ids[20:]
+    for pid in sync_batch:
+        try:
+            refresh_photo_thumbnail_transform(pid)
+        except Exception as e:
+            logger.warning(f"モバイル同期後のサムネイル同期再生成失敗 ({pid}): {e}")
+    clear_api_photos_cache()
+
+    if not async_tail:
+        return
+
+    def _worker() -> None:
+        for pid in async_tail:
             try:
                 refresh_photo_thumbnail_transform(pid)
             except Exception as e:
                 logger.warning(f"モバイル同期後のサムネイル再生成失敗 ({pid}): {e}")
         clear_api_photos_cache()
+        try:
+            from .mobile_delta import ensure_mobile_delta_db
+            ensure_mobile_delta_db(force=True)
+        except Exception as delta_err:
+            logger.debug(f"バックグラウンド再生成後の差分DB更新スキップ: {delta_err}")
 
     threading.Thread(target=_worker, name="mobile-sync-thumb-refresh", daemon=True).start()
 

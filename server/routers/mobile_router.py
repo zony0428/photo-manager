@@ -500,13 +500,22 @@ def api_mobile_locker_sync(
     if clean_mode == "delta":
         cur_state = read_mobile_locker_state()
         cur_wm_id = int(cur_state.get("max_photo_id") or 0)
-        needs_wm_rebuild = bool(max_photo_id > 0 and (cur_wm_id <= 0 or max_photo_id < cur_wm_id))
-        if max_photo_id > 0 and cur_wm_id != int(max_photo_id):
+        cur_wm_created = str(cur_state.get("max_thumb_created_at") or "").strip()
+        clean_created = str(max_thumb_created_at or "").strip()[:40]
+        needs_wm_rebuild = bool(
+            (max_photo_id > 0 and (cur_wm_id <= 0 or max_photo_id < cur_wm_id))
+            or (clean_created and (not cur_wm_created or clean_created < cur_wm_created))
+        )
+        wm_changed = (
+            (max_photo_id > 0 and cur_wm_id != int(max_photo_id))
+            or (bool(clean_created) and clean_created != cur_wm_created)
+        )
+        if wm_changed:
             try:
                 LOCKER_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
                 state_obj = {
-                    "max_photo_id": int(max_photo_id),
-                    "max_thumb_created_at": str(max_thumb_created_at or "")[:40],
+                    "max_photo_id": int(max_photo_id) if max_photo_id > 0 else cur_wm_id,
+                    "max_thumb_created_at": clean_created or cur_wm_created,
                     "synced_via": "wifi",
                 }
                 LOCKER_STATE_PATH.write_text(

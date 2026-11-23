@@ -2357,6 +2357,7 @@
     _refreshMaskPillsUI({ plates: [], faces: [], selected: null });
     _setStep(1);
 
+    const hasHdUrl = Boolean(meta && meta.hdUrl);
     const primaryUrl = meta.hdUrl || meta.thumbUrl || '';
     const fallbackUrl = meta.thumbUrl && meta.thumbUrl !== primaryUrl ? meta.thumbUrl : '';
     if (!primaryUrl) {
@@ -2370,7 +2371,23 @@
       img.crossOrigin = 'anonymous';
       img.onload = () => {
         if (mySeq !== loadReqSeq) return;
-        editor.setPhotoSource(img, meta, { plates: [], faces: [] });
+        const touchUi = global.TetheractTouchUI || {};
+        const isThumbSource = Boolean(isFallback || !hasHdUrl);
+        const isUnbaked = typeof touchUi.resolveImageUnbakedState === 'function'
+          ? touchUi.resolveImageUnbakedState(meta, {
+              isFallback: isThumbSource,
+              isServerMode: Boolean(meta && meta.isServerMode),
+            })
+          : false;
+        let effectiveSource = img;
+        if (typeof touchUi.renderAdjustedPhotoCanvas === 'function') {
+          const rendered = touchUi.renderAdjustedPhotoCanvas(img, meta, {
+            isUnbaked,
+            maxLongEdge: 4096,
+          });
+          if (rendered && rendered.source) effectiveSource = rendered.source;
+        }
+        editor.setPhotoSource(effectiveSource, meta, { plates: [], faces: [] });
         _pushDecoratorToEditor();
         if (cfg.autoDetectOnOpen) {
           _runAiDetectionForCurrentPhoto(true);
@@ -2887,6 +2904,9 @@
    * 選択写真または表示中の写真を対象に Art Framer モーダルを開く
    */
   async function open(explicitIds = null, presetKey = 'for_x') {
+    if (typeof global.__flushMobilePendingAdjustSave === 'function') {
+      await global.__flushMobilePendingAdjustSave();
+    }
     const targets = typeof global.__getMobileArtFramerTargets === 'function'
       ? global.__getMobileArtFramerTargets(explicitIds)
       : [];

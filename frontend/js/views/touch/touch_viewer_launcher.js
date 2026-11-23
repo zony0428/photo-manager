@@ -94,83 +94,35 @@
   }
 
   /**
-   * 原本画像へ非破壊調整（露出・コントラスト・彩度・傾き・90°回転）を適用し、
+   * 原本またはサムネイル画像へ非破壊調整（touch_adjust.js の共通レンダラ）を適用し、
    * SNS投稿向けに長辺上限2048px・GPS非含有のJPEG DataURLを生成する。
    */
   function _renderAdjustedJpegDataUrl(img, photo, isUnbakedSource) {
-    const srcW = Math.max(1, img.naturalWidth || img.width || 1);
-    const srcH = Math.max(1, img.naturalHeight || img.height || 1);
-
-    const baked = (photo && photo._bakedAdjust) || {
-      brightness: 0,
-      contrast: 0,
-      saturation: 0,
-      fine_angle: 0,
-      rotation: 0,
-    };
-    const curEv = Number((photo && photo.brightness) || 0) / 10.0;
-    const curCt = Number((photo && photo.contrast) || 0);
-    const curSat = Number((photo && photo.saturation) || 0);
-    const curTilt = Number((photo && photo.fine_angle) || 0);
-    const curRot = Number((photo && photo.rotation) || 0);
-
-    const effEv = isUnbakedSource ? curEv : (curEv - Number(baked.brightness || 0) / 10.0);
-    const effCt = isUnbakedSource ? curCt : (curCt - Number(baked.contrast || 0));
-    const effSat = isUnbakedSource ? curSat : (curSat - Number(baked.saturation || 0));
-    const effTilt = isUnbakedSource ? curTilt : (curTilt - Number(baked.fine_angle || 0));
-    const effRot90 = isUnbakedSource ? ((curRot % 360) + 360) % 360 : 0;
-
-    const isSwap90 = effRot90 === 90 || effRot90 === 270;
-    const baseOutW = isSwap90 ? srcH : srcW;
-    const baseOutH = isSwap90 ? srcW : srcH;
-    const longEdge = Math.max(baseOutW, baseOutH);
-    const resizeScale = longEdge > QUICK_SHARE_MAX_LONG_EDGE ? (QUICK_SHARE_MAX_LONG_EDGE / longEdge) : 1.0;
-
-    const outW = Math.max(1, Math.round(baseOutW * resizeScale));
-    const outH = Math.max(1, Math.round(baseOutH * resizeScale));
-
-    const canvas = document.createElement('canvas');
-    canvas.width = outW;
-    canvas.height = outH;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('Canvasコンテキストを取得できませんでした');
-
-    const br = Math.max(0.25, Math.min(2.4, Math.pow(2, effEv * 0.45)));
-    const ct = Math.max(0.25, Math.min(2.2, 1 + effCt / 100));
-    const sa = Math.max(0, Math.min(2.4, 1 + effSat / 100));
-    const hasFilter = Math.abs(br - 1) > 0.005 || Math.abs(ct - 1) > 0.005 || Math.abs(sa - 1) > 0.005;
-
-    ctx.fillStyle = '#000000';
-    ctx.fillRect(0, 0, outW, outH);
-    ctx.save();
-    if (hasFilter && typeof ctx.filter === 'string') {
-      ctx.filter = `brightness(${br.toFixed(3)}) contrast(${ct.toFixed(3)}) saturate(${sa.toFixed(3)})`;
+    const touchUi = global.TetheractTouchUI || {};
+    if (typeof touchUi.renderAdjustedPhotoCanvas === 'function') {
+      const rendered = touchUi.renderAdjustedPhotoCanvas(img, photo, {
+        isUnbaked: isUnbakedSource,
+        maxLongEdge: QUICK_SHARE_MAX_LONG_EDGE,
+      });
+      const srcNode = (rendered && rendered.source) || img;
+      let outCanvas = srcNode instanceof HTMLCanvasElement ? srcNode : null;
+      if (!outCanvas) {
+        const w = Math.max(1, (rendered && rendered.width) || img.naturalWidth || img.width || 1);
+        const h = Math.max(1, (rendered && rendered.height) || img.naturalHeight || img.height || 1);
+        outCanvas = document.createElement('canvas');
+        outCanvas.width = w;
+        outCanvas.height = h;
+        const ctx = outCanvas.getContext('2d');
+        if (!ctx) throw new Error('Canvasコンテキストを取得できませんでした');
+        ctx.drawImage(srcNode, 0, 0, w, h);
+      }
+      return {
+        dataUrl: outCanvas.toDataURL('image/jpeg', QUICK_SHARE_JPEG_QUALITY),
+        width: outCanvas.width,
+        height: outCanvas.height,
+      };
     }
-
-    ctx.translate(outW * 0.5, outH * 0.5);
-    let totalRad = (effRot90 * Math.PI) / 180;
-    let tiltScale = 1.0;
-    if (Math.abs(effTilt) > 0.05) {
-      const tiltRad = (effTilt * Math.PI) / 180;
-      totalRad += tiltRad;
-      const absSin = Math.abs(Math.sin(tiltRad));
-      const absCos = Math.abs(Math.cos(tiltRad));
-      const rAspect = outW / Math.max(1, outH);
-      tiltScale = Math.max(absCos + absSin * rAspect, absCos + absSin / Math.max(0.01, rAspect));
-    }
-    if (Math.abs(totalRad) > 0.0001) ctx.rotate(totalRad);
-    if (tiltScale > 1.0001) ctx.scale(tiltScale, tiltScale);
-
-    const drawW = Math.max(1, Math.round(srcW * resizeScale));
-    const drawH = Math.max(1, Math.round(srcH * resizeScale));
-    ctx.drawImage(img, -drawW * 0.5, -drawH * 0.5, drawW, drawH);
-    ctx.restore();
-
-    return {
-      dataUrl: canvas.toDataURL('image/jpeg', QUICK_SHARE_JPEG_QUALITY),
-      width: outW,
-      height: outH,
-    };
+    throw new Error('画像調整エンジンが読み込まれていません');
   }
 
   function _fallbackBrowserDownload(dataUrl, fileName) {
@@ -185,6 +137,9 @@
   async function executeQuickShare() {
     if (isSharing) return;
     closeMenu();
+    if (typeof global.__flushMobilePendingAdjustSave === 'function') {
+      await global.__flushMobilePendingAdjustSave();
+    }
 
     const targets = typeof global.__getMobileArtFramerTargets === 'function'
       ? global.__getMobileArtFramerTargets()
@@ -196,9 +151,12 @@
     }
 
     const viewerImg = document.getElementById('mViewerImg');
-    const isUnbakedSource = Boolean(viewerImg && viewerImg.dataset.unbakedSource === '1');
-    const primaryUrl = photo.hdUrl || (viewerImg && viewerImg.currentSrc) || photo.thumbUrl || '';
-    const fallbackUrl = photo.thumbUrl || (viewerImg && viewerImg.currentSrc) || '';
+    const matchesViewerImg = Boolean(
+      viewerImg && viewerImg.dataset.photoId === String(photo.id) && viewerImg.currentSrc
+    );
+    const hasHdUrl = Boolean(photo.hdUrl);
+    const primaryUrl = photo.hdUrl || photo.thumbUrl || (matchesViewerImg ? viewerImg.currentSrc : '') || '';
+    const fallbackUrl = photo.thumbUrl || (matchesViewerImg ? viewerImg.currentSrc : '') || '';
 
     isSharing = true;
     _showToast('共有用の画像を準備中（GPS除去・調整反映）...', 2000);
@@ -207,6 +165,14 @@
       if (isFallback || (img.naturalWidth <= 480 && img.naturalHeight <= 480)) {
         _showToast('オフラインのためサムネイル画質で共有します', 2600);
       }
+      const isThumbSource = Boolean(isFallback || !hasHdUrl);
+      const touchUi = global.TetheractTouchUI || {};
+      const isUnbakedSource = typeof touchUi.resolveImageUnbakedState === 'function'
+        ? touchUi.resolveImageUnbakedState(photo, {
+            isFallback: isThumbSource,
+            isServerMode: Boolean(photo.isServerMode),
+          })
+        : false;
       const rendered = _renderAdjustedJpegDataUrl(img, photo, isUnbakedSource);
       const origName = String(photo.file_name || `photo_${photo.id || Date.now()}`);
       const stem = origName.replace(/\.[^.]+$/, '');
