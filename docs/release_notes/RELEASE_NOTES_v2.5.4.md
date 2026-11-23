@@ -1,13 +1,13 @@
 # Release Notes - v2.5.4
 
 - **Tag**: `v2.5.4`
-- **Title**: `TETHERACT pm v2.5.4 - モバイルArt Framer非破壊調整反映・未同期基準値永続化＆クイック共有/同期サムネイル整合修正`
-- **Release Date**: `2026-11-23`
+- **Title**: `TETHERACT pm v2.5.4 - モバイルArt Framer非破壊調整反映・Step 2配置マップ刷新＆未同期基準値永続化`
+- **Release Date**: `2026-11-24`
 
 ---
 
 ### 概要（今回の更新と v2 系列のポイント）
-- [v2.5.4 の主な変更点](#1-v254-の主な変更点) — モバイル版 Art Framer への非破壊調整（回転・水平傾き・クロップ・トーン）の完全反映、Android ネイティブジャーナルにおける未同期調整基準値の永続化、クイック SNS 共有・Duel・グリッド・PC 同期後サムネイルの一貫性修正。
+- [v2.5.4 の主な変更点](#1-v254-の主な変更点) — モバイル版 Art Framer への非破壊調整の完全反映、Step 2 のスマホ表示順整理と PC/モバイル共通 3×3 ウォーターマーク配置マップ・4択テキストスタイル刷新、Android ジャーナルにおける未同期基準値の永続化、クイック SNS 共有・Duel・グリッド・同期後サムネイルの一貫性修正。
 - [v2 系列の主な特徴（v1.8 系列との違い）](#2-v2-系列の主な特徴v18-系列からの主な追加点) — 同梱 Android アプリ、モバイル版 Art Framer（オンデバイス ONNX プライバシー検出）、Wi-Fi ロッカー双方向同期、USB 直挿し閲覧＆自動差分取込（Read-Only）、GPS フィールドログ補完、2D 仮想グリッド。
 - [導入とアップデート手順](#3-導入とアップデート手順) — 初回フル版 ZIP、解凍不要の差分 `diff.zip`、Android アプリの導入・更新方法（`v1.8.x` と DB・`Loome` 完全互換）。
 
@@ -16,6 +16,10 @@
 ## 日本語 (Japanese)
 
 ### 1. v2.5.4 の主な変更点
+- **Art Framer Step 2 のスマホレイアウト順刷新・3×3 ウォーターマーク配置マップ＆テキストスタイル4択化**（`touch_art_framer.js`, `touch-responsive.css`, `index.html`, `art_framer.js`, `modals-tools.css`, `privacy_mask_editor.js`, `export_decorator.py`）：
+  - **スマホ縦画面限定 Step 2 レイアウト順見直し**：`839px` 以下のスマホ縦持ち表示において、Step 2 の表示順を「**キャプション設定 → プレビュー → ウォーターマーク設定**」の順へ並び替え、プレビューを見比べながら上下の枠・透かしを調整しやすくしました（タブレット `840px` 以上と PC は従来の 2 カラムを維持）。
+  - **視覚的な 3×3 配置マップ＆有効化チェックボックス廃止**：スマホ・タブレット・PC の全画面で、従来の文字位置ボタンと「ウォーターマークを入れる」チェックボックスを廃止し、写真比率の **3×3 配置マップ** へ刷新しました。また Canvas プレビューと PC 側 Pillow 書き出しに `top-center`・`middle-left`・`middle-right` を追加して全 9 方向を完全サポートしました（マップ上の位置を選ぶと即座に透かし ON ＋詳細設定を展開、選択中のセル再選択またはヘッダの「解除」ボタンで OFF）。
+  - **テキスト透かしスタイルの 4 択統合＆ドロップシャドウチェックボックス廃止**：分かりにくかった色選択＋別チェックボックスの 2 段階を廃し、`白文字` / `白文字(影付き)` / `黒文字` / `黒文字(影付き)` の 4 択セレクトへ統合しました（既存の保存設定 `{ color, shadow }` との後方互換も維持）。
 - **モバイル版 Art Framer への非破壊調整（回転・傾き・クロップ・トーン）の事前焼き込み対応**（`touch_adjust.js`, `touch_art_framer.js`, `mobile.js`）：
   - モバイル版 Art Framer が読み込んだ画像（USB 直結原本・スマホ内写真・Wi-Fi / オフライン画像）へ、90度回転・水平傾き補正（内接自動ズーム付き）・トリミング・露出・コントラスト・彩度の有効差分を事前に適用せずそのままキャンバスへ渡していたため、非破壊調整がキャンセルされていた不具合を修正しました。
   - PC 側（`server/scanner.py` の `apply_photo_adjustments_pil`）と同一の数式・適用順（90度回転 → 水平傾き内接自動ズーム → トリミング → 露出 `2^(ev/2.2)` / コントラスト `1 + (ct/100)*0.75` / 彩度 `1 + sat/100`）を共通エンジン `renderAdjustedPhotoCanvas()` として統合し、Step 1 からのプレビュー表示・オンデバイス AI 検出座標・最終書き出し画像のすべてに非破壊調整が正確に反映されるようになりました。
@@ -48,6 +52,10 @@ PC単体安定版の `v1.8.x` 系列に対し、`v2.x` 系列には以下の機�
 ## English
 
 ### 1. What's New in v2.5.4
+- **Art Framer Step 2 Phone Layout Reorder, 3×3 Watermark Placement Map & 4-Option Text Style** (`touch_art_framer.js`, `touch-responsive.css`, `index.html`, `art_framer.js`, `modals-tools.css`, `privacy_mask_editor.js`, `export_decorator.py`):
+  - **Phone Step 2 Vertical Reorder (`<= 839px` only)**: Reordered Step 2 panels on smartphones to **Caption Settings -> Preview -> Watermark Settings** for easier adjustments around the live preview (Tablets `>= 840px` and Desktop keep their 2-column layout).
+  - **Visual 3×3 Watermark Map & Checkbox Removal**: Replaced text placement buttons and the "Enable Watermark" checkbox across Phone, Tablet, and Desktop with a miniature photo-frame 3×3 placement map supporting all 9 anchors (`top-center`, `middle-left`, and `middle-right` added to both Canvas preview and Pillow export). Clicking/tapping any cell enables the watermark and reveals details below; tapping the active cell again or "Clear (解除)" turns it off.
+  - **4-Option Text Watermark Style & Shadow Checkbox Removal**: Replaced the separate text color selector and drop-shadow checkbox with 4 explicit presets (`白文字`, `白文字(影付き)`, `黒文字`, `黒文字(影付き)` / White, White w/ Shadow, Black, Black w/ Shadow) while maintaining backward compatibility with stored `{ color, shadow }` settings.
 - **Non-Destructive Adjustments Applied in Mobile Art Framer** (`touch_adjust.js`, `touch_art_framer.js`, `mobile.js`):
   - Fixed a bug where mobile Art Framer loaded raw or partially baked image streams directly without applying effective non-destructive adjustments (90° rotation, tilt straighten with inscribed auto-zoom, crop box, exposure, contrast, and saturation).
   - Extracted a shared Canvas renderer (`renderAdjustedPhotoCanvas`) matching PC backend math (`server/scanner.py:apply_photo_adjustments_pil`: 90° rotation -> tilt inscribed auto-zoom -> normalized crop -> exposure `2^(ev/2.2)`, contrast `1 + (ct/100)*0.75`, saturation `1 + sat/100`). AI privacy detection coordinates, live previews, and final exports now consistently preserve all adjustments, and pending 180ms scrub saves are flushed (`__flushMobilePendingAdjustSave`) before loading.

@@ -77,6 +77,31 @@
   let pendingDeleteWmId = '';
   let pendingDeleteWmTimer = null;
 
+  const WM_POS_LABELS = {
+    'top-left': '左上',
+    'top-center': '中央上',
+    'top-right': '右上',
+    'middle-left': '左中',
+    center: '中央',
+    'middle-right': '右中',
+    'bottom-left': '左下',
+    'bottom-center': '中央下',
+    'bottom-right': '右下',
+  };
+
+  function _encodeWmTextStyle(wm) {
+    const colorPart = wm && wm.color === 'dark' ? 'dark' : 'light';
+    const shadowPart = wm && wm.shadow === false ? 'plain' : 'shadow';
+    return `${colorPart}_${shadowPart}`;
+  }
+
+  function _applyWmTextStyle(wm, styleVal) {
+    if (!wm) return;
+    const raw = String(styleVal || 'light_shadow');
+    wm.color = raw.startsWith('dark') ? 'dark' : 'light';
+    wm.shadow = raw.endsWith('_shadow');
+  }
+
   function _showToast(msg, durationMs = 2800) {
     if (typeof global.showToast === 'function') {
       global.showToast(msg, durationMs);
@@ -186,7 +211,7 @@
           <button type="button" class="t-af-step-tab" data-step="3">3. 出力・共有</button>
         </div>
 
-        <div class="t-af-workspace">
+        <div id="mAfWorkspace" class="t-af-workspace" data-step="1">
           <div class="t-af-canvas-pane">
             <div id="mAfZoomToolbar" class="t-af-zoom-toolbar">
               <div class="t-af-zoom-group">
@@ -211,7 +236,7 @@
 
           <div class="t-af-controls-pane">
             <!-- Step 1: プライバシーマスク -->
-            <div id="mAfStep1Panel" class="t-af-step-panel">
+            <div id="mAfStep1Panel" class="t-af-step-panel is-active">
               <div class="t-af-card">
                 <div class="t-af-card-head">
                   <span class="t-af-card-title">操作モード（親指タップ切替）</span>
@@ -284,8 +309,8 @@
             </div>
 
             <!-- Step 2: プリント枠・透かし -->
-            <div id="mAfStep2Panel" class="t-af-step-panel" style="display:none;">
-              <div class="t-af-card">
+            <div id="mAfStep2Panel" class="t-af-step-panel">
+              <div id="mAfFrameCard" class="t-af-card">
                 <label class="t-af-toggle-head">
                   <input type="checkbox" id="mAfFrameEnableCheck" checked>
                   <span>プリント枠・EXIFキャプションを付ける</span>
@@ -367,12 +392,26 @@
                 </div>
               </div>
 
-              <div class="t-af-card">
-                <label class="t-af-toggle-head">
-                  <input type="checkbox" id="mAfWmEnableCheck">
-                  <span>ウォーターマーク（透かし）を入れる</span>
-                </label>
-                <div id="mAfWmControlsBody" class="t-af-subblock">
+              <div id="mAfWmCard" class="t-af-card">
+                <div class="t-af-card-head">
+                  <span class="t-af-card-title">ウォーターマーク（透かし）</span>
+                  <div class="t-af-wm-head-right">
+                    <span id="mAfWmStatusLabel" class="t-af-wm-status">なし（位置を選択でON）</span>
+                    <button type="button" id="mAfWmClearBtn" class="t-af-mini-btn" style="display:none;">解除</button>
+                  </div>
+                </div>
+                <div id="mAfWmPosMap" class="t-af-wm-map" role="group" aria-label="ウォーターマークの配置マップ">
+                  <button type="button" class="t-af-wm-pos-btn" data-pos="top-left" aria-label="左上" title="左上"><span class="t-af-wm-map-marker"></span></button>
+                  <button type="button" class="t-af-wm-pos-btn" data-pos="top-center" aria-label="中央上" title="中央上"><span class="t-af-wm-map-marker"></span></button>
+                  <button type="button" class="t-af-wm-pos-btn" data-pos="top-right" aria-label="右上" title="右上"><span class="t-af-wm-map-marker"></span></button>
+                  <button type="button" class="t-af-wm-pos-btn" data-pos="middle-left" aria-label="左中" title="左中"><span class="t-af-wm-map-marker"></span></button>
+                  <button type="button" class="t-af-wm-pos-btn" data-pos="center" aria-label="中央" title="中央"><span class="t-af-wm-map-marker"></span></button>
+                  <button type="button" class="t-af-wm-pos-btn" data-pos="middle-right" aria-label="右中" title="右中"><span class="t-af-wm-map-marker"></span></button>
+                  <button type="button" class="t-af-wm-pos-btn" data-pos="bottom-left" aria-label="左下" title="左下"><span class="t-af-wm-map-marker"></span></button>
+                  <button type="button" class="t-af-wm-pos-btn" data-pos="bottom-center" aria-label="中央下" title="中央下"><span class="t-af-wm-map-marker"></span></button>
+                  <button type="button" class="t-af-wm-pos-btn" data-pos="bottom-right" aria-label="右下" title="右下"><span class="t-af-wm-map-marker"></span></button>
+                </div>
+                <div id="mAfWmControlsBody" class="t-af-subblock" style="display:none;">
                   <div class="t-af-seg-grid2">
                     <button type="button" class="t-af-wm-type-btn active" data-wm-type="text">テキスト</button>
                     <button type="button" class="t-af-wm-type-btn" data-wm-type="image">画像ロゴ (透過PNG)</button>
@@ -381,12 +420,11 @@
                     <div class="t-af-field-grid2">
                       <input type="text" id="mAfWmTextInput" class="t-af-input" value="© 2026" placeholder="© Author">
                       <select id="mAfWmColorSelect" class="t-af-select-sm">
-                        <option value="light">白文字 (Shadow)</option>
-                        <option value="dark">黒文字 (Light)</option>
+                        <option value="light_plain">白文字</option>
+                        <option value="light_shadow">白文字(影付き)</option>
+                        <option value="dark_plain">黒文字</option>
+                        <option value="dark_shadow">黒文字(影付き)</option>
                       </select>
-                    </div>
-                    <div class="t-af-checks-wrap">
-                      <label class="t-af-check-mini"><input type="checkbox" id="mAfWmShadowCheck" checked><span>ドロップシャドウ</span></label>
                     </div>
                   </div>
                   <div id="mAfWmImageGroup" class="t-af-subblock" style="display:none; gap:8px;">
@@ -396,14 +434,6 @@
                       <input type="file" id="mAfWmFileInput" accept="image/png,image/webp,image/jpeg" style="display:none;">
                     </div>
                     <div id="mAfWmAssetList" class="t-af-wm-asset-grid"></div>
-                  </div>
-                  <div class="t-af-seg-grid3">
-                    <button type="button" class="t-af-wm-pos-btn" data-pos="top-left">左上</button>
-                    <button type="button" class="t-af-wm-pos-btn" data-pos="top-right">右上</button>
-                    <button type="button" class="t-af-wm-pos-btn" data-pos="bottom-left">左下</button>
-                    <button type="button" class="t-af-wm-pos-btn" data-pos="bottom-center">中央下</button>
-                    <button type="button" class="t-af-wm-pos-btn active" data-pos="bottom-right">右下</button>
-                    <button type="button" class="t-af-wm-pos-btn" data-pos="center">中央</button>
                   </div>
                   <label class="t-af-slider-row">
                     <span id="mAfWmSizeLabel">文字サイズ</span>
@@ -420,7 +450,7 @@
             </div>
 
             <!-- Step 3: 出力・共有・母艦キュー -->
-            <div id="mAfStep3Panel" class="t-af-step-panel" style="display:none;">
+            <div id="mAfStep3Panel" class="t-af-step-panel">
               <div class="t-af-card">
                 <div class="t-af-card-title">仕上がりサマリ</div>
                 <div class="t-af-summary-grid">
@@ -573,10 +603,12 @@
       card.addEventListener('click', () => {
         pendingDeleteWmId = '';
         _selectWatermarkAsset(asset);
+        cfg.watermark.enabled = true;
         cfg.watermark.type = 'image';
         if (cfg.watermark.size_ratio < 0.03) cfg.watermark.size_ratio = 0.16;
         _syncFormFromState();
         _pushDecoratorToEditor();
+        _updateStep3SummaryUI();
         _saveSettings();
       });
 
@@ -631,11 +663,13 @@
       watermarkAssets = Array.isArray(res.watermarks) ? res.watermarks : watermarkAssets;
       if (res.asset) {
         _selectWatermarkAsset(res.asset);
+        cfg.watermark.enabled = true;
         cfg.watermark.type = 'image';
         if (cfg.watermark.size_ratio < 0.03) cfg.watermark.size_ratio = 0.16;
       }
       _syncFormFromState();
       _pushDecoratorToEditor();
+      _updateStep3SummaryUI();
       _saveSettings();
       _showToast(`ロゴ「${(res.asset && res.asset.name) || file.name}」を保存しました`);
     } catch (e) {
@@ -776,8 +810,20 @@
     document.getElementById('mAfCaptionFieldsGroup')?.classList.toggle('is-disabled', cfg.frame.layout === 'border_only');
     _syncFrameExpanderSummaries();
 
-    setChk('mAfWmEnableCheck', cfg.watermark.enabled);
-    document.getElementById('mAfWmControlsBody')?.classList.toggle('is-disabled', !cfg.watermark.enabled);
+    const wmEnabled = Boolean(cfg.watermark.enabled);
+    const wmPos = WM_POS_LABELS[cfg.watermark.position] ? cfg.watermark.position : 'bottom-right';
+    const wmBody = document.getElementById('mAfWmControlsBody');
+    if (wmBody) wmBody.style.display = wmEnabled ? 'flex' : 'none';
+
+    const wmStatusEl = document.getElementById('mAfWmStatusLabel');
+    if (wmStatusEl) {
+      wmStatusEl.textContent = wmEnabled ? (WM_POS_LABELS[wmPos] || 'ON') : 'なし（位置を選択でON）';
+      wmStatusEl.classList.toggle('is-on', wmEnabled);
+    }
+    const wmClearBtn = document.getElementById('mAfWmClearBtn');
+    if (wmClearBtn) wmClearBtn.style.display = wmEnabled ? 'inline-flex' : 'none';
+    document.getElementById('mAfWmPosMap')?.classList.toggle('is-active', wmEnabled);
+
     const isLogo = cfg.watermark.type === 'image';
     modalEl.querySelectorAll('.t-af-wm-type-btn').forEach((btn) => {
       btn.classList.toggle('active', btn.dataset.wmType === (isLogo ? 'image' : 'text'));
@@ -788,11 +834,12 @@
     if (imgGrp) imgGrp.style.display = isLogo ? 'flex' : 'none';
 
     setVal('mAfWmTextInput', cfg.watermark.text || '');
-    setVal('mAfWmColorSelect', cfg.watermark.color || 'light');
-    setChk('mAfWmShadowCheck', cfg.watermark.shadow !== false);
+    setVal('mAfWmColorSelect', _encodeWmTextStyle(cfg.watermark));
     setTxt('mAfWmImageNameLabel', cfg.watermark.image_name || '未選択');
     modalEl.querySelectorAll('.t-af-wm-pos-btn').forEach((btn) => {
-      btn.classList.toggle('active', btn.dataset.pos === cfg.watermark.position);
+      const isAct = wmEnabled && btn.dataset.pos === wmPos;
+      btn.classList.toggle('active', isAct);
+      btn.setAttribute('aria-pressed', isAct ? 'true' : 'false');
     });
 
     const opPct = Math.round((cfg.watermark.opacity ?? 0.58) * 100);
@@ -928,12 +975,18 @@
       tab.classList.toggle('active', parseInt(tab.dataset.step, 10) === cfg.step);
     });
 
+    const ws = document.getElementById('mAfWorkspace');
+    if (ws) {
+      ws.dataset.step = String(cfg.step);
+      ws.scrollTop = 0;
+    }
+
     const p1 = document.getElementById('mAfStep1Panel');
     const p2 = document.getElementById('mAfStep2Panel');
     const p3 = document.getElementById('mAfStep3Panel');
-    if (p1) p1.style.display = cfg.step === 1 ? 'flex' : 'none';
-    if (p2) p2.style.display = cfg.step === 2 ? 'flex' : 'none';
-    if (p3) p3.style.display = cfg.step === 3 ? 'flex' : 'none';
+    if (p1) p1.classList.toggle('is-active', cfg.step === 1);
+    if (p2) p2.classList.toggle('is-active', cfg.step === 2);
+    if (p3) p3.classList.toggle('is-active', cfg.step === 3);
 
     const zoomBar = document.getElementById('mAfZoomToolbar');
     if (zoomBar) zoomBar.style.display = 'flex';
@@ -2724,10 +2777,11 @@
     });
     document.getElementById('mAfCustomNoteInput')?.addEventListener('change', _saveSettings);
 
-    document.getElementById('mAfWmEnableCheck')?.addEventListener('change', (e) => {
-      cfg.watermark.enabled = e.target.checked;
+    document.getElementById('mAfWmClearBtn')?.addEventListener('click', () => {
+      cfg.watermark.enabled = false;
       _syncFormFromState();
       _pushDecoratorToEditor();
+      _updateStep3SummaryUI();
       _saveSettings();
     });
     modalEl.querySelectorAll('.t-af-wm-type-btn').forEach((btn) => {
@@ -2763,20 +2817,22 @@
     });
     document.getElementById('mAfWmTextInput')?.addEventListener('change', _saveSettings);
     document.getElementById('mAfWmColorSelect')?.addEventListener('change', (e) => {
-      cfg.watermark.color = e.target.value;
-      _pushDecoratorToEditor();
-      _saveSettings();
-    });
-    document.getElementById('mAfWmShadowCheck')?.addEventListener('change', (e) => {
-      cfg.watermark.shadow = e.target.checked;
+      _applyWmTextStyle(cfg.watermark, e.target.value);
       _pushDecoratorToEditor();
       _saveSettings();
     });
     modalEl.querySelectorAll('.t-af-wm-pos-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
-        cfg.watermark.position = btn.dataset.pos;
+        const pos = btn.dataset.pos;
+        if (cfg.watermark.enabled && cfg.watermark.position === pos) {
+          cfg.watermark.enabled = false;
+        } else {
+          cfg.watermark.enabled = true;
+          cfg.watermark.position = pos;
+        }
         _syncFormFromState();
         _pushDecoratorToEditor();
+        _updateStep3SummaryUI();
         _saveSettings();
       });
     });

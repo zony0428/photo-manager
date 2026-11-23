@@ -385,17 +385,23 @@ def apply_watermark_pil(img: Image.Image, wm_cfg: Optional[Dict[str, Any]]) -> I
 def _compute_anchor_xy(
     canvas_w: int, canvas_h: int, item_w: int, item_h: int, pos: str, margin: int
 ) -> Tuple[int, int]:
-    """6方向アンカー名から左上描画座標 (x, y) を返す"""
+    """9方向アンカー名から左上描画座標 (x, y) を返す"""
     if pos == "top-left":
         return margin, margin
+    if pos == "top-center":
+        return max(0, (canvas_w - item_w) // 2), margin
     if pos == "top-right":
         return max(0, canvas_w - item_w - margin), margin
+    if pos == "middle-left":
+        return margin, max(0, (canvas_h - item_h) // 2)
+    if pos == "center":
+        return max(0, (canvas_w - item_w) // 2), max(0, (canvas_h - item_h) // 2)
+    if pos == "middle-right":
+        return max(0, canvas_w - item_w - margin), max(0, (canvas_h - item_h) // 2)
     if pos == "bottom-left":
         return margin, max(0, canvas_h - item_h - margin)
     if pos == "bottom-center":
         return max(0, (canvas_w - item_w) // 2), max(0, canvas_h - item_h - margin)
-    if pos == "center":
-        return max(0, (canvas_w - item_w) // 2), max(0, (canvas_h - item_h) // 2)
     # デフォルト: bottom-right
     return max(0, canvas_w - item_w - margin), max(0, canvas_h - item_h - margin)
 

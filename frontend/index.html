@@ -1503,7 +1503,7 @@
             <h4>5. Art Framer・スマート・テイクアウト・ベタ焼き（コンタクトシート）HTML出力</h4>
             <p>右クリックメニューの「テイクアウト」（またはライトボックス上部・右インスペクタ）から、元ファイルを変更せずに3種類の出力機能を利用できます。</p>
             <ul>
-              <li>Art Framer（プリント枠・EXIFキャプション・透かし・プライバシーマスク）：SNS投稿や作品出力向けの3ステップ書き出しウィザードです（PC版とAndroidモバイル版の両方に対応）。外寸基準プリセット（<code>for X</code> 長辺2048px / <code>for INSTA</code> 4:5・1:1 / <code>Full Size</code>）を選ぶと枠込みの仕上がり解像度から写真の配置サイズを自動逆算します。ステップ1ではローカルAI（外部通信なし、Android端末上でも同一の <code>YuNet</code> / <code>LPD-YuNet</code> オンデバイス推論と4辺精密スナップを実行）で車両のナンバープレートと人物の顔を自動検出し、最大800%拡大・×3.5指先ルーペ・四つ角ハンドル・スポイト吸取・フチのモヤ調整・放射フェザーの顔モヤスタンプで繊細に仕上げられます。ステップ2では4種類のプリント枠レイアウト（ギャラリー下余白 / クラシック均等枠 / フィルムコンタクト / 枠なし）、台紙カラー（マット白 / 暖色バライタ / 暗室黒）、機材・露出設定・撮影場所のEXIFキャプション印字、テキストまたは <code>library.db</code> で複数管理してモバイルとも同期できる透過PNGロゴ（標準の <code>TETHERACT</code> ロゴを含む・写真長辺比 3%〜50%統一）の透かし合成をリアルタイム確認できます。またモバイル版の拡大表示上部右端のランチャーボタンからは、端末ギャラリーを汚さずに調整反映・GPS除去画像をそのままSNSへ渡すクイック共有も呼び出せます。既定のファイル名（<code>thmod_元の名前</code>）で管理下フォルダやスマホから <code>Loome/case</code> へ保存した場合、EXIFを残していれば元写真を代表にしたまま自動でスタック編成され（既存のタグも引き継ぎ）、枠やマスクによるAI自動タグ付けの誤判定は自動でスキップされます（EXIFをすべて消去した場合は独立した写真として扱われます）。</li>
+              <li>Art Framer（プリント枠・EXIFキャプション・透かし・プライバシーマスク）：SNS投稿や作品出力向けの3ステップ書き出しウィザードです（PC版とAndroidモバイル版の両方に対応）。外寸基準プリセット（<code>for X</code> 長辺2048px / <code>for INSTA</code> 4:5・1:1 / <code>Full Size</code>）を選ぶと枠込みの仕上がり解像度から写真の配置サイズを自動逆算します。ステップ1ではローカルAI（外部通信なし、Android端末上でも同一の <code>YuNet</code> / <code>LPD-YuNet</code> オンデバイス推論と4辺精密スナップを実行）で車両のナンバープレートと人物の顔を自動検出し、最大800%拡大・×3.5指先ルーペ・四つ角ハンドル・スポイト吸取・フチのモヤ調整・放射フェザーの顔モヤスタンプで繊細に仕上げられます。ステップ2では4種類のプリント枠レイアウト（ギャラリー下余白 / クラシック均等枠 / フィルムコンタクト / 枠なし）、台紙カラー（マット白 / 暖色バライタ / 暗室黒）、機材・露出設定・撮影場所のEXIFキャプション印字に加え、3×3 配置マップ（位置を選ぶと ON、選択中セルの再選択や「解除」で OFF）で全9方向の透かし配置を指定でき、テキスト（4択：白文字 / 白文字(影付き) / 黒文字 / 黒文字(影付き)）または <code>library.db</code> で複数管理してモバイルとも同期できる透過PNGロゴ（標準の <code>TETHERACT</code> ロゴを含む・写真長辺比 3%〜50%統一）をリアルタイム合成できます。スマホ縦画面のステップ2では「キャプション設定 → プレビュー → ウォーターマーク設定」の順に配置されます。またモバイル版の拡大表示上部右端のランチャーボタンからは、端末ギャラリーを汚さずに調整反映・GPS除去画像をそのままSNSへ渡すクイック共有も呼び出せます。既定のファイル名（<code>thmod_元の名前</code>）で管理下フォルダやスマホから <code>Loome/case</code> へ保存した場合、EXIFを残していれば元写真を代表にしたまま自動でスタック編成され（既存のタグも引き継ぎ）、枠やマスクによるAI自動タグ付けの誤判定は自動でスキップされます（EXIFをすべて消去した場合は独立した写真として扱われます）。</li>
               <li>スマート・テイクアウト：非破壊で行った回転・傾き・切り抜き・トーン調整の反映、GPS・向きのEXIF同期、XMPサイドカー（.xmp）の同時出力、RAW原本ファイルの無加工抱き合わせコピー（.ARW / .CR3 / .NEF 等）、長辺リサイズ（4K / フルHD / 軽量等）、撮影秒数順の連番リネーム、SNS公開用のEXIF消去を一括適用して別フォルダへ書き出します（RAW+JPEGペアはJPEG原本から、RAW単体は内蔵プレビューから画像を書き出します）。</li>
               <li>ベタ焼きHTML出力：選んだ写真を暗室コンタクトシート風（または和紙台紙風）の単一HTMLファイルとして出力します。ブラウザで開いて写真をクリックすると赤鉛筆の丸印を付けられ、A4サイズ等での一覧印刷にも対応しています。</li>
             </ul>
@@ -2968,12 +2968,26 @@
               </div>
             </div>
 
-            <div class="af-card">
-              <label class="af-section-toggle">
-                <input type="checkbox" id="afWmEnableCheck">
-                <span>ウォーターマーク（透かし）を入れる</span>
-              </label>
-              <div id="afWmControlsBody" class="af-sub-body is-disabled-block">
+            <div class="af-card" id="afWmCard">
+              <div class="af-card-head">
+                <span class="af-card-title">ウォーターマーク（透かし）</span>
+                <div class="af-wm-head-right">
+                  <span id="afWmStatusLabel" class="af-wm-status">なし（位置を選択でON）</span>
+                  <button type="button" class="btn btn-secondary btn-sm af-wm-clear-btn" id="afWmClearBtn" style="display: none;">解除</button>
+                </div>
+              </div>
+              <div id="afWmPosMap" class="af-wm-map" role="group" aria-label="ウォーターマークの配置マップ">
+                <button type="button" class="af-wm-pos-btn" data-pos="top-left" aria-label="左上" title="左上"><span class="af-wm-map-marker"></span></button>
+                <button type="button" class="af-wm-pos-btn" data-pos="top-center" aria-label="中央上" title="中央上"><span class="af-wm-map-marker"></span></button>
+                <button type="button" class="af-wm-pos-btn" data-pos="top-right" aria-label="右上" title="右上"><span class="af-wm-map-marker"></span></button>
+                <button type="button" class="af-wm-pos-btn" data-pos="middle-left" aria-label="左中" title="左中"><span class="af-wm-map-marker"></span></button>
+                <button type="button" class="af-wm-pos-btn" data-pos="center" aria-label="中央" title="中央"><span class="af-wm-map-marker"></span></button>
+                <button type="button" class="af-wm-pos-btn" data-pos="middle-right" aria-label="右中" title="右中"><span class="af-wm-map-marker"></span></button>
+                <button type="button" class="af-wm-pos-btn" data-pos="bottom-left" aria-label="左下" title="左下"><span class="af-wm-map-marker"></span></button>
+                <button type="button" class="af-wm-pos-btn" data-pos="bottom-center" aria-label="中央下" title="中央下"><span class="af-wm-map-marker"></span></button>
+                <button type="button" class="af-wm-pos-btn" data-pos="bottom-right" aria-label="右下" title="右下"><span class="af-wm-map-marker"></span></button>
+              </div>
+              <div id="afWmControlsBody" class="af-sub-body" style="display: none;">
                 <div class="af-card-head">
                   <span class="af-sub-label">透かし種別</span>
                   <select id="afWmTypeSelect" class="af-select-sm">
@@ -2984,11 +2998,13 @@
 
                 <div id="afWmTextGroup" class="af-field-col">
                   <input type="text" id="afWmTextInput" class="af-input-full" value="© 2026" placeholder="© 2026 Your Name">
-                  <div class="af-inline-checks-row" style="justify-content: space-between;">
-                    <label class="af-inline-check"><input type="checkbox" id="afWmShadowCheck" checked><span>文字の影</span></label>
+                  <div class="af-card-head">
+                    <span class="af-sub-label">文字スタイル</span>
                     <select id="afWmColorSelect" class="af-select-sm">
-                      <option value="light">白文字</option>
-                      <option value="dark">黒文字</option>
+                      <option value="light_plain">白文字</option>
+                      <option value="light_shadow">白文字(影付き)</option>
+                      <option value="dark_plain">黒文字</option>
+                      <option value="dark_shadow">黒文字(影付き)</option>
                     </select>
                   </div>
                 </div>
@@ -3000,15 +3016,6 @@
                     <input type="file" id="afWmFileInput" accept="image/png,image/webp,image/jpeg" style="display: none;">
                   </div>
                   <div id="afWmAssetList" class="af-wm-asset-grid"></div>
-                </div>
-
-                <div class="af-grid-3">
-                  <button type="button" class="af-wm-pos-btn" data-pos="top-left">左上</button>
-                  <button type="button" class="af-wm-pos-btn" data-pos="center">中央</button>
-                  <button type="button" class="af-wm-pos-btn" data-pos="top-right">右上</button>
-                  <button type="button" class="af-wm-pos-btn" data-pos="bottom-left">左下</button>
-                  <button type="button" class="af-wm-pos-btn" data-pos="bottom-center">中央下</button>
-                  <button type="button" class="af-wm-pos-btn active" data-pos="bottom-right">右下</button>
                 </div>
 
                 <div class="af-slider-line">

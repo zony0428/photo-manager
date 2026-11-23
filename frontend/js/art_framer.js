@@ -80,6 +80,31 @@
 
   let watermarkAssets = [];
 
+  const WM_POS_LABELS = {
+    'top-left': '左上',
+    'top-center': '中央上',
+    'top-right': '右上',
+    'middle-left': '左中',
+    center: '中央',
+    'middle-right': '右中',
+    'bottom-left': '左下',
+    'bottom-center': '中央下',
+    'bottom-right': '右下',
+  };
+
+  function encodeWmTextStyle(wm) {
+    const colorPart = wm && wm.color === 'dark' ? 'dark' : 'light';
+    const shadowPart = wm && wm.shadow === false ? 'plain' : 'shadow';
+    return `${colorPart}_${shadowPart}`;
+  }
+
+  function applyWmTextStyle(wm, styleVal) {
+    if (!wm) return;
+    const raw = String(styleVal || 'light_shadow');
+    wm.color = raw.startsWith('dark') ? 'dark' : 'light';
+    wm.shadow = raw.endsWith('_shadow');
+  }
+
   function toast(msg, type = 'info', duration = 3500) {
     if (typeof window.showToast === 'function') {
       window.showToast(msg, type, duration);
@@ -336,9 +361,19 @@
     }
 
     // Step 2: ウォーターマーク
-    setChk('afWmEnableCheck', cfg.watermark.enabled);
+    const wmEnabled = Boolean(cfg.watermark.enabled);
+    const wmPos = WM_POS_LABELS[cfg.watermark.position] ? cfg.watermark.position : 'bottom-right';
     const wmBody = document.getElementById('afWmControlsBody');
-    if (wmBody) wmBody.classList.toggle('is-disabled-block', !cfg.watermark.enabled);
+    if (wmBody) wmBody.style.display = wmEnabled ? 'flex' : 'none';
+
+    const wmStatusEl = document.getElementById('afWmStatusLabel');
+    if (wmStatusEl) {
+      wmStatusEl.textContent = wmEnabled ? (WM_POS_LABELS[wmPos] || 'ON') : 'なし（位置を選択でON）';
+      wmStatusEl.classList.toggle('is-on', wmEnabled);
+    }
+    const wmClearBtn = document.getElementById('afWmClearBtn');
+    if (wmClearBtn) wmClearBtn.style.display = wmEnabled ? 'inline-flex' : 'none';
+    document.getElementById('afWmPosMap')?.classList.toggle('is-active', wmEnabled);
 
     setVal('afWmTypeSelect', cfg.watermark.type);
     const isLogo = cfg.watermark.type === 'image';
@@ -348,12 +383,13 @@
     if (wmImageGroup) wmImageGroup.style.display = isLogo ? 'flex' : 'none';
 
     setVal('afWmTextInput', cfg.watermark.text);
-    setVal('afWmColorSelect', cfg.watermark.color);
-    setChk('afWmShadowCheck', cfg.watermark.shadow);
+    setVal('afWmColorSelect', encodeWmTextStyle(cfg.watermark));
     setTxt('afWmImageNameLabel', cfg.watermark.image_name || '未選択');
 
     modalEl.querySelectorAll('.af-wm-pos-btn').forEach((btn) => {
-      btn.classList.toggle('active', btn.dataset.pos === cfg.watermark.position);
+      const isAct = wmEnabled && btn.dataset.pos === wmPos;
+      btn.classList.toggle('active', isAct);
+      btn.setAttribute('aria-pressed', isAct ? 'true' : 'false');
     });
 
     const opPct = Math.round((cfg.watermark.opacity ?? 0.58) * 100);
@@ -949,11 +985,14 @@
 
       const onSelect = () => {
         _selectWatermarkAsset(asset);
-        if (cfg.watermark.type === 'image' && cfg.watermark.size_ratio < 0.03) {
+        cfg.watermark.enabled = true;
+        cfg.watermark.type = 'image';
+        if (cfg.watermark.size_ratio < 0.03) {
           cfg.watermark.size_ratio = 0.16;
         }
         syncFormFromState();
         pushDecoratorToEditor();
+        updateStep3SummaryUI();
         saveSettings();
       };
       card.addEventListener('click', onSelect);
@@ -1015,11 +1054,13 @@
       watermarkAssets = Array.isArray(d.watermarks) ? d.watermarks : watermarkAssets;
       if (d.asset) {
         _selectWatermarkAsset(d.asset);
+        cfg.watermark.enabled = true;
         cfg.watermark.type = 'image';
         if (cfg.watermark.size_ratio < 0.03) cfg.watermark.size_ratio = 0.16;
       }
       syncFormFromState();
       pushDecoratorToEditor();
+      updateStep3SummaryUI();
       saveSettings();
       toast(`ロゴ「${(d.asset && d.asset.name) || file.name}」を登録しました`, 'success');
     } catch (e) {
@@ -1300,10 +1341,12 @@
     });
 
     // Step 2: ウォーターマークイベント
-    document.getElementById('afWmEnableCheck')?.addEventListener('change', (e) => {
-      cfg.watermark.enabled = e.target.checked;
+    document.getElementById('afWmClearBtn')?.addEventListener('click', () => {
+      cfg.watermark.enabled = false;
       syncFormFromState();
       pushDecoratorToEditor();
+      updateStep3SummaryUI();
+      saveSettings();
     });
     document.getElementById('afWmTypeSelect')?.addEventListener('change', (e) => {
       cfg.watermark.type = e.target.value;
@@ -1316,16 +1359,15 @@
       saveSettings();
     });
     document.getElementById('afWmTextInput')?.addEventListener('input', (e) => {
+      cfg.watermark.type = 'text';
       cfg.watermark.text = e.target.value;
       pushDecoratorToEditor();
     });
+    document.getElementById('afWmTextInput')?.addEventListener('change', saveSettings);
     document.getElementById('afWmColorSelect')?.addEventListener('change', (e) => {
-      cfg.watermark.color = e.target.value;
+      applyWmTextStyle(cfg.watermark, e.target.value);
       pushDecoratorToEditor();
-    });
-    document.getElementById('afWmShadowCheck')?.addEventListener('change', (e) => {
-      cfg.watermark.shadow = e.target.checked;
-      pushDecoratorToEditor();
+      saveSettings();
     });
     document.getElementById('afPickWmLogoBtn')?.addEventListener('click', pickLogoImage);
     document.getElementById('afWmFileInput')?.addEventListener('change', (e) => {
@@ -1334,9 +1376,17 @@
     });
     modalEl.querySelectorAll('.af-wm-pos-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
-        cfg.watermark.position = btn.dataset.pos;
+        const pos = btn.dataset.pos;
+        if (cfg.watermark.enabled && cfg.watermark.position === pos) {
+          cfg.watermark.enabled = false;
+        } else {
+          cfg.watermark.enabled = true;
+          cfg.watermark.position = pos;
+        }
         syncFormFromState();
         pushDecoratorToEditor();
+        updateStep3SummaryUI();
+        saveSettings();
       });
     });
     document.getElementById('afWmOpacitySlider')?.addEventListener('input', (e) => {
@@ -1346,6 +1396,7 @@
       if (lbl) lbl.textContent = `${v}%`;
       pushDecoratorToEditor();
     });
+    document.getElementById('afWmOpacitySlider')?.addEventListener('change', saveSettings);
     document.getElementById('afWmSizeSlider')?.addEventListener('input', (e) => {
       const v = parseFloat(e.target.value);
       cfg.watermark.size_ratio = v / 100;
@@ -1355,6 +1406,7 @@
       }
       pushDecoratorToEditor();
     });
+    document.getElementById('afWmSizeSlider')?.addEventListener('change', saveSettings);
 
     // Step 3: 出力設定イベント
     document.getElementById('afFormatSelect')?.addEventListener('change', (e) => {

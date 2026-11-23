@@ -1021,6 +1021,68 @@ class TestArtFramerSuite(unittest.TestCase):
         self.assertAlmostEqual(cx_sorted[0], 442.0, delta=12.0)
         self.assertAlmostEqual(cx_sorted[1], 1175.0, delta=12.0)
 
+    def test_watermark_nine_anchor_positions_and_shadow_toggle(self) -> None:
+        """9方向ウォーターマーク配置（top-center/middle-left/middle-right含む）と白黒・影あり/なしの描画分岐を検証"""
+        base = Image.new("RGB", (600, 400), (128, 128, 128))
+        positions = [
+            ("top-left", 0, 0),
+            ("top-center", 1, 0),
+            ("top-right", 2, 0),
+            ("middle-left", 0, 1),
+            ("center", 1, 1),
+            ("middle-right", 2, 1),
+            ("bottom-left", 0, 2),
+            ("bottom-center", 1, 2),
+            ("bottom-right", 2, 2),
+        ]
+        x_bounds = [(0, 200), (200, 400), (400, 600)]
+        y_bounds = [(0, 133), (133, 266), (266, 400)]
+
+        for pos, expect_col, expect_row in positions:
+            out = apply_watermark_pil(
+                base,
+                {
+                    "enabled": True,
+                    "type": "text",
+                    "text": "WM",
+                    "position": pos,
+                    "color": "light",
+                    "shadow": False,
+                    "opacity": 1.0,
+                    "size_ratio": 0.05,
+                },
+            )
+            arr = np.asarray(out, dtype=np.int16)
+            for row, (y0, y1) in enumerate(y_bounds):
+                for col, (x0, x1) in enumerate(x_bounds):
+                    zone_diff = np.abs(arr[y0:y1, x0:x1] - 128).max()
+                    if (col, row) == (expect_col, expect_row):
+                        self.assertGreater(int(zone_diff), 40, f"{pos} の対象ゾーンに透かしが描画されていません")
+                    else:
+                        self.assertEqual(int(zone_diff), 0, f"{pos} が他ゾーン ({col},{row}) へはみ出しています")
+
+        # 4パターンのテキスト透かし（白文字 / 白文字(影付き) / 黒文字 / 黒文字(影付き)）
+        light_plain = np.asarray(
+            apply_watermark_pil(base, {"enabled": True, "type": "text", "text": "WM", "position": "center", "color": "light", "shadow": False, "opacity": 1.0, "size_ratio": 0.06})
+        )
+        light_shadow = np.asarray(
+            apply_watermark_pil(base, {"enabled": True, "type": "text", "text": "WM", "position": "center", "color": "light", "shadow": True, "opacity": 1.0, "size_ratio": 0.06})
+        )
+        dark_plain = np.asarray(
+            apply_watermark_pil(base, {"enabled": True, "type": "text", "text": "WM", "position": "center", "color": "dark", "shadow": False, "opacity": 1.0, "size_ratio": 0.06})
+        )
+        dark_shadow = np.asarray(
+            apply_watermark_pil(base, {"enabled": True, "type": "text", "text": "WM", "position": "center", "color": "dark", "shadow": True, "opacity": 1.0, "size_ratio": 0.06})
+        )
+
+        self.assertGreater(int(light_plain.max()), 220)
+        self.assertGreaterEqual(int(light_plain.min()), 128)
+        self.assertLess(int(light_shadow.min()), 128)
+
+        self.assertLess(int(dark_plain.min()), 40)
+        self.assertLessEqual(int(dark_plain.max()), 128)
+        self.assertGreater(int(dark_shadow.max()), 128)
+
 
 if __name__ == "__main__":
     unittest.main()

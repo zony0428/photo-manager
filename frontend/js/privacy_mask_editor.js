@@ -1025,10 +1025,13 @@
           dCtx.textAlign = 'right';
           dCtx.textBaseline = 'bottom';
           if (pos === 'top-left') { wx = ox + margin; wy = oy + margin; dCtx.textAlign = 'left'; dCtx.textBaseline = 'top'; }
+          else if (pos === 'top-center') { wx = ox + drawPw * 0.5; wy = oy + margin; dCtx.textAlign = 'center'; dCtx.textBaseline = 'top'; }
           else if (pos === 'top-right') { wx = ox + drawPw - margin; wy = oy + margin; dCtx.textAlign = 'right'; dCtx.textBaseline = 'top'; }
+          else if (pos === 'middle-left') { wx = ox + margin; wy = oy + drawPh * 0.5; dCtx.textAlign = 'left'; dCtx.textBaseline = 'middle'; }
+          else if (pos === 'center') { wx = ox + drawPw * 0.5; wy = oy + drawPh * 0.5; dCtx.textAlign = 'center'; dCtx.textBaseline = 'middle'; }
+          else if (pos === 'middle-right') { wx = ox + drawPw - margin; wy = oy + drawPh * 0.5; dCtx.textAlign = 'right'; dCtx.textBaseline = 'middle'; }
           else if (pos === 'bottom-left') { wx = ox + margin; wy = oy + drawPh - margin; dCtx.textAlign = 'left'; dCtx.textBaseline = 'bottom'; }
           else if (pos === 'bottom-center') { wx = ox + drawPw * 0.5; wy = oy + drawPh - margin; dCtx.textAlign = 'center'; dCtx.textBaseline = 'bottom'; }
-          else if (pos === 'center') { wx = ox + drawPw * 0.5; wy = oy + drawPh * 0.5; dCtx.textAlign = 'center'; dCtx.textBaseline = 'middle'; }
           dCtx.fillText(txt, wx, wy);
         }
         dCtx.restore();
@@ -1051,10 +1054,13 @@
 
     _anchorRect(ox, oy, w, h, iw, ih, pos, margin) {
       if (pos === 'top-left') return { x: ox + margin, y: oy + margin };
+      if (pos === 'top-center') return { x: ox + (w - iw) * 0.5, y: oy + margin };
       if (pos === 'top-right') return { x: ox + w - iw - margin, y: oy + margin };
+      if (pos === 'middle-left') return { x: ox + margin, y: oy + (h - ih) * 0.5 };
+      if (pos === 'center') return { x: ox + (w - iw) * 0.5, y: oy + (h - ih) * 0.5 };
+      if (pos === 'middle-right') return { x: ox + w - iw - margin, y: oy + (h - ih) * 0.5 };
       if (pos === 'bottom-left') return { x: ox + margin, y: oy + h - ih - margin };
       if (pos === 'bottom-center') return { x: ox + (w - iw) * 0.5, y: oy + h - ih - margin };
-      if (pos === 'center') return { x: ox + (w - iw) * 0.5, y: oy + (h - ih) * 0.5 };
       return { x: ox + w - iw - margin, y: oy + h - ih - margin };
     }
 

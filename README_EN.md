@@ -12,7 +12,7 @@ Inspired by the snappy browsing of Picasa and the quiet, distraction-free UI of 
 - [3. Quiet Look & Feel](#3-a-quiet-look--feel-that-stays-out-of-your-way) — Distraction-free UI, instant camera-color RAW & 1:1 pixel zoom, one-handed rating, and 2-Up Duel.
 - [4. Cloud-Free Portable & Ethical Guard](#4-no-reliance-on-the-cloud--yet-fully-portable) — Runs from a USB drive with VSN media tracking, local CLIP AI, and 3-tier ethical & cryptographic guard.
 - [Android Sync & GPS FieldLog (v2)](#android-sync--gps-fieldlog) — Bundled APK for bidirectional Wi-Fi locker sync, Read-Only USB viewing, and offline GPS track matching.
-- [Choosing an Edition & Setup](#choosing-an-edition--setup) — Comparison of `v2.2.x` vs `v1.8.x`, setup/update steps, system requirements, and shortcuts.
+- [Choosing an Edition & Setup](#choosing-an-edition--setup) — Comparison of `v2.x` vs `v1.8.x`, setup/update steps, system requirements, and shortcuts.
 
 ![Workflow Demo (One-handed rating, layout toggle, RAW Lightbox, burst frame flip, and 2-Up Duel comparison)](docs/images/demo_workflow.webp)
 
@@ -52,7 +52,7 @@ Keep your original photo folders strictly read-only while handling adjustments, 
 
 - Managed Vault `Loome`: When you want to physically gather and rename favorite shots, copy them into the isolated `Loome/` vault (expandable to external `<Drive>:\Loome`). Inside `Loome`, paired RAW and `.xmp` files follow automatically as you move files via cascading menus or batch-rename them (<kbd>F2</kbd>) in millisecond capture order.
 - Non-Destructive Edits & External Editor Sync: Apply 90° rotation, horizon leveling (±45°), cropping, exposure/contrast/saturation adjustments (with batch copy/paste), and camera clock-drift shifts non-destructively. External edits and `.xmp` updates are auto-detected on window return.
-- Three Export Modes: Batch-export with "Smart Takeout" (applying edits, resizing, sequential renaming, and EXIF stripping into `take_out/`), generate darkroom-style "Contact Sheet HTML", or copy directly to the clipboard (<kbd>Ctrl</kbd>+<kbd>C</kbd>). Externally retouched Takeout derivatives placed back into managed folders automatically stack with the original photo and inherit its tags.
+- Export Modes & **Art Framer**: Includes **Art Framer** (a 3-step export wizard with offline local AI license-plate & face masking, gallery print frames, EXIF captions, and a visual 3×3 watermark placement map), batch-export via "Smart Takeout" (applying edits, resizing, sequential renaming, and selective EXIF stripping into `take_out/`), darkroom-style "Contact Sheet HTML", and direct clipboard copy (<kbd>Ctrl</kbd>+<kbd>C</kbd>). `Art Framer` or externally retouched Takeout derivatives placed back into managed folders automatically stack with the original photo and inherit its tags.
 
 ### 3. A Quiet Look & Feel That Stays Out of Your Way.
 Strips away visual noise so you can focus entirely on photo colors and culling tempo.
@@ -78,7 +78,7 @@ The `v2` series bundles a dedicated Android native app (`android/Tetheract_Andro
 | :---: | :---: | :---: |
 | ![Phone Grid View](docs/images/screenshot_mobile_grid.png) | ![PhoneCase Uplink Transfer](docs/images/screenshot_mobile_uplink.png) | ![Touch 2-Up Duel](docs/images/screenshot_mobile_duel.png) |
 
-- Thumb-First Touch UI (`TETHERACT Rg / Ld`): On phones (`Rg`), a single 56px bottom morphing thumb bar adapts across browsing, multi-select, and Lightbox views, supporting pinch column zoom, drag range selection, and Touch 2-Up Duel. On tablets (`Ld`), it automatically expands into a 3-pane layout.
+- Thumb-First Touch UI (`TETHERACT Rg / Ld`): On phones (`Rg`), a single 56px bottom morphing thumb bar adapts across browsing, multi-select, and Lightbox views, supporting pinch column zoom, drag range selection, and Touch 2-Up Duel. Mobile **Art Framer** (with on-device ONNX privacy detection, baked non-destructive adjustments, and a 3×3 watermark placement map) and Quick SNS Share run standalone on the device, while tablets (`Ld`) automatically expand into a 3-pane layout.
 - Wi-Fi Locker Sync & `PhoneCase`: Sync selected folders or filters to your phone's local locker over home Wi-Fi for offline culling on the go, then merge ratings and tags back to your PC in one tap. Stream all PC-connected photos live over LAN at home, or cull smartphone camera roll shots in `PhoneCase` and batch-upload (Uplink) them into `Loome/case/`.
 - Direct Read-Only USB Drive Viewing: Plug a USB drive or portable SSD containing `Loome` directly into your Android device to view full-resolution images and RAW previews in 100% Read-Only mode (including on-memory decryption of `Lv.1` / `Lv.2` vaults).
 - Context Tether (GPS FieldLog): Tap the Android Quick Settings `FieldLog` tile before a walk to record battery-friendly offline daily tracks in your pocket. Send the log to your PC over Wi-Fi to interpolate and assign GPS coordinates non-destructively to non-GPS camera photos (with clock-drift offset, batch undo, and `.gpx` import/export).
@@ -94,7 +94,7 @@ TETHERACT adapts across three UI editions (`TETHERACT Ed` for PC / `TETHERACT Ld
 
 | Release Line | Overview & Recommended Use |
 | :--- | :--- |
-| `v2.2.x` Series (Recommended) | Latest integrated line featuring the 2D virtual grid, 5-domain cache, bundled Android app, Touch UI, and GPS FieldLog. |
+| `v2.x` Series (Recommended) | Latest integrated line featuring the 2D virtual grid, 5-domain cache, bundled Android app, Touch UI, Art Framer, and GPS FieldLog. |
 | `v1.8.x` Series (PC Standalone) | Stable desktop-only line maintained in parallel for users who only need the Windows PC application. |
 
 ### Download, Setup & Updating

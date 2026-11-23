@@ -606,6 +606,66 @@ class TestFrontendJsIntegrity(unittest.TestCase):
         for cls in (".t-af-expander", ".t-af-expander-summary", ".t-af-expander-body"):
             self.assertIn(cls, touch_css)
 
+    def test_art_framer_step2_layout_and_watermark_map_ux(self) -> None:
+        """スマホStep2並び順・3x3ウォーターマーク配置マップ・チェックボックス廃止・4択文字スタイルの統一検証"""
+        index_html = (FRONTEND_DIR / "index.html").read_text(encoding="utf-8")
+        pc_js = (FRONTEND_DIR / "js" / "art_framer.js").read_text(encoding="utf-8")
+        pc_css = (FRONTEND_DIR / "css" / "modals-tools.css").read_text(encoding="utf-8")
+        mobile_js = (FRONTEND_DIR / "js" / "views" / "touch" / "touch_art_framer.js").read_text(encoding="utf-8")
+        mobile_css = (FRONTEND_DIR / "css" / "touch-responsive.css").read_text(encoding="utf-8")
+        canvas_js = (FRONTEND_DIR / "js" / "privacy_mask_editor.js").read_text(encoding="utf-8")
+        decorator_py = (PROJECT_ROOT / "server" / "export_decorator.py").read_text(encoding="utf-8")
+
+        # 1. スマホ版Step2のみ「キャプション設定 -> プレビュー -> ウォーターマーク設定」順へ並び替え
+        for token in ('id="mAfWorkspace"', 'id="mAfFrameCard"', 'id="mAfWmCard"', "ws.dataset.step"):
+            self.assertIn(token, mobile_js)
+        m_reorder = re.search(
+            r"@media\s*\(max-width:\s*839px\)\s*\{(.*?\.t-af-workspace\[data-step=\"2\"\].*?order:\s*1.*?order:\s*2.*?order:\s*3.*?\})\s*\}",
+            mobile_css,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(m_reorder, "touch-responsive.css に @media (max-width: 839px) のStep2並び替えルールが必要です")
+
+        # 2. 透かし有効化/ドロップシャドウの旧チェックボックス撤去（プリント枠落とし影は保持）
+        for removed_id in ("mAfWmEnableCheck", "afWmEnableCheck", "mAfWmShadowCheck", "afWmShadowCheck"):
+            for name, body in (
+                ("index.html", index_html),
+                ("art_framer.js", pc_js),
+                ("modals-tools.css", pc_css),
+                ("touch_art_framer.js", mobile_js),
+                ("touch-responsive.css", mobile_css),
+            ):
+                self.assertNotIn(removed_id, body, f"{name} に廃止済みID {removed_id} が残存しています")
+        self.assertIn('id="mAfPhotoShadowCheck"', mobile_js)
+        self.assertIn('id="afPhotoShadowCheck"', index_html)
+
+        # 3. 9方向マップセル・解除ボタン・詳細折りたたみ
+        self.assertIn('id="mAfWmClearBtn"', mobile_js)
+        self.assertIn('id="afWmClearBtn"', index_html)
+        self.assertIn(".t-af-wm-map", mobile_css)
+        self.assertIn(".af-wm-map", pc_css)
+        for pos in (
+            "top-left", "top-center", "top-right",
+            "middle-left", "center", "middle-right",
+            "bottom-left", "bottom-center", "bottom-right",
+        ):
+            self.assertIn(f'data-pos="{pos}"', mobile_js)
+            self.assertIn(f'data-pos="{pos}"', index_html)
+        for edge_pos in ("top-center", "middle-left", "middle-right"):
+            self.assertIn(edge_pos, canvas_js)
+            self.assertIn(edge_pos, decorator_py)
+
+        # 4. テキストウォーターマーク 4択スタイル
+        for val, label in (
+            ("light_plain", "白文字"),
+            ("light_shadow", "白文字(影付き)"),
+            ("dark_plain", "黒文字"),
+            ("dark_shadow", "黒文字(影付き)"),
+        ):
+            opt_tag = f'<option value="{val}">{label}</option>'
+            self.assertIn(opt_tag, mobile_js)
+            self.assertIn(opt_tag, index_html)
+
 
 if __name__ == "__main__":
     unittest.main()
