@@ -117,6 +117,22 @@ def api_create_import_folder(req: CreateImportFolderRequest):
     }
 
 
+def _resolve_safe_import_subdir(folder_target: str) -> Path:
+    """take_out 配下の安全なサブフォルダパスを検証・解決する"""
+    sanitized = re.sub(r'[\\/*?:"<>|]', '_', folder_target).strip()
+    if not sanitized or sanitized in (".", "..") or sanitized.startswith("."):
+        raise HTTPException(status_code=400, detail="無効なフォルダ名です")
+    base_resolved = IMPORT_DIR.resolve()
+    target_resolved = (IMPORT_DIR / sanitized).resolve()
+    try:
+        target_resolved.relative_to(base_resolved)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="フォルダパスが許可範囲外です")
+    if target_resolved == base_resolved:
+        raise HTTPException(status_code=400, detail="無効なフォルダ名です")
+    return IMPORT_DIR / sanitized
+
+
 @router.post("/api/import/copy")
 def api_copy_to_import(req: CopyToImportRequest):
     """選択された写真を take_out フォルダ（または指定サブフォルダ）へ無加工コピーする（include_raw=True 時はRAW原本も抱き合わせコピー）"""
@@ -125,8 +141,7 @@ def api_copy_to_import(req: CopyToImportRequest):
 
     folder_target = (req.folder_name or req.destination or "").strip()
     if folder_target:
-        sanitized = re.sub(r'[\\/*?:"<>|]', '_', folder_target).strip()
-        dest_dir = IMPORT_DIR / sanitized
+        dest_dir = _resolve_safe_import_subdir(folder_target)
     else:
         dest_dir = IMPORT_DIR
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -217,8 +232,7 @@ def api_open_import_folder(req: Optional[OpenImportFolderRequest] = None):
     target_dir = IMPORT_DIR
     folder_target = (req.folder_name or req.destination or "").strip() if req else ""
     if folder_target:
-        sanitized = re.sub(r'[\\/*?:"<>|]', '_', folder_target).strip()
-        sub = IMPORT_DIR / sanitized
+        sub = _resolve_safe_import_subdir(folder_target)
         if sub.exists():
             target_dir = sub
 
@@ -255,6 +269,7 @@ class SmartExportRequest(BaseModel):
     art_preset: Optional[str] = None
     seq_offset: int = 0
     privacy_masks: Optional[Dict[str, Any]] = None
+    lens_effect: Optional[Dict[str, Any]] = None
     watermark: Optional[Dict[str, Any]] = None
     print_frame: Optional[Dict[str, Any]] = None
 

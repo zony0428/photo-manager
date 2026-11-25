@@ -132,10 +132,10 @@ Tetheract/
 ├── take_out/               スマート・テイクアウト＆ベタ焼きHTMLの標準出力先
 ├── cache/                  SQLiteデータベース（library.db）、フィールドログ、世代バックアップ
 ├── frontend/ & server/     UI画面（Vanilla HTML/CSS/ES6+）＆ バックエンド（FastAPI / LANブリッジ / RAW解析）
-├── python/ & models/       ポータブルPython 3.11 環境 ＆ ローカルCLIP AIモデル（ONNX）
+├── python/ & models/       ポータブルPython 3.11 環境 ＆ ローカルAIモデル（CLIP / YuNet / LPD-YuNet ONNX）
 └── LICENSES/ & *.md        同梱OSSライセンス（NOTICE.txt）およびマニュアル・技術ドキュメント
 ```
 
-- 採用技術：Python 3.11（Embeddable）+ FastAPI / Vanilla JS（2D仮想グリッド・`Slap & Sweep`） / SQLite3（WAL・5ドメイン世代キャッシュ・ROWID直結WebP BLOB） / Kotlin Android Shell（SQLiteロッカー・Read-Only SAF・BouncyCastle透過復号） / `127.0.0.1` 既定待受 ＆ 3段階AEAD暗号化保護
+- 採用技術：Python 3.11（Embeddable）+ FastAPI / Vanilla JS（2D仮想グリッド・`Slap & Sweep`） / SQLite3（WAL・5ドメイン世代キャッシュ・ROWID直結WebP BLOB） / Kotlin Android Shell（SQLiteロッカー・Read-Only SAF・純Kotlin SHAKE256/HMAC-SHA256 オンメモリ透過復号） / `127.0.0.1` 既定待受 ＆ 3段階AEAD暗号化保護
 - ドキュメント：[操作マニュアル (`MANUAL.md`)](MANUAL.md) ｜ [USBポータブル運用ガイド (`README_USB.md`)](README_USB.md) ｜ [リリースノート (`RELEASE_NOTES.md`)](RELEASE_NOTES.md) ｜ [アーキテクチャ・技術知見集 (`docs/knowledge/`)](docs/knowledge/README.md)
 - ライセンス：本体コードは [MIT License](LICENSE)（無保証）。再配布・改変時は同梱ライブラリ（LibRaw / `rawpy` [LGPL 2.1 動的リンク] 等）および位置情報データのライセンス条件（[`LICENSES/NOTICE.txt`](LICENSES/NOTICE.txt) 収録）を遵守してください。

@@ -1629,38 +1629,41 @@ def get_photos(
                     if not _is_dir_online_cached(p.get("directory_path"), p.get("volume_serial"))
                 }
                 if offline_primary_map:
-                    placeholders = ",".join(["?"] * len(offline_primary_map))
-                    cursor.execute(
-                        f"""
-                        SELECT pl.photo_id, pl.file_path, pl.directory_path, pl.file_name,
-                               pl.volume_serial, pl.file_mtime, pl.paired_raw_path,
-                               v.volume_label, COALESCE(v.custom_name, '') AS volume_custom_name,
-                               v.drive_letter AS volume_drive
-                        FROM photo_links pl
-                        LEFT JOIN volumes v ON pl.volume_serial COLLATE BINARY = v.volume_serial
-                        WHERE pl.photo_id IN ({placeholders})
-                        ORDER BY pl.is_primary DESC, pl.id ASC
-                        """,
-                        list(offline_primary_map.keys()),
-                    )
+                    offline_pids = list(offline_primary_map.keys())
                     resolved_pids = set()
-                    for lk_row in cursor.fetchall():
-                        pid = lk_row[0]
-                        if pid in resolved_pids:
-                            continue
-                        if _is_dir_online_cached(lk_row[2], lk_row[4]):
-                            resolved_pids.add(pid)
-                            p = offline_primary_map[pid]
-                            p["file_path"] = lk_row[1]
-                            p["directory_path"] = lk_row[2]
-                            p["file_name"] = lk_row[3]
-                            p["volume_serial"] = lk_row[4] or None
-                            if lk_row[5] is not None:
-                                p["file_mtime"] = lk_row[5]
-                            p["paired_raw_path"] = lk_row[6]
-                            p["volume_label"] = lk_row[7]
-                            p["volume_custom_name"] = lk_row[8]
-                            p["volume_drive"] = lk_row[9]
+                    for chunk_start in range(0, len(offline_pids), 900):
+                        chunk_pids = offline_pids[chunk_start:chunk_start + 900]
+                        placeholders = ",".join(["?"] * len(chunk_pids))
+                        cursor.execute(
+                            f"""
+                            SELECT pl.photo_id, pl.file_path, pl.directory_path, pl.file_name,
+                                   pl.volume_serial, pl.file_mtime, pl.paired_raw_path,
+                                   v.volume_label, COALESCE(v.custom_name, '') AS volume_custom_name,
+                                   v.drive_letter AS volume_drive
+                            FROM photo_links pl
+                            LEFT JOIN volumes v ON pl.volume_serial COLLATE BINARY = v.volume_serial
+                            WHERE pl.photo_id IN ({placeholders})
+                            ORDER BY pl.is_primary DESC, pl.id ASC
+                            """,
+                            chunk_pids,
+                        )
+                        for lk_row in cursor.fetchall():
+                            pid = lk_row[0]
+                            if pid in resolved_pids:
+                                continue
+                            if _is_dir_online_cached(lk_row[2], lk_row[4]):
+                                resolved_pids.add(pid)
+                                p = offline_primary_map[pid]
+                                p["file_path"] = lk_row[1]
+                                p["directory_path"] = lk_row[2]
+                                p["file_name"] = lk_row[3]
+                                p["volume_serial"] = lk_row[4] or None
+                                if lk_row[5] is not None:
+                                    p["file_mtime"] = lk_row[5]
+                                p["paired_raw_path"] = lk_row[6]
+                                p["volume_label"] = lk_row[7]
+                                p["volume_custom_name"] = lk_row[8]
+                                p["volume_drive"] = lk_row[9]
 
         if photos:
             for p in photos:
@@ -3242,18 +3245,31 @@ def delete_photo_by_id(photo_id: int, delete_file: bool = False) -> bool:
         file_path_str = row["file_path"]
         vol_serial = row["volume_serial"]
 
+        # 元データ非破壊原則: 実ファイル削除は専用保管庫（Loome / storage）配下のみに限定する
+        delete_target_path = None
+        if delete_file:
+            from ..scanner import resolve_portable_path
+            from ..storage_manager import is_path_in_storage
+            if not file_path_str:
+                raise PermissionError("保管庫外の元ファイルは削除できません")
+            real_path, is_online = resolve_portable_path(file_path_str, expected_serial=vol_serial)
+            if not (
+                is_path_in_storage(file_path_str, volume_serial=vol_serial)
+                or (is_online and is_path_in_storage(str(real_path), volume_serial=vol_serial))
+            ):
+                raise PermissionError("保管庫（Loome）外の元ファイルは削除できません")
+            if is_online and real_path.is_file():
+                delete_target_path = real_path
+
         cursor.execute("DELETE FROM photo_links WHERE photo_id = ?", (photo_id,))
         cursor.execute("DELETE FROM thumbnails WHERE photo_id = ?", (photo_id,))
         cursor.execute("DELETE FROM photo_tags WHERE photo_id = ?", (photo_id,))
         cursor.execute("DELETE FROM photos WHERE id = ?", (photo_id,))
         conn.commit()
 
-        if delete_file and file_path_str:
+        if delete_target_path is not None:
             try:
-                from ..scanner import resolve_portable_path
-                real_path, is_online = resolve_portable_path(file_path_str, expected_serial=vol_serial)
-                if is_online and real_path.is_file():
-                    real_path.unlink()
+                delete_target_path.unlink()
             except Exception as e:
                 logger.warning(f"実ファイルの削除に失敗しました: {e}")
 

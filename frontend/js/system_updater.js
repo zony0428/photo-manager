@@ -4,11 +4,10 @@
 (function () {
   'use strict';
 
-  const LAST_REMOTE_CHECK_KEY = 'pm_last_remote_update_check_ts';
-  const AUTO_CHECK_INTERVAL_MS = 12 * 60 * 60 * 1000;
-
   let _latestStatus = null;
   let _busy = false;
+  let _startupNotified = false;
+  let _startupTriggered = false;
 
   function _esc(str) {
     if (typeof window.escapeHtml === 'function') return window.escapeHtml(str);
@@ -92,13 +91,14 @@
         }
       }
 
+      const checkedAtTxt = remote.checked_at ? `（${_esc(remote.checked_at)} 確認）` : '';
       if (hasRemoteAvail) {
         lines.push(
-          `<div style="color:var(--accent-primary, #e14d2a); margin-top:4px;"><strong>新しいリリースが公開されています:</strong> v${_esc(remote.latest_version)} (<code>${_esc(remote.diff_asset_name)}</code>)</div>`
+          `<div style="color:var(--accent-primary, #e14d2a); margin-top:4px;"><strong>新しいリリースが公開されています:</strong> v${_esc(remote.latest_version)} (<code>${_esc(remote.diff_asset_name)}</code>)${checkedAtTxt}</div>`
         );
       } else if (remote && remote.checked && !remote.error) {
         const latestTxt = remote.latest_version ? `（最新: v${_esc(remote.latest_version)}）` : '';
-        lines.push(`<div>GitHub Releases 確認済み: 現在の系列は最新です ${latestTxt}</div>`);
+        lines.push(`<div>GitHub Releases 確認済み${checkedAtTxt}: 現在の系列は最新です ${latestTxt}</div>`);
         if (remote.other_series_version) {
           lines.push(
             `<div style="font-size:0.75rem; margin-top:2px;">参考: 別メジャー系列の v${_esc(remote.other_series_version)} が公開されています。</div>`
@@ -113,21 +113,44 @@
     }
   }
 
-  async function refreshSystemUpdaterUI(checkRemote = false) {
+  async function refreshSystemUpdaterUI(checkRemote = false, forceRemote = false, options = {}) {
     try {
-      const res = await fetch(`/api/system/update-status?check_remote=${checkRemote ? 1 : 0}`, {
-        cache: 'no-store',
-      });
-      if (!res.ok) return null;
-      const data = await res.json();
-      if (checkRemote) {
-        try {
-          localStorage.setItem(LAST_REMOTE_CHECK_KEY, String(Date.now()));
-        } catch (e) {}
+      const url = `/api/system/update-status?check_remote=${checkRemote ? 1 : 0}&force_remote=${forceRemote ? 1 : 0}`;
+      const res = await fetch(url, { cache: 'no-store' });
+      if (!res.ok) {
+        if (res.status === 423) return null;
+        const errData = await res.json().catch(() => ({}));
+        const boxEl = document.getElementById('sysUpdateStatusBox');
+        if (boxEl) {
+          const detail = errData.detail ? `: ${_esc(errData.detail)}` : '';
+          boxEl.innerHTML = `<div style="color:#fbbf24;">更新状態の確認に失敗しました (HTTP ${res.status})${detail}</div>`;
+        }
+        return null;
       }
+      const data = await res.json();
       _renderStatusUI(data);
+
+      if (options && options.notifyIfAvailable && !_startupNotified) {
+        const staged = data.staged_update || null;
+        const remote = data.remote_release || {};
+        const hasStagedNewer = Boolean(staged && staged.is_newer);
+        const hasRemoteAvail = Boolean(remote && remote.remote_update_available && remote.diff_asset_url);
+        if (hasRemoteAvail) {
+          _startupNotified = true;
+          _notify(`新バージョン v${remote.latest_version} が公開されています（ロゴ → データベース・保守 から更新できます）`, 'info', 6000);
+        } else if (hasStagedNewer) {
+          _startupNotified = true;
+          _notify(`適用待ちのアップデート (${staged.file_name}) があります（ロゴ → データベース・保守 から適用できます）`, 'info', 6000);
+        }
+      }
       return data;
     } catch (e) {
+      if (!_latestStatus) {
+        const boxEl = document.getElementById('sysUpdateStatusBox');
+        if (boxEl) {
+          boxEl.innerHTML = '<div style="color:#fbbf24;">更新状態の確認中に通信エラーが発生しました。</div>';
+        }
+      }
       return null;
     }
   }
@@ -142,7 +165,7 @@
       btn.textContent = '確認中...';
     }
     try {
-      const data = await refreshSystemUpdaterUI(true);
+      const data = await refreshSystemUpdaterUI(true, true);
       if (!data) {
         _notify('更新確認に失敗しました', 'error');
       } else if (data.remote_release && data.remote_release.error) {
@@ -292,6 +315,11 @@
     }
   }
 
+  function _refreshOnSettingsOpen() {
+    const needsRemote = !(_latestStatus && _latestStatus.remote_release && _latestStatus.remote_release.checked);
+    refreshSystemUpdaterUI(needsRemote, false);
+  }
+
   function _bindEvents() {
     const badgeEl = document.getElementById('headerUpdateAvailBadge');
     if (badgeEl && !badgeEl.dataset.bound) {
@@ -302,7 +330,7 @@
         if (typeof window.openSettingsModal === 'function') {
           window.openSettingsModal('database');
         }
-        refreshSystemUpdaterUI(false);
+        _refreshOnSettingsOpen();
       });
     }
 
@@ -327,25 +355,24 @@
       vtabNav.addEventListener('click', (e) => {
         const btn = e.target.closest('.settings-vtab-btn[data-settings-tab]');
         if (btn && btn.dataset.settingsTab === 'database') {
-          refreshSystemUpdaterUI(false);
+          _refreshOnSettingsOpen();
         }
       });
     }
-    document.getElementById('folderDbMaintenanceBtn')?.addEventListener('click', () => refreshSystemUpdaterUI(false));
-    document.getElementById('headerAppLogo')?.addEventListener('click', () => refreshSystemUpdaterUI(false));
+    document.getElementById('folderDbMaintenanceBtn')?.addEventListener('click', _refreshOnSettingsOpen);
+    document.getElementById('headerAppLogo')?.addEventListener('click', _refreshOnSettingsOpen);
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
+  function triggerStartupUpdateCheck() {
+    if (_startupTriggered) return;
+    _startupTriggered = true;
+    refreshSystemUpdaterUI(true, false, { notifyIfAvailable: true });
+  }
+  window.triggerStartupUpdateCheck = triggerStartupUpdateCheck;
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', _bindEvents);
+  } else {
     _bindEvents();
-    setTimeout(() => {
-      let shouldCheckRemote = false;
-      try {
-        const lastTs = Number(localStorage.getItem(LAST_REMOTE_CHECK_KEY) || '0');
-        if (!Number.isFinite(lastTs) || (Date.now() - lastTs) >= AUTO_CHECK_INTERVAL_MS) {
-          shouldCheckRemote = true;
-        }
-      } catch (e) {}
-      refreshSystemUpdaterUI(shouldCheckRemote);
-    }, 3000);
-  });
+  }
 })();

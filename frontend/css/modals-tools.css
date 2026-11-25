@@ -6,7 +6,7 @@
 .image-adjust-modal {
   position: fixed;
   inset: 0;
-  z-index: 9999;
+  z-index: 10030;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2391,6 +2391,7 @@
 }
 
 .art-framer-modal-card {
+  position: relative;
   width: 96vw;
   max-width: 1180px;
   height: 92vh;
@@ -3040,6 +3041,150 @@
   background-color: var(--accent-primary, #e14d2a);
   opacity: 1;
   box-shadow: 0 1px 4px rgba(var(--accent-rgb, 225, 77, 42), 0.45);
+}
+
+/* Art Framer Step 0（調整）＆ 幾何変更マスク影響確認ダイアログ */
+.af-step0-slider-row {
+  display: grid;
+  grid-template-columns: 74px 26px minmax(0, 1fr) 26px 54px;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.76rem;
+}
+
+.af-step0-label {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.af-step0-slider-row input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent-primary, #3b82f6);
+  cursor: pointer;
+}
+
+.af-step0-nudge-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 5px;
+  border: 1px solid var(--border-soft, rgba(128, 128, 128, 0.3));
+  background: var(--bg-primary);
+  color: var(--text-main);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+}
+
+.af-step0-nudge-btn:hover {
+  border-color: var(--accent-primary, #3b82f6);
+  color: var(--accent-primary, #3b82f6);
+}
+
+.af-step0-val {
+  text-align: right;
+  font-family: monospace;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.75rem;
+  color: var(--text-main);
+}
+
+.af-step0-val.is-modified {
+  color: var(--accent-primary, #3b82f6);
+}
+
+.af-mini-btn.is-holding {
+  background: var(--accent-primary, #3b82f6);
+  border-color: var(--accent-primary, #3b82f6);
+  color: #ffffff;
+}
+
+.af-impact-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(8, 10, 14, 0.72);
+  backdrop-filter: blur(4px);
+}
+
+.af-impact-card {
+  width: 100%;
+  max-width: 420px;
+  background: var(--bg-modal, var(--bg-secondary, #1c2028));
+  color: var(--text-main, #eceae4);
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.16));
+  border-radius: 10px;
+  padding: 18px;
+  box-shadow: 0 22px 48px rgba(0, 0, 0, 0.55);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.af-impact-card h3 {
+  margin: 0;
+  font-size: 0.96rem;
+  font-weight: 700;
+}
+
+.af-impact-desc {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+.af-impact-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Art Framer Step 2 (レンズ演出) UI & タブインジケータ */
+.af-step-tab .af-step-active-dot {
+  display: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-primary, #3b82f6);
+}
+
+.af-step-tab.has-effect-on .af-step-active-dot {
+  display: inline-block;
+}
+
+.af-step-tab.active .af-step-active-dot {
+  background: #ffffff;
+}
+
+.af-effect-preset-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.af-effect-preset-btn {
+  border: 1px solid var(--border-soft, rgba(128, 128, 128, 0.28));
+  background: var(--bg-primary);
+  color: var(--text-main);
+  border-radius: 5px;
+  padding: 5px 9px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.af-effect-preset-btn.active {
+  background: var(--accent-primary, #3b82f6);
+  border-color: var(--accent-primary, #3b82f6);
+  color: #ffffff;
 }
 
 

@@ -1,8 +1,8 @@
 ================================================================================
-  Photo Manager - オープンソースソフトウェア利用に関する通知
+  Tetheract Photo Manager - オープンソースソフトウェア利用に関する通知
 ================================================================================
 
-本ソフトウェア「Photo Manager」は、以下のオープンソースソフトウェアを利用して
+本ソフトウェア「Tetheract Photo Manager」は、以下のオープンソースソフトウェアを利用して
 構築されています。各ソフトウェアの著作権およびライセンス条件は、それぞれの
 ライセンスファイルに記載されています。
 
@@ -18,25 +18,25 @@
   - ファイル: LICENSE.Python
   - URL: https://www.python.org/
 
-■ FastAPI 0.141
+■ FastAPI 0.141.1
   - 著作権: Copyright (c) Sebastián Ramírez
   - ライセンス: MIT License
   - ファイル: LICENSE.FastAPI
   - URL: https://fastapi.tiangolo.com/
 
-■ Uvicorn 0.53
+■ Uvicorn 0.53.0
   - 著作権: Copyright (c) encode
   - ライセンス: BSD 3-Clause License
   - ファイル: LICENSE.Uvicorn
   - URL: https://www.uvicorn.org/
 
-■ Pillow (PIL Fork) 12.3
+■ Pillow (PIL Fork) 12.3.0
   - 著作権: Copyright (c) Jeffrey A. Clark and contributors
-  - ライセンス: HPND License (MIT-CMU)
+  - ライセンス: MIT-CMU (HPND) License
   - ファイル: LICENSE.Pillow
   - URL: https://python-pillow.org/
 
-■ rawpy 0.27
+■ rawpy 0.27.1
   - 著作権: Copyright (c) Maik Riechert
   - ライセンス: MIT License
   - ファイル: LICENSE.rawpy
@@ -52,61 +52,72 @@
           LGPL 2.1 の条件に基づき、ユーザーは pip install rawpy コマンドで
           LibRaw ライブラリを自由に差し替えることが可能です。
 
-■ NumPy 2.4
+■ NumPy 2.4.6
   - 著作権: Copyright (c) NumPy Developers
   - ライセンス: BSD 3-Clause License
   - ファイル: LICENSE.NumPy
   - URL: https://numpy.org/
 
-■ Pydantic 2.14
-  - 著作権: Copyright (c) Samuel Colvin
+■ Pydantic 2.13.5
+  - 著作権: Copyright (c) Samuel Colvin / Pydantic Services Inc.
   - ライセンス: MIT License
   - ファイル: LICENSE.Pydantic
   - URL: https://docs.pydantic.dev/
 
-■ Starlette 1.10
+■ Starlette 1.6.0
   - 著作権: Copyright (c) encode
   - ライセンス: BSD 3-Clause License
   - ファイル: LICENSE.Starlette
   - URL: https://www.starlette.io/
 
-■ Click 8.5
+■ Click 8.5.0
   - 著作権: Copyright (c) Pallets
   - ライセンス: BSD 3-Clause License
   - ファイル: LICENSE.Click
   - URL: https://click.palletsprojects.com/
 
-■ AnyIO 4.16
+■ AnyIO 4.15.1
   - 著作権: Copyright (c) Alex Grönholm
   - ライセンス: MIT License
   - ファイル: LICENSE.AnyIO
   - URL: https://anyio.readthedocs.io/
 
-■ h11 0.16
+■ h11 0.16.0
   - 著作権: Copyright (c) Nathaniel J. Smith
   - ライセンス: MIT License
   - ファイル: LICENSE.h11
   - URL: https://h11.readthedocs.io/
 
-■ pystray 0.19
+■ pystray 0.19.5
   - 著作権: Copyright (c) Moses Palmér
   - ライセンス: LGPL 3.0 / GPL 3.0（デュアルライセンス・LGPL適用）
   - ファイル: LICENSE.pystray
   - URL: https://github.com/moses-palmer/pystray
   - 備考: Windowsタスクトレイ常駐管理に使用。
 
-■ six 1.17
+■ six 1.17.0
   - 著作権: Copyright (c) Benjamin Peterson
   - ライセンス: MIT License
   - ファイル: LICENSE.six
   - URL: https://github.com/benjaminp/six
 
-■ ONNX Runtime 1.30
+■ ONNX Runtime 1.30.0
   - 著作権: Copyright (c) Microsoft Corporation
   - ライセンス: MIT License
   - ファイル: LICENSE.onnxruntime
   - URL: https://onnxruntime.ai/
   - 備考: AI自動タグ付けおよびプライバシーマスク自動検出（CPU最適化・完全ローカル動作）に使用。
+
+--------------------------------------------------------------------------------
+  同梱AIモデル・推論アセット（models/）
+--------------------------------------------------------------------------------
+
+■ OpenAI CLIP (ViT-B/32 ONNX)
+  - 著作権: Copyright (c) 2021 OpenAI
+  - ライセンス: MIT License
+  - ファイル: LICENSE.CLIP
+  - URL: https://github.com/openai/CLIP
+  - 備考: ローカルAI自動タグ付け用の画像・テキスト埋め込みモデル (models/clip/) に使用。
 
 ■ YuNet (OpenCV Zoo Face Detection ONNX Model)
   - 著作権: Copyright (c) 2020 Shiqi Yu / Shenzhen Institute of Artificial Intelligence and Robotics for Society
@@ -122,13 +133,48 @@
   - URL: https://github.com/opencv/opencv_zoo/tree/main/models/license_plate_detection_yunet
   - 備考: Art Framer プライバシーマスクにおける車両ナンバープレート4頂点のローカル自動検出提案に使用。
 
+--------------------------------------------------------------------------------
+  推移的 Python 依存パッケージ一覧（同梱 python/Lib/site-packages/）
+--------------------------------------------------------------------------------
+
+■ annotated-doc 0.0.5 (MIT License / LICENSE.annotated_doc)
+■ annotated-types 0.8.0 (MIT License / LICENSE.annotated_types)
+■ certifi 2026.7.22 (MPL-2.0 / LICENSE.certifi)
+■ colorama 0.4.6 (BSD 3-Clause License / LICENSE.colorama)
+■ filelock 4.0.4 (MIT License / LICENSE.filelock)
+■ flatbuffers 25.12.19 (Apache License 2.0 / LICENSE.flatbuffers)
+■ fsspec 2026.9.0 (BSD 3-Clause License / LICENSE.fsspec)
+■ hf-xet 1.6.0 (Apache License 2.0 / LICENSE.hf_xet)
+■ httpcore 1.0.9 (BSD 3-Clause License / LICENSE.httpcore)
+■ httpx 0.28.1 (BSD 3-Clause License / LICENSE.httpx)
+■ huggingface_hub 1.33.0 (Apache License 2.0 / LICENSE.huggingface_hub)
+■ idna 3.19 (BSD 3-Clause License / LICENSE.idna)
+■ packaging 26.3 (Apache-2.0 OR BSD-2-Clause / LICENSE.packaging, LICENSE.packaging.APACHE, LICENSE.packaging.BSD)
+■ protobuf 7.36.2 (BSD 3-Clause License / LICENSE.protobuf)
+■ pydantic_core 2.46.5 (MIT License / LICENSE.pydantic_core)
+■ PyYAML 6.0.3 (MIT License / LICENSE.PyYAML)
+■ tokenizers 0.23.2 (Apache License 2.0 / LICENSE.tokenizers)
+■ tqdm 4.70.1 (MPL-2.0 AND MIT / LICENSE.tqdm)
+■ typing-inspection 0.4.4 (MIT License / LICENSE.typing_inspection)
+■ typing_extensions 4.16.0 (PSF-2.0 / LICENSE.typing_extensions)
+
+--------------------------------------------------------------------------------
+  モバイル / Android 同梱ライブラリ（Tetheract_Mobile.html / Tetheract_Android.apk）
+--------------------------------------------------------------------------------
+
 ■ sql.js 1.10.3
   - 著作権: Copyright (c) Ophir LOJKINE and sql.js contributors
   - ライセンス: MIT License
   - ファイル: LICENSE.sqljs
   - URL: https://sql.js.org/
-  - 備考: モバイル画面（Android等）でのオフラインSQLiteデータベース（library.db）直接読み込みに使用。
+  - 備考: モバイル画面（単体HTML等）でのオフラインSQLiteデータベース直接読み込みに使用。
 
+■ AndroidX Libraries (core-ktx 1.12.0 / webkit 1.10.0 / documentfile 1.0.1)
+  - 著作権: Copyright The Android Open Source Project
+  - ライセンス: Apache License 2.0
+  - ファイル: LICENSE.AndroidX
+  - URL: https://developer.android.com/jetpack/androidx
+  - 備考: Androidアプリ（Tetheract_Android.apk）の SAF・WebView・互換ユーティリティに使用。
 
 --------------------------------------------------------------------------------
   ウェブフォント（同梱: frontend/vendor/fonts/）

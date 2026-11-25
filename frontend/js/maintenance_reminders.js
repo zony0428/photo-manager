@@ -58,7 +58,7 @@ async function checkWeeklyBackupReminderOnStartup() {
     const dbSizeFmt = stats.file_size_formatted || '';
     const backupDirPath = bi.backup_dir_path || 'cache\\backups';
     const hasLatest = Boolean(bi.latest);
-    const daysElapsed = hasLatest ? Number(bi.days_since_last_backup || 7) : Number(bi.library_age_days || 7);
+    const daysElapsed = hasLatest ? Number(bi.days_since_last_backup ?? 7) : Number(bi.library_age_days ?? 7);
 
     const confirmed = await showConfirmModal({
       title: 'データベースの定期バックアップのお勧め',

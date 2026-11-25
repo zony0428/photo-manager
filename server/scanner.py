@@ -191,6 +191,10 @@ def parse_filename_datetime(filename: str) -> Optional[str]:
         yy, mo, d, h, mi, s = m.groups()
         yy_int = int(yy)
         yyyy = f"19{yy_int:02d}" if yy_int >= 70 else f"20{yy_int:02d}"
+        h_int = int(h)
+        if h_int == 24:
+            h = "00"
+            h_int = 0
         if 1 <= int(mo) <= 12 and 1 <= int(d) <= 31 and 0 <= h_int <= 23 and 0 <= int(mi) <= 59 and 0 <= int(s) <= 59:
             return f"{yyyy}-{mo}-{d} {h}:{mi}:{s}"
 

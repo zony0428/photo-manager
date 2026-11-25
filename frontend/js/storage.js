@@ -18,6 +18,7 @@ const storageState = {
   folderModalMode: 'create', // 'create' | 'rename'
   folderModalTargetPath: '', // 作成時の親パス または リネーム対象パス
   folderModalTargetName: '', // 対象フォルダの表示名
+  isExportingFolder: false,  // Loome外部エクスポート中の多重起動防止
 };
 
 // 内部写真カードドラッグ中の写真ID配列（外部ファイルドロップオーバーレイとの区別用）
@@ -814,13 +815,29 @@ window.submitRenameStorageFolder = submitRenameStorageFolder;
  * Loome フォルダを外部へ丸ごとエクスポートする (POST /api/storage/export-folder)
  */
 async function exportStorageFolderToExternal(folderPath, folderName = '') {
+  if (storageState.isExportingFolder) return;
   if (typeof closeFolderContextMenu === 'function') closeFolderContextMenu();
 
+  storageState.isExportingFolder = true;
   if (typeof showToast === 'function') {
-    showToast(`「${folderName || 'Loome'}」の書き出し先フォルダを選択してください...`, 'info', 3000);
+    showToast(`「${folderName || 'Loome'}」の書き出し先フォルダを選択してください...`, 'info', 2500);
   }
 
   try {
+    const pickRes = await fetch('/api/export/pick-folder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ initial_dir: null }),
+    });
+    const pickData = pickRes.ok ? await pickRes.json() : {};
+    const selectedDest = pickData && pickData.selected_path ? String(pickData.selected_path).trim() : '';
+    if (!selectedDest) {
+      if (typeof showToast === 'function') {
+        showToast('フォルダのエクスポートをキャンセルしました', 'info', 2200);
+      }
+      return;
+    }
+
     const data = await _withStorageProgressPolling(
       t('storage.exporting', '外部フォルダへエクスポート中...'),
       0,
@@ -831,6 +848,7 @@ async function exportStorageFolderToExternal(folderPath, folderName = '') {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             folder_path: folderPath,
+            destination_dir: selectedDest,
             open_after: true,
           }),
         });
@@ -850,13 +868,15 @@ async function exportStorageFolderToExternal(folderPath, folderName = '') {
     }
 
     if (typeof showToast === 'function') {
-      showToast(`${data.exported_files || 0}個のファイルを「${data.exported_path || '外部フォルダ'}」へエクスポートしました`, 'success', 4500);
+      showToast(`${data.exported_files || 0}個のファイルを「${data.exported_path || selectedDest}」へエクスポートしました`, 'success', 4500);
     }
   } catch (err) {
     console.error('Loome フォルダエクスポートエラー:', err);
     if (typeof showToast === 'function') {
       showToast(`${err.message || 'フォルダのエクスポートに失敗しました'}`, 'error', 4000);
     }
+  } finally {
+    storageState.isExportingFolder = false;
   }
 }
 window.exportStorageFolderToExternal = exportStorageFolderToExternal;

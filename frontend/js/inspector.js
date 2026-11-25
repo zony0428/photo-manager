@@ -869,8 +869,8 @@ function showSingleInspector(photo) {
           </div>
         `;
 
-        const formatPill = sp.is_raw 
-          ? `<span class="bracket-format-pill raw">${sp.raw_format ? sp.raw_format.replace('.', '').toUpperCase() : 'RAW'}</span>`
+        const formatPill = sp.is_raw
+          ? `<span class="bracket-format-pill raw">${escapeHtml(sp.raw_format ? sp.raw_format.replace('.', '').toUpperCase() : 'RAW')}</span>`
           : `<span class="bracket-format-pill jpg">JPG</span>`;
 
         let detailsHtml = '';
@@ -896,7 +896,7 @@ function showSingleInspector(photo) {
           </div>
           <div class="bracket-info">
             <div class="bracket-exp-bias ${biasClass}">
-              <span title="${escapeHtml(sp.directory_path || '')}">${biasText}</span>
+              <span title="${escapeHtml(sp.directory_path || '')}">${escapeHtml(biasText)}</span>
               ${formatPill}
               ${inlineRatingHtml}
             </div>
@@ -1560,7 +1560,7 @@ async function showGpsCandidateModal(photo) {
           if (typeof showToast === 'function') {
             showToast(err.detail || 'GPSコピーに失敗しました', 'error');
           } else {
-            alert(err.detail || 'GPSコピーに失敗しました');
+            console.error('[INSPECTOR] GPSコピー失敗:', err.detail || err);
           }
         }
       } catch (e) {

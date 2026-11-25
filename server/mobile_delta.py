@@ -79,7 +79,7 @@ def ensure_mobile_delta_db(force: bool = False) -> Optional[Path]:
                     if delta_st.st_size > 4096 and (delta_st.st_mtime + 2.0) >= latest_src_mtime:
                         _last_built_commit_seq = cur_seq
                         _last_built_locker_mtime = locker_mtime
-                        return DELTA_DB_PATH
+                        return out_delta_path
                 except Exception as st_err:
                     logger.debug(f"mobile_delta.db タイムスタンプ判定スキップ: {st_err}")
 

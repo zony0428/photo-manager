@@ -237,6 +237,7 @@ class MainActivity : Activity() {
                     handleConnectedUsbAutoSync()
                 } else if (!nowUsbConnected) {
                     lastUsbDownlinkConnectedState = false
+                    if (::safUsbManager.isInitialized) safUsbManager.onUsbDetached()
                 }
                 notifyWebViewLinkStateChanged(force = true)
                 triggerWifiUiAutoUpdateIfNeeded()
@@ -1014,6 +1015,11 @@ class MainActivity : Activity() {
         }
         linkWatchExecutor.shutdownNow()
         bgExecutor.shutdownNow()
+        if (::safUsbManager.isInitialized) {
+            safUsbManager.onUsbDetached()
+        } else {
+            LoomeVaultCrypto.clearMemoryKeys()
+        }
         if (::lockerDbManager.isInitialized) lockerDbManager.closeLibraryDatabase()
         super.onDestroy()
     }

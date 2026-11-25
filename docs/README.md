@@ -63,6 +63,7 @@ GitHub Releases 投稿用に作成されたバージョン別リリースノー�
 
 | バージョン | 主な更新内容 | ファイル |
 | :--- | :--- | :--- |
+| **v2.6.0** | Art Framer 5ステップ化（`[0.調整]` 非破壊戻り＆`[2.演出]` ぐるぐる/バブルボケ＋非使用設定）・Windows最前面COMフォルダ選択ダイアログ刷新＆全モーダル誤閉鎖ガード | [RELEASE_NOTES_v2.6.0.md](release_notes/RELEASE_NOTES_v2.6.0.md) |
 | **v2.5.4** | モバイルArt Framerへの非破壊調整反映・Androidジャーナル基準値永続化・クイックSNS共有/Duel/WebViewキャッシュ/同期サムネイル整合修正 | [RELEASE_NOTES_v2.5.4.md](release_notes/RELEASE_NOTES_v2.5.4.md) |
 | **v2.5.3** | Android USB接続時の母艦カタログ完全Read-Only自動差分ダウンリンク（母艦→モバイル片方向専用警告付き）＆モバイル版「母艦へ収納」の重複スキップ表示整理・計上修正 | [RELEASE_NOTES_v2.5.3.md](release_notes/RELEASE_NOTES_v2.5.3.md) |
 | **v2.5.2** | モバイル非破壊調整の中央HUD撤廃＆下部ダイヤル・写真枠内水平垂直ガイドライン・内接自動ズーム対応、モバイルArt Framerの余白/文字サイズ＆表示項目エキスパンダ整理 | [RELEASE_NOTES_v2.5.2.md](release_notes/RELEASE_NOTES_v2.5.2.md) |

@@ -134,7 +134,15 @@ def check_v2_apk_freshness(root_dir: Path = ROOT_DIR) -> Tuple[bool, str]:
         root_dir / "frontend" / "css" / "touch-responsive.css",
         root_dir / "frontend" / "css" / "touch-fieldlog.css",
         root_dir / "frontend" / "js" / "mobile.js",
+        root_dir / "frontend" / "js" / "privacy_mask_editor.js",
+        root_dir / "server" / "mobile_bundle.py",
     ]
+    icons_dir = root_dir / "frontend" / "icons"
+    if icons_dir.is_dir():
+        source_candidates.extend(sorted(p for p in icons_dir.rglob("*") if p.is_file()))
+    privacy_models_dir = root_dir / "models" / "privacy"
+    if privacy_models_dir.is_dir():
+        source_candidates.extend(sorted(privacy_models_dir.glob("*.onnx")))
     java_dir = root_dir / "android" / "app" / "src" / "main" / "java"
     if java_dir.is_dir():
         source_candidates.extend(sorted(java_dir.rglob("*.kt")))

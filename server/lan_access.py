@@ -58,7 +58,7 @@ def _load_or_init_lan_auth() -> dict:
 
     new_state = {
         "token": secrets.token_urlsafe(24),
-        "paired": True,
+        "paired": False,
     }
     _save_lan_auth(new_state)
     return new_state
@@ -77,7 +77,7 @@ def _save_lan_auth(state: dict) -> None:
 
 _auth_state = _load_or_init_lan_auth()
 LAN_TOKEN: str = _auth_state["token"]
-_lan_paired: bool = bool(_auth_state.get("paired", True))
+_lan_paired: bool = bool(_auth_state.get("paired", False))
 
 
 def get_lan_token() -> str:

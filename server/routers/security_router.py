@@ -12,6 +12,7 @@ from ..scanner import clear_online_cache
 from ..security import (
     configure_security_level,
     get_security_status,
+    is_app_locked,
     lock_session_now,
     recover_db_by_owned_media,
     unlock_foreign_loome_with_password,
@@ -132,6 +133,8 @@ def api_security_recover_db(req: SecurityRecoverDbRequest):
 @router.post("/api/security/unlock-foreign-loome")
 def api_security_unlock_foreign_loome(req: SecurityUnlockForeignLoomeRequest):
     """別環境のTetheractでパスワード設定された自分の外付け Loome を、同じパスワードの入力により承認する"""
+    if is_app_locked():
+        raise HTTPException(status_code=423, detail="アプリケーションはロックされています")
     try:
         res = unlock_foreign_loome_with_password(req.volume_serial, req.password)
         clear_online_cache()

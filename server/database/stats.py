@@ -6,6 +6,7 @@
 import ctypes
 import logging
 import os
+import re
 import shutil
 import sqlite3
 import threading
@@ -22,6 +23,26 @@ logger = logging.getLogger(__name__)
 BACKUP_DIR = CACHE_DIR / "backups"
 WEEKLY_BACKUP_REMINDER_DAYS = 7
 _backup_lock = threading.Lock()
+_BACKUP_FILENAME_RE = re.compile(r"^library_backup_(\d{8})_(\d{6})\.db$")
+
+
+def _resolve_backup_timestamp(path: Path, st_mtime: float, now_ts: Optional[float] = None) -> float:
+    """
+    バックアップファイルの作成エポック時刻を返す。
+    CopyFileExW / shutil.copy2 で元DBの古い st_mtime が複写された既存ファイルでも
+    正確な経過日数を算出するため、ファイル名 (library_backup_YYYYMMDD_HHMMSS.db) の日時を優先する。
+    """
+    m = _BACKUP_FILENAME_RE.match(path.name)
+    if m:
+        try:
+            dt_fn = datetime.strptime(f"{m.group(1)}_{m.group(2)}", "%Y%m%d_%H%M%S")
+            fn_ts = dt_fn.timestamp()
+            ref_now = time.time() if now_ts is None else float(now_ts)
+            if fn_ts <= ref_now + 300.0:
+                return fn_ts
+        except Exception as e:
+            logger.debug(f"バックアップファイル名の日時解析スキップ ({path.name}): {e}")
+    return float(st_mtime)
 
 
 def _active_db_path() -> Path:
@@ -63,12 +84,20 @@ def _fast_copy_db_file(src: Path, dst: Path) -> bool:
     """
     src_str = os.path.abspath(str(src))
     dst_str = os.path.abspath(str(dst))
+    copied = False
     if _win32_copy_file_ex is not None:
         res = _win32_copy_file_ex(src_str, dst_str, None, None, None, 0)
-        if res != 0 and dst.exists() and dst.stat().st_size > 0:
-            return True
-    shutil.copy2(src_str, dst_str)
-    return dst.exists() and dst.stat().st_size > 0
+        copied = bool(res != 0 and dst.exists() and dst.stat().st_size > 0)
+    if not copied:
+        shutil.copy2(src_str, dst_str)
+        copied = bool(dst.exists() and dst.stat().st_size > 0)
+    if copied:
+        # 元DBの古い mtime 引き継ぎを防ぐためバックアップ作成時刻へ更新する
+        try:
+            os.utime(dst_str, None)
+        except OSError as utime_err:
+            logger.debug(f"バックアップ mtime 更新スキップ ({dst_str}): {utime_err}")
+    return copied
 
 
 def format_bytes(size_bytes: int) -> str:
@@ -106,13 +135,14 @@ def get_backup_info() -> Dict[str, Any]:
     try:
         files = sorted(
             b_dir.glob("library_backup_*.db"),
-            key=lambda x: x.stat().st_mtime,
+            key=lambda x: _resolve_backup_timestamp(x, float(x.stat().st_mtime), now_ts),
             reverse=True,
         )
         for p in files:
             st = p.stat()
-            mtime_dt = datetime.fromtimestamp(st.st_mtime)
-            age_sec = max(0.0, now_ts - float(st.st_mtime))
+            eff_ts = _resolve_backup_timestamp(p, float(st.st_mtime), now_ts)
+            mtime_dt = datetime.fromtimestamp(eff_ts)
+            age_sec = max(0.0, now_ts - eff_ts)
             age_days = int(age_sec // 86400)
             backups.append({
                 "filename": p.name,
@@ -121,7 +151,7 @@ def get_backup_info() -> Dict[str, Any]:
                 "size_formatted": format_bytes(st.st_size),
                 "created_at": mtime_dt.strftime("%Y-%m-%d %H:%M:%S"),
                 "created_at_short": mtime_dt.strftime("%m/%d %H:%M"),
-                "mtime_epoch": round(float(st.st_mtime), 2),
+                "mtime_epoch": round(eff_ts, 2),
                 "age_days": age_days,
             })
     except Exception as e:
@@ -265,10 +295,13 @@ def backup_database(max_backups: int = 5) -> Dict[str, Any]:
     db_p = _active_db_path()
     b_dir.mkdir(parents=True, exist_ok=True)
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_path = b_dir / f"library_backup_{timestamp}.db"
-
     with _backup_lock:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_path = b_dir / f"library_backup_{timestamp}.db"
+        suffix_idx = 1
+        while backup_path.exists():
+            backup_path = b_dir / f"library_backup_{timestamp}_{suffix_idx}.db"
+            suffix_idx += 1
         # アイドル状態のスレッドローカル接続がWALチェックポイントを阻害しないよう一旦解放
         close_all_connections()
 
@@ -308,14 +341,21 @@ def backup_database(max_backups: int = 5) -> Dict[str, Any]:
         finally:
             conn.close()
 
+    if backup_path.exists():
+        try:
+            os.utime(backup_path, None)
+        except OSError as utime_err:
+            logger.debug(f"バックアップ mtime 更新スキップ ({backup_path.name}): {utime_err}")
+
     backup_size = backup_path.stat().st_size if backup_path.exists() else 0
 
     # 世代管理: 最新 max_backups 件を残し、古いバックアップを削除
     deleted_count = 0
+    now_ts_prune = time.time()
     try:
         existing_files = sorted(
             b_dir.glob("library_backup_*.db"),
-            key=lambda x: x.stat().st_mtime,
+            key=lambda x: _resolve_backup_timestamp(x, float(x.stat().st_mtime), now_ts_prune),
             reverse=True,
         )
         if len(existing_files) > max_backups:

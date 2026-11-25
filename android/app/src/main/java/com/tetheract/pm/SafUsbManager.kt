@@ -12,6 +12,7 @@ import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
+import java.util.Arrays
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 
@@ -510,6 +511,7 @@ class SafUsbManager(
             val hasPerm = context.contentResolver.persistedUriPermissions.any { it.uri == uri && it.isReadPermission }
             if (!hasPerm) {
                 cachedUsbConnected = false
+                LoomeVaultCrypto.clearMemoryKeys()
                 return null
             }
             val doc = DocumentFile.fromTreeUri(context, uri)
@@ -520,10 +522,12 @@ class SafUsbManager(
                 if (docName.isNotEmpty()) cachedUsbFolderName = docName
                 doc
             } else {
+                LoomeVaultCrypto.clearMemoryKeys()
                 null
             }
         } catch (e: Exception) {
             cachedUsbConnected = false
+            LoomeVaultCrypto.clearMemoryKeys()
             Log.w(TAG, "USBルートDocument確認失敗", e)
             null
         }
@@ -713,17 +717,22 @@ class SafUsbManager(
         }
 
         val allDeks = mutableListOf<ByteArray>().apply { addAll(primaryDeks) }
-        if (usbSeal != null && dbSeal != null) {
-            for (d in LoomeVaultCrypto.extractDeksFromSeal(dbSeal, secretInput)) {
-                if (allDeks.none { it.contentEquals(d) }) allDeks.add(d)
+        try {
+            if (usbSeal != null && dbSeal != null) {
+                for (d in LoomeVaultCrypto.extractDeksFromSeal(dbSeal, secretInput)) {
+                    if (allDeks.none { it.contentEquals(d) }) allDeks.add(d)
+                }
             }
-        }
 
-        LoomeVaultCrypto.setUnlockedDeks(allDeks)
-        if (usbSeal != null) {
-            val sOwner = usbSeal.optString("owner_id", "").trim()
-            val sVsn = usbSeal.optString("vsn", "").trim().uppercase(Locale.US)
-            unlockedSealIdentity = "$sOwner:$sVsn"
+            LoomeVaultCrypto.setUnlockedDeks(allDeks)
+            if (usbSeal != null) {
+                val sOwner = usbSeal.optString("owner_id", "").trim()
+                val sVsn = usbSeal.optString("vsn", "").trim().uppercase(Locale.US)
+                unlockedSealIdentity = "$sOwner:$sVsn"
+            }
+        } finally {
+            for (d in primaryDeks) Arrays.fill(d, 0.toByte())
+            for (d in allDeks) Arrays.fill(d, 0.toByte())
         }
 
         JSONObject()

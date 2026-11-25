@@ -248,8 +248,9 @@ def get_all_loome_roots(use_cache: bool = True, force_refresh: bool = False) -> 
                 l_status, _ = inspect_drive_loome_ownership(ext_dir, volume_serial=vsn)
                 if l_status == "foreign":
                     continue
-            except Exception:
-                pass
+            except Exception as sec_err:
+                logger.warning(f"外部 Loome 所有権チェック失敗のため安全側スキップ ({ext_dir}): {sec_err}")
+                continue
             try:
                 ext_resolved = ext_dir.resolve()
             except Exception:
@@ -2206,7 +2207,7 @@ def export_storage_folder(
     src_dir, active_root = resolve_storage_target_with_root(folder_path, must_exist=True)
 
     if destination_dir is None or not str(destination_dir).strip():
-        picked = pick_folder_dialog()
+        picked = pick_folder_dialog(title="Loome フォルダの書き出し先を選択してください")
         if not picked:
             return {"status": "cancelled"}
         dest_base = Path(picked).resolve()

@@ -20,6 +20,10 @@ if str(PROJECT_ROOT) not in sys.path:
 from fastapi.testclient import TestClient  # noqa: E402
 
 from server import database as db_pkg_mod  # noqa: E402
+from server import lan_access as lan_access_mod  # noqa: E402
+from server import mobile_bundle as mobile_bundle_mod  # noqa: E402
+from server import mobile_delta as mobile_delta_mod  # noqa: E402
+from server import storage_manager as storage_mgr_mod  # noqa: E402
 from server.app import app  # noqa: E402
 from server.database import (  # noqa: E402
     close_all_connections,
@@ -60,9 +64,31 @@ class TestArtFramerSuite(unittest.TestCase):
         cls.out_dir.mkdir(parents=True, exist_ok=True)
 
         cls._orig_db = db_conn_mod.DB_PATH
+        cls._orig_delta_db = mobile_delta_mod.DELTA_DB_PATH
+        cls._orig_locker_state = mobile_delta_mod.LOCKER_STATE_PATH
+        cls._orig_last_seq = mobile_delta_mod._last_built_commit_seq
+        cls._orig_last_mtime = mobile_delta_mod._last_built_locker_mtime
+        cls._orig_loome_dir = storage_mgr_mod.LOOME_DIR
+        cls._orig_storage_dir = storage_mgr_mod.STORAGE_DIR
+        cls._orig_legacy_dir = storage_mgr_mod.LEGACY_STORAGE_DIR
+        cls._orig_lan_auth_file = lan_access_mod._LAN_AUTH_FILE
+        cls._orig_standalone_html = mobile_bundle_mod.STANDALONE_HTML_PATH
+
         cls._stack = contextlib.ExitStack()
         cls._stack.enter_context(patch("server.database.switch_database_path", side_effect=_switch_db_isolated))
         cls._stack.enter_context(patch("server.database.connection.switch_database_path", side_effect=_switch_db_isolated))
+
+        tmp_loome = cls.tmp_root / "Loome"
+        tmp_loome.mkdir(parents=True, exist_ok=True)
+        mobile_delta_mod.DELTA_DB_PATH = cls.tmp_root / "mobile_delta.db"
+        mobile_delta_mod.LOCKER_STATE_PATH = cls.tmp_root / "mobile_locker_state.json"
+        mobile_delta_mod._last_built_commit_seq = -1
+        mobile_delta_mod._last_built_locker_mtime = -1.0
+        storage_mgr_mod.LOOME_DIR = tmp_loome
+        storage_mgr_mod.STORAGE_DIR = tmp_loome
+        storage_mgr_mod.LEGACY_STORAGE_DIR = cls.tmp_root / "legacy_storage_unused"
+        lan_access_mod._LAN_AUTH_FILE = cls.tmp_root / ".mobile_lan_auth.json"
+        mobile_bundle_mod.STANDALONE_HTML_PATH = cls.tmp_root / "Tetheract_Mobile.html"
 
         set_instance_file_for_test(cls.tmp_root / ".tetheract_instance_art_test")
         _switch_db_isolated(cls.tmp_root / "art_test_library.db")
@@ -77,6 +103,16 @@ class TestArtFramerSuite(unittest.TestCase):
             close_all_connections()
             set_instance_file_for_test(None)
             _switch_db_isolated(cls._orig_db)
+            mobile_delta_mod.DELTA_DB_PATH = cls._orig_delta_db
+            mobile_delta_mod.LOCKER_STATE_PATH = cls._orig_locker_state
+            mobile_delta_mod._last_built_commit_seq = cls._orig_last_seq
+            mobile_delta_mod._last_built_locker_mtime = cls._orig_last_mtime
+            storage_mgr_mod.LOOME_DIR = cls._orig_loome_dir
+            storage_mgr_mod.STORAGE_DIR = cls._orig_storage_dir
+            storage_mgr_mod.LEGACY_STORAGE_DIR = cls._orig_legacy_dir
+            lan_access_mod._LAN_AUTH_FILE = cls._orig_lan_auth_file
+            mobile_bundle_mod.STANDALONE_HTML_PATH = cls._orig_standalone_html
+            initialize_security_state(force_reload=True)
         finally:
             cls._stack.close()
             cls._tmp.cleanup()
@@ -1082,6 +1118,247 @@ class TestArtFramerSuite(unittest.TestCase):
         self.assertLess(int(dark_plain.min()), 40)
         self.assertLessEqual(int(dark_plain.max()), 128)
         self.assertGreater(int(dark_shadow.max()), 128)
+
+    def test_step0_adjustments_view_detect_and_export_integration(self) -> None:
+        """Step 0 非破壊調整（トーンのみ vs 90度回転＋傾き）保存後の view?raw=1・detect-privacy・smart出力連携を検証"""
+        import io as _io
+
+        img_path = self.photos_dir / "step0_sample.jpg"
+        Image.new("RGB", (800, 600), (100, 120, 140)).save(img_path, format="JPEG", quality=92)
+        pid = upsert_photo({
+            "file_path": str(img_path),
+            "file_name": img_path.name,
+            "directory_path": str(self.photos_dir),
+            "file_size": img_path.stat().st_size,
+            "file_mtime": img_path.stat().st_mtime,
+            "width": 800,
+            "height": 600,
+            "date_taken": "2026-11-25 10:00:00",
+            "camera_model": "SIGMA fp",
+            "lens_model": "45mm F2.8",
+        })
+
+        # 1. トーンのみ変更（寸法 800x600 は不変で raw=1 は元色を維持）
+        r1 = self.client.post(
+            f"/api/photo/{pid}/adjust",
+            json={"rotation": 0, "fine_angle": 0.0, "brightness": 10, "contrast": 15, "saturation": 0},
+        )
+        self.assertEqual(r1.status_code, 200)
+
+        v_adj = self.client.get(f"/api/photo/{pid}/view")
+        v_raw = self.client.get(f"/api/photo/{pid}/view?raw=1")
+        self.assertEqual(v_adj.status_code, 200)
+        self.assertEqual(v_raw.status_code, 200)
+        im_adj = Image.open(_io.BytesIO(v_adj.content))
+        im_raw = Image.open(_io.BytesIO(v_raw.content))
+        self.assertEqual(im_adj.size, (800, 600))
+        self.assertEqual(im_raw.size, (800, 600))
+        self.assertGreater(float(np.mean(np.asarray(im_adj))), float(np.mean(np.asarray(im_raw))) + 10.0)
+
+        # 2. 幾何変更（90度回転 + 水平傾き）→ 縦横反転しつつ黒欠けなし内接クロップ、detect-privacy & smart export 成功
+        r2 = self.client.post(
+            f"/api/photo/{pid}/adjust",
+            json={"rotation": 90, "fine_angle": 3.0, "brightness": 10, "contrast": 15, "saturation": 0},
+        )
+        self.assertEqual(r2.status_code, 200)
+        v_rot = self.client.get(f"/api/photo/{pid}/view")
+        self.assertEqual(v_rot.status_code, 200)
+        im_rot = Image.open(_io.BytesIO(v_rot.content))
+        self.assertLess(im_rot.width, im_rot.height)
+
+        det_res = self.client.post(
+            "/api/export/detect-privacy",
+            json={"photo_id": pid, "apply_adjustments": True, "detect_plates": True, "detect_faces": True},
+        )
+        self.assertEqual(det_res.status_code, 200)
+
+        out_sub = self.out_dir / "step0_export"
+        out_sub.mkdir(parents=True, exist_ok=True)
+        exp_res = self.client.post(
+            "/api/export/smart",
+            json={
+                "photo_ids": [pid],
+                "destination": str(out_sub),
+                "format": "jpeg",
+                "quality": 90,
+                "resize_mode": "original",
+                "naming_rule": "thmod_original",
+                "apply_adjustments": True,
+                "open_folder_after": False,
+                "art_preset": "for_x",
+                "print_frame": {"enabled": False},
+                "watermark": {"enabled": False},
+            },
+        )
+        self.assertEqual(exp_res.status_code, 200)
+        self.assertEqual(exp_res.json().get("success_count"), 1)
+
+    def test_lens_effects_swirl_bubble_vignette_focus_spot_and_smart_export(self) -> None:
+        """Step 2 レンズ演出（ぐるぐる/バブル/ビネット/ハレーション・中心保護）と /api/export/smart 統合を検証"""
+        from server.lens_effects import (
+            apply_lens_effects_pil,
+            is_lens_effect_active,
+            normalize_lens_effect_config,
+        )
+
+        # 1. 有効判定の正規化
+        self.assertFalse(is_lens_effect_active(None))
+        self.assertFalse(is_lens_effect_active({"bokeh_mode": "none", "strength": 0.0, "vignette": 0.0, "halation": 0.0}))
+        norm = normalize_lens_effect_config({"bokeh_mode": "swirl", "strength": 0.65, "cx": 0.35, "cy": 0.40})
+        self.assertTrue(norm["enabled"])
+        self.assertAlmostEqual(norm["cx"], 0.35, places=3)
+
+        # 2. ピント中心保護 + 周辺ぐるぐる/バブル効果 + ビネット/ハレーション検証
+        w, h = 240, 180
+        arr = np.full((h, w, 3), 24, dtype=np.uint8)
+        # ピント中心 (0.35, 0.40) 付近に微細な市松模様を配置
+        cx_px, cy_px = int(w * 0.35), int(h * 0.40)
+        for yy in range(cy_px - 10, cy_px + 10):
+            for xx in range(cx_px - 10, cx_px + 10):
+                arr[yy, xx] = (210, 180, 140) if ((xx + yy) % 2 == 0) else (40, 60, 80)
+        # 外周に点光源＋縦ストライプ配置
+        arr[20:26, 200:206] = (255, 250, 230)
+        arr[140:155, 195:210] = (240, 200, 120)
+        src_img = Image.fromarray(arr, mode="RGB")
+
+        for mode in ("swirl", "bubble", "soft"):
+            out_img = apply_lens_effects_pil(
+                src_img,
+                {
+                    "bokeh_mode": mode,
+                    "strength": 0.80,
+                    "specular": 0.85,
+                    "radius": 0.25,
+                    "feather": 0.20,
+                    "cx": 0.35,
+                    "cy": 0.40,
+                    "vignette": -0.35 if mode == "swirl" else 0.0,
+                    "halation": 0.40 if mode == "bubble" else 0.0,
+                },
+                work_max_long=240,
+            )
+            out_arr = np.asarray(out_img, dtype=np.float32)
+            orig_f = np.asarray(src_img, dtype=np.float32)
+            # ピント保護中心（半径内）は原画とほぼ一致
+            center_diff = float(np.mean(np.abs(out_arr[cy_px - 6:cy_px + 6, cx_px - 6:cx_px + 6] - orig_f[cy_px - 6:cy_px + 6, cx_px - 6:cx_px + 6])))
+            self.assertLess(center_diff, 4.0, f"{mode}: ピント保護中心が過度に劣化しました")
+            # 外周部は演出が反映されて変化
+            outer_diff = float(np.mean(np.abs(out_arr[12:36, 188:218] - orig_f[12:36, 188:218])))
+            self.assertGreater(outer_diff, 1.5, f"{mode}: 外周部にレンズ演出が反映されていません")
+
+        # 3. 単独ビネット（コーナー減光）＋ハレーション検証
+        flat_wall = Image.new("RGB", (160, 120), (160, 160, 160))
+        vig_out = np.asarray(
+            apply_lens_effects_pil(
+                flat_wall,
+                {"bokeh_mode": "none", "strength": 0.0, "vignette": -0.75, "cx": 0.5, "cy": 0.5, "radius": 0.28, "feather": 0.30},
+            ),
+            dtype=np.float32,
+        )
+        self.assertGreater(float(np.mean(vig_out[60, 80])), float(np.mean(vig_out[4, 4])) + 30.0)
+
+        # 4. /api/export/smart に lens_effect を渡した統合書き出し
+        img_path = self.photos_dir / "lens_effect_sample.jpg"
+        src_img.resize((640, 480), Image.Resampling.BILINEAR).save(img_path, format="JPEG", quality=92)
+        pid = upsert_photo({
+            "file_path": str(img_path),
+            "file_name": img_path.name,
+            "directory_path": str(self.photos_dir),
+            "file_size": img_path.stat().st_size,
+            "file_mtime": img_path.stat().st_mtime,
+            "width": 640,
+            "height": 480,
+            "date_taken": "2026-11-25 11:00:00",
+            "camera_model": "FUJIFILM X-T5",
+            "lens_model": "Helios 44-2 58mm F2",
+        })
+        out_sub = self.out_dir / "lens_effect_export"
+        out_sub.mkdir(parents=True, exist_ok=True)
+        exp_res = self.client.post(
+            "/api/export/smart",
+            json={
+                "photo_ids": [pid],
+                "destination": str(out_sub),
+                "format": "jpeg",
+                "quality": 90,
+                "resize_mode": "original",
+                "naming_rule": "thmod_original",
+                "open_folder_after": False,
+                "art_preset": "for_x",
+                "lens_effect": {
+                    "bokeh_mode": "swirl",
+                    "strength": 0.65,
+                    "specular": 0.72,
+                    "radius": 0.28,
+                    "feather": 0.36,
+                    "cx": 0.45,
+                    "cy": 0.50,
+                    "vignette": -0.25,
+                    "halation": 0.15,
+                },
+                "privacy_masks": {
+                    str(pid): {"plates": [{"x": 0.2, "y": 0.7, "w": 0.15, "h": 0.08, "style": "solid", "color": "#FFFFFF"}], "faces": []},
+                },
+                "print_frame": {"enabled": True, "layout": "classic"},
+                "watermark": {"enabled": False},
+            },
+        )
+        self.assertEqual(exp_res.status_code, 200)
+        self.assertEqual(exp_res.json().get("success_count"), 1)
+        written_files = list(out_sub.glob("*.jpg"))
+        self.assertEqual(len(written_files), 1)
+
+    def test_native_dialog_com_dry_run_lock_guard_and_pick_folder_api(self) -> None:
+        """Windows ネイティブCOMダイアログの dry_run 構築・二重起動ロック・/api/export/pick-folder APIを検証"""
+        import sys
+        from unittest import mock
+
+        from server import native_dialog
+
+        # 1. Windows COM IFileOpenDialog + TopMost HWND のヘッドレス構築・解放検証
+        if sys.platform == "win32":
+            folder_res = native_dialog._run_com_dialog_worker(
+                {"mode": "folder", "initial_dir": str(self.out_dir), "title": "テストフォルダ選択"},
+                dry_run=True,
+            )
+            self.assertTrue(folder_res.get("ok"), f"folder COM dry_run失敗: {folder_res}")
+            self.assertTrue(folder_res.get("dry_run"))
+
+            file_res = native_dialog._run_com_dialog_worker(
+                {
+                    "mode": "file",
+                    "initial_dir": str(self.out_dir),
+                    "title": "テストファイル選択",
+                    "filter_name": "画像 (*.png;*.jpg)",
+                    "filter_spec": "*.png;*.jpg",
+                },
+                dry_run=True,
+            )
+            self.assertTrue(file_res.get("ok"), f"file COM dry_run失敗: {file_res}")
+
+        # 2. _DIALOG_LOCK 取得中に二重呼び出ししてもブロック・二重起動せず即座に None を返す
+        with mock.patch.object(native_dialog, "_bring_existing_dialog_to_front") as mock_front:
+            self.assertTrue(native_dialog._DIALOG_LOCK.acquire(blocking=False))
+            try:
+                res_busy = native_dialog.pick_native_folder_dialog(initial_dir=str(self.out_dir))
+                self.assertIsNone(res_busy)
+                mock_front.assert_called_once()
+            finally:
+                native_dialog._DIALOG_LOCK.release()
+
+        # 3. /api/export/pick-folder が選択パスおよびキャンセル(None)を正しく返すこと
+        picked_dir = str(self.out_dir)
+        with mock.patch("server.routers.export_import_router.pick_folder_dialog", return_value=picked_dir) as mock_pick:
+            r_ok = self.client.post("/api/export/pick-folder", json={"initial_dir": picked_dir})
+            self.assertEqual(r_ok.status_code, 200)
+            self.assertEqual(r_ok.json(), {"selected_path": picked_dir})
+            mock_pick.assert_called_once_with(picked_dir)
+
+        with mock.patch("server.routers.export_import_router.pick_folder_dialog", return_value=None) as mock_cancel:
+            r_cancel = self.client.post("/api/export/pick-folder", json={})
+            self.assertEqual(r_cancel.status_code, 200)
+            self.assertEqual(r_cancel.json(), {"selected_path": None})
+            mock_cancel.assert_called_once_with(None)
 
 
 if __name__ == "__main__":

@@ -1112,22 +1112,70 @@ def test_lan_bridge_oversized_unterminated_header_fail_closed():
     import threading
     from server import lan_bridge
 
+    # 1. OS/WFP のループバック HTTP フィルタに左右されないソケットテストダブルで 431 と上流未接続を厳密検証
+    class _FakeOversizedSocket:
+        def __init__(self, payload: bytes) -> None:
+            self._data = payload
+            self._pos = 0
+            self.sent = bytearray()
+            self.shut_wr = False
+            self.closed = False
+            self.timeouts = []
+
+        def settimeout(self, t: float) -> None:
+            self.timeouts.append(t)
+
+        def setsockopt(self, *args) -> None:
+            pass
+
+        def recv(self, size: int) -> bytes:
+            if self._pos >= len(self._data):
+                return b""
+            end = min(len(self._data), self._pos + size)
+            chunk = self._data[self._pos:end]
+            self._pos = end
+            return chunk
+
+        def sendall(self, data: bytes) -> None:
+            self.sent.extend(data)
+
+        def shutdown(self, how: int) -> None:
+            if how == socket.SHUT_WR:
+                self.shut_wr = True
+
+        def close(self) -> None:
+            self.closed = True
+
+    fake_sock = _FakeOversizedSocket(
+        b"GET /api/photos HTTP/1.1\r\nX-Junk: " + (b"A" * (lan_bridge.MAX_HTTP_HEADER_BYTES + 4096))
+    )
+    with patch(
+        "server.lan_bridge.socket.create_connection",
+        side_effect=AssertionError("32KB超未完結ヘッダ時に上流 127.0.0.1 へ接続してはならない"),
+    ) as mock_upstream:
+        lan_bridge._handle_tcp_client(fake_sock, "192.168.1.77", 8088)
+        assert mock_upstream.call_count == 0
+    assert bytes(fake_sock.sent).startswith(b"HTTP/1.1 431 Request Header Fields Too Large")
+    assert fake_sock.shut_wr is True
+    assert fake_sock.closed is True
+
+    # 2. 実ループバック socketpair 上でも TCP RST により 431 応答が消失しないことを検証（WFP非HTTPトラフィック）
     c_sock, s_sock = socket.socketpair()
     try:
-        oversized_payload = b"GET /api/photos HTTP/1.1\r\nX-Junk: " + (b"A" * (lan_bridge.MAX_HTTP_HEADER_BYTES + 4096))
+        oversized_raw = b"X-JUNK-HDR " + (b"A" * (lan_bridge.MAX_HTTP_HEADER_BYTES + 4096))
         with patch(
             "server.lan_bridge.socket.create_connection",
             side_effect=AssertionError("32KB超未完結ヘッダ時に上流 127.0.0.1 へ接続してはならない"),
         ) as mock_upstream:
             t = threading.Thread(target=lan_bridge._handle_tcp_client, args=(s_sock, "192.168.1.77", 8088))
             t.start()
-            c_sock.sendall(oversized_payload)
+            c_sock.sendall(oversized_raw)
             c_sock.settimeout(3.0)
             resp_bytes = b""
             while True:
                 try:
                     chunk = c_sock.recv(4096)
-                except ConnectionError:
+                except (ConnectionError, TimeoutError):
                     break
                 if not chunk:
                     break
@@ -1342,6 +1390,84 @@ def test_system_updater_localhost_only_and_diff_export(tmp_path: Path):
     stage_bad = updater_mod.stage_uploaded_diff_zip("evil.zip", bad_buf.getvalue(), base_dir=tmp_path)
     assert stage_bad.get("ok") is False
 
+    # URL パストラバーサル (`..`) を含む GitHub Releases URL は拒否されること
+    trav_dl = updater_mod.download_and_stage_github_diff_zip(
+        download_url="https://github.com/zony0428/photo-manager/releases/download/../../evil/repo/releases/download/v1/Tetheract_v9.9.9diff.zip",
+        base_dir=tmp_path,
+    )
+    assert trav_dl.get("ok") is False
+
+    # 保護領域 (cache/library.db, .tetheract_instance) を上書きする ZIP は拒否されること
+    for protected_entry in ("cache/library.db", ".tetheract_instance", "Loome/.loome_seal"):
+        prot_buf = io.BytesIO()
+        with zipfile.ZipFile(prot_buf, "w") as zf:
+            zf.writestr("VERSION", "9.9.9\n")
+            zf.writestr("server/run.py", "print('ok')\n")
+            zf.writestr("frontend/index.html", "<html></html>")
+            zf.writestr(protected_entry, "overwrite")
+        res_prot = updater_mod.stage_uploaded_diff_zip("prot.zip", prot_buf.getvalue(), base_dir=tmp_path)
+        assert res_prot.get("ok") is False, f"保護領域上書きZIPが拒否されていません: {protected_entry}"
+
+
+def test_audit_hardening_boundaries(tmp_path: Path):
+    """[v2.5.4 監査強化] take_out 境界・コンタクトシートXSS・保管庫外削除拒否・ロック中Loome承認遮断・ファイル名日時解析を検証"""
+    from server import exporter as exporter_mod, scanner as scanner_mod, security as sec_mod
+    from server.database import upsert_photo
+
+    # 1. scanner.parse_filename_datetime パターン3 (YYMMDD_HHMMSS) で UnboundLocalError が起きないこと
+    assert scanner_mod.parse_filename_datetime("141007_231845.JPG") == "2014-10-07 23:18:45"
+
+    # 2. take_out サブフォルダ指定での ".." パストラバーサル拒否
+    r_copy_trav = LOCAL.post("/api/import/copy", json={"photo_ids": [], "folder_name": ".."})
+    assert r_copy_trav.status_code == 400
+    r_open_trav = LOCAL.post("/api/import/open", json={"folder_name": ".."})
+    assert r_open_trav.status_code == 400
+
+    # 3. 外部元写真に対する delete_file=true が 403 拒否され実ファイルが無傷であること
+    ext_dir = tmp_path / "external_orig"
+    ext_dir.mkdir(parents=True, exist_ok=True)
+    ext_img = ext_dir / "IMG_KEEP.JPG"
+    from PIL import Image
+    Image.new("RGB", (64, 48), (12, 34, 56)).save(ext_img, format="JPEG")
+    pid = upsert_photo({
+        "file_path": str(ext_img),
+        "file_name": ext_img.name,
+        "directory_path": str(ext_dir),
+        "file_size": ext_img.stat().st_size,
+        "date_taken": "2026-11-20 10:00:00",
+    })
+    r_del = LOCAL.delete(f"/api/photo/{pid}?delete_file=true")
+    assert r_del.status_code == 403
+    assert ext_img.is_file()
+
+    # 4. コンタクトシート HTML 出力で </script> がエスケープされ Stored XSS にならないこと
+    xss_img = ext_dir / "IMG_XSS_META.jpg"
+    Image.new("RGB", (64, 48), (56, 34, 12)).save(xss_img, format="JPEG")
+    pid_xss = upsert_photo({
+        "file_path": str(xss_img),
+        "file_name": xss_img.name,
+        "directory_path": str(ext_dir),
+        "file_size": xss_img.stat().st_size,
+        "camera_model": "</script><script>alert(1)</script>",
+        "date_taken": "2026-11-20 10:05:00",
+    })
+    cs_res = exporter_mod.run_contact_sheet_export({
+        "photo_ids": [pid_xss],
+        "destination_dir": str(tmp_path),
+        "open_after": False,
+        "title": "</script><script>alert(2)</script>",
+    })
+    assert cs_res.get("status") == "ok", f"Unexpected contact sheet result: {cs_res}"
+    html_text = Path(cs_res["output_path"]).read_text(encoding="utf-8")
+    assert "</script><script>alert(" not in html_text
+    assert "\\u003c/script\\u003e" in html_text
+
+    # 5. アプリロック中は /api/security/unlock-foreign-loome も 423 Locked で拒否されること
+    with patch.object(sec_mod, "is_app_locked", return_value=True), \
+         patch("server.routers.security_router.is_app_locked", return_value=True):
+        r_fl = LOCAL.post("/api/security/unlock-foreign-loome", json={"volume_serial": "1234-5678", "password": "dummy"})
+        assert r_fl.status_code == 423
+
 
 class TestSecurityRegression(unittest.TestCase):
     """unittest discover からも上記のセキュリティ回帰テストを実行するためのラッパー"""
@@ -1415,6 +1541,10 @@ class TestSecurityRegression(unittest.TestCase):
     def test_system_updater_localhost_only_and_diff_export(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             test_system_updater_localhost_only_and_diff_export(Path(tmp_dir))
+
+    def test_audit_hardening_boundaries(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            test_audit_hardening_boundaries(Path(tmp_dir))
 
 
 if __name__ == "__main__":

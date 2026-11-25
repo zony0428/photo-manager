@@ -616,15 +616,15 @@ class TestFrontendJsIntegrity(unittest.TestCase):
         canvas_js = (FRONTEND_DIR / "js" / "privacy_mask_editor.js").read_text(encoding="utf-8")
         decorator_py = (PROJECT_ROOT / "server" / "export_decorator.py").read_text(encoding="utf-8")
 
-        # 1. スマホ版Step2のみ「キャプション設定 -> プレビュー -> ウォーターマーク設定」順へ並び替え
+        # 1. スマホ版Step3のみ「キャプション設定 -> プレビュー -> ウォーターマーク設定」順へ並び替え
         for token in ('id="mAfWorkspace"', 'id="mAfFrameCard"', 'id="mAfWmCard"', "ws.dataset.step"):
             self.assertIn(token, mobile_js)
         m_reorder = re.search(
-            r"@media\s*\(max-width:\s*839px\)\s*\{(.*?\.t-af-workspace\[data-step=\"2\"\].*?order:\s*1.*?order:\s*2.*?order:\s*3.*?\})\s*\}",
+            r"@media\s*\(max-width:\s*839px\)\s*\{(.*?\.t-af-workspace\[data-step=\"3\"\].*?order:\s*1.*?order:\s*2.*?order:\s*3.*?\})\s*\}",
             mobile_css,
             re.DOTALL,
         )
-        self.assertIsNotNone(m_reorder, "touch-responsive.css に @media (max-width: 839px) のStep2並び替えルールが必要です")
+        self.assertIsNotNone(m_reorder, "touch-responsive.css に @media (max-width: 839px) のStep3並び替えルールが必要です")
 
         # 2. 透かし有効化/ドロップシャドウの旧チェックボックス撤去（プリント枠落とし影は保持）
         for removed_id in ("mAfWmEnableCheck", "afWmEnableCheck", "mAfWmShadowCheck", "afWmShadowCheck"):
@@ -665,6 +665,95 @@ class TestFrontendJsIntegrity(unittest.TestCase):
             opt_tag = f'<option value="{val}">{label}</option>'
             self.assertIn(opt_tag, mobile_js)
             self.assertIn(opt_tag, index_html)
+
+    def test_art_framer_four_step_workflow_and_step0_wiring(self) -> None:
+        """Art Framer 5ステップ化 ([0.調整]〜[4.出力])・[2.演出]着脱設定・3択確認ダイアログ・z-indexの整合性検証"""
+        step0_js = FRONTEND_DIR / "js" / "core" / "art_framer_step0.js"
+        effect_js = FRONTEND_DIR / "js" / "core" / "art_framer_effect.js"
+        lens_py = PROJECT_ROOT / "server" / "lens_effects.py"
+        self.assertTrue(step0_js.exists(), "frontend/js/core/art_framer_step0.js が存在しません")
+        self.assertTrue(effect_js.exists(), "frontend/js/core/art_framer_effect.js が存在しません")
+        self.assertTrue(lens_py.exists(), "server/lens_effects.py が存在しません")
+        self.assertIn("js/core/art_framer_step0.js", MOBILE_JS_REL_PATHS)
+        self.assertIn("js/core/art_framer_effect.js", MOBILE_JS_REL_PATHS)
+
+        index_html = (FRONTEND_DIR / "index.html").read_text(encoding="utf-8")
+        mobile_html = (FRONTEND_DIR / "mobile.html").read_text(encoding="utf-8")
+        pc_js = (FRONTEND_DIR / "js" / "art_framer.js").read_text(encoding="utf-8")
+        pc_css = (FRONTEND_DIR / "css" / "modals-tools.css").read_text(encoding="utf-8")
+        touch_af_js = (FRONTEND_DIR / "js" / "views" / "touch" / "touch_art_framer.js").read_text(encoding="utf-8")
+        mobile_js = (FRONTEND_DIR / "js" / "mobile.js").read_text(encoding="utf-8")
+        canvas_js = (FRONTEND_DIR / "js" / "privacy_mask_editor.js").read_text(encoding="utf-8")
+
+        self.assertIn("js/core/art_framer_step0.js", index_html)
+        self.assertIn("js/core/art_framer_step0.js", mobile_html)
+        self.assertIn("js/core/art_framer_effect.js", index_html)
+        self.assertIn("js/core/art_framer_effect.js", mobile_html)
+        self.assertIn("updateSourceImageOnly", canvas_js)
+        self.assertIn("_getEffectProcessedSource", canvas_js)
+        self.assertIn("__saveMobileArtFramerStep0Adjustments", mobile_js)
+
+        for step_idx in range(5):
+            self.assertIn(f'data-step="{step_idx}"', index_html)
+            self.assertIn(f'data-step="{step_idx}"', touch_af_js)
+
+        for token in (
+            'id="afStep0Panel"',
+            'id="afStep2Panel"',
+            'id="settingDisableAfEffectStepCheck"',
+            'id="afStep0MaskImpactDialog"',
+            "step: 1",
+            "setStep(1)",
+        ):
+            self.assertIn(token, index_html if token.startswith("id=") else pc_js)
+        self.assertIn('id="mDisableAfEffectStepCheck"', mobile_html)
+        for token in ('id="mAfStep0Panel"', 'id="mAfStep2Panel"', 'id="mAfStep0MaskImpactSheet"', "step: 1", "_setStep(1)"):
+            self.assertIn(token, touch_af_js)
+
+        m_adj_z = re.search(r"\.image-adjust-modal\s*\{[^}]*z-index:\s*(\d+)", pc_css, re.DOTALL)
+        m_af_z = re.search(r"#artFramerModal\s*\{[^}]*z-index:\s*(\d+)", pc_css, re.DOTALL)
+        self.assertIsNotNone(m_adj_z)
+        self.assertIsNotNone(m_af_z)
+        self.assertGreater(int(m_adj_z.group(1)), int(m_af_z.group(1)))
+
+    def test_smart_takeout_folder_picker_guards_and_native_dialog(self) -> None:
+        """スマート・テイクアウトのボタン無効表示・連打背景閉じ防止・COMダイアログモジュールの整合性を検証"""
+        native_py = PROJECT_ROOT / "server" / "native_dialog.py"
+        self.assertTrue(native_py.exists(), "server/native_dialog.py が存在しません")
+
+        style_css = (FRONTEND_DIR / "css" / "style.css").read_text(encoding="utf-8")
+        takeout_js = (FRONTEND_DIR / "js" / "takeout.js").read_text(encoding="utf-8")
+        art_framer_js = (FRONTEND_DIR / "js" / "art_framer.js").read_text(encoding="utf-8")
+        index_html = (FRONTEND_DIR / "index.html").read_text(encoding="utf-8")
+
+        self.assertIn(".btn:disabled", style_css)
+        self.assertIn("cursor: not-allowed", style_css)
+
+        for token in ("isPickingFolder", "isBackdropPointerDown", "pointerdown", "ダイアログ表示中..."):
+            self.assertIn(token, takeout_js)
+        self.assertNotIn("confirm(", takeout_js, "takeout.js にブラウザ標準 confirm() が残存しています")
+
+        common_js = (FRONTEND_DIR / "js" / "common.js").read_text(encoding="utf-8")
+        loome_picker_js = (FRONTEND_DIR / "js" / "loome_picker.js").read_text(encoding="utf-8")
+        storage_js = (FRONTEND_DIR / "js" / "storage.js").read_text(encoding="utf-8")
+        folder_tree_js = (FRONTEND_DIR / "js" / "folder_tree.js").read_text(encoding="utf-8")
+        inspector_js = (FRONTEND_DIR / "js" / "inspector.js").read_text(encoding="utf-8")
+
+        self.assertIn("setupGlobalModalBackdropDragGuard", common_js)
+        self.assertIn("isPickingFolder", loome_picker_js)
+        self.assertIn("isExportingFolder", storage_js)
+        for name, body in (
+            ("takeout.js", takeout_js),
+            ("folder_tree.js", folder_tree_js),
+            ("inspector.js", inspector_js),
+        ):
+            self.assertIsNone(re.search(r"(?<![.\w])alert\s*\(", body), f"{name} にブラウザ標準 alert() が残存しています")
+
+        for token in ("isPickingFolder", "isAfBackdropPointerDown", "pointerdown"):
+            self.assertIn(token, art_framer_js)
+
+        self.assertIn('id="smartTakeoutPickDirBtn"', index_html)
+        self.assertNotIn('id="smartTakeoutDestInput" class="takeout-dest-input" placeholder="出力先フォルダパス..." readonly', index_html)
 
 
 if __name__ == "__main__":

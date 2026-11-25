@@ -28,6 +28,9 @@ from typing import List
 logger = logging.getLogger("photo_manager.lan_bridge")
 
 MAX_HTTP_HEADER_BYTES = 32768
+HEADER_READ_TIMEOUT_SEC = 15.0
+_MAX_CONCURRENT_TCP_CLIENTS = 64
+_TCP_CONN_SEMAPHORE = threading.BoundedSemaphore(_MAX_CONCURRENT_TCP_CLIENTS)
 _HTTP_431_RESPONSE = (
     b"HTTP/1.1 431 Request Header Fields Too Large\r\n"
     b"Content-Type: text/plain; charset=utf-8\r\n"
@@ -104,7 +107,8 @@ def _handle_tcp_client(client_sock: socket.socket, remote_ip: str, target_port: 
     """1つのLAN TCP接続を検証した上で 127.0.0.1:target_port へ双方向中継する（未完結・32KB超ヘッダはフェイルクローズ切断）"""
     upstream_sock = None
     try:
-        client_sock.settimeout(120.0)
+        # Slowloris DoS 対策としてヘッダ読取フェーズには短縮タイムアウトと合計期限を適用
+        client_sock.settimeout(HEADER_READ_TIMEOUT_SEC)
         try:
             client_sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         except Exception as e:
@@ -112,7 +116,10 @@ def _handle_tcp_client(client_sock: socket.socket, remote_ip: str, target_port: 
 
         # 初回HTTPリクエストヘッダ (最大32KB) を読み取る
         buf = b""
+        header_deadline = time.monotonic() + HEADER_READ_TIMEOUT_SEC
         while b"\r\n\r\n" not in buf and len(buf) < MAX_HTTP_HEADER_BYTES:
+            if time.monotonic() > header_deadline:
+                return
             chunk = client_sock.recv(8192)
             if not chunk:
                 break
@@ -128,10 +135,21 @@ def _handle_tcp_client(client_sock: socket.socket, remote_ip: str, target_port: 
                 try:
                     client_sock.sendall(_HTTP_431_RESPONSE)
                     client_sock.shutdown(socket.SHUT_WR)
+                    # Windows Winsock は受信バッファに未読データが残ったまま close() すると TCP RST を送出し
+                    # 431 応答が消えることがあるため、ごく短時間だけ軽量ドレイン/EOF待機を行う
+                    client_sock.settimeout(0.05)
+                    for _ in range(4):
+                        try:
+                            if not client_sock.recv(8192):
+                                break
+                        except (OSError, TimeoutError):
+                            break
                 except Exception as send_err:
                     logger.debug(f"431応答送信スキップ: {send_err}")
             return
 
+        # ヘッダ確定後は大容量アップロード等の中継に備えて通常タイムアウトへ切り替える
+        client_sock.settimeout(120.0)
         hdr_part = buf[:hdr_end]
         body_part = buf[hdr_end + 4 :]
         rewritten = _rewrite_http_request_header(hdr_part, remote_ip) + b"\r\n\r\n" + body_part
@@ -177,6 +195,14 @@ def _handle_tcp_client(client_sock: socket.socket, remote_ip: str, target_port: 
                     logger.debug(f"ソケットcloseスキップ: {close_err}")
 
 
+def _handle_tcp_client_guarded(client_sock: socket.socket, remote_ip: str, target_port: int) -> None:
+    """同時接続数上限を守りつつクライアント接続を処理する"""
+    try:
+        _handle_tcp_client(client_sock, remote_ip, target_port)
+    finally:
+        _TCP_CONN_SEMAPHORE.release()
+
+
 def _serve_tcp_ip(bind_ip: str, port: int) -> None:
     """指定されたLAN IPアドレスでTCP待受し、接続ごとに中継スレッドを起動する"""
     srv = None
@@ -189,8 +215,14 @@ def _serve_tcp_ip(bind_ip: str, port: int) -> None:
             try:
                 client_sock, client_addr = srv.accept()
                 remote_ip = client_addr[0]
+                if not _TCP_CONN_SEMAPHORE.acquire(blocking=False):
+                    try:
+                        client_sock.close()
+                    except Exception as close_err:
+                        logger.debug(f"同時接続上限超過クローズ: {close_err}")
+                    continue
                 threading.Thread(
-                    target=_handle_tcp_client,
+                    target=_handle_tcp_client_guarded,
                     args=(client_sock, remote_ip, port),
                     daemon=True,
                 ).start()

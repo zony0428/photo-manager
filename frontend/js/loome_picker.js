@@ -24,6 +24,7 @@
     currentKey: '',          // 現在開いているフォルダの key
     selectedChildKey: '',    // リスト内でシングルクリック選択中の子フォルダ key（未選択時は空＝currentKey直下）
     isCreatingFolder: false,
+    isPickingFolder: false,
     isSubmitting: false,
   };
 
@@ -388,8 +389,10 @@
     }
 
     if (submitBtn) {
-      submitBtn.disabled = !targetNode || pickerState.isSubmitting;
-      if (pickerState.mode === 'move') {
+      submitBtn.disabled = !targetNode || pickerState.isSubmitting || pickerState.isPickingFolder;
+      if (pickerState.isPickingFolder) {
+        submitBtn.textContent = isEn ? 'Selecting folder...' : 'ダイアログ表示中...';
+      } else if (pickerState.mode === 'move') {
         submitBtn.textContent = isEn ? 'Move Here' : 'ここへ移動';
       } else if (pickerState.mode === 'import_folder') {
         submitBtn.textContent = pickerState.sourceDir
@@ -475,6 +478,7 @@
 
     pickerState.activeRootKey = startRoot ? startRoot.key : '';
     pickerState.currentKey = startNode ? startNode.key : '';
+    pickerState.isPickingFolder = false;
     pickerState.isOpen = true;
 
     renderLoomePicker();
@@ -483,6 +487,12 @@
   window.openLoomePickerModal = openLoomePickerModal;
 
   function closeLoomePickerModal() {
+    if (pickerState.isPickingFolder) {
+      if (typeof showToast === 'function') {
+        showToast(_isEn() ? 'Folder dialog is open' : 'フォルダ選択ダイアログが開いています', 'info', 2200);
+      }
+      return;
+    }
     pickerState.isOpen = false;
     pickerState.isCreatingFolder = false;
     pickerState.uploadFiles = [];
@@ -796,7 +806,7 @@
    * 小窓の確定ボタン実行
    */
   async function _handleSubmitPicker() {
-    if (pickerState.isSubmitting) return;
+    if (pickerState.isSubmitting || pickerState.isPickingFolder) return;
     const targetNode = _getEffectiveTargetNode();
     if (!targetNode) return;
 
@@ -804,8 +814,39 @@
     const dispLabel = _formatNodeTrailLabel(targetNode);
     const mode = pickerState.mode;
     const photoIds = [...pickerState.photoIds];
-    const sourceDir = pickerState.sourceDir;
+    let sourceDir = pickerState.sourceDir;
     const uploadFiles = [...pickerState.uploadFiles];
+
+    if (mode === 'import_folder' && !sourceDir) {
+      const isEn = _isEn();
+      pickerState.isPickingFolder = true;
+      renderLoomePicker();
+      try {
+        const res = await fetch('/api/export/pick-folder', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ initial_dir: null }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          sourceDir = data.selected_path || null;
+        }
+      } catch (e) {
+        console.error('[LOOME_PICKER] フォルダ選択ダイアログ呼び出し失敗:', e);
+        if (typeof showToast === 'function') {
+          showToast(isEn ? 'Failed to open folder dialog' : 'フォルダ選択ダイアログの表示に失敗しました', 'error', 3000);
+        }
+      } finally {
+        pickerState.isPickingFolder = false;
+        renderLoomePicker();
+      }
+      if (!sourceDir) {
+        if (typeof showToast === 'function') {
+          showToast(isEn ? 'Folder selection cancelled' : 'フォルダ選択をキャンセルしました', 'info', 2000);
+        }
+        return;
+      }
+    }
 
     pickerState.isSubmitting = true;
     closeLoomePickerModal();
@@ -885,6 +926,7 @@
       if (activeTag === 'INPUT' || activeTag === 'TEXTAREA') return;
 
       if (e.key === 'Escape') {
+        if (pickerState.isPickingFolder) return;
         e.preventDefault();
         e.stopPropagation();
         closeLoomePickerModal();

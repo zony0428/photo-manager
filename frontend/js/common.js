@@ -2771,10 +2771,57 @@ function initCommonModals() {
   );
 }
 
+let _backdropDragGuardBound = false;
+
+/**
+ * モーダル内部のpointerdownから背景へ抜けるclickによる誤閉鎖を全モーダル共通で防止する
+ */
+function setupGlobalModalBackdropDragGuard() {
+  if (_backdropDragGuardBound) return;
+  _backdropDragGuardBound = true;
+  let pointerDownBackdrop = null;
+
+  document.addEventListener(
+    'pointerdown',
+    (e) => {
+      const target = e.target;
+      pointerDownBackdrop =
+        target &&
+        target.classList &&
+        (target.classList.contains('modal-backdrop') || target.classList.contains('field-log-modal-backdrop'))
+          ? target
+          : null;
+    },
+    true
+  );
+
+  document.addEventListener(
+    'click',
+    (e) => {
+      const target = e.target;
+      if (
+        !target ||
+        !target.classList ||
+        (!target.classList.contains('modal-backdrop') && !target.classList.contains('field-log-modal-backdrop'))
+      ) {
+        pointerDownBackdrop = null;
+        return;
+      }
+      const startedOnSameBackdrop = pointerDownBackdrop === target;
+      pointerDownBackdrop = null;
+      if (!startedOnSameBackdrop) {
+        e.stopImmediatePropagation();
+      }
+    },
+    true
+  );
+}
+
 function bootCommonUI() {
   if (typeof window.t !== 'function') {
     window.t = (_k, fb) => (fb !== undefined ? fb : _k);
   }
+  setupGlobalModalBackdropDragGuard();
   initCommonModals();
   initTetheractActivityUI();
 }

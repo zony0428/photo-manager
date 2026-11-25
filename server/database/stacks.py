@@ -256,13 +256,11 @@ def recalculate_stacks_for_directories(
                 else:
                     from ..scanner import resolve_portable_path
                     for p in photos:
-                        if p.get("volume_serial"):
-                            res_p, is_on = resolve_portable_path(p["file_path"], expected_serial=p.get("volume_serial"))
-                            p["is_online"] = bool(is_on and res_p.exists())
-                        elif str(p["file_path"]).startswith("vsn://"):
+                        if str(p["file_path"]).startswith("vsn://"):
                             p["is_online"] = False
                         else:
-                            p["is_online"] = os.path.exists(p["file_path"])
+                            res_p, is_on = resolve_portable_path(p["file_path"], expected_serial=p.get("volume_serial"))
+                            p["is_online"] = bool(is_on and res_p.exists())
 
                 # ステップ1: ステム名（拡張子抜き）でグループ化してRAW+JPEGペアを検出
                 stem_map: Dict[str, List[Dict[str, Any]]] = {}

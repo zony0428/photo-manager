@@ -591,6 +591,11 @@ button, input, select, textarea {
   user-select: none;
 }
 
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .btn .btn-label {
   white-space: nowrap;
 }
@@ -601,7 +606,7 @@ button, input, select, textarea {
   font-weight: 600;
 }
 
-.btn-primary:hover {
+.btn-primary:not(:disabled):hover {
   background: var(--accent-primary-hover);
 }
 
@@ -611,7 +616,7 @@ button, input, select, textarea {
   border-color: var(--border-color);
 }
 
-.btn-secondary:hover {
+.btn-secondary:not(:disabled):hover {
   background: var(--bg-hover);
 }
 
@@ -622,7 +627,7 @@ button, input, select, textarea {
   font-weight: 600;
 }
 
-.btn-danger:hover {
+.btn-danger:not(:disabled):hover {
   background: #b91c1c;
   border-color: #991b1b;
 }

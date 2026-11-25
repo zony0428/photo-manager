@@ -999,9 +999,13 @@ class LockerDatabaseManager(private val context: Context) {
                             )
                             """.trimIndent()
                         )
-                        db.execSQL("DELETE FROM main.watermark_assets WHERE IFNULL(origin, 'pc') != 'mobile'")
-                        db.execSQL("INSERT OR REPLACE INTO main.watermark_assets SELECT * FROM delta.watermark_assets")
-                        db.execSQL("INSERT OR REPLACE INTO main.app_meta (key, value) VALUES ('${WatermarkAssetStore.DEFAULT_WATERMARK_SEED_KEY}', '1')")
+                        val wmCols = getCommonTableColumns(db, "main", "delta", "watermark_assets")
+                        if (wmCols.isNotEmpty()) {
+                            val wmColsSql = wmCols.joinToString(", ") { "\"$it\"" }
+                            db.execSQL("DELETE FROM main.watermark_assets WHERE IFNULL(origin, 'pc') != 'mobile'")
+                            db.execSQL("INSERT OR REPLACE INTO main.watermark_assets ($wmColsSql) SELECT $wmColsSql FROM delta.watermark_assets")
+                            db.execSQL("INSERT OR REPLACE INTO main.app_meta (key, value) VALUES ('${WatermarkAssetStore.DEFAULT_WATERMARK_SEED_KEY}', '1')")
+                        }
                     }
                 }
                 db.execSQL("INSERT OR REPLACE INTO main.thumbnails (photo_id, data, width, height, created_at) SELECT photo_id, data, width, height, created_at FROM delta.thumbnails")
@@ -1016,6 +1020,7 @@ class LockerDatabaseManager(private val context: Context) {
             false
         } finally {
             if (attached) try { db.execSQL("DETACH DATABASE delta") } catch (_: Exception) {}
+            execPragmaSafe(db, "PRAGMA foreign_keys = ON")
         }
     }
 
@@ -1194,6 +1199,7 @@ class LockerDatabaseManager(private val context: Context) {
             false
         } finally {
             if (attached) try { db.execSQL("DETACH DATABASE src") } catch (_: Exception) {}
+            execPragmaSafe(db, "PRAGMA foreign_keys = ON")
         }
     }
 

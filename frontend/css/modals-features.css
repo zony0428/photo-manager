@@ -1303,8 +1303,7 @@ kbd {
   cursor: pointer;
 }
 
-body.dark-mode .multi-meta-item,
-body.theme-dark .multi-meta-item {
+html[data-theme="sumi"] .multi-meta-item {
   background: rgba(255, 255, 255, 0.04);
   border-color: rgba(255, 255, 255, 0.08);
 }
@@ -1312,8 +1311,7 @@ body.theme-dark .multi-meta-item {
 .multi-meta-item:hover {
   background: rgba(0, 0, 0, 0.06);
 }
-body.dark-mode .multi-meta-item:hover,
-body.theme-dark .multi-meta-item:hover {
+html[data-theme="sumi"] .multi-meta-item:hover {
   background: rgba(255, 255, 255, 0.08);
 }
 
@@ -1377,8 +1375,7 @@ body.layout-mount .card-thumb-wrapper .thumb-corner-cut {
   border-color: transparent #ebebe6 transparent transparent; /* マウントの厚紙色 */
 }
 
-body.dark-mode .card-thumb-wrapper .thumb-corner-cut,
-body.theme-dark .card-thumb-wrapper .thumb-corner-cut {
+html[data-theme="sumi"] .card-thumb-wrapper .thumb-corner-cut {
   border-color: transparent #262c35 transparent transparent; /* 夜墨ダークスレート背景色 */
 }
 

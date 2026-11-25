@@ -8,6 +8,7 @@ from typing import Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, Field, ValidationError
+from starlette.concurrency import run_in_threadpool
 
 from ..database import (
     apply_field_log_matches,
@@ -80,9 +81,14 @@ async def api_mobile_upload_field_log(request: Request):
     if is_app_locked():
         raise HTTPException(status_code=423, detail="アプリケーションはロックされています")
 
-    body_bytes = await request.body()
-    if len(body_bytes) > _MAX_UPLOAD_BODY_BYTES:
-        raise HTTPException(status_code=413, detail="フィールドログのサイズが上限（8MB/日）を超えています")
+    body_chunks = []
+    total_bytes = 0
+    async for chunk in request.stream():
+        total_bytes += len(chunk)
+        if total_bytes > _MAX_UPLOAD_BODY_BYTES:
+            raise HTTPException(status_code=413, detail="フィールドログのサイズが上限（8MB/日）を超えています")
+        body_chunks.append(chunk)
+    body_bytes = b"".join(body_chunks)
 
     try:
         payload = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
@@ -93,7 +99,8 @@ async def api_mobile_upload_field_log(request: Request):
         raise HTTPException(status_code=400, detail=f"リクエストデータの形式が不正です: {e}")
 
     try:
-        res = save_uploaded_day(
+        res = await run_in_threadpool(
+            save_uploaded_day,
             device_id=req.device_id,
             device_name=req.device_name,
             date_str=req.date,

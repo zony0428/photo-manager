@@ -1327,8 +1327,11 @@ def api_get_stack_detail(stack_id: int):
 
 @app.delete("/api/photo/{photo_id}")
 def api_delete_photo(photo_id: int, delete_file: bool = False):
-    """写真をライブラリから削除する（delete_file=True の場合は実ファイルも削除）"""
-    success = delete_photo_by_id(photo_id, delete_file=delete_file)
+    """写真をライブラリから削除する（delete_file=True の場合は保管庫内実ファイルも削除）"""
+    try:
+        success = delete_photo_by_id(photo_id, delete_file=delete_file)
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
     if not success:
         raise HTTPException(status_code=404, detail="写真が見つかりません")
     clear_folders_fs_cache()

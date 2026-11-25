@@ -631,7 +631,11 @@ class PhoneCaseManager(
                 var sample = 1; while (maxOf(w, h) / sample > 480) sample *= 2
                 val bmp = BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = sample }) ?: return null
                 val out = ByteArrayOutputStream()
-                bmp.compress(Bitmap.CompressFormat.JPEG, 82, out); bmp.recycle()
+                try {
+                    bmp.compress(Bitmap.CompressFormat.JPEG, 82, out)
+                } finally {
+                    if (!bmp.isRecycled) bmp.recycle()
+                }
                 out.toByteArray()
             } catch (_: Exception) { null }
         }
@@ -639,7 +643,11 @@ class PhoneCaseManager(
         try {
             DocumentsContract.getDocumentThumbnail(context.contentResolver, docUri, Point(360, 360), null)?.let { docThumb ->
                 val out = ByteArrayOutputStream()
-                docThumb.compress(Bitmap.CompressFormat.JPEG, 82, out); docThumb.recycle()
+                try {
+                    docThumb.compress(Bitmap.CompressFormat.JPEG, 82, out)
+                } finally {
+                    if (!docThumb.isRecycled) docThumb.recycle()
+                }
                 return out.toByteArray()
             }
         } catch (_: Exception) {}
@@ -652,7 +660,11 @@ class PhoneCaseManager(
             var sample = 1; while (maxOf(w, h) / sample > 480) sample *= 2
             val bmp = context.contentResolver.openInputStream(docUri)?.use { BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample }) } ?: return null
             val out = ByteArrayOutputStream()
-            bmp.compress(Bitmap.CompressFormat.JPEG, 80, out); bmp.recycle()
+            try {
+                bmp.compress(Bitmap.CompressFormat.JPEG, 80, out)
+            } finally {
+                if (!bmp.isRecycled) bmp.recycle()
+            }
             out.toByteArray()
         } catch (_: Exception) { null }
     }

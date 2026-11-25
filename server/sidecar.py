@@ -240,20 +240,29 @@ def sync_photo_has_xmp_by_paths(paths: Iterable[Union[str, Path]]) -> int:
         from .scanner import resolve_portable_path
 
         with get_connection() as conn:
-            ph = ",".join("?" * len(norm_paths))
-            params = norm_paths + norm_paths + norm_paths
-            rows = conn.execute(
-                f"""
-                SELECT DISTINCT p.id, p.file_path, p.paired_raw_path, p.volume_serial,
-                                COALESCE(p.has_xmp, 0) AS has_xmp
-                FROM photos p
-                LEFT JOIN photo_links pl ON pl.photo_id = p.id
-                WHERE p.file_path COLLATE NOCASE IN ({ph})
-                   OR p.paired_raw_path COLLATE NOCASE IN ({ph})
-                   OR pl.file_path COLLATE NOCASE IN ({ph})
-                """,
-                params,
-            ).fetchall()
+            rows = []
+            seen_pids: set = set()
+            for chunk_start in range(0, len(norm_paths), 300):
+                chunk_paths = norm_paths[chunk_start:chunk_start + 300]
+                ph = ",".join("?" * len(chunk_paths))
+                params = chunk_paths + chunk_paths + chunk_paths
+                chunk_rows = conn.execute(
+                    f"""
+                    SELECT DISTINCT p.id, p.file_path, p.paired_raw_path, p.volume_serial,
+                                    COALESCE(p.has_xmp, 0) AS has_xmp
+                    FROM photos p
+                    LEFT JOIN photo_links pl ON pl.photo_id = p.id
+                    WHERE p.file_path COLLATE NOCASE IN ({ph})
+                       OR p.paired_raw_path COLLATE NOCASE IN ({ph})
+                       OR pl.file_path COLLATE NOCASE IN ({ph})
+                    """,
+                    params,
+                ).fetchall()
+                for r in chunk_rows:
+                    pid = int(r["id"])
+                    if pid not in seen_pids:
+                        seen_pids.add(pid)
+                        rows.append(r)
             if not rows:
                 return 0
 

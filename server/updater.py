@@ -9,7 +9,9 @@ PC母艦アップデート＆ポータブル差分パッケージ管理モジュ
 
 import json
 import logging
+from datetime import datetime
 from pathlib import Path
+import posixpath
 import re
 import subprocess
 import threading
@@ -33,7 +35,7 @@ logger = logging.getLogger("photo_manager.updater")
 BASE_DIR = Path(__file__).resolve().parent.parent
 UPDATES_DIR = BASE_DIR / "cache" / "updates"
 GITHUB_REPO = "zony0428/photo-manager"
-GITHUB_RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases?per_page=10"
+GITHUB_RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases?per_page=30"
 GITHUB_DOWNLOAD_PREFIX = f"https://github.com/{GITHUB_REPO}/releases/download/"
 
 _REMOTE_CACHE_TTL_SEC = 15 * 60
@@ -44,6 +46,19 @@ _release_cache: Dict[str, Any] = {"fetched_at": 0.0, "data": None}
 
 _EXCLUDED_DIR_NAMES = {"__pycache__", ".git", "cache", ".cache"}
 _EXCLUDED_FILE_SUFFIXES = (".pyc", ".pyo", ".orig_backup", ".tmp", ".log")
+_PROTECTED_UPDATE_PREFIXES = ("cache/", "loome/", "storage/", "take_out/", "python/", ".git/")
+_PROTECTED_UPDATE_FILES = {".tetheract_instance", ".loome_seal", "recovery_key.txt"}
+
+
+def _is_protected_update_entry(norm_lower: str) -> bool:
+    """個人データ・暗号化鍵・ポータブルランタイム領域への上書き対象エントリかどうかを判定する"""
+    if not norm_lower:
+        return False
+    if norm_lower in _PROTECTED_UPDATE_FILES:
+        return True
+    if any(norm_lower.startswith(pref) for pref in _PROTECTED_UPDATE_PREFIXES):
+        return True
+    return norm_lower.endswith("/.loome_seal") or norm_lower.endswith("/.tetheract_instance")
 
 
 class _HttpsOnlyRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -101,12 +116,19 @@ def validate_diff_zip_file(zip_path: Path) -> Tuple[bool, str, str]:
                 parts = [p for p in raw_name.split("/") if p]
                 if ".." in parts:
                     return False, "", f"不正な相対パスが含まれています: {info.filename}"
+                # POSIX シンボリックリンクエントリ (S_IFLNK = 0120000) を拒否
+                if ((info.external_attr >> 16) & 0o170000) == 0o120000:
+                    return False, "", f"許可されないリンクエントリが含まれています: {info.filename}"
                 norm = "/".join(parts).lower()
+                if _is_protected_update_entry(norm):
+                    return False, "", f"保護対象領域を上書きするエントリが含まれています: {info.filename}"
                 if norm in ("server/run.py", "run.py"):
                     has_server_run = True
                 elif norm == "frontend/index.html":
                     has_frontend_index = True
                 elif norm == "version":
+                    if info.file_size > 4096:
+                        return False, "", "ZIP内の VERSION ファイルサイズが異常です"
                     has_version = True
                     try:
                         ver_lines = zf.read(info).decode("utf-8", errors="ignore").splitlines()
@@ -270,12 +292,13 @@ def check_github_latest_release(force: bool = False) -> Dict[str, Any]:
         },
     )
     try:
-        with urllib.request.urlopen(req, timeout=4.0) as resp:
+        with urllib.request.urlopen(req, timeout=8.0) as resp:
             raw_text = resp.read().decode("utf-8")
         releases = json.loads(raw_text)
         if not isinstance(releases, list):
             releases = []
         result = _select_best_github_release(releases, cur_tuple)
+        result["checked_at"] = datetime.now().strftime("%Y-%m-%d %H:%M")
         with _release_cache_lock:
             _release_cache["fetched_at"] = now
             _release_cache["data"] = dict(result)
@@ -292,6 +315,7 @@ def check_github_latest_release(force: bool = False) -> Dict[str, Any]:
             "diff_asset_url": "",
             "diff_asset_size_mb": 0.0,
             "published_at": "",
+            "checked_at": "",
             "error": str(e),
         }
 
@@ -314,7 +338,17 @@ def download_and_stage_github_diff_zip(
             }
 
     parsed = urllib.parse.urlsplit(target_url)
-    if parsed.scheme.lower() != "https" or parsed.netloc.lower() != "github.com" or not target_url.startswith(GITHUB_DOWNLOAD_PREFIX):
+    unquoted_path = urllib.parse.unquote(parsed.path or "")
+    norm_url_path = posixpath.normpath(unquoted_path) if unquoted_path else ""
+    expected_prefix = f"/{GITHUB_REPO}/releases/download/"
+    if (
+        parsed.scheme.lower() != "https"
+        or parsed.netloc.lower() != "github.com"
+        or not target_url.startswith(GITHUB_DOWNLOAD_PREFIX)
+        or ".." in unquoted_path.split("/")
+        or "\\" in unquoted_path
+        or not norm_url_path.startswith(expected_prefix)
+    ):
         return {
             "ok": False,
             "error": "公式 GitHub Releases 以外のURLからのダウンロードは許可されていません",
@@ -557,6 +591,7 @@ def trigger_launcher_clean_update(base_dir: Path = BASE_DIR) -> Dict[str, Any]:
 
 def get_system_update_status(
     check_remote: bool = False,
+    force_remote: bool = False,
     base_dir: Path = BASE_DIR,
 ) -> Dict[str, Any]:
     """現在のバージョン・UI/ネイティブリビジョン・ステージ済みZIP・リモート最新情報をまとめて返す"""
@@ -566,12 +601,16 @@ def get_system_update_status(
     dev_repo = is_dev_repository(base_dir)
 
     remote: Dict[str, Any]
-    if check_remote:
-        remote = check_github_latest_release(force=True)
+    if check_remote or force_remote:
+        remote = check_github_latest_release(force=bool(force_remote))
     else:
         with _release_cache_lock:
             cached = _release_cache.get("data")
-        remote = dict(cached) if isinstance(cached, dict) else {"checked": False, "remote_update_available": False}
+        remote = (
+            dict(cached)
+            if isinstance(cached, dict)
+            else {"checked": False, "remote_update_available": False, "checked_at": ""}
+        )
 
     return {
         "ok": True,

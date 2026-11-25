@@ -44,6 +44,7 @@
   let contrastValEl = null;
   let saturationRangeEl = null;
   let saturationValEl = null;
+  let onAppliedCallback = null;
 
   // カメラ露出補正ダイヤル（1/3段ステップ: -2.0EV 〜 +2.0EV、DB保存用の内部値は EV×10 の整数）
   // ダイヤル位置 -6 〜 +6 に対応する EV×10 値:
@@ -415,7 +416,7 @@
   /**
    * モーダルを開いて編集を開始する
    */
-  function openImageAdjustModal(photoOrId) {
+  function openImageAdjustModal(photoOrId, options = null) {
     const photo = (photoOrId && typeof photoOrId === 'object')
       ? photoOrId
       : (typeof findPhotoByIdAnywhere === 'function'
@@ -430,13 +431,17 @@
     }
     if (!modalEl) initAdjustModule();
 
+    onAppliedCallback = options && typeof options.onApplied === 'function' ? options.onApplied : null;
+    const initDraft = options && options.initialDraft && typeof options.initialDraft === 'object' ? options.initialDraft : null;
+    const seedSrc = initDraft ? { ...photo, ...initDraft } : photo;
+
     adjustState.photo = photo;
-    adjustState.rotation = photo.rotation || 0;
-    adjustState.fineAngle = Number(photo.fine_angle) || 0.0;
-    adjustState.brightness = dialIndexToBrightness(brightnessToDialIndex(Number(photo.brightness) || 0));
-    adjustState.contrast = Number(photo.contrast) || 0;
-    adjustState.saturation = Number(photo.saturation) || 0;
-    adjustState.aspect = photo.crop_aspect || 'original';
+    adjustState.rotation = seedSrc.rotation || 0;
+    adjustState.fineAngle = Number(seedSrc.fine_angle) || 0.0;
+    adjustState.brightness = dialIndexToBrightness(brightnessToDialIndex(Number(seedSrc.brightness) || 0));
+    adjustState.contrast = Number(seedSrc.contrast) || 0;
+    adjustState.saturation = Number(seedSrc.saturation) || 0;
+    adjustState.aspect = seedSrc.crop_aspect || 'original';
 
     setCompareOriginalMode(false);
 
@@ -477,6 +482,7 @@
     setCompareOriginalMode(false);
     if (modalEl) modalEl.style.display = 'none';
     adjustState.photo = null;
+    onAppliedCallback = null;
     if (imgEl) {
       imgEl.style.filter = 'none';
       imgEl.src = '';
@@ -876,7 +882,9 @@
         showToast('画像の調整を保存しました');
       }
 
+      const appliedCb = onAppliedCallback;
       closeImageAdjustModal();
+      if (appliedCb) appliedCb(photo);
     } catch (e) {
       console.error(e);
       if (typeof showToast === 'function') {
@@ -935,7 +943,9 @@
         showToast('調整を初期状態に戻しました');
       }
 
+      const appliedCb = onAppliedCallback;
       closeImageAdjustModal();
+      if (appliedCb) appliedCb(photo);
     } catch (e) {
       console.error(e);
       if (typeof showToast === 'function') {

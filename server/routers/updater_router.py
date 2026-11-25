@@ -7,8 +7,10 @@ from typing import Optional
 from fastapi import APIRouter, Body, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
 from ..updater import (
+    _MAX_DIFF_ZIP_BYTES,
     build_portable_diff_update_zip,
     download_and_stage_github_diff_zip,
     get_system_update_status,
@@ -25,10 +27,14 @@ class GithubDownloadRequest(BaseModel):
 
 
 @router.get("/api/system/update-status")
-def api_system_update_status(request: Request, check_remote: int = Query(default=0)):
+def api_system_update_status(
+    request: Request,
+    check_remote: int = Query(default=0),
+    force_remote: int = Query(default=0),
+):
     """現在バージョン・リビジョン・ステージ済み更新・GitHub最新リリース情報を返す（localhost専用）"""
     _require_localhost(request)
-    return get_system_update_status(check_remote=bool(check_remote))
+    return get_system_update_status(check_remote=bool(check_remote), force_remote=bool(force_remote))
 
 
 @router.post("/api/system/download-github-update")
@@ -70,8 +76,15 @@ async def api_system_stage_diff_zip(
 ):
     """選択された diff.zip バイナリを検証し、アプリルートへステージングする（localhost専用）"""
     _require_localhost(request)
-    raw_bytes = await request.body()
-    res = stage_uploaded_diff_zip(file_name=file_name, raw_bytes=raw_bytes)
+    chunks = []
+    total_bytes = 0
+    async for chunk in request.stream():
+        total_bytes += len(chunk)
+        if total_bytes > _MAX_DIFF_ZIP_BYTES:
+            raise HTTPException(status_code=413, detail="diff.zip のサイズが上限 (250MB) を超えています")
+        chunks.append(chunk)
+    raw_bytes = b"".join(chunks)
+    res = await run_in_threadpool(stage_uploaded_diff_zip, file_name=file_name, raw_bytes=raw_bytes)
     if not res.get("ok"):
         raise HTTPException(status_code=400, detail=res.get("error") or "diff.zip の読み込みに失敗しました")
     return res

@@ -18,7 +18,7 @@
   animation: histSlideDown 0.16s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-body.theme-washi .inspector-histogram-drawer {
+html[data-theme="paper"] .inspector-histogram-drawer {
   background: #232220;
   border-color: rgba(0, 0, 0, 0.22);
   color: #eceae4;

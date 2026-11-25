@@ -185,12 +185,21 @@ class TestFieldLogStoreAndIntegration(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
+        from server import mobile_delta as mobile_delta_mod
         cls._orig_db_path = db_conn_mod.DB_PATH
         cls._orig_logs_dir = field_log_store.FIELD_LOGS_DIR
+        cls._orig_delta_db = mobile_delta_mod.DELTA_DB_PATH
+        cls._orig_locker_state = mobile_delta_mod.LOCKER_STATE_PATH
+        cls._orig_last_seq = mobile_delta_mod._last_built_commit_seq
+        cls._orig_last_mtime = mobile_delta_mod._last_built_locker_mtime
         cls._temp_dir = tempfile.TemporaryDirectory()
         tmp_root = Path(cls._temp_dir.name)
 
         set_instance_file_for_test(tmp_root / ".tetheract_instance_fieldlog")
+        mobile_delta_mod.DELTA_DB_PATH = tmp_root / "mobile_delta.db"
+        mobile_delta_mod.LOCKER_STATE_PATH = tmp_root / "mobile_locker_state.json"
+        mobile_delta_mod._last_built_commit_seq = -1
+        mobile_delta_mod._last_built_locker_mtime = -1.0
         switch_database_path(tmp_root / "test_fieldlog_library.db")
         initialize_database()
         initialize_security_state(force_reload=True)
@@ -200,7 +209,12 @@ class TestFieldLogStoreAndIntegration(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        from server import mobile_delta as mobile_delta_mod
         field_log_store.FIELD_LOGS_DIR = cls._orig_logs_dir
+        mobile_delta_mod.DELTA_DB_PATH = cls._orig_delta_db
+        mobile_delta_mod.LOCKER_STATE_PATH = cls._orig_locker_state
+        mobile_delta_mod._last_built_commit_seq = cls._orig_last_seq
+        mobile_delta_mod._last_built_locker_mtime = cls._orig_last_mtime
         close_all_connections()
         set_instance_file_for_test(None)
         switch_database_path(cls._orig_db_path)

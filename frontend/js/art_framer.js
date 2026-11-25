@@ -21,7 +21,20 @@
   let exportedCount = 0;
   let lastExportedDir = '';
   let isBusy = false;
+  let isPickingFolder = false;
+  let isAfBackdropPointerDown = false;
   let loadReqSeq = 0;
+
+  // Step 0（非破壊調整）作業状態
+  let step0CommittedAdjust = null;
+  let step0DraftAdjust = null;
+  let step0RawImg = null;
+  let step0RawPhotoId = 0;
+  let step0RawLoading = false;
+  let step0ShowGrid = true;
+  let step0CompareBefore = false;
+  let step0Busy = false;
+  let step0ImpactResolver = null;
 
   // セッション設定状態
   const cfg = {
@@ -50,6 +63,18 @@
       show_location: false,
       show_note: false,
       custom_note: '',
+    },
+    effect: {
+      presetKey: 'none',
+      bokeh_mode: 'none',
+      strength: 0.0,
+      specular: 0.65,
+      radius: 0.32,
+      feather: 0.36,
+      cx: 0.50,
+      cy: 0.50,
+      vignette: 0.0,
+      halation: 0.0,
     },
     watermark: {
       enabled: false,
@@ -270,15 +295,104 @@
     return cfg.watermark.image_url || cfg.watermark.preview_data_url || '';
   }
 
+  function _effectApi() {
+    return window.TetheractArtFramerEffect || null;
+  }
+
+  function _isEffectStepDisabled() {
+    const api = _effectApi();
+    return Boolean(api && typeof api.isEffectStepDisabled === 'function' && api.isEffectStepDisabled());
+  }
+
+  function _resetEffectForSession() {
+    const api = _effectApi();
+    cfg.effect = api && typeof api.createDefaultEffectConfig === 'function'
+      ? api.createDefaultEffectConfig()
+      : { presetKey: 'none', bokeh_mode: 'none', strength: 0, specular: 0.65, radius: 0.32, feather: 0.36, cx: 0.5, cy: 0.5, vignette: 0, halation: 0 };
+  }
+
+  function _getEffectiveLensEffectPayload() {
+    if (_isEffectStepDisabled()) return { enabled: false };
+    const api = _effectApi();
+    return api ? api.normalizeEffectConfig(cfg.effect) : { enabled: false };
+  }
+
+  function syncEffectStepVisibilityUI() {
+    if (!modalEl) return;
+    const disabled = _isEffectStepDisabled();
+    const api = _effectApi();
+    const effOn = !disabled && Boolean(api && api.isEffectActive(cfg.effect));
+
+    modalEl.querySelectorAll('.af-step-tab').forEach((tab) => {
+      const logical = parseInt(tab.dataset.step, 10);
+      if (logical === 2) {
+        tab.style.display = disabled ? 'none' : 'inline-flex';
+        tab.classList.toggle('has-effect-on', effOn);
+      } else {
+        tab.style.display = 'inline-flex';
+      }
+      const numEl = tab.querySelector('.af-step-num');
+      if (numEl) {
+        const disp = api ? api.getDisplayStepNumber(logical, disabled) : logical;
+        numEl.textContent = String(disp);
+      }
+    });
+  }
+
+  function syncEffectControlsUI() {
+    if (!modalEl) return;
+    const fx = cfg.effect || {};
+    const activePreset = String(fx.presetKey || 'none');
+    modalEl.querySelectorAll('.af-effect-preset-btn').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.effectPreset === activePreset);
+    });
+    const setV = (id, val) => { const el = document.getElementById(id); if (el) el.value = String(val); };
+    const setT = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = String(val); };
+
+    setV('afEffectBokehSelect', fx.bokeh_mode || 'none');
+    const stPct = Math.round((fx.strength || 0) * 100);
+    setV('afEffectStrengthSlider', stPct);
+    setT('afEffectStrengthVal', `${stPct}%`);
+    const spPct = Math.round((fx.specular ?? 0.65) * 100);
+    setV('afEffectSpecularSlider', spPct);
+    setT('afEffectSpecularVal', `${spPct}%`);
+    const rPct = Math.round((fx.radius ?? 0.32) * 100);
+    setV('afEffectRadiusSlider', rPct);
+    setT('afEffectRadiusVal', `${rPct}%`);
+    const fPct = Math.round((fx.feather ?? 0.36) * 100);
+    setV('afEffectFeatherSlider', fPct);
+    setT('afEffectFeatherVal', `${fPct}%`);
+    const vVal = Math.round((fx.vignette || 0) * 100);
+    setV('afEffectVignetteSlider', vVal);
+    setT('afEffectVignetteVal', `${vVal > 0 ? '+' : ''}${vVal}`);
+    const hPct = Math.round((fx.halation || 0) * 100);
+    setV('afEffectHalationSlider', hPct);
+    setT('afEffectHalationVal', `${hPct}%`);
+
+    syncEffectStepVisibilityUI();
+  }
+
   function pushDecoratorToEditor() {
     if (!editor) return;
+    let mode = 'decorated';
+    if (cfg.step === 0) mode = 'adjust';
+    else if (cfg.step === 1) mode = 'mask';
+    else if (cfg.step === 2) mode = 'effect';
     editor.setDecoratorState({
-      viewMode: cfg.step === 1 ? 'mask' : 'decorated',
+      viewMode: mode,
+      effectConfig: _getEffectiveLensEffectPayload(),
       frameConfig: cfg.frame,
       watermarkConfig: cfg.watermark,
       artPreset: cfg.artPreset,
       logoDataUrl: resolveActiveWatermarkLogoUrl(),
     });
+    if (typeof editor.setAdjustOverlayState === 'function') {
+      editor.setAdjustOverlayState({
+        showLevelGrid: cfg.step === 0 && step0ShowGrid,
+        fineGrid: cfg.step === 0,
+        isComparingBefore: cfg.step === 0 && step0CompareBefore,
+      });
+    }
   }
 
   function syncFormFromState() {
@@ -429,25 +543,369 @@
 
     setVal('afDestInput', cfg.output.destination);
     setChk('afOpenAfterCheck', cfg.output.open_folder_after);
+
+    syncEffectControlsUI();
+  }
+
+  function _step0Api() {
+    return window.TetheractArtFramerStep0 || null;
+  }
+
+  function _normalizeAdjust(meta) {
+    const api = _step0Api();
+    if (api && typeof api.normalizeAdjustSnapshot === 'function') {
+      return api.normalizeAdjustSnapshot(meta);
+    }
+    const src = meta || {};
+    return {
+      rotation: ((Math.round(Number(src.rotation || 0)) % 360) + 360) % 360,
+      fine_angle: Number(Number(src.fine_angle || 0).toFixed(2)),
+      brightness: Math.round(Number(src.brightness || 0)),
+      contrast: Math.round(Number(src.contrast || 0)),
+      saturation: Math.round(Number(src.saturation || 0)),
+      crop_x: src.crop_x ?? null,
+      crop_y: src.crop_y ?? null,
+      crop_w: src.crop_w ?? null,
+      crop_h: src.crop_h ?? null,
+      crop_aspect: src.crop_aspect ?? null,
+    };
+  }
+
+  function _syncStep0FormUI() {
+    if (!modalEl) return;
+    const api = _step0Api();
+    const d = step0DraftAdjust || _normalizeAdjust(null);
+    const committed = step0CommittedAdjust || d;
+    const diff = api && typeof api.classifyAdjustDiff === 'function'
+      ? api.classifyAdjustDiff(committed, d)
+      : { hasAnyChange: false };
+
+    const tiltEl = document.getElementById('afStep0TiltSlider');
+    const tiltVal = document.getElementById('afStep0TiltVal');
+    const fa = Number(d.fine_angle || 0);
+    if (tiltEl) tiltEl.value = String(Math.max(-15, Math.min(15, fa)));
+    if (tiltVal) {
+      tiltVal.textContent = api ? api.formatFineAngle(fa) : `${fa.toFixed(1)}°`;
+      tiltVal.classList.toggle('is-modified', Math.abs(fa) > 0.015);
+    }
+
+    const expEl = document.getElementById('afStep0ExpSlider');
+    const expVal = document.getElementById('afStep0ExpVal');
+    const dialIdx = api ? api.brightnessToDialIndex(d.brightness) : 0;
+    const snappedB = api ? api.dialIndexToBrightness(dialIdx) : (d.brightness || 0);
+    if (expEl) expEl.value = String(dialIdx);
+    if (expVal) {
+      expVal.textContent = api ? api.formatBrightnessEv(d.brightness) : `${(snappedB / 10).toFixed(1)}EV`;
+      expVal.classList.toggle('is-modified', Math.round(Number(d.brightness || 0)) !== 0);
+    }
+
+    const conEl = document.getElementById('afStep0ConSlider');
+    const conVal = document.getElementById('afStep0ConVal');
+    const c = Math.round(Number(d.contrast || 0));
+    if (conEl) conEl.value = String(c);
+    if (conVal) {
+      conVal.textContent = `${c > 0 ? '+' : ''}${c}`;
+      conVal.classList.toggle('is-modified', c !== 0);
+    }
+
+    const satEl = document.getElementById('afStep0SatSlider');
+    const satVal = document.getElementById('afStep0SatVal');
+    const s = Math.round(Number(d.saturation || 0));
+    if (satEl) satEl.value = String(s);
+    if (satVal) {
+      satVal.textContent = `${s > 0 ? '+' : ''}${s}`;
+      satVal.classList.toggle('is-modified', s !== 0);
+    }
+
+    const gridChk = document.getElementById('afStep0GridCheck');
+    if (gridChk) gridChk.checked = Boolean(step0ShowGrid);
+
+    const cmpBtn = document.getElementById('afStep0CompareBtn');
+    if (cmpBtn) cmpBtn.classList.toggle('is-holding', Boolean(step0CompareBefore));
+
+    const revBtn = document.getElementById('afStep0RevertBtn');
+    if (revBtn) revBtn.disabled = step0Busy || !diff.hasAnyChange;
+
+    const pasteBtn = document.getElementById('afStep0PasteToneBtn');
+    if (pasteBtn) {
+      const copied = typeof window.getCopiedToneAdjustments === 'function' ? window.getCopiedToneAdjustments() : null;
+      pasteBtn.disabled = step0Busy || !copied;
+    }
+
+    const noteEl = document.getElementById('afStep0StatusNote');
+    if (noteEl) {
+      noteEl.textContent = step0RawLoading
+        ? '元画像を読み込み中...'
+        : (diff.hasAnyChange ? '未反映の変更あり（他ステップで保存）' : '元画像は変更されません');
+    }
+  }
+
+  function _renderStep0Preview() {
+    if (!editor || cfg.step !== 0 || !step0RawImg) return;
+    if (step0CompareBefore) {
+      editor.updateSourceImageOnly(step0RawImg);
+      return;
+    }
+    const api = _step0Api();
+    const previewCanvas = api && typeof api.renderStep0AdjustedCanvas === 'function'
+      ? api.renderStep0AdjustedCanvas(step0RawImg, step0DraftAdjust, { maxLongEdge: 1600 })
+      : null;
+    if (previewCanvas) {
+      editor.updateSourceImageOnly(previewCanvas);
+    } else {
+      editor.updateSourceImageOnly(step0RawImg);
+    }
+  }
+
+  function _ensureStep0RawImage(pid, seqToken) {
+    if (!pid) return;
+    if (step0RawImg && step0RawPhotoId === Number(pid)) {
+      _renderStep0Preview();
+      return;
+    }
+    step0RawLoading = true;
+    _syncStep0FormUI();
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      if (seqToken !== loadReqSeq) return;
+      step0RawImg = img;
+      step0RawPhotoId = Number(pid);
+      step0RawLoading = false;
+      _syncStep0FormUI();
+      if (cfg.step === 0) {
+        _renderStep0Preview();
+      }
+    };
+    img.onerror = () => {
+      if (seqToken !== loadReqSeq) return;
+      step0RawLoading = false;
+      _syncStep0FormUI();
+      toast('調整用の元画像読み込みに失敗しました', 'warning');
+    };
+    img.src = `/api/photo/${pid}/view?raw=1`;
+  }
+
+  function _closeStep0MaskImpactModal(choice = 'cancel') {
+    const dlg = document.getElementById('afStep0MaskImpactDialog');
+    if (dlg) dlg.style.display = 'none';
+    const res = step0ImpactResolver;
+    step0ImpactResolver = null;
+    if (typeof res === 'function') res(choice);
+  }
+
+  function _openStep0MaskImpactModal() {
+    const dlg = document.getElementById('afStep0MaskImpactDialog');
+    if (!dlg) return Promise.resolve('redetect');
+    const descEl = document.getElementById('afStep0ImpactDesc');
+    if (descEl && editor) {
+      descEl.textContent =
+        `1. 修正 に配置済みのマスク（ナンバー ${editor.plates.length} / 顔 ${editor.faces.length}）は、` +
+        '回転・水平傾き・切り抜きの変更により位置がずれる可能性があります。反映方法を選んでください。';
+    }
+    dlg.style.display = 'flex';
+    return new Promise((resolve) => {
+      step0ImpactResolver = resolve;
+    });
+  }
+
+  function _applyAdjustStateToAppPhoto(pid, snap) {
+    const meta = findPhotoMeta(pid);
+    const nowBust = Date.now();
+    const instances = typeof window.findAllPhotoInstancesById === 'function'
+      ? window.findAllPhotoInstancesById(pid)
+      : [meta];
+    if (!instances.includes(meta)) instances.push(meta);
+    instances.forEach((inst) => {
+      if (!inst) return;
+      inst.rotation = snap.rotation;
+      inst.fine_angle = snap.fine_angle;
+      inst.crop_x = snap.crop_x;
+      inst.crop_y = snap.crop_y;
+      inst.crop_w = snap.crop_w;
+      inst.crop_h = snap.crop_h;
+      inst.crop_aspect = snap.crop_aspect;
+      inst.brightness = snap.brightness;
+      inst.contrast = snap.contrast;
+      inst.saturation = snap.saturation;
+      inst._thumbBust = nowBust;
+    });
+    if (typeof window.applyTransformToPhotoViews === 'function') {
+      window.applyTransformToPhotoViews(instances[0] || meta);
+    }
+    return instances[0] || meta;
+  }
+
+  async function _persistStep0Adjustments(pid, nextDraft) {
+    const snap = _normalizeAdjust(nextDraft);
+    const payload = {
+      rotation: snap.rotation,
+      fine_angle: snap.fine_angle,
+      crop_x: snap.crop_x,
+      crop_y: snap.crop_y,
+      crop_w: snap.crop_w,
+      crop_h: snap.crop_h,
+      crop_aspect: snap.crop_aspect,
+      brightness: snap.brightness,
+      contrast: snap.contrast,
+      saturation: snap.saturation,
+    };
+    const res = await fetch(`/api/photo/${pid}/adjust`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || '非破壊調整の保存に失敗しました');
+    }
+    const updatedMeta = _applyAdjustStateToAppPhoto(pid, snap);
+    step0CommittedAdjust = { ...snap };
+    step0DraftAdjust = { ...snap };
+    return updatedMeta;
+  }
+
+  function _reloadBakedViewForCurrentPhoto(pid, seqToken, meta, preserveMasks, runDetectAfter) {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        if (seqToken !== loadReqSeq) { resolve(false); return; }
+        if (preserveMasks && typeof editor.updateSourceImageOnly === 'function') {
+          editor.updateSourceImageOnly(img, meta);
+        } else {
+          editor.setPhotoSource(img, meta, { plates: [], faces: [] });
+        }
+        pushDecoratorToEditor();
+        if (runDetectAfter && (cfg.detectPlates || cfg.detectFaces)) {
+          runAiDetectionForCurrentPhoto(true);
+        }
+        resolve(true);
+      };
+      img.onerror = () => {
+        if (seqToken !== loadReqSeq) { resolve(false); return; }
+        toast('調整後の画像再読み込みに失敗しました', 'error');
+        resolve(false);
+      };
+      img.src = `/api/photo/${pid}/view?t=${(meta && meta._thumbBust) || Date.now()}`;
+    });
+  }
+
+  async function requestStepChange(targetStep) {
+    const disabled = _isEffectStepDisabled();
+    let nextStep = Math.max(0, Math.min(4, Number(targetStep)));
+    if (disabled && nextStep === 2) nextStep = 3;
+    if (isBusy || step0Busy) return false;
+    if (nextStep === cfg.step) return true;
+
+    const pid = photoQueue[queueIndex];
+    const seqToken = loadReqSeq;
+
+    if (cfg.step === 0 && nextStep !== 0 && pid) {
+      step0CompareBefore = false;
+      const api = _step0Api();
+      const diff = api && typeof api.classifyAdjustDiff === 'function'
+        ? api.classifyAdjustDiff(step0CommittedAdjust, step0DraftAdjust)
+        : { hasAnyChange: false, toneChanged: false, geometryChanged: false };
+
+      if (!diff.hasAnyChange) {
+        await _reloadBakedViewForCurrentPhoto(pid, seqToken, findPhotoMeta(pid), true, false);
+        setStep(nextStep);
+        return true;
+      }
+
+      const maskCount = editor ? (editor.plates.length + editor.faces.length) : 0;
+      let maskAction = 'keep';
+      if (diff.geometryChanged && maskCount > 0) {
+        const choice = await _openStep0MaskImpactModal();
+        if (choice === 'cancel' || seqToken !== loadReqSeq) {
+          return false;
+        }
+        maskAction = choice;
+      } else if (diff.geometryChanged && maskCount === 0 && cfg.autoDetectOnOpen) {
+        maskAction = 'redetect';
+      }
+
+      step0Busy = true;
+      updateFooterButtonsUI();
+      try {
+        const prevRot = step0CommittedAdjust ? step0CommittedAdjust.rotation : 0;
+        const updatedMeta = await _persistStep0Adjustments(pid, step0DraftAdjust);
+        if (seqToken !== loadReqSeq) return false;
+        const fxApi = _effectApi();
+        if (fxApi && cfg.effect && prevRot !== updatedMeta.rotation) {
+          const moved = fxApi.transformSpotByRotation(cfg.effect.cx, cfg.effect.cy, prevRot, updatedMeta.rotation);
+          cfg.effect.cx = moved.cx;
+          cfg.effect.cy = moved.cy;
+        }
+        const preserve = maskAction === 'keep';
+        const redetect = maskAction === 'redetect';
+        await _reloadBakedViewForCurrentPhoto(pid, seqToken, updatedMeta, preserve, redetect);
+        if (diff.toneChanged && !diff.geometryChanged && maskCount > 0) {
+          toast('トーン調整を反映しました（マスク位置を維持）', 'success', 2600);
+        } else if (redetect && maskCount > 0) {
+          toast('調整を保存し、新しい構図でAIマスクを再検出しています', 'info', 2800);
+        } else if (diff.geometryChanged && preserve && maskCount > 0) {
+          toast('調整を保存しました（1. 修正でマスク位置をご確認ください）', 'info', 3000);
+        } else {
+          toast('非破壊調整を反映しました', 'success', 2200);
+        }
+        setStep(nextStep);
+        return true;
+      } catch (err) {
+        console.error('[ART_FRAMER] Step 0 保存エラー:', err);
+        toast(`調整の保存に失敗しました: ${err.message || err}`, 'error');
+        return false;
+      } finally {
+        step0Busy = false;
+        updateFooterButtonsUI();
+        _syncStep0FormUI();
+      }
+    }
+
+    setStep(nextStep);
+    if (nextStep === 0 && pid) {
+      step0CompareBefore = false;
+      _syncStep0FormUI();
+      _ensureStep0RawImage(pid, seqToken);
+    }
+    return true;
   }
 
   function setStep(stepNum) {
-    cfg.step = Math.max(1, Math.min(3, stepNum));
+    const disabled = _isEffectStepDisabled();
+    let parsed = Math.max(0, Math.min(4, Number(stepNum)));
+    if (disabled && parsed === 2) parsed = 3;
+    cfg.step = parsed;
     if (!modalEl) return;
 
+    syncEffectStepVisibilityUI();
     modalEl.querySelectorAll('.af-step-tab').forEach((tab) => {
       tab.classList.toggle('active', parseInt(tab.dataset.step, 10) === cfg.step);
     });
 
+    const p0 = document.getElementById('afStep0Panel');
     const p1 = document.getElementById('afStep1Panel');
     const p2 = document.getElementById('afStep2Panel');
     const p3 = document.getElementById('afStep3Panel');
+    const p4 = document.getElementById('afStep4Panel');
+    if (p0) p0.style.display = cfg.step === 0 ? 'flex' : 'none';
     if (p1) p1.style.display = cfg.step === 1 ? 'flex' : 'none';
-    if (p2) p2.style.display = cfg.step === 2 ? 'flex' : 'none';
+    if (p2) p2.style.display = (cfg.step === 2 && !disabled) ? 'flex' : 'none';
     if (p3) p3.style.display = cfg.step === 3 ? 'flex' : 'none';
+    if (p4) p4.style.display = cfg.step === 4 ? 'flex' : 'none';
 
     const zoomBar = document.getElementById('afMaskZoomToolbar');
-    if (zoomBar) zoomBar.style.display = cfg.step === 1 ? 'flex' : 'none';
+    if (zoomBar) zoomBar.style.display = (cfg.step === 0 || cfg.step === 1 || cfg.step === 2) ? 'flex' : 'none';
+    const focusBtn = document.getElementById('afZoomFocusBtn');
+    if (focusBtn) focusBtn.style.display = cfg.step === 1 ? 'inline-flex' : 'none';
+    const loupeWrap = document.getElementById('afLoupeCheck')?.closest('.af-inline-check');
+    if (loupeWrap) loupeWrap.style.display = cfg.step === 1 ? 'inline-flex' : 'none';
+    const cleanBtn = document.getElementById('afHoldCleanBtn');
+    if (cleanBtn) {
+      cleanBtn.style.display = (cfg.step === 1 || cfg.step === 2) ? 'inline-flex' : 'none';
+      cleanBtn.textContent = cfg.step === 2 ? '枠線を隠す' : '枠線を隠して確認';
+    }
 
     updateFooterButtonsUI();
     updateStep3SummaryUI();
@@ -459,6 +917,10 @@
     const total = photoQueue.length;
     const isLastPhoto = queueIndex >= total - 1;
     const remaining = Math.max(0, total - queueIndex);
+    const locked = isBusy || step0Busy;
+    const disabled = _isEffectStepDisabled();
+    const api = _effectApi();
+    const dispStep = (s) => (api ? api.getDisplayStepNumber(s, disabled) : s);
 
     const prevStepBtn = document.getElementById('afPrevStepBtn');
     const nextStepBtn = document.getElementById('afNextStepBtn');
@@ -466,15 +928,18 @@
     const skipPhotoBtn = document.getElementById('afSkipPhotoBtn');
     const batchRestBtn = document.getElementById('afBatchRestBtn');
 
-    if (prevStepBtn) prevStepBtn.disabled = isBusy || cfg.step === 1;
+    if (prevStepBtn) {
+      prevStepBtn.disabled = locked || cfg.step <= 0;
+      prevStepBtn.textContent = cfg.step === 1 ? '← 0. 調整' : '← 戻る';
+    }
     if (skipPhotoBtn) {
       skipPhotoBtn.style.display = total > 1 ? 'inline-flex' : 'none';
-      skipPhotoBtn.disabled = isBusy;
+      skipPhotoBtn.disabled = locked;
       skipPhotoBtn.textContent = isLastPhoto ? 'この写真をスキップして終了' : 'この写真をスキップ ▶';
     }
     if (batchRestBtn) {
-      batchRestBtn.style.display = (total > 1 && remaining > 1 && cfg.step >= 2) ? 'inline-flex' : 'none';
-      batchRestBtn.disabled = isBusy;
+      batchRestBtn.style.display = (total > 1 && remaining > 1 && cfg.step >= 3) ? 'inline-flex' : 'none';
+      batchRestBtn.disabled = locked;
       batchRestBtn.textContent = `残り ${remaining} 枚を一括出力 (マスクなし)`;
     }
 
@@ -482,29 +947,45 @@
       ? (total > 1 ? `最後の1枚を出力して完了 (${queueIndex + 1}/${total})` : 'この写真を書き出す')
       : `この1枚を出力して次へ (${queueIndex + 1}/${total}) ▶`;
 
-    if (cfg.step === 1) {
+    if (cfg.step === 0) {
       if (nextStepBtn) {
         nextStepBtn.style.display = 'inline-flex';
-        nextStepBtn.disabled = isBusy;
-        nextStepBtn.textContent = '次へ：プリント枠・透かし →';
+        nextStepBtn.disabled = locked;
+        nextStepBtn.textContent = '調整を反映して 1. 修正へ →';
+      }
+      if (quickExportBtn) quickExportBtn.style.display = 'none';
+    } else if (cfg.step === 1) {
+      if (nextStepBtn) {
+        nextStepBtn.style.display = 'inline-flex';
+        nextStepBtn.disabled = locked;
+        nextStepBtn.textContent = disabled
+          ? `次へ：${dispStep(3)}. 額装 →`
+          : `次へ：${dispStep(2)}. 演出 →`;
       }
       if (quickExportBtn) quickExportBtn.style.display = 'none';
     } else if (cfg.step === 2) {
       if (nextStepBtn) {
         nextStepBtn.style.display = 'inline-flex';
-        nextStepBtn.disabled = isBusy;
-        nextStepBtn.textContent = '出力設定を確認 →';
+        nextStepBtn.disabled = locked;
+        nextStepBtn.textContent = `次へ：${dispStep(3)}. 額装 →`;
+      }
+      if (quickExportBtn) quickExportBtn.style.display = 'none';
+    } else if (cfg.step === 3) {
+      if (nextStepBtn) {
+        nextStepBtn.style.display = 'inline-flex';
+        nextStepBtn.disabled = locked;
+        nextStepBtn.textContent = `次へ：${dispStep(4)}. 出力 →`;
       }
       if (quickExportBtn) {
         quickExportBtn.style.display = 'inline-flex';
-        quickExportBtn.disabled = isBusy;
+        quickExportBtn.disabled = locked;
         quickExportBtn.textContent = actionText;
       }
     } else {
       if (nextStepBtn) nextStepBtn.style.display = 'none';
       if (quickExportBtn) {
         quickExportBtn.style.display = 'inline-flex';
-        quickExportBtn.disabled = isBusy;
+        quickExportBtn.disabled = locked;
         quickExportBtn.textContent = actionText;
       }
     }
@@ -514,6 +995,7 @@
     const presetBadge = document.getElementById('afSummaryPresetVal');
     const dimBadge = document.getElementById('afSummaryDimVal');
     const maskBadge = document.getElementById('afSummaryMaskVal');
+    const effectBadge = document.getElementById('afSummaryEffectVal');
     const frameBadge = document.getElementById('afSummaryFrameVal');
 
     const pillKey = getActivePresetPillKey();
@@ -533,6 +1015,12 @@
       const pCnt = editor.plates.length;
       const fCnt = editor.faces.length;
       maskBadge.textContent = (pCnt === 0 && fCnt === 0) ? 'なし' : `ナンバー: ${pCnt} / 顔モヤ: ${fCnt}`;
+    }
+    if (effectBadge) {
+      const fxApi = _effectApi();
+      effectBadge.textContent = _isEffectStepDisabled()
+        ? '未使用（設定でOFF）'
+        : (fxApi ? fxApi.formatEffectSummary(cfg.effect) : 'なし');
     }
     if (frameBadge) {
       const parts = [];
@@ -675,6 +1163,16 @@
     const pid = photoQueue[queueIndex];
     const meta = findPhotoMeta(pid);
 
+    step0CommittedAdjust = _normalizeAdjust(meta);
+    step0DraftAdjust = { ...step0CommittedAdjust };
+    step0RawImg = null;
+    step0RawPhotoId = 0;
+    step0RawLoading = false;
+    step0CompareBefore = false;
+    step0Busy = false;
+    _closeStep0MaskImpactModal('cancel');
+    _syncStep0FormUI();
+
     const counterEl = document.getElementById('afQueueCounterBadge');
     const nameEl = document.getElementById('afCurrentFileName');
     const statusEl = document.getElementById('afDetectStatusText');
@@ -729,6 +1227,7 @@
       art_preset: cfg.artPreset,
       seq_offset: exportedCount,
       privacy_masks: includeCurrentMasks && editor ? editor.getMasksPayload() : null,
+      lens_effect: _getEffectiveLensEffectPayload(),
       watermark: cfg.watermark.enabled ? {
         enabled: true,
         type: cfg.watermark.type,
@@ -877,6 +1376,7 @@
     }
 
     loadSavedSettings();
+    _resetEffectForSession();
     await ensureDefaultDestination();
     await loadWatermarkAssets();
 
@@ -885,6 +1385,13 @@
     exportedCount = 0;
     lastExportedDir = '';
     isBusy = false;
+    isPickingFolder = false;
+    isAfBackdropPointerDown = false;
+    const pickBtn = document.getElementById('afPickDirBtn');
+    if (pickBtn) {
+      pickBtn.disabled = false;
+      pickBtn.textContent = '選択...';
+    }
 
     modalEl.style.display = 'flex';
     applyTargetPreset(presetKey || 'for_x');
@@ -893,15 +1400,26 @@
 
   async function closeArtFramerModal(force = false) {
     if (!modalEl) return;
-    if (!force && isBusy) return;
+    if (!force && isPickingFolder) {
+      toast('フォルダ選択ダイアログが開いています', 'info');
+      return;
+    }
+    if (!force && (isBusy || step0Busy)) return;
     loadReqSeq += 1;
+    step0CompareBefore = false;
+    _closeStep0MaskImpactModal('cancel');
     modalEl.style.display = 'none';
   }
 
   async function pickDestFolder() {
+    if (isPickingFolder || isBusy) return;
     const btn = document.getElementById('afPickDirBtn');
+    isPickingFolder = true;
     try {
-      if (btn) btn.disabled = true;
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = '表示中...';
+      }
       const res = await fetch('/api/export/pick-folder', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -919,7 +1437,11 @@
     } catch (e) {
       toast('フォルダ選択ダイアログを開けませんでした', 'error');
     } finally {
-      if (btn) btn.disabled = false;
+      isPickingFolder = false;
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = '選択...';
+      }
     }
   }
 
@@ -1076,10 +1598,13 @@
     if (typeof window.showConfirmModal === 'function') {
       ok = await window.showConfirmModal({
         title: 'ロゴ画像の削除',
-        message: `登録済みロゴ「${asset.name || asset.id}」を削除しますか？`,
+        subtitle: '登録済みウォーターマークの削除',
+        headingPrefix: '登録済みロゴ',
+        targetName: asset.name || asset.id,
+        headingSuffix: 'を削除しますか？',
         confirmText: '削除する',
         cancelText: 'キャンセル',
-        danger: true,
+        confirmVariant: 'danger',
       });
     }
     if (!ok) return;
@@ -1149,16 +1674,49 @@
           badge.textContent = `出力目安: ${dims.width} × ${dims.height} px`;
         }
       },
+      onEffectSpotChange: (spot, isLiveDrag) => {
+        if (!cfg.effect) return;
+        if (spot.cx !== undefined) cfg.effect.cx = spot.cx;
+        if (spot.cy !== undefined) cfg.effect.cy = spot.cy;
+        if (spot.radius !== undefined) {
+          cfg.effect.radius = spot.radius;
+          const rPct = Math.round(spot.radius * 100);
+          const rSl = document.getElementById('afEffectRadiusSlider');
+          const rLb = document.getElementById('afEffectRadiusVal');
+          if (rSl) rSl.value = String(rPct);
+          if (rLb) rLb.textContent = `${rPct}%`;
+        }
+        if (!isLiveDrag) updateStep3SummaryUI();
+      },
     });
 
     // 閉じる・Esc
     document.getElementById('closeArtFramerBtn')?.addEventListener('click', () => closeArtFramerModal(false));
+    modalEl.addEventListener('pointerdown', (e) => {
+      isAfBackdropPointerDown = (e.target === modalEl);
+    });
     modalEl.addEventListener('click', (e) => {
-      if (e.target === modalEl) closeArtFramerModal(false);
+      const startedOnBackdrop = isAfBackdropPointerDown;
+      isAfBackdropPointerDown = false;
+      if (startedOnBackdrop && e.target === modalEl) closeArtFramerModal(false);
     });
     window.addEventListener('keydown', (e) => {
       if (!modalEl || modalEl.style.display !== 'flex') return;
+      const adjustModal = document.getElementById('imageAdjustModal');
+      if (adjustModal && adjustModal.style.display !== 'none') return;
+      const confirmModal = document.getElementById('commonConfirmModal');
+      if (confirmModal && confirmModal.style.display !== 'none') return;
+      const impactDlg = document.getElementById('afStep0MaskImpactDialog');
+      if (impactDlg && impactDlg.style.display !== 'none') {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          e.stopPropagation();
+          _closeStep0MaskImpactModal('cancel');
+        }
+        return;
+      }
       if (e.key === 'Escape') {
+        if (isPickingFolder) return;
         e.stopPropagation();
         closeArtFramerModal(false);
       } else if ((e.key === 'Delete' || e.key === 'Backspace') && document.activeElement?.tagName !== 'INPUT') {
@@ -1176,13 +1734,233 @@
 
     // ステップタブ・フッターボタン
     modalEl.querySelectorAll('.af-step-tab').forEach((tab) => {
-      tab.addEventListener('click', () => setStep(parseInt(tab.dataset.step, 10)));
+      tab.addEventListener('click', () => requestStepChange(parseInt(tab.dataset.step, 10)));
     });
-    document.getElementById('afPrevStepBtn')?.addEventListener('click', () => setStep(cfg.step - 1));
-    document.getElementById('afNextStepBtn')?.addEventListener('click', () => setStep(cfg.step + 1));
+    document.getElementById('afPrevStepBtn')?.addEventListener('click', () => {
+      const api = _effectApi();
+      const prev = api ? api.getPrevStep(cfg.step, _isEffectStepDisabled()) : cfg.step - 1;
+      requestStepChange(prev);
+    });
+    document.getElementById('afNextStepBtn')?.addEventListener('click', () => {
+      const api = _effectApi();
+      const next = api ? api.getNextStep(cfg.step, _isEffectStepDisabled()) : cfg.step + 1;
+      requestStepChange(next);
+    });
     document.getElementById('afQuickExportBtn')?.addEventListener('click', exportCurrentAndAdvance);
     document.getElementById('afSkipPhotoBtn')?.addEventListener('click', skipCurrentPhoto);
     document.getElementById('afBatchRestBtn')?.addEventListener('click', exportRemainingBatchWithoutMasks);
+
+    window.addEventListener('tetheract:af-effect-step-pref-change', () => {
+      if (!modalEl) return;
+      syncEffectControlsUI();
+      if (_isEffectStepDisabled() && cfg.step === 2) {
+        setStep(1);
+      } else {
+        updateFooterButtonsUI();
+        updateStep3SummaryUI();
+        pushDecoratorToEditor();
+      }
+    });
+
+    // Step 2: 演出（レンズ効果）イベント
+    const refreshEffectPreview = () => {
+      syncEffectControlsUI();
+      updateStep3SummaryUI();
+      pushDecoratorToEditor();
+    };
+    modalEl.querySelectorAll('.af-effect-preset-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const key = btn.dataset.effectPreset;
+        const api = _effectApi();
+        const preset = api && api.EFFECT_PRESETS ? api.EFFECT_PRESETS[key] : null;
+        if (!preset) return;
+        cfg.effect.presetKey = preset.key;
+        cfg.effect.bokeh_mode = preset.bokeh_mode;
+        cfg.effect.strength = preset.strength;
+        cfg.effect.specular = preset.specular;
+        if (preset.radius !== undefined) cfg.effect.radius = preset.radius;
+        if (preset.feather !== undefined) cfg.effect.feather = preset.feather;
+        cfg.effect.vignette = preset.vignette;
+        cfg.effect.halation = preset.halation;
+        refreshEffectPreview();
+      });
+    });
+    document.getElementById('afEffectSpotResetBtn')?.addEventListener('click', () => {
+      if (!cfg.effect) return;
+      cfg.effect.cx = 0.50;
+      cfg.effect.cy = 0.50;
+      cfg.effect.radius = 0.32;
+      cfg.effect.feather = 0.36;
+      refreshEffectPreview();
+    });
+    document.getElementById('afEffectBokehSelect')?.addEventListener('change', (e) => {
+      cfg.effect.bokeh_mode = e.target.value;
+      cfg.effect.presetKey = 'custom';
+      if (cfg.effect.bokeh_mode !== 'none' && cfg.effect.strength < 0.05) {
+        cfg.effect.strength = 0.58;
+      }
+      refreshEffectPreview();
+    });
+    const bindEffectPctSlider = (id, key, scale = 0.01, defaultModeWhenPositive = null) => {
+      document.getElementById(id)?.addEventListener('input', (e) => {
+        const val = parseFloat(e.target.value) * scale;
+        cfg.effect[key] = val;
+        cfg.effect.presetKey = 'custom';
+        if (defaultModeWhenPositive && val > 0.02 && cfg.effect.bokeh_mode === 'none') {
+          cfg.effect.bokeh_mode = defaultModeWhenPositive;
+        }
+        refreshEffectPreview();
+      });
+    };
+    bindEffectPctSlider('afEffectStrengthSlider', 'strength', 0.01, 'swirl');
+    bindEffectPctSlider('afEffectSpecularSlider', 'specular', 0.01);
+    bindEffectPctSlider('afEffectRadiusSlider', 'radius', 0.01);
+    bindEffectPctSlider('afEffectFeatherSlider', 'feather', 0.01);
+    bindEffectPctSlider('afEffectVignetteSlider', 'vignette', 0.01);
+    bindEffectPctSlider('afEffectHalationSlider', 'halation', 0.01);
+
+    // Step 0 幾何変更影響確認ダイアログ
+    document.getElementById('afImpactRedetectBtn')?.addEventListener('click', () => _closeStep0MaskImpactModal('redetect'));
+    document.getElementById('afImpactKeepBtn')?.addEventListener('click', () => _closeStep0MaskImpactModal('keep'));
+    document.getElementById('afImpactCancelBtn')?.addEventListener('click', () => _closeStep0MaskImpactModal('cancel'));
+
+    // Step 0: 非破壊調整コントロール
+    const applyStep0DraftChange = () => {
+      _syncStep0FormUI();
+      _renderStep0Preview();
+    };
+    document.getElementById('afRotLeftBtn')?.addEventListener('click', () => {
+      if (!step0DraftAdjust || step0Busy) return;
+      step0DraftAdjust.rotation = (((Number(step0DraftAdjust.rotation || 0) - 90) % 360) + 360) % 360;
+      applyStep0DraftChange();
+    });
+    document.getElementById('afRotRightBtn')?.addEventListener('click', () => {
+      if (!step0DraftAdjust || step0Busy) return;
+      step0DraftAdjust.rotation = (((Number(step0DraftAdjust.rotation || 0) + 90) % 360) + 360) % 360;
+      applyStep0DraftChange();
+    });
+    document.getElementById('afStep0GridCheck')?.addEventListener('change', (e) => {
+      step0ShowGrid = e.target.checked;
+      pushDecoratorToEditor();
+    });
+    const cmpBtn = document.getElementById('afStep0CompareBtn');
+    if (cmpBtn) {
+      cmpBtn.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        step0CompareBefore = true;
+        _syncStep0FormUI();
+        _renderStep0Preview();
+        pushDecoratorToEditor();
+      });
+      window.addEventListener('pointerup', () => {
+        if (!step0CompareBefore) return;
+        step0CompareBefore = false;
+        _syncStep0FormUI();
+        _renderStep0Preview();
+        pushDecoratorToEditor();
+      });
+    }
+    document.getElementById('afOpenCropModalBtn')?.addEventListener('click', () => {
+      const pid = photoQueue[queueIndex];
+      if (!pid || typeof window.openImageAdjustModal !== 'function') return;
+      const meta = findPhotoMeta(pid);
+      const prevMasks = editor ? (editor.plates.length + editor.faces.length) : 0;
+      window.openImageAdjustModal(meta, {
+        initialDraft: step0DraftAdjust ? { ...step0DraftAdjust } : null,
+        onApplied: async (updatedPhoto) => {
+          if (!updatedPhoto) return;
+          const nextSnap = _normalizeAdjust(updatedPhoto);
+          const api = _step0Api();
+          const diff = api ? api.classifyAdjustDiff(step0CommittedAdjust, nextSnap) : { geometryChanged: true };
+          step0CommittedAdjust = { ...nextSnap };
+          step0DraftAdjust = { ...nextSnap };
+          _syncStep0FormUI();
+          if (diff.geometryChanged && prevMasks > 0) {
+            const choice = await _openStep0MaskImpactModal();
+            await _reloadBakedViewForCurrentPhoto(pid, loadReqSeq, updatedPhoto, choice === 'keep', choice === 'redetect');
+            setStep(1);
+          } else {
+            await _reloadBakedViewForCurrentPhoto(pid, loadReqSeq, updatedPhoto, true, diff.geometryChanged && cfg.autoDetectOnOpen);
+            if (cfg.step === 0) _renderStep0Preview();
+          }
+        },
+      });
+    });
+
+    document.getElementById('afStep0TiltSlider')?.addEventListener('input', (e) => {
+      if (!step0DraftAdjust) return;
+      const v = Number(e.target.value || 0);
+      step0DraftAdjust.fine_angle = Math.abs(v) <= 0.01 ? 0.0 : Number(v.toFixed(2));
+      applyStep0DraftChange();
+    });
+    document.getElementById('afStep0ExpSlider')?.addEventListener('input', (e) => {
+      if (!step0DraftAdjust) return;
+      const api = _step0Api();
+      const idx = parseInt(e.target.value, 10) || 0;
+      step0DraftAdjust.brightness = api ? api.dialIndexToBrightness(idx) : idx * 3;
+      applyStep0DraftChange();
+    });
+    document.getElementById('afStep0ConSlider')?.addEventListener('input', (e) => {
+      if (!step0DraftAdjust) return;
+      step0DraftAdjust.contrast = Math.max(-100, Math.min(100, parseInt(e.target.value, 10) || 0));
+      applyStep0DraftChange();
+    });
+    document.getElementById('afStep0SatSlider')?.addEventListener('input', (e) => {
+      if (!step0DraftAdjust) return;
+      step0DraftAdjust.saturation = Math.max(-100, Math.min(100, parseInt(e.target.value, 10) || 0));
+      applyStep0DraftChange();
+    });
+    modalEl.querySelectorAll('.af-step0-nudge-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        if (!step0DraftAdjust) return;
+        const key = btn.dataset.step0Nudge;
+        const rawDelta = Number(btn.dataset.delta || 0);
+        const mult = e.shiftKey ? 5 : 1;
+        const api = _step0Api();
+        if (key === 'brightness' && api) {
+          const curIdx = api.brightnessToDialIndex(step0DraftAdjust.brightness);
+          const nextIdx = Math.max(-6, Math.min(6, curIdx + Math.sign(rawDelta)));
+          step0DraftAdjust.brightness = api.dialIndexToBrightness(nextIdx);
+        } else if (key === 'fine_angle') {
+          const v = Math.max(-15, Math.min(15, Number(step0DraftAdjust.fine_angle || 0) + rawDelta * mult));
+          step0DraftAdjust.fine_angle = Math.abs(v) <= 0.01 ? 0.0 : Number(v.toFixed(2));
+        } else if (key === 'contrast' || key === 'saturation') {
+          step0DraftAdjust[key] = Math.max(-100, Math.min(100, Math.round(Number(step0DraftAdjust[key] || 0) + rawDelta * mult)));
+        }
+        applyStep0DraftChange();
+      });
+    });
+    document.getElementById('afStep0CopyToneBtn')?.addEventListener('click', () => {
+      const pid = photoQueue[queueIndex];
+      if (!pid || !step0DraftAdjust) return;
+      const meta = findPhotoMeta(pid);
+      if (typeof window.copyPhotoToneAdjustments === 'function') {
+        window.copyPhotoToneAdjustments({ ...meta, ...step0DraftAdjust });
+        _syncStep0FormUI();
+      }
+    });
+    document.getElementById('afStep0PasteToneBtn')?.addEventListener('click', () => {
+      if (!step0DraftAdjust) return;
+      const copied = typeof window.getCopiedToneAdjustments === 'function' ? window.getCopiedToneAdjustments() : null;
+      if (!copied) return;
+      step0DraftAdjust.brightness = Math.round(Number(copied.brightness || 0));
+      step0DraftAdjust.contrast = Math.round(Number(copied.contrast || 0));
+      step0DraftAdjust.saturation = Math.round(Number(copied.saturation || 0));
+      applyStep0DraftChange();
+      toast('コピーしたトーン調整をプレビューに反映しました', 'info', 2200);
+    });
+    document.getElementById('afStep0RevertBtn')?.addEventListener('click', () => {
+      if (!step0CommittedAdjust) return;
+      step0DraftAdjust = { ...step0CommittedAdjust };
+      applyStep0DraftChange();
+      toast('未反映の変更を元に戻しました', 'info', 2000);
+    });
+    document.getElementById('afStep0ResetAllBtn')?.addEventListener('click', () => {
+      const api = _step0Api();
+      step0DraftAdjust = api ? api.createResetAdjustSnapshot() : _normalizeAdjust(null);
+      applyStep0DraftChange();
+      toast('調整値を初期化しました（「1. 修正へ」等で反映）', 'info', 2400);
+    });
 
     // ズームツールバー
     document.getElementById('afZoomInBtn')?.addEventListener('click', () => editor.zoomByFactor(1.45));
@@ -1433,6 +2211,10 @@
       syncFormFromState();
     });
     document.getElementById('afPickDirBtn')?.addEventListener('click', pickDestFolder);
+    document.getElementById('afDestInput')?.addEventListener('change', (e) => {
+      cfg.output.destination = e.target.value.trim();
+      saveSettings();
+    });
     document.getElementById('afOpenAfterCheck')?.addEventListener('change', (e) => {
       cfg.output.open_folder_after = e.target.checked;
     });

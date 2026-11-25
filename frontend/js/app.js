@@ -138,6 +138,11 @@ async function initializeApp() {
     }
   }
   setTimeout(() => {
+    if (typeof window.triggerStartupUpdateCheck === 'function') {
+      window.triggerStartupUpdateCheck();
+    }
+  }, 1200);
+  setTimeout(() => {
     checkWeeklyBackupReminderOnStartup();
   }, 1500);
 }

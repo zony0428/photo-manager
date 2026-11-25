@@ -93,6 +93,11 @@
       this.panY = 0;
       this.loupeEnabled = true;
       this.hideGuides = false;
+      this.adjustOverlay = {
+        showLevelGrid: false,
+        fineGrid: false,
+        isComparingBefore: false,
+      };
 
       this.plates = [];
       this.faces = [];
@@ -107,6 +112,7 @@
       this.defaultStampStrength = 0.92;
 
       this.frameConfig = { enabled: true };
+      this.effectConfig = null;
       this.watermarkConfig = { enabled: false };
       this.artPreset = 'for_x';
       this.logoImageEl = null;
@@ -114,6 +120,8 @@
       // オフスクリーンバッファ
       this._maskedOff = document.createElement('canvas');
       this._maskedCtx = this._maskedOff.getContext('2d');
+      this._effectOff = document.createElement('canvas');
+      this._effectCtx = this._effectOff.getContext('2d');
       this._blurOff = document.createElement('canvas');
       this._blurCtx = this._blurOff.getContext('2d');
       this._stampOff = document.createElement('canvas');
@@ -126,6 +134,9 @@
       this._colorSampleCtx = this._colorSampleOff.getContext('2d', { willReadFrequently: true });
 
       this._blurCacheKey = '';
+      this._effectCacheKey = '';
+      this._isDraggingEffectSpot = false;
+      this._exportEffectHighRes = false;
       this._vp = { fitScale: 1, scale: 1, originX: 0, originY: 0, pw: 1200, ph: 800, pLong: 1200 };
       this._lastFinalDimensions = { width: 0, height: 0 };
 
@@ -145,6 +156,7 @@
       this.panX = 0;
       this.panY = 0;
       this._blurCacheKey = '';
+      this._effectCacheKey = '';
       this._activeDrag = null;
       this._loupeFocus = null;
 
@@ -157,6 +169,27 @@
       }
       this.render();
       this._notifyZoom();
+    }
+
+    /**
+     * 編集済みマスク座標を維持したまま背景画像とメタデータだけを差し替える（Step 0 調整反映用）
+     */
+    updateSourceImageOnly(imgEl, photoMeta = null) {
+      if (imgEl !== undefined) this.sourceImg = imgEl;
+      if (photoMeta && typeof photoMeta === 'object') {
+        this.photoMeta = photoMeta;
+      }
+      this._blurCacheKey = '';
+      this._effectCacheKey = '';
+      this.render();
+    }
+
+    setAdjustOverlayState(overlay = {}) {
+      if (!overlay || typeof overlay !== 'object') return;
+      if (overlay.showLevelGrid !== undefined) this.adjustOverlay.showLevelGrid = Boolean(overlay.showLevelGrid);
+      if (overlay.fineGrid !== undefined) this.adjustOverlay.fineGrid = Boolean(overlay.fineGrid);
+      if (overlay.isComparingBefore !== undefined) this.adjustOverlay.isComparingBefore = Boolean(overlay.isComparingBefore);
+      this.render();
     }
 
     setMasks(plates, faces) {
@@ -211,9 +244,13 @@
       };
     }
 
-    setDecoratorState({ viewMode, frameConfig, watermarkConfig, artPreset, logoDataUrl }) {
+    setDecoratorState({ viewMode, effectConfig, frameConfig, watermarkConfig, artPreset, logoDataUrl }) {
       const prevViewMode = this.viewMode;
       if (viewMode) this.viewMode = viewMode;
+      if (effectConfig !== undefined) {
+        this.effectConfig = effectConfig;
+        this._effectCacheKey = '';
+      }
       if (frameConfig) this.frameConfig = frameConfig;
       if (watermarkConfig) this.watermarkConfig = watermarkConfig;
       if (artPreset !== undefined) this.artPreset = artPreset;
@@ -444,9 +481,15 @@
       else if (this.artPreset === 'full_size') maxLong = 4096;
 
       this._blurCacheKey = '';
+      this._effectCacheKey = '';
+      this._exportEffectHighRes = true;
       const built = this._buildMaskedOffscreen(maxLong);
-      if (!built) return null;
+      if (!built) {
+        this._exportEffectHighRes = false;
+        return null;
+      }
       this._buildDecoratedOffscreen(built.pw, built.ph, built.pLong);
+      this._exportEffectHighRes = false;
 
       const est = this._computeEstimatedFinalSize(origW, origH);
       let targetCanvas = this._decoratedOff;
@@ -490,8 +533,29 @@
         : targetCanvas.toDataURL('image/jpeg', safeQ);
 
       this._blurCacheKey = '';
+      this._effectCacheKey = '';
       this.render();
       return dataUrl;
+    }
+
+    _getEffectProcessedSource(pw, ph) {
+      const fxApi = window.TetheractArtFramerEffect;
+      if (!fxApi || !fxApi.isEffectActive(this.effectConfig)) {
+        return this._maskedOff;
+      }
+      const norm = fxApi.normalizeEffectConfig(this.effectConfig);
+      const maxWork = this._exportEffectHighRes ? 1080 : (this._isDraggingEffectSpot ? 400 : 760);
+      const maskSig = `${this.plates.length}_${this.faces.length}`;
+      const cacheKey = `${this.photoMeta.id || 0}_${pw}x${ph}_${maskSig}_${maxWork}_${JSON.stringify(norm)}`;
+      if (this._effectCacheKey === cacheKey && this._effectOff.width === pw && this._effectOff.height === ph) {
+        return this._effectOff;
+      }
+      const rendered = fxApi.renderLensEffectCanvas(this._maskedOff, norm, {
+        maxWorkLong: maxWork,
+        targetCanvas: this._effectOff,
+      });
+      this._effectCacheKey = cacheKey;
+      return rendered || this._maskedOff;
     }
 
     _setZoomAroundPoint(nextZoom, vx, vy) {
@@ -982,8 +1046,9 @@
         dCtx.restore();
       }
 
-      // マスク適用済み写真を描画
-      dCtx.drawImage(this._maskedOff, 0, 0, pw, ph, ox, oy, drawPw, drawPh);
+      // マスク・レンズ演出適用済み写真を描画
+      const photoSrc = this._getEffectProcessedSource(pw, ph) || this._maskedOff;
+      dCtx.drawImage(photoSrc, 0, 0, pw, ph, ox, oy, drawPw, drawPh);
 
       // ウォーターマーク合成
       if (wc.enabled) {
@@ -1273,7 +1338,51 @@
         this.callbacks.onDimensionsUpdate(this._lastFinalDimensions);
       }
 
-      if (this.viewMode === 'mask') {
+      if (this.viewMode === 'adjust') {
+        const margin = Math.round(20 * dpr);
+        const fitScale = Math.min((vw - margin * 2) / pw, (vh - margin * 2) / ph);
+        const scale = fitScale * this.zoom;
+
+        const maxPanX = Math.max(0, (pw * scale - vw * 0.45) * 0.65);
+        const maxPanY = Math.max(0, (ph * scale - vh * 0.45) * 0.65);
+        this.panX = clamp(this.panX, -maxPanX, maxPanX);
+        this.panY = clamp(this.panY, -maxPanY, maxPanY);
+
+        const originX = (vw - pw * scale) * 0.5 + this.panX;
+        const originY = (vh - ph * scale) * 0.5 + this.panY;
+        const drawW = pw * scale;
+        const drawH = ph * scale;
+        this._vp = { fitScale, scale, originX, originY, pw, ph, pLong, dpr };
+
+        ctx.save();
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.32)';
+        ctx.shadowBlur = 16 * dpr;
+        ctx.drawImage(this.sourceImg, originX, originY, drawW, drawH);
+        ctx.restore();
+
+        if (this.adjustOverlay.showLevelGrid && !this.hideGuides) {
+          this._drawAdjustLevelGrid(originX, originY, drawW, drawH, dpr);
+        }
+        if (this.adjustOverlay.isComparingBefore) {
+          ctx.save();
+          const bPad = 10 * dpr;
+          const bw = 112 * dpr;
+          const bh = 24 * dpr;
+          const bx = originX + bPad;
+          const by = originY + bPad;
+          ctx.fillStyle = 'rgba(15, 23, 42, 0.84)';
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.28)';
+          ctx.lineWidth = 1 * dpr;
+          ctx.fillRect(bx, by, bw, bh);
+          ctx.strokeRect(bx, by, bw, bh);
+          ctx.fillStyle = '#F8FAFC';
+          ctx.font = `600 ${Math.round(11 * dpr)}px "Inter", "Yu Gothic UI", sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('元画像 (Before)', bx + bw * 0.5, by + bh * 0.5);
+          ctx.restore();
+        }
+      } else if (this.viewMode === 'mask') {
         const margin = Math.round(20 * dpr);
         const fitScale = Math.min((vw - margin * 2) / pw, (vh - margin * 2) / ph);
         const scale = fitScale * this.zoom;
@@ -1299,6 +1408,32 @@
         if (this.loupeEnabled && this._loupeFocus && !this.hideGuides) {
           this._drawMagnifierLoupe(vw, vh, dpr);
         }
+      } else if (this.viewMode === 'effect') {
+        const effSrc = this._getEffectProcessedSource(pw, ph) || this._maskedOff;
+        const margin = Math.round(20 * dpr);
+        const fitScale = Math.min((vw - margin * 2) / pw, (vh - margin * 2) / ph);
+        const scale = fitScale * this.zoom;
+
+        const maxPanX = Math.max(0, (pw * scale - vw * 0.45) * 0.65);
+        const maxPanY = Math.max(0, (ph * scale - vh * 0.45) * 0.65);
+        this.panX = clamp(this.panX, -maxPanX, maxPanX);
+        this.panY = clamp(this.panY, -maxPanY, maxPanY);
+
+        const originX = (vw - pw * scale) * 0.5 + this.panX;
+        const originY = (vh - ph * scale) * 0.5 + this.panY;
+        const drawW = pw * scale;
+        const drawH = ph * scale;
+        this._vp = { fitScale, scale, originX, originY, pw, ph, pLong, dpr };
+
+        ctx.save();
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.32)';
+        ctx.shadowBlur = 16 * dpr;
+        ctx.drawImage(effSrc, originX, originY, drawW, drawH);
+        ctx.restore();
+
+        if (!this.hideGuides) {
+          this._drawEffectSpotGuide(originX, originY, drawW, drawH, dpr);
+        }
       } else {
         this._buildDecoratedOffscreen(pw, ph, pLong);
         const outW = this._decoratedOff.width;
@@ -1322,6 +1457,124 @@
         ctx.drawImage(this._decoratedOff, dx, dy, outW * scale, outH * scale);
         ctx.restore();
       }
+    }
+
+    _drawEffectSpotGuide(ox, oy, w, h, dpr) {
+      const fxApi = window.TetheractArtFramerEffect;
+      const eff = fxApi ? fxApi.normalizeEffectConfig(this.effectConfig) : {
+        cx: 0.5,
+        cy: 0.5,
+        radius: 0.32,
+        feather: 0.36,
+      };
+      const ctx = this.ctx;
+      const sx = ox + eff.cx * w;
+      const sy = oy + eff.cy * h;
+      const halfDiag = Math.max(20, 0.5 * Math.hypot(w, h));
+      const rInner = Math.max(14 * dpr, eff.radius * halfDiag);
+      const rOuter = Math.max(rInner + 10 * dpr, (eff.radius + eff.feather) * halfDiag);
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(ox, oy, w, h);
+      ctx.clip();
+
+      // 外側フェザー境界円（淡い破線）
+      ctx.beginPath();
+      ctx.arc(sx, sy, rOuter, 0, Math.PI * 2);
+      ctx.lineWidth = 1.1 * dpr;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.34)';
+      ctx.setLineDash([4 * dpr, 6 * dpr]);
+      ctx.stroke();
+
+      // 内側シャープ境界円
+      ctx.beginPath();
+      ctx.arc(sx, sy, rInner, 0, Math.PI * 2);
+      ctx.lineWidth = 1.8 * dpr;
+      ctx.strokeStyle = 'rgba(245, 158, 11, 0.88)';
+      ctx.setLineDash([6 * dpr, 4 * dpr]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // 中心十字ターゲット
+      const cross = 10 * dpr;
+      ctx.beginPath();
+      ctx.arc(sx, sy, 5 * dpr, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(245, 158, 11, 0.92)';
+      ctx.fill();
+      ctx.strokeStyle = '#0F172A';
+      ctx.lineWidth = 1.5 * dpr;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(sx - cross, sy);
+      ctx.lineTo(sx + cross, sy);
+      ctx.moveTo(sx, sy - cross);
+      ctx.lineTo(sx, sy + cross);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+      ctx.lineWidth = 1.3 * dpr;
+      ctx.stroke();
+
+      // ピント径リサイズハンドル（リング右端）
+      const hx = sx + rInner;
+      const hy = sy;
+      ctx.beginPath();
+      ctx.arc(hx, hy, 7.5 * dpr, 0, Math.PI * 2);
+      ctx.fillStyle = '#F59E0B';
+      ctx.fill();
+      ctx.strokeStyle = '#0F172A';
+      ctx.lineWidth = 1.6 * dpr;
+      ctx.stroke();
+
+      ctx.restore();
+    }
+
+    _drawAdjustLevelGrid(ox, oy, w, h, dpr) {
+      const ctx = this.ctx;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(ox, oy, w, h);
+      ctx.clip();
+
+      if (this.adjustOverlay.fineGrid) {
+        const subPcts = [1 / 9, 2 / 9, 4 / 9, 5 / 9, 7 / 9, 8 / 9];
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
+        ctx.lineWidth = 1 * dpr;
+        ctx.beginPath();
+        subPcts.forEach((p) => {
+          const lx = Math.round(ox + w * p) + 0.5;
+          const ly = Math.round(oy + h * p) + 0.5;
+          ctx.moveTo(lx, oy);
+          ctx.lineTo(lx, oy + h);
+          ctx.moveTo(ox, ly);
+          ctx.lineTo(ox + w, ly);
+        });
+        ctx.stroke();
+
+        // 中央水平基準線
+        ctx.strokeStyle = 'rgba(245, 158, 11, 0.55)';
+        ctx.lineWidth = 1.2 * dpr;
+        ctx.beginPath();
+        const midY = Math.round(oy + h * 0.5) + 0.5;
+        ctx.moveTo(ox, midY);
+        ctx.lineTo(ox + w, midY);
+        ctx.stroke();
+      }
+
+      // 三分割構図ライン
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.42)';
+      ctx.lineWidth = 1.1 * dpr;
+      ctx.beginPath();
+      [1 / 3, 2 / 3].forEach((p) => {
+        const lx = Math.round(ox + w * p) + 0.5;
+        const ly = Math.round(oy + h * p) + 0.5;
+        ctx.moveTo(lx, oy);
+        ctx.lineTo(lx, oy + h);
+        ctx.moveTo(ox, ly);
+        ctx.lineTo(ox + w, ly);
+      });
+      ctx.stroke();
+      ctx.restore();
     }
 
     _drawScreenSpaceGuides(ox, oy, pw, ph, pLong, scale, dpr) {
@@ -1517,6 +1770,52 @@
         const dpr = this._vp.dpr || 1;
 
         if (this.viewMode !== 'mask') {
+          if (this.viewMode === 'effect') {
+            const eff = window.TetheractArtFramerEffect
+              ? window.TetheractArtFramerEffect.normalizeEffectConfig(this.effectConfig)
+              : { cx: 0.5, cy: 0.5, radius: 0.32 };
+            const sx = this._vp.originX + eff.cx * this._vp.pw * this._vp.scale;
+            const sy = this._vp.originY + eff.cy * this._vp.ph * this._vp.scale;
+            const halfDiag = Math.max(20, 0.5 * Math.hypot(this._vp.pw * this._vp.scale, this._vp.ph * this._vp.scale));
+            const rInner = Math.max(14 * dpr, eff.radius * halfDiag);
+            const hitPx = (ev.pointerType === 'touch' ? 28 : 18) * dpr;
+            const hx = sx + rInner;
+            const hy = sy;
+
+            if (Math.hypot(vx - hx, vy - hy) <= hitPx) {
+              this._isDraggingEffectSpot = true;
+              this._activeDrag = { kind: 'effect_radius', sx, sy, halfDiag };
+              return;
+            }
+            if (this.zoom <= 1.05 || Math.hypot(vx - sx, vy - sy) <= hitPx * 1.3) {
+              this._isDraggingEffectSpot = true;
+              const nextCx = clamp(nx, 0, 1);
+              const nextCy = clamp(ny, 0, 1);
+              if (this.effectConfig) {
+                this.effectConfig.cx = Number(nextCx.toFixed(4));
+                this.effectConfig.cy = Number(nextCy.toFixed(4));
+              }
+              this._activeDrag = { kind: 'effect_center' };
+              if (typeof this.callbacks.onEffectSpotChange === 'function') {
+                this.callbacks.onEffectSpotChange({ cx: nextCx, cy: nextCy, radius: eff.radius }, true);
+              }
+              this.render();
+              return;
+            }
+          }
+          if (
+            this.viewMode === 'adjust' &&
+            this.zoom <= 1.02 &&
+            typeof this.callbacks.onStep0CanvasScrub === 'function'
+          ) {
+            this._activeDrag = {
+              kind: 'adjust_scrub',
+              startClientX: ev.clientX,
+              lastClientX: ev.clientX,
+            };
+            this.callbacks.onStep0CanvasScrub('start', 0, ev);
+            return;
+          }
           const now = Date.now();
           if (
             this._lastTapInfo &&
@@ -1676,7 +1975,34 @@
         const { vx, vy, nx, ny } = this._clientToViewport(ev.clientX, ev.clientY);
         const d = this._activeDrag;
 
-        if (d.kind === 'pan') {
+        if (d.kind === 'effect_center') {
+          const nextCx = Number(clamp(nx, 0, 1).toFixed(4));
+          const nextCy = Number(clamp(ny, 0, 1).toFixed(4));
+          if (this.effectConfig) {
+            this.effectConfig.cx = nextCx;
+            this.effectConfig.cy = nextCy;
+          }
+          if (typeof this.callbacks.onEffectSpotChange === 'function') {
+            this.callbacks.onEffectSpotChange({ cx: nextCx, cy: nextCy }, true);
+          }
+          this.render();
+        } else if (d.kind === 'effect_radius') {
+          const distPx = Math.hypot(vx - d.sx, vy - d.sy);
+          const nextR = Number(clamp(distPx / d.halfDiag, 0.08, 0.80).toFixed(3));
+          if (this.effectConfig) {
+            this.effectConfig.radius = nextR;
+          }
+          if (typeof this.callbacks.onEffectSpotChange === 'function') {
+            this.callbacks.onEffectSpotChange({ radius: nextR }, true);
+          }
+          this.render();
+        } else if (d.kind === 'adjust_scrub') {
+          const dx = ev.clientX - d.lastClientX;
+          d.lastClientX = ev.clientX;
+          if (typeof this.callbacks.onStep0CanvasScrub === 'function') {
+            this.callbacks.onStep0CanvasScrub('move', dx, ev);
+          }
+        } else if (d.kind === 'pan') {
           this.panX = d.origPanX + (vx - d.startVx);
           this.panY = d.origPanY + (vy - d.startVy);
           this.render();
@@ -1714,6 +2040,21 @@
         this._pointers.delete(ev.pointerId);
         if (this._pointers.size < 2) this._pinch = null;
         if (this._pointers.size === 0) {
+          if (this._activeDrag && this._activeDrag.kind === 'adjust_scrub' && typeof this.callbacks.onStep0CanvasScrub === 'function') {
+            this.callbacks.onStep0CanvasScrub('end', 0, ev);
+          }
+          const wasEffectDrag = this._isDraggingEffectSpot;
+          this._isDraggingEffectSpot = false;
+          if (wasEffectDrag) {
+            this._effectCacheKey = '';
+            if (typeof this.callbacks.onEffectSpotChange === 'function' && this.effectConfig) {
+              this.callbacks.onEffectSpotChange({
+                cx: this.effectConfig.cx,
+                cy: this.effectConfig.cy,
+                radius: this.effectConfig.radius,
+              }, false);
+            }
+          }
           this._activeDrag = null;
           this._loupeFocus = null;
           this.render();

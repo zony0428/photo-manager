@@ -132,10 +132,10 @@ Tetheract/
 ├── take_out/               Default output directory for Smart Takeout & Contact Sheet HTML
 ├── cache/                  SQLite database (library.db), FieldLogs, and generation backups
 ├── frontend/ & server/     Vanilla HTML/CSS/ES6+ UI & FastAPI backend (LAN bridge, RAW parser)
-├── python/ & models/       Bundled Embeddable Python 3.11 & local CLIP ONNX model
+├── python/ & models/       Bundled Embeddable Python 3.11 & local AI ONNX models (CLIP / YuNet / LPD-YuNet)
 └── LICENSES/ & *.md        Bundled OSS notices (NOTICE.txt), user manual, and technical docs
 ```
 
-- Tech Stack: Python 3.11 (Embeddable) + FastAPI / Vanilla JS (2D virtual grid, `Slap & Sweep`) / SQLite3 (WAL, 5-domain generation cache, ROWID WebP BLOBs) / Kotlin Android Shell (SQLite locker, Read-Only SAF, BouncyCastle in-memory decryption) / Default `127.0.0.1` binding & 3-tier AEAD security
+- Tech Stack: Python 3.11 (Embeddable) + FastAPI / Vanilla JS (2D virtual grid, `Slap & Sweep`) / SQLite3 (WAL, 5-domain generation cache, ROWID WebP BLOBs) / Kotlin Android Shell (SQLite locker, Read-Only SAF, pure-Kotlin SHAKE256/HMAC-SHA256 in-memory decryption) / Default `127.0.0.1` binding & 3-tier AEAD security
 - Documentation: [User Manual (`MANUAL.md`)](MANUAL.md) ｜ [USB Portable Guide (`README_USB.md`)](README_USB.md) ｜ [Release Notes (`RELEASE_NOTES.md`)](RELEASE_NOTES.md) ｜ [Architecture & Technical Notes (`docs/knowledge/`)](docs/knowledge/README.md)
 - License: Source code is under the [MIT License](LICENSE) ("AS IS"). Please comply with the licenses of bundled libraries (LibRaw / `rawpy` [LGPL 2.1 dynamic link], etc.) and geocoding datasets listed in [`LICENSES/NOTICE.txt`](LICENSES/NOTICE.txt).

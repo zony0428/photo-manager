@@ -82,7 +82,7 @@ def import_folder_to_storage(
     dest_base.mkdir(parents=True, exist_ok=True)
 
     if source_dir is None or not str(source_dir).strip():
-        picked = pick_folder_dialog()
+        picked = pick_folder_dialog(title="Loome へ取り込むフォルダを選択してください")
         if not picked:
             return {"status": "cancelled"}
         src_dir = Path(picked).resolve()

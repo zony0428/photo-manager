@@ -14,8 +14,12 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from server import database as db_pkg_mod
+from server import mobile_delta as mobile_delta_mod
+from server import storage_manager as storage_mgr_mod
 from server.database import (
     add_tag_to_photo,
+    close_all_connections,
     close_thread_connection,
     get_all_duplicate_groups,
     get_connection,
@@ -27,6 +31,7 @@ from server.database import (
     initialize_database,
     reset_photo_adjustments,
     rotate_photo,
+    stats as db_stats_mod,
     switch_database_path,
      update_photo_adjustments,
     update_rating,
@@ -34,6 +39,7 @@ from server.database import (
     upsert_photos_batch,
 )
 from server.database import connection as db_conn_mod
+from server.security import initialize_security_state, set_instance_file_for_test
 
 
 class TestCoreRegression(unittest.TestCase):
@@ -43,17 +49,53 @@ class TestCoreRegression(unittest.TestCase):
     def setUpClass(cls):
         """元のDBパスを退避し、一時ディレクトリへ切り替える"""
         cls._original_db_path = db_conn_mod.DB_PATH
+        cls._orig_delta_db = mobile_delta_mod.DELTA_DB_PATH
+        cls._orig_locker_state = mobile_delta_mod.LOCKER_STATE_PATH
+        cls._orig_last_seq = mobile_delta_mod._last_built_commit_seq
+        cls._orig_last_mtime = mobile_delta_mod._last_built_locker_mtime
+        cls._orig_loome_dir = storage_mgr_mod.LOOME_DIR
+        cls._orig_storage_dir = storage_mgr_mod.STORAGE_DIR
+        cls._orig_legacy_dir = storage_mgr_mod.LEGACY_STORAGE_DIR
+
         cls._temp_dir = tempfile.TemporaryDirectory()
-        cls._test_db_path = Path(cls._temp_dir.name) / "test_library.db"
+        tmp_root = Path(cls._temp_dir.name)
+        cls._test_db_path = tmp_root / "test_library.db"
+        tmp_loome = tmp_root / "Loome"
+        tmp_loome.mkdir(parents=True, exist_ok=True)
+
+        set_instance_file_for_test(tmp_root / ".tetheract_instance_core_test")
         switch_database_path(cls._test_db_path)
+        db_stats_mod.DB_PATH = cls._test_db_path
+        db_pkg_mod.DB_PATH = cls._test_db_path
+        mobile_delta_mod.DELTA_DB_PATH = tmp_root / "mobile_delta.db"
+        mobile_delta_mod.LOCKER_STATE_PATH = tmp_root / "mobile_locker_state.json"
+        mobile_delta_mod._last_built_commit_seq = -1
+        mobile_delta_mod._last_built_locker_mtime = -1.0
+        storage_mgr_mod.LOOME_DIR = tmp_loome
+        storage_mgr_mod.STORAGE_DIR = tmp_loome
+        storage_mgr_mod.LEGACY_STORAGE_DIR = tmp_root / "legacy_storage_unused"
         initialize_database()
+        initialize_security_state(force_reload=True)
 
     @classmethod
     def tearDownClass(cls):
         """テスト終了後に元のDBパスへ復元し、一時ディレクトリを削除する"""
-        close_thread_connection()
-        switch_database_path(cls._original_db_path)
-        cls._temp_dir.cleanup()
+        try:
+            close_all_connections()
+            set_instance_file_for_test(None)
+            switch_database_path(cls._original_db_path)
+            db_stats_mod.DB_PATH = cls._original_db_path
+            db_pkg_mod.DB_PATH = cls._original_db_path
+            mobile_delta_mod.DELTA_DB_PATH = cls._orig_delta_db
+            mobile_delta_mod.LOCKER_STATE_PATH = cls._orig_locker_state
+            mobile_delta_mod._last_built_commit_seq = cls._orig_last_seq
+            mobile_delta_mod._last_built_locker_mtime = cls._orig_last_mtime
+            storage_mgr_mod.LOOME_DIR = cls._orig_loome_dir
+            storage_mgr_mod.STORAGE_DIR = cls._orig_storage_dir
+            storage_mgr_mod.LEGACY_STORAGE_DIR = cls._orig_legacy_dir
+            initialize_security_state(force_reload=True)
+        finally:
+            cls._temp_dir.cleanup()
 
     def setUp(self):
         """各テストの前にテーブルをクリーンアップする"""
@@ -878,6 +920,7 @@ class TestCoreRegression(unittest.TestCase):
         raw_conn.close()
 
         # レガシーDBへ接続を切り替えてマイグレーション実行
+        close_all_connections()
         prev_db = switch_database_path(legacy_db_path)
         try:
             initialize_database()
@@ -962,6 +1005,7 @@ class TestCoreRegression(unittest.TestCase):
             p3_after = get_photos(included_tags=["学校行事/スポーツ/2025"], stacked=False)
             self.assertEqual(sorted([p["id"] for p in p3_after]), [1, 3])
         finally:
+            close_all_connections()
             switch_database_path(prev_db)
 
     def test_12_calendar_summary_and_date_or_filtering(self):
@@ -2288,6 +2332,7 @@ class TestCoreRegression(unittest.TestCase):
         raw_conn.commit()
         raw_conn.close()
 
+        close_all_connections()
         prev_db = switch_database_path(mig_db_path)
         try:
             initialize_database()
@@ -2330,6 +2375,7 @@ class TestCoreRegression(unittest.TestCase):
             self.assertIn("旅行", restored_detail["tags"], "事前バックアップから重複統合タグも自動復元されること")
             self.assertIsNotNone(get_thumbnail(master_id), "事前バックアップからサムネイルも自動復元されること")
         finally:
+            close_all_connections()
             switch_database_path(prev_db)
 
     def test_27_loome_storage_resolution_and_external_drive_loome(self) -> None:

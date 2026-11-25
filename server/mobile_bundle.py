@@ -78,6 +78,8 @@ MOBILE_CSS_REL_PATHS: List[str] = [
 
 MOBILE_JS_REL_PATHS: List[str] = [
     "js/core/tree_builder.js",
+    "js/core/art_framer_step0.js",
+    "js/core/art_framer_effect.js",
     "js/adapters/data_adapter.js",
     "js/adapters/field_log_adapter.js",
     "js/adapters/phone_case_adapter.js",

@@ -25,6 +25,8 @@ from .export_decorator import (
     apply_watermark_pil,
     resize_photo_for_target_output,
 )
+from .lens_effects import apply_lens_effects_pil, is_lens_effect_active
+from .native_dialog import pick_native_file_dialog, pick_native_folder_dialog
 from .privacy_mask import apply_privacy_masks_pil
 from .raw_loader import extract_raw_full_preview, is_raw_file
 from .scanner import apply_photo_adjustments_pil, ensure_thumbnail, resolve_portable_path
@@ -403,16 +405,20 @@ def export_single_photo(
         frame_cfg = opts.get("print_frame") if isinstance(opts.get("print_frame"), dict) else None
         wm_cfg = opts.get("watermark") if isinstance(opts.get("watermark"), dict) else None
         mask_cfg = opts.get("privacy_masks") if isinstance(opts.get("privacy_masks"), dict) else None
+        effect_cfg = opts.get("lens_effect") if isinstance(opts.get("lens_effect"), dict) else None
 
         img, fixed_canvas_size = resize_photo_for_target_output(img, opts, frame_cfg=frame_cfg)
 
-        # 3.5 プライバシーマスク（ナンバー4頂点・顔モヤ）→ ウォーターマーク → プリント枠・キャプションの順に合成
+        # 3.5 プライバシーマスク → レンズ演出 → ウォーターマーク → プリント枠・キャプションの順に合成
         has_masks = bool(mask_cfg and mask_cfg.get("enabled", True) and (mask_cfg.get("plates") or mask_cfg.get("faces")))
+        has_effect = is_lens_effect_active(effect_cfg)
         has_wm = bool(wm_cfg and wm_cfg.get("enabled"))
         has_frame = bool(frame_cfg and frame_cfg.get("enabled"))
 
         if has_masks:
             img = apply_privacy_masks_pil(img, mask_cfg)
+        if has_effect:
+            img = apply_lens_effects_pil(img, effect_cfg)
         if has_wm:
             img = apply_watermark_pil(img, wm_cfg)
         if has_frame:
@@ -424,7 +430,7 @@ def export_single_photo(
                 fixed_canvas_size=fixed_canvas_size,
             )
 
-        pixels_baked = bool(apply_adjustments or has_masks or has_wm or has_frame)
+        pixels_baked = bool(apply_adjustments or has_masks or has_effect or has_wm or has_frame)
 
         # 4. ExifのDB同期（位置情報GPS・回転向き・最終キャンバス寸法）および選択的消去
         filtered_exif = filter_exif_data(
@@ -552,7 +558,16 @@ def run_smart_export(req: dict) -> dict:
             subfolder = (req.get("subfolder_name") or "").strip()
             if subfolder:
                 subfolder = re.sub(r'[\\/*?:"<>|]', '_', subfolder).strip()
-                dest_dir = DEFAULT_TAKEOUT_DIR / subfolder
+                if not subfolder or subfolder in (".", "..") or subfolder.startswith("."):
+                    return {"status": "error", "message": "無効なサブフォルダ名です"}
+                base_resolved = DEFAULT_TAKEOUT_DIR.resolve()
+                dest_dir = (DEFAULT_TAKEOUT_DIR / subfolder).resolve()
+                try:
+                    dest_dir.relative_to(base_resolved)
+                except ValueError:
+                    return {"status": "error", "message": "出力先サブフォルダが許可範囲外です"}
+                if dest_dir == base_resolved:
+                    return {"status": "error", "message": "無効なサブフォルダ名です"}
             else:
                 dest_dir = DEFAULT_TAKEOUT_DIR
 
@@ -617,55 +632,21 @@ def open_folder_in_windows_explorer(dir_path: Path):
         return False
 
 
-def pick_folder_dialog(initial_dir: Optional[str] = None) -> Optional[str]:
+def pick_folder_dialog(initial_dir: Optional[str] = None, title: Optional[str] = None) -> Optional[str]:
     """
-    Windowsの標準フォルダ選択ダイアログを前面表示して選択されたパスを返す。
+    Windowsの標準フォルダ選択ダイアログを最前面表示して選択されたパスを返す。
     キャンセルされた場合は None を返す。
-    コマンドインジェクション防止のため、初期パスは環境変数経由で渡す。
     """
-    import subprocess
     init_path = str(DEFAULT_TAKEOUT_DIR)
     if initial_dir and str(initial_dir).strip():
         candidate = Path(str(initial_dir).strip())
         if candidate.exists() and candidate.is_dir():
             init_path = str(candidate.resolve())
 
-    ps_script = """
-[System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms") | Out-Null
-$dialog = New-Object System.Windows.Forms.FolderBrowserDialog
-$dialog.Description = "エクスポート先フォルダを選択してください"
-if ($env:PM_DIALOG_INIT_DIR -and (Test-Path -LiteralPath $env:PM_DIALOG_INIT_DIR)) {
-    $dialog.SelectedPath = $env:PM_DIALOG_INIT_DIR
-}
-$dialog.ShowNewFolderButton = $true
-$res = $dialog.ShowDialog()
-if ($res -eq [System.Windows.Forms.DialogResult]::OK) {
-    Write-Output $dialog.SelectedPath
-}
-"""
-    try:
-        creationflags = 0
-        if os.name == 'nt':
-            creationflags = subprocess.CREATE_NO_WINDOW
-
-        env = os.environ.copy()
-        env["PM_DIALOG_INIT_DIR"] = init_path
-
-        proc = subprocess.run(
-            ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_script],
-            capture_output=True,
-            text=True,
-            env=env,
-            creationflags=creationflags,
-            timeout=60,
-        )
-        selected = proc.stdout.strip()
-        if selected and Path(selected).is_dir():
-            return selected
-        return None
-    except Exception as e:
-        print(f"[WARN] フォルダ選択ダイアログ呼び出し失敗: {e}")
-        return None
+    return pick_native_folder_dialog(
+        initial_dir=init_path,
+        title=title or "エクスポート先フォルダを選択してください",
+    )
 
 
 def pick_watermark_image_dialog(initial_path: Optional[str] = None) -> Dict[str, Any]:
@@ -673,8 +654,6 @@ def pick_watermark_image_dialog(initial_path: Optional[str] = None) -> Dict[str,
     Windowsの標準ファイル選択ダイアログを表示し、ウォーターマーク用のロゴ画像 (PNG / WebP / JPEG) を選択する。
     キャンバスプレビュー用の軽量PNG Data URIもあわせて返す。
     """
-    import subprocess
-
     init_dir = str(PROJECT_ROOT)
     if initial_path and str(initial_path).strip():
         cand = Path(str(initial_path).strip())
@@ -683,33 +662,13 @@ def pick_watermark_image_dialog(initial_path: Optional[str] = None) -> Dict[str,
         elif cand.is_dir():
             init_dir = str(cand.resolve())
 
-    ps_script = """
-[System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms") | Out-Null
-$dialog = New-Object System.Windows.Forms.OpenFileDialog
-$dialog.Title = "ウォーターマーク用のロゴ画像を選択してください"
-$dialog.Filter = "画像ファイル (*.png;*.webp;*.jpg;*.jpeg)|*.png;*.webp;*.jpg;*.jpeg"
-if ($env:PM_DIALOG_INIT_DIR -and (Test-Path -LiteralPath $env:PM_DIALOG_INIT_DIR)) {
-    $dialog.InitialDirectory = $env:PM_DIALOG_INIT_DIR
-}
-$res = $dialog.ShowDialog()
-if ($res -eq [System.Windows.Forms.DialogResult]::OK) {
-    Write-Output $dialog.FileName
-}
-"""
     try:
-        creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
-        env = os.environ.copy()
-        env["PM_DIALOG_INIT_DIR"] = init_dir
-
-        proc = subprocess.run(
-            ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_script],
-            capture_output=True,
-            text=True,
-            env=env,
-            creationflags=creationflags,
-            timeout=60,
+        selected = pick_native_file_dialog(
+            initial_dir=init_dir,
+            title="ウォーターマーク用のロゴ画像を選択してください",
+            filter_name="画像ファイル (*.png;*.webp;*.jpg;*.jpeg)",
+            filter_spec="*.png;*.webp;*.jpg;*.jpeg",
         )
-        selected = proc.stdout.strip()
         if not selected:
             return {"selected_path": None, "preview_data_url": None, "file_name": None}
 
@@ -966,7 +925,13 @@ def run_contact_sheet_export(req: Dict[str, Any]) -> Dict[str, Any]:
 
     esc_title = html.escape(title_raw)
     esc_date_range = html.escape(date_range_str)
-    viewer_json = json.dumps(viewer_items, ensure_ascii=False)
+    # <script> タグ脱出による Stored XSS を防ぐため HTML 特殊文字を Unicode エスケープ
+    viewer_json = (
+        json.dumps(viewer_items, ensure_ascii=False)
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace("&", "\\u0026")
+    )
     generated_at = datetime.now().strftime("%Y-%m-%d %H:%M")
 
     html_content = f"""<!DOCTYPE html>

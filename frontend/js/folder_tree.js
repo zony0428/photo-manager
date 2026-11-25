@@ -1590,7 +1590,7 @@ function _ftInitDbMaintenanceModal() {
       if (typeof showToast === 'function') {
         showToast(`エラー: ${err.message}`, 'error', 3200);
       } else {
-        alert('エラー: ' + err.message);
+        console.error('[FOLDER_TREE] タグ更新エラー:', err);
       }
       return false;
     }

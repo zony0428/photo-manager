@@ -1298,6 +1298,7 @@ body.has-open-nav-sheet .t-center-dial-slot {
 }
 
 .t-af-dialog {
+  position: relative;
   display: flex;
   flex-direction: column;
   width: 100%;
@@ -1433,23 +1434,50 @@ body.has-open-nav-sheet .t-center-dial-slot {
 
 .t-af-step-tabs {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
-  padding: 6px 10px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+  padding: 6px 8px;
   background-color: var(--bg-secondary);
   border-bottom: 1px solid var(--border-color);
   flex-shrink: 0;
 }
 
+.t-af-step-tabs.is-4steps {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+}
+
 .t-af-step-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
   height: 32px;
+  padding: 0 3px;
   border-radius: 6px;
   border: 1px solid var(--border-color);
   background-color: var(--surface-card);
   color: var(--text-muted);
-  font-size: 11.5px;
+  font-size: 10.5px;
   font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   cursor: pointer;
+}
+
+.t-af-step-tab .t-af-step-active-dot {
+  display: none;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background-color: var(--accent-primary);
+  flex-shrink: 0;
+}
+
+.t-af-step-tab.has-effect-on .t-af-step-active-dot {
+  display: inline-block;
 }
 
 .t-af-step-tab.active {
@@ -1487,20 +1515,20 @@ body.has-open-nav-sheet .t-center-dial-slot {
   }
 }
 
-/* スマホ縦持ち時のStep 2（枠・透かし）表示順: キャプション設定 -> プレビュー -> ウォーターマーク設定 */
+/* スマホ縦持ち時のStep 3（額装）表示順: キャプション設定 -> プレビュー -> ウォーターマーク設定 */
 @media (max-width: 839px) {
-  .t-af-workspace[data-step="2"] .t-af-controls-pane,
-  .t-af-workspace[data-step="2"] #mAfStep2Panel.is-active {
+  .t-af-workspace[data-step="3"] .t-af-controls-pane,
+  .t-af-workspace[data-step="3"] #mAfStep3Panel.is-active {
     display: contents;
   }
-  .t-af-workspace[data-step="2"] #mAfFrameCard {
+  .t-af-workspace[data-step="3"] #mAfFrameCard {
     order: 1;
     flex-shrink: 0;
   }
-  .t-af-workspace[data-step="2"] .t-af-canvas-pane {
+  .t-af-workspace[data-step="3"] .t-af-canvas-pane {
     order: 2;
   }
-  .t-af-workspace[data-step="2"] #mAfWmCard {
+  .t-af-workspace[data-step="3"] #mAfWmCard {
     order: 3;
     flex-shrink: 0;
   }
@@ -2307,6 +2335,232 @@ body.is-af-pick-mode .m-card:active {
   padding: 10px 6px;
   border: 1px dashed var(--border-color);
   border-radius: 7px;
+}
+
+/* モバイル＆タブレット Step 0（親指コックピット型非破壊調整） */
+.t-af-step0-card {
+  gap: 7px;
+}
+
+.t-af-step0-top-actions {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.t-af-step0-top-actions .t-af-mini-btn {
+  height: 32px;
+  padding: 0 4px;
+  font-size: 10.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.t-af-mini-btn.is-holding {
+  background-color: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: #ffffff;
+}
+
+.t-af-step0-pill-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.t-af-step0-pill {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  min-height: 44px;
+  padding: 4px 3px;
+  border-radius: 7px;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-tertiary);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.t-af-step0-pill.active {
+  border-color: var(--accent-primary);
+  background-color: var(--accent-subtle);
+}
+
+.t-af-step0-pill.is-modified .t-af-step0-pill-val {
+  color: var(--accent-primary);
+}
+
+.t-af-step0-pill-name {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.t-af-step0-pill.active .t-af-step0-pill-name {
+  color: var(--text-primary);
+}
+
+.t-af-step0-pill-val {
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.t-af-step0-dial-row {
+  display: grid;
+  grid-template-columns: 36px 1fr 36px;
+  align-items: center;
+  gap: 6px;
+}
+
+.t-af-step0-dial-row input[type="range"] {
+  width: 100%;
+  height: 32px;
+  accent-color: var(--accent-primary);
+}
+
+.t-af-step0-nudge {
+  width: 36px;
+  height: 36px;
+  border-radius: 7px;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.t-af-step0-nudge:active {
+  background-color: var(--accent-subtle);
+  border-color: var(--accent-primary);
+}
+
+.t-af-step0-hint-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.t-af-step0-hint-row strong {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+@media (min-width: 840px) {
+  .t-af-step0-pill-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+  }
+  .t-af-step0-pill {
+    flex-direction: row;
+    justify-content: space-between;
+    padding: 8px 10px;
+    min-height: 44px;
+  }
+  .t-af-step0-pill-name,
+  .t-af-step0-pill-val {
+    font-size: 12px;
+  }
+}
+
+.t-af-impact-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 12px;
+  background: rgba(8, 10, 14, 0.72);
+  backdrop-filter: blur(4px);
+}
+
+@media (min-width: 840px) {
+  .t-af-impact-backdrop {
+    align-items: center;
+  }
+}
+
+.t-af-impact-sheet {
+  width: 100%;
+  max-width: 440px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  background-color: var(--surface-card);
+  color: var(--text-primary);
+  padding: 16px;
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.55);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.t-af-impact-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.t-af-impact-desc {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.t-af-impact-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.t-af-impact-actions .t-af-action-btn {
+  height: 40px;
+  font-size: 12.5px;
+}
+
+/* モバイル＆タブレット Step 2 (レンズ演出) プリセットバー */
+.t-af-effect-preset-bar {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+}
+
+.t-af-effect-preset-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.t-af-effect-preset-pill {
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.t-af-effect-preset-pill.active {
+  background-color: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: #ffffff;
 }
 
 

@@ -9,13 +9,13 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#16181b" id="mMetaThemeColor">
   <title>TETHERACT pm</title>
-  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=2.5.4">
-  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png?v=2.5.4">
-  <link rel="apple-touch-icon" href="/icons/icon-192.png?v=2.5.4">
-  <link rel="manifest" href="/manifest_mobile.json?v=2.5.4">
-  <link rel="stylesheet" href="/css/mobile.css?v=2.5.4">
-  <link rel="stylesheet" href="/css/touch-responsive.css?v=2.5.4">
-  <link rel="stylesheet" href="/css/touch-fieldlog.css?v=2.5.4">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=2.6.0">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png?v=2.6.0">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png?v=2.6.0">
+  <link rel="manifest" href="/manifest_mobile.json?v=2.6.0">
+  <link rel="stylesheet" href="/css/mobile.css?v=2.6.0">
+  <link rel="stylesheet" href="/css/touch-responsive.css?v=2.6.0">
+  <link rel="stylesheet" href="/css/touch-fieldlog.css?v=2.6.0">
   <!-- オフラインUSB library.db 直接読み込み用 WebAssembly SQLite (sql.js) -->
   <script src="/vendor/sqljs/sql-wasm.js"></script>
 </head>
@@ -25,7 +25,7 @@
     <header class="m-header">
       <div class="m-header-left">
         <div id="mBrandHeaderBtn" class="m-brand" role="button" tabindex="0" title="タップして同期・バージョン・レイアウト設定を開く" aria-label="TETHERACT 設定・同期メニューを開く">
-          <img class="m-logo-icon" src="/icons/icon-192.png?v=2.5.4" width="24" height="24" alt="" aria-hidden="true">
+          <img class="m-logo-icon" src="/icons/icon-192.png?v=2.6.0" width="24" height="24" alt="" aria-hidden="true">
           <div class="m-brand-titles">
             <div class="m-brand-main">
               <svg id="mBrandWordmarkSvg" class="m-brand-wordmark" viewBox="62 12 246 36" width="94" height="14" fill="none" role="img" aria-label="TETHERACT Rg">
@@ -37,7 +37,7 @@
               <span id="mModeBadge" class="m-mode-badge mode-checking">○ UNLINK</span>
               <span id="mPhotoCount" class="m-photo-count">0枚</span>
               <span id="mPendingBadge" class="m-pending-badge" style="display:none;">0</span>
-              <span id="mAppBuildBadge" class="m-build-badge" style="display:none;">v2.5.1 (11/21 23:05)</span>
+              <span id="mAppBuildBadge" class="m-build-badge" style="display:none;">v2.6.0</span>
             </div>
           </div>
         </div>
@@ -440,7 +440,7 @@
         <div class="m-sheet-header">
           <div>
             <div class="m-sheet-title"><span class="m-native-only">Wi-Fi同期 &amp; 設定</span><span class="m-browser-only">DB読込 &amp; 選別データの保存</span></div>
-            <div id="mModalAppBuildInfo" style="font-size:0.70rem; color:var(--text-muted, #9ca6b5); margin-top:2px;">TETHERACT pm · v2.5.1 (Build 2026-11-21 23:05)</div>
+            <div id="mModalAppBuildInfo" style="font-size:0.70rem; color:var(--text-muted, #9ca6b5); margin-top:2px;">TETHERACT pm · v2.5.4</div>
           </div>
           <button id="mCloseDbSyncBtn" class="m-icon-btn">✕</button>
         </div>
@@ -576,6 +576,18 @@
             <div id="mDeviceModeSwitchMount"></div>
           </div>
 
+          <!-- セクション4.5: Art Framer 演出ステップ表示切替 -->
+          <div class="m-sync-card" id="mAfEffectStepSettingCard">
+            <div class="m-sync-card-title">Art Framer の「演出」ステップ</div>
+            <p class="m-sync-card-desc" style="margin-bottom:8px;">
+              ぐるぐるボケ・バブルボケ・周辺減光などのレンズ演出を使わない場合、ウィザードから除外して4ステップ構成に短縮します。
+            </p>
+            <label style="display:flex; align-items:center; gap:8px; font-size:0.78rem; font-weight:600; color:var(--text-main, #eceae4); cursor:pointer;">
+              <input type="checkbox" id="mDisableAfEffectStepCheck">
+              <span>Art Framer の「演出」は使用しない</span>
+            </label>
+          </div>
+
           <!-- Androidネイティブ専用: Loome USB 原本リンク・自動差分取込（ダウンリンク専用） -->
           <details class="m-sync-card m-native-only" id="mNativeUsbSubCard" open style="padding:10px 12px;">
             <summary style="font-size:0.78rem; font-weight:600; color:var(--text-muted, #9ca6b5); cursor:pointer;">Loome USB 原本リンク・自動差分取込（ダウンリンク専用）</summary>
@@ -610,24 +622,26 @@
   </div>
 
   <!-- Layer 2: Core Domain & State -->
-  <script src="/js/core/tree_builder.js?v=2.5.4"></script>
+  <script src="/js/core/tree_builder.js?v=2.6.0"></script>
+  <script src="/js/core/art_framer_step0.js?v=2.6.0"></script>
+  <script src="/js/core/art_framer_effect.js?v=2.6.0"></script>
   <!-- Layer 1: Data Adapter (Android Native / HTTP API / WASM SQLite) -->
-  <script src="/js/adapters/data_adapter.js?v=2.5.4"></script>
-  <script src="/js/adapters/field_log_adapter.js?v=2.5.4"></script>
-  <script src="/js/adapters/phone_case_adapter.js?v=2.5.4"></script>
-  <script src="/js/adapters/watermark_adapter.js?v=2.5.4"></script>
+  <script src="/js/adapters/data_adapter.js?v=2.6.0"></script>
+  <script src="/js/adapters/field_log_adapter.js?v=2.6.0"></script>
+  <script src="/js/adapters/phone_case_adapter.js?v=2.6.0"></script>
+  <script src="/js/adapters/watermark_adapter.js?v=2.6.0"></script>
   <!-- Layer 3: Touch & Tablet View / Gesture Controllers -->
-  <script src="/js/views/touch/touch_layout.js?v=2.5.4"></script>
-  <script src="/js/views/touch/touch_gestures.js?v=2.5.4"></script>
-  <script src="/js/views/touch/touch_adjust.js?v=2.5.4"></script>
-  <script src="/js/views/touch/morph_thumb_bar.js?v=2.5.4"></script>
-  <script src="/js/views/touch/touch_duel.js?v=2.5.4"></script>
-  <script src="/js/views/touch/touch_field_log.js?v=2.5.4"></script>
-  <script src="/js/views/touch/touch_phone_case.js?v=2.5.4"></script>
-  <script src="/js/views/touch/touch_center_dial.js?v=2.5.4"></script>
-  <script src="/js/views/touch/touch_viewer_launcher.js?v=2.5.4"></script>
-  <script src="/js/privacy_mask_editor.js?v=2.5.4"></script>
-  <script src="/js/views/touch/touch_art_framer.js?v=2.5.4"></script>
-  <script src="/js/mobile.js?v=2.5.4"></script>
+  <script src="/js/views/touch/touch_layout.js?v=2.6.0"></script>
+  <script src="/js/views/touch/touch_gestures.js?v=2.6.0"></script>
+  <script src="/js/views/touch/touch_adjust.js?v=2.6.0"></script>
+  <script src="/js/views/touch/morph_thumb_bar.js?v=2.6.0"></script>
+  <script src="/js/views/touch/touch_duel.js?v=2.6.0"></script>
+  <script src="/js/views/touch/touch_field_log.js?v=2.6.0"></script>
+  <script src="/js/views/touch/touch_phone_case.js?v=2.6.0"></script>
+  <script src="/js/views/touch/touch_center_dial.js?v=2.6.0"></script>
+  <script src="/js/views/touch/touch_viewer_launcher.js?v=2.6.0"></script>
+  <script src="/js/privacy_mask_editor.js?v=2.6.0"></script>
+  <script src="/js/views/touch/touch_art_framer.js?v=2.6.0"></script>
+  <script src="/js/mobile.js?v=2.6.0"></script>
 </body>
 </html>

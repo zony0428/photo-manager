@@ -11,6 +11,8 @@ from pathlib import Path
 
 from PIL import Image
 
+from server import database as db_pkg
+from server import mobile_delta as mobile_delta_mod
 from server.database import (
     DEFAULT_WATERMARK_ID,
     close_all_connections,
@@ -19,6 +21,7 @@ from server.database import (
     initialize_database,
     list_watermark_assets,
     save_watermark_asset,
+    stats as db_stats,
     switch_database_path,
 )
 from server.database import connection as db_conn
@@ -26,6 +29,7 @@ from server.export_decorator import apply_watermark_pil
 from server.lan_access import is_lan_path_allowed
 from server.mobile_bundle import build_standalone_mobile_html
 from server.mobile_delta import ensure_mobile_delta_db
+from server.security import initialize_security_state, set_instance_file_for_test
 
 
 def _make_png_bytes(width: int, height: int, rgba=(255, 64, 32, 220)) -> bytes:
@@ -44,15 +48,38 @@ class TestWatermarkAssetsAndSharing(unittest.TestCase):
 
     def setUp(self) -> None:
         self._orig_db_path = db_conn.DB_PATH
+        self._orig_delta_db = mobile_delta_mod.DELTA_DB_PATH
+        self._orig_locker_state = mobile_delta_mod.LOCKER_STATE_PATH
+        self._orig_last_seq = mobile_delta_mod._last_built_commit_seq
+        self._orig_last_mtime = mobile_delta_mod._last_built_locker_mtime
         self._tmp = tempfile.TemporaryDirectory()
-        self._test_db = Path(self._tmp.name) / "library.db"
+        tmp_root = Path(self._tmp.name)
+        self._test_db = tmp_root / "library.db"
+        set_instance_file_for_test(tmp_root / ".tetheract_instance_wm_test")
         switch_database_path(self._test_db)
+        db_stats.DB_PATH = self._test_db
+        db_pkg.DB_PATH = self._test_db
+        mobile_delta_mod.DELTA_DB_PATH = tmp_root / "mobile_delta.db"
+        mobile_delta_mod.LOCKER_STATE_PATH = tmp_root / "mobile_locker_state.json"
+        mobile_delta_mod._last_built_commit_seq = -1
+        mobile_delta_mod._last_built_locker_mtime = -1.0
         initialize_database(fast_boot=False)
+        initialize_security_state(force_reload=True)
 
     def tearDown(self) -> None:
-        close_all_connections()
-        switch_database_path(self._orig_db_path)
-        self._tmp.cleanup()
+        try:
+            close_all_connections()
+            set_instance_file_for_test(None)
+            switch_database_path(self._orig_db_path)
+            db_stats.DB_PATH = self._orig_db_path
+            db_pkg.DB_PATH = self._orig_db_path
+            mobile_delta_mod.DELTA_DB_PATH = self._orig_delta_db
+            mobile_delta_mod.LOCKER_STATE_PATH = self._orig_locker_state
+            mobile_delta_mod._last_built_commit_seq = self._orig_last_seq
+            mobile_delta_mod._last_built_locker_mtime = self._orig_last_mtime
+            initialize_security_state(force_reload=True)
+        finally:
+            self._tmp.cleanup()
 
     def test_default_tetheract_logo_seeded_once_and_user_can_delete(self) -> None:
         """初回DB初期化でTETHERACTロゴが登録され、ユーザー削除後は再初期化しても復活しない"""

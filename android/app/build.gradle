@@ -11,8 +11,8 @@ android {
         applicationId 'com.tetheract.pm'
         minSdk 26
         targetSdk 34
-        versionCode 30205004
-        versionName '2.5.4'
+        versionCode 30206000
+        versionName '2.6.0'
     }
 
     signingConfigs {

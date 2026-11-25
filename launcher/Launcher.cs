@@ -16,8 +16,8 @@ using System.Windows.Forms;
 [assembly: AssemblyProduct("Tetheract Photo Manager")]
 [assembly: AssemblyCopyright("Copyright (c) 2026 Tetheract Project (MIT License)")]
 [assembly: ComVisible(false)]
-[assembly: AssemblyVersion("2.5.4.0")]
-[assembly: AssemblyFileVersion("2.5.4.0")]
+[assembly: AssemblyVersion("2.6.0.0")]
+[assembly: AssemblyFileVersion("2.6.0.0")]
 
 namespace PhotoManager
 {
@@ -438,7 +438,26 @@ namespace PhotoManager
         }
 
         /// <summary>
-        /// アップデートZIP内に server/run.py と frontend/index.html が含まれているか検証する
+        /// 保護対象領域（鍵・DB・保管庫・ランタイム）を上書きするパスかどうかを判定する
+        /// </summary>
+        private static bool IsProtectedUpdateEntry(string normLower)
+        {
+            if (string.IsNullOrEmpty(normLower)) return false;
+            if (normLower == ".tetheract_instance" || normLower == ".loome_seal" || normLower == "recovery_key.txt")
+            {
+                return true;
+            }
+            if (normLower.StartsWith("cache/") || normLower.StartsWith("loome/") ||
+                normLower.StartsWith("storage/") || normLower.StartsWith("take_out/") ||
+                normLower.StartsWith("python/") || normLower.StartsWith(".git/"))
+            {
+                return true;
+            }
+            return normLower.EndsWith("/.loome_seal") || normLower.EndsWith("/.tetheract_instance");
+        }
+
+        /// <summary>
+        /// アップデートZIP内に不正パス・保護領域上書きが無く、server/run.py と frontend/index.html が含まれているか検証する
         /// </summary>
         private static bool ValidateUpdateZip(string zipPath)
         {
@@ -448,7 +467,22 @@ namespace PhotoManager
             {
                 foreach (ZipArchiveEntry entry in archive.Entries)
                 {
-                    string norm = entry.FullName.Replace('\\', '/').TrimStart('/');
+                    string raw = entry.FullName.Replace('\\', '/');
+                    if (raw.StartsWith("/") || (raw.Length >= 2 && raw[1] == ':'))
+                    {
+                        return false;
+                    }
+                    string[] parts = raw.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+                    foreach (string p in parts)
+                    {
+                        if (p == "..") return false;
+                    }
+                    string norm = string.Join("/", parts);
+                    string normLower = norm.ToLowerInvariant();
+                    if (IsProtectedUpdateEntry(normLower))
+                    {
+                        return false;
+                    }
                     if (string.Equals(norm, "server/run.py", StringComparison.OrdinalIgnoreCase))
                     {
                         hasServerRun = true;
@@ -548,6 +582,9 @@ namespace PhotoManager
         private static void ExtractUpdateZip(string zipPath, string baseDir)
         {
             string fullBaseDir = Path.GetFullPath(baseDir);
+            string baseWithSep = fullBaseDir.EndsWith(Path.DirectorySeparatorChar.ToString())
+                ? fullBaseDir
+                : fullBaseDir + Path.DirectorySeparatorChar;
             string currentExePath = Path.Combine(fullBaseDir, "Tetheract.exe");
             string oldExePath = Path.Combine(fullBaseDir, "Tetheract.exe.old");
 
@@ -555,11 +592,16 @@ namespace PhotoManager
             {
                 foreach (ZipArchiveEntry entry in archive.Entries)
                 {
+                    string rawNorm = string.Join("/", entry.FullName.Replace('\\', '/').Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries)).ToLowerInvariant();
+                    if (IsProtectedUpdateEntry(rawNorm))
+                    {
+                        continue;
+                    }
                     string relPath = entry.FullName.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
                     string destPath = Path.GetFullPath(Path.Combine(fullBaseDir, relPath));
 
-                    // パストラバーサル防止
-                    if (!destPath.StartsWith(fullBaseDir, StringComparison.OrdinalIgnoreCase))
+                    // パストラバーサル防止（ディレクトリ区切り境界を含めて厳格照合）
+                    if (!destPath.StartsWith(baseWithSep, StringComparison.OrdinalIgnoreCase))
                     {
                         continue;
                     }

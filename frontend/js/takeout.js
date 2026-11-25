@@ -10,6 +10,8 @@
 
   let currentPhotoIds = [];
   let isExporting = false;
+  let isPickingFolder = false;
+  let isBackdropPointerDown = false;
 
   // DOM要素キャッシュ
   let modalEl = null;
@@ -385,6 +387,12 @@
       startBtn.textContent = 'テイクアウト開始';
     }
     isExporting = false;
+    isPickingFolder = false;
+    isBackdropPointerDown = false;
+    if (pickDirBtn) {
+      pickDirBtn.disabled = false;
+      pickDirBtn.textContent = 'フォルダ選択...';
+    }
 
     // 前回の保存設定を復元
     const saved = loadSavedOptions();
@@ -397,20 +405,23 @@
    * モーダルを閉じる
    */
   async function closeSmartTakeoutModal() {
+    if (isPickingFolder) {
+      _showToast('フォルダ選択ダイアログが開いています', 'info', 2200);
+      return;
+    }
     if (isExporting) {
-      const confirmed = typeof showConfirmModal === 'function'
-        ? await showConfirmModal({
-            title: 'テイクアウト処理中',
-            subtitle: 'バックグラウンド書き出しの確認',
-            icon: 'info',
-            headingText: '現在テイクアウト処理中です。画面を閉じますか？',
-            descriptionLines: [
-              '※ 画面を閉じても書き出し処理はバックグラウンドで続行されます。',
-            ],
-            confirmText: '画面を閉じる',
-            confirmVariant: 'primary',
-          })
-        : confirm('現在テイクアウト処理中です。画面を閉じますか？（処理はバックグラウンドで続行されます）');
+      if (typeof showConfirmModal !== 'function') return;
+      const confirmed = await showConfirmModal({
+        title: 'テイクアウト処理中',
+        subtitle: 'バックグラウンド書き出しの確認',
+        icon: 'info',
+        headingText: '現在テイクアウト処理中です。画面を閉じますか？',
+        descriptionLines: [
+          '※ 画面を閉じても書き出し処理はバックグラウンドで続行されます。',
+        ],
+        confirmText: '画面を閉じる',
+        confirmVariant: 'primary',
+      });
       if (!confirmed) {
         return;
       }
@@ -424,11 +435,15 @@
    * Windowsフォルダ選択ダイアログを起動
    */
   async function pickDestinationFolder() {
-    if (!destInput) return;
+    if (!destInput || isPickingFolder || isExporting) return;
     const currentDir = destInput.value.trim();
 
+    isPickingFolder = true;
     try {
-      if (pickDirBtn) pickDirBtn.disabled = true;
+      if (pickDirBtn) {
+        pickDirBtn.disabled = true;
+        pickDirBtn.textContent = 'ダイアログ表示中...';
+      }
       const res = await fetch('/api/export/pick-folder', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -445,7 +460,11 @@
       console.error('[TAKEOUT] フォルダ選択エラー:', e);
       _showToast('フォルダ選択ダイアログの表示に失敗しました', 'error');
     } finally {
-      if (pickDirBtn) pickDirBtn.disabled = false;
+      isPickingFolder = false;
+      if (pickDirBtn) {
+        pickDirBtn.disabled = false;
+        pickDirBtn.textContent = 'フォルダ選択...';
+      }
     }
   }
 
@@ -539,10 +558,15 @@
     if (closeBtn) closeBtn.addEventListener('click', closeSmartTakeoutModal);
     if (cancelBtn) cancelBtn.addEventListener('click', closeSmartTakeoutModal);
 
-    // 背景クリックで閉じる
+    // 背景クリックで閉じる（カード内からのドラッグ抜けとダイアログ表示中の誤閉鎖を防止）
     if (modalEl) {
+      modalEl.addEventListener('pointerdown', (e) => {
+        isBackdropPointerDown = (e.target === modalEl);
+      });
       modalEl.addEventListener('click', (e) => {
-        if (e.target === modalEl) {
+        const startedOnBackdrop = isBackdropPointerDown;
+        isBackdropPointerDown = false;
+        if (startedOnBackdrop && e.target === modalEl) {
           closeSmartTakeoutModal();
         }
       });
@@ -580,9 +604,12 @@
       }
     });
 
-    // フォルダ選択ボタン
+    // フォルダ選択ボタン・手入力保存
     if (pickDirBtn) {
       pickDirBtn.addEventListener('click', pickDestinationFolder);
+    }
+    if (destInput) {
+      destInput.addEventListener('change', saveCurrentOptions);
     }
 
     // 開始ボタン
@@ -612,6 +639,7 @@
     // キーボードショートカット (Escで閉じる)
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && modalEl && modalEl.style.display === 'flex') {
+        if (isPickingFolder) return;
         e.stopPropagation();
         closeSmartTakeoutModal();
       }

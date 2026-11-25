@@ -1,11 +1,11 @@
 /**
  * Tetheract Touch & Mobile Art Framer Controller (Layer 3)
  *
- * モバイル / Android (`TETHERACT ld`) 向けの3ステップコンベア型 Art Framer:
- * 1. プライバシーマスク (ナンバープレート4頂点枠・顔モヤ放射スタンプ・800%無劣化ズーム & ×3.5指先ルーペ)
- * 2. プリント枠・EXIFキャプション・ウォーターマーク (PC版と完全互換の描画＆設定共有)
- * 3. SNSプリセット出力 (`for X` / `for INSTA 4:5` / `for INSTA 1:1` / `Full Size`)、
- *    ギャラリー保存・OS共有・母艦自動スタック用 `thmod_` 収納キュー連携
+ * モバイル / Android (`TETHERACT ld`) 向けの4ステップコンベア型 Art Framer:
+ * 0. 調整 (Step 1 から戻って行う非破壊露出・コントラスト・彩度・水平傾き・90°回転補正)
+ * 1. 修正 (プライバシーマスク：ナンバー4頂点・顔モヤ放射スタンプ・800%ズーム & ×3.5ルーペ)
+ * 2. 額装 (プリント枠・EXIFキャプション・ウォーターマーク)
+ * 3. 出力 (SNSプリセット `for X` / `for INSTA` / `Full Size`、共有・母艦キュー連携)
  */
 (function (global) {
   'use strict';
@@ -20,6 +20,19 @@
   let isBusy = false;
   let loadReqSeq = 0;
   let backHandlerRegistered = false;
+
+  // Step 0（非破壊調整）状態
+  let step0CommittedAdjust = null;
+  let step0DraftAdjust = null;
+  let step0ActiveParam = 'brightness'; // 'brightness' | 'contrast' | 'saturation' | 'fine_angle'
+  let step0RawImg = null;
+  let step0RawIsUnbaked = false;
+  let step0RawPhotoId = 0;
+  let step0ShowGrid = true;
+  let step0CompareBefore = false;
+  let step0Busy = false;
+  let step0ImpactResolver = null;
+  let step0ScrubAccum = 0;
 
   const cfg = {
     artPreset: 'for_x',
@@ -70,6 +83,18 @@
       custom_prefix: 'ArtFrame',
       exif_remove_gps: true,
       exif_remove_all: false,
+    },
+    effect: {
+      presetKey: 'none',
+      bokeh_mode: 'none',
+      strength: 0.0,
+      specular: 0.65,
+      radius: 0.32,
+      feather: 0.36,
+      cx: 0.50,
+      cy: 0.50,
+      vignette: 0.0,
+      halation: 0.0,
     },
   };
 
@@ -205,10 +230,12 @@
           <span id="mAfLiveDimBadge" class="t-af-dim-badge">--</span>
         </div>
 
-        <div class="t-af-step-tabs" role="tablist">
-          <button type="button" class="t-af-step-tab active" data-step="1">1. マスク</button>
-          <button type="button" class="t-af-step-tab" data-step="2">2. 枠・透かし</button>
-          <button type="button" class="t-af-step-tab" data-step="3">3. 出力・共有</button>
+        <div id="mAfStepTabs" class="t-af-step-tabs" role="tablist">
+          <button type="button" class="t-af-step-tab" data-step="0">0. 調整</button>
+          <button type="button" class="t-af-step-tab active" data-step="1">1. 修正</button>
+          <button type="button" class="t-af-step-tab" data-step="2">2. 演出<span class="t-af-step-active-dot" aria-hidden="true"></span></button>
+          <button type="button" class="t-af-step-tab" data-step="3"><span class="t-af-step-num">3</span>. 額装</button>
+          <button type="button" class="t-af-step-tab" data-step="4"><span class="t-af-step-num">4</span>. 出力</button>
         </div>
 
         <div id="mAfWorkspace" class="t-af-workspace" data-step="1">
@@ -235,6 +262,46 @@
           </div>
 
           <div class="t-af-controls-pane">
+            <!-- Step 0: 非破壊調整（コンパクト親指コックピット） -->
+            <div id="mAfStep0Panel" class="t-af-step-panel">
+              <div class="t-af-card t-af-step0-card">
+                <div class="t-af-step0-top-actions">
+                  <button type="button" id="mAfRotLeftBtn" class="t-af-mini-btn">↺ 左90°</button>
+                  <button type="button" id="mAfRotRightBtn" class="t-af-mini-btn">↻ 右90°</button>
+                  <button type="button" id="mAfStep0GridBtn" class="t-af-mini-btn active">グリッド</button>
+                  <button type="button" id="mAfStep0CompareBtn" class="t-af-mini-btn">比較</button>
+                  <button type="button" id="mAfStep0ResetBtn" class="t-af-mini-btn">初期化</button>
+                </div>
+                <div class="t-af-step0-pill-grid">
+                  <button type="button" class="t-af-step0-pill active" data-step0-param="brightness">
+                    <span class="t-af-step0-pill-name">露光量</span>
+                    <span id="mAfStep0ValBrightness" class="t-af-step0-pill-val">0.0EV</span>
+                  </button>
+                  <button type="button" class="t-af-step0-pill" data-step0-param="contrast">
+                    <span class="t-af-step0-pill-name">ｺﾝﾄﾗｽﾄ</span>
+                    <span id="mAfStep0ValContrast" class="t-af-step0-pill-val">0</span>
+                  </button>
+                  <button type="button" class="t-af-step0-pill" data-step0-param="saturation">
+                    <span class="t-af-step0-pill-name">彩度</span>
+                    <span id="mAfStep0ValSaturation" class="t-af-step0-pill-val">0</span>
+                  </button>
+                  <button type="button" class="t-af-step0-pill" data-step0-param="fine_angle">
+                    <span class="t-af-step0-pill-name">傾き</span>
+                    <span id="mAfStep0ValTilt" class="t-af-step0-pill-val">0.0°</span>
+                  </button>
+                </div>
+                <div class="t-af-step0-hint-row">
+                  <span id="mAfStep0ActiveLabel">露光量（写真左右ドラッグでも調整可）</span>
+                  <strong id="mAfStep0ActiveVal">0.0EV</strong>
+                </div>
+                <div class="t-af-step0-dial-row">
+                  <button type="button" id="mAfStep0NudgeMinus" class="t-af-step0-nudge" aria-label="マイナス">−</button>
+                  <input type="range" id="mAfStep0Slider" min="-6" max="6" step="1" value="0">
+                  <button type="button" id="mAfStep0NudgePlus" class="t-af-step0-nudge" aria-label="プラス">+</button>
+                </div>
+              </div>
+            </div>
+
             <!-- Step 1: プライバシーマスク -->
             <div id="mAfStep1Panel" class="t-af-step-panel is-active">
               <div class="t-af-card">
@@ -308,8 +375,89 @@
               </div>
             </div>
 
-            <!-- Step 2: プリント枠・透かし -->
+            <!-- Step 2: 光学レンズ演出 -->
             <div id="mAfStep2Panel" class="t-af-step-panel">
+              <div class="t-af-card">
+                <div class="t-af-card-header-row">
+                  <span class="t-af-card-title">レンズ演出プリセット</span>
+                  <button type="button" id="mAfEffectCenterResetBtn" class="t-af-mini-btn">中心戻す</button>
+                </div>
+                <div class="t-af-effect-preset-bar">
+                  <button type="button" class="t-af-effect-preset-pill active" data-effect-preset="none">OFF</button>
+                  <button type="button" class="t-af-effect-preset-pill" data-effect-preset="swirl">ぐるぐるボケ</button>
+                  <button type="button" class="t-af-effect-preset-pill" data-effect-preset="bubble">バブルボケ</button>
+                  <button type="button" class="t-af-effect-preset-pill" data-effect-preset="mist">ブラックミスト</button>
+                  <button type="button" class="t-af-effect-preset-pill" data-effect-preset="tunnel">トイ減光</button>
+                </div>
+                <p class="t-af-note-line" style="margin-top:6px;">キャンバス上の円をドラッグしてピント保護の中心と径を調整できます（非破壊）</p>
+              </div>
+
+              <div class="t-af-card">
+                <div class="t-af-slider-col">
+                  <div class="t-af-slider-head"><span>ボケ演出タイプ</span></div>
+                  <select id="mAfEffectBokehSelect" class="t-af-select">
+                    <option value="none">なし（OFF）</option>
+                    <option value="swirl">ぐるぐるボケ (Helios調)</option>
+                    <option value="bubble">バブルボケ (Trioplan調)</option>
+                    <option value="soft">オールドソフト</option>
+                  </select>
+                </div>
+                <div class="t-af-slider-col" style="margin-top:8px;">
+                  <div class="t-af-slider-head">
+                    <span>ボケ強さ</span>
+                    <span id="mAfEffectStrengthVal">0%</span>
+                  </div>
+                  <input type="range" id="mAfEffectStrengthSlider" class="t-af-range" min="0" max="100" step="2" value="0">
+                </div>
+                <div class="t-af-slider-col" style="margin-top:8px;">
+                  <div class="t-af-slider-head">
+                    <span>周辺光量 (ビネット)</span>
+                    <span id="mAfEffectVignetteVal">0%</span>
+                  </div>
+                  <input type="range" id="mAfEffectVignetteSlider" class="t-af-range" min="-100" max="100" step="5" value="0">
+                </div>
+                <div class="t-af-slider-col" style="margin-top:8px;">
+                  <div class="t-af-slider-head">
+                    <span>ハイライト滲み (ハレーション)</span>
+                    <span id="mAfEffectHalationVal">0%</span>
+                  </div>
+                  <input type="range" id="mAfEffectHalationSlider" class="t-af-range" min="0" max="100" step="5" value="0">
+                </div>
+
+                <details id="mAfEffectDetailExpander" class="t-af-expander" style="margin-top:8px;">
+                  <summary class="t-af-expander-summary">
+                    <span>ピント保護径・境界・点光源の詳細</span>
+                    <span id="mAfEffectDetailSummary" class="t-af-expander-val">径32%</span>
+                  </summary>
+                  <div class="t-af-expander-body">
+                    <div class="t-af-slider-col">
+                      <div class="t-af-slider-head">
+                        <span>ピント保護径</span>
+                        <span id="mAfEffectRadiusVal">32%</span>
+                      </div>
+                      <input type="range" id="mAfEffectRadiusSlider" class="t-af-range" min="8" max="80" step="2" value="32">
+                    </div>
+                    <div class="t-af-slider-col">
+                      <div class="t-af-slider-head">
+                        <span>境界フェザー</span>
+                        <span id="mAfEffectFeatherVal">36%</span>
+                      </div>
+                      <input type="range" id="mAfEffectFeatherSlider" class="t-af-range" min="10" max="75" step="5" value="36">
+                    </div>
+                    <div class="t-af-slider-col">
+                      <div class="t-af-slider-head">
+                        <span>ハイライト玉ボケ強調</span>
+                        <span id="mAfEffectSpecularVal">65%</span>
+                      </div>
+                      <input type="range" id="mAfEffectSpecularSlider" class="t-af-range" min="0" max="100" step="5" value="65">
+                    </div>
+                  </div>
+                </details>
+              </div>
+            </div>
+
+            <!-- Step 3: プリント枠・透かし -->
+            <div id="mAfStep3Panel" class="t-af-step-panel">
               <div id="mAfFrameCard" class="t-af-card">
                 <label class="t-af-toggle-head">
                   <input type="checkbox" id="mAfFrameEnableCheck" checked>
@@ -449,14 +597,15 @@
               </div>
             </div>
 
-            <!-- Step 3: 出力・共有・母艦キュー -->
-            <div id="mAfStep3Panel" class="t-af-step-panel">
+            <!-- Step 4: 出力・共有・母艦キュー -->
+            <div id="mAfStep4Panel" class="t-af-step-panel">
               <div class="t-af-card">
                 <div class="t-af-card-title">仕上がりサマリ</div>
                 <div class="t-af-summary-grid">
                   <div class="t-af-summary-row"><span>プリセット</span><strong id="mAfSummaryPresetVal">for X</strong></div>
                   <div class="t-af-summary-row"><span>出力解像度</span><strong id="mAfSummaryDimVal">--</strong></div>
                   <div class="t-af-summary-row"><span>マスク</span><strong id="mAfSummaryMaskVal">なし</strong></div>
+                  <div class="t-af-summary-row"><span>レンズ演出</span><strong id="mAfSummaryEffectVal">なし</strong></div>
                   <div class="t-af-summary-row"><span>枠・透かし</span><strong id="mAfSummaryFrameVal">枠ON</strong></div>
                 </div>
               </div>
@@ -507,9 +656,24 @@
         </div>
 
         <div class="t-af-footer">
-          <button type="button" id="mAfPrevStepBtn" class="t-af-btn" disabled>← 戻る</button>
+          <button type="button" id="mAfPrevStepBtn" class="t-af-btn">← 0. 調整</button>
           <button type="button" id="mAfSkipPhotoBtn" class="t-af-btn" style="display:none;">スキップ ▶</button>
-          <button type="button" id="mAfNextStepBtn" class="t-af-btn is-primary">次へ：枠・透かし →</button>
+          <button type="button" id="mAfNextStepBtn" class="t-af-btn is-primary">次へ：2. 演出 →</button>
+        </div>
+
+        <!-- Step 0 幾何変更時の後工程マスク影響確認シート -->
+        <div id="mAfStep0MaskImpactSheet" class="t-af-impact-backdrop" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="mAfStep0ImpactTitle">
+          <div class="t-af-impact-sheet">
+            <h3 id="mAfStep0ImpactTitle" class="t-af-impact-title">回転・傾きの変更とマスクについて</h3>
+            <p id="mAfStep0ImpactDesc" class="t-af-impact-desc">
+              回転や傾きを変更したため、1. 修正 に配置済みのマスク位置がずれる可能性があります。反映方法を選んでください。
+            </p>
+            <div class="t-af-impact-actions">
+              <button type="button" id="mAfImpactRedetectBtn" class="t-af-action-btn is-primary">保存してAIマスクを再検出（推奨）</button>
+              <button type="button" id="mAfImpactKeepBtn" class="t-af-action-btn is-secondary">現在のマスクを残して保存</button>
+              <button type="button" id="mAfImpactCancelBtn" class="t-af-btn">キャンセル（調整に戻る）</button>
+            </div>
+          </div>
         </div>
       </div>
     `;
@@ -702,15 +866,135 @@
     }
   }
 
+  function _effectApi() {
+    return global.TetheractArtFramerEffect || null;
+  }
+
+  function _isEffectStepDisabled() {
+    const api = _effectApi();
+    return Boolean(api && typeof api.isEffectStepDisabled === 'function' && api.isEffectStepDisabled());
+  }
+
+  function _resetEffectForSession() {
+    const api = _effectApi();
+    cfg.effect = api && typeof api.createDefaultEffectConfig === 'function'
+      ? api.createDefaultEffectConfig()
+      : {
+          presetKey: 'none',
+          bokeh_mode: 'none',
+          strength: 0.0,
+          specular: 0.65,
+          radius: 0.32,
+          feather: 0.36,
+          cx: 0.50,
+          cy: 0.50,
+          vignette: 0.0,
+          halation: 0.0,
+        };
+    _syncEffectControlsUI();
+  }
+
+  function _getEffectiveLensEffectPayload() {
+    if (_isEffectStepDisabled()) return null;
+    const api = _effectApi();
+    if (!api || typeof api.normalizeEffectConfig !== 'function') return null;
+    const norm = api.normalizeEffectConfig(cfg.effect);
+    return norm.enabled ? norm : null;
+  }
+
+  function _syncEffectStepVisibilityUI() {
+    if (!modalEl) return;
+    const disabled = _isEffectStepDisabled();
+    const tabsWrap = document.getElementById('mAfStepTabs');
+    if (tabsWrap) tabsWrap.classList.toggle('is-4steps', disabled);
+    const tab2 = modalEl.querySelector('.t-af-step-tab[data-step="2"]');
+    if (tab2) tab2.style.display = disabled ? 'none' : '';
+    const api = _effectApi();
+    const disp3 = api && typeof api.getDisplayStepNumber === 'function' ? api.getDisplayStepNumber(3, disabled) : (disabled ? 2 : 3);
+    const disp4 = api && typeof api.getDisplayStepNumber === 'function' ? api.getDisplayStepNumber(4, disabled) : (disabled ? 3 : 4);
+    const num3 = modalEl.querySelector('.t-af-step-tab[data-step="3"] .t-af-step-num');
+    const num4 = modalEl.querySelector('.t-af-step-tab[data-step="4"] .t-af-step-num');
+    if (num3) num3.textContent = String(disp3);
+    if (num4) num4.textContent = String(disp4);
+    if (disabled && cfg.step === 2) {
+      cfg.step = 3;
+    }
+    _updateFooterButtonsUI();
+    _updateStep3SummaryUI();
+  }
+
+  function _syncEffectControlsUI() {
+    if (!modalEl) return;
+    const api = _effectApi();
+    const norm = api && typeof api.normalizeEffectConfig === 'function'
+      ? api.normalizeEffectConfig(cfg.effect)
+      : cfg.effect;
+    const active = Boolean(norm && norm.enabled);
+    const tab2 = modalEl.querySelector('.t-af-step-tab[data-step="2"]');
+    if (tab2) tab2.classList.toggle('has-active-effect', active);
+
+    modalEl.querySelectorAll('.t-af-effect-preset-pill').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.effectPreset === (cfg.effect.presetKey || 'none'));
+    });
+
+    const setVal = (id, v) => {
+      const el = document.getElementById(id);
+      if (el && v !== undefined && v !== null) el.value = String(v);
+    };
+    const setTxt = (id, v) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = String(v);
+    };
+
+    setVal('mAfEffectBokehSelect', cfg.effect.bokeh_mode || 'none');
+    const strPct = Math.round((cfg.effect.strength || 0) * 100);
+    setVal('mAfEffectStrengthSlider', strPct);
+    setTxt('mAfEffectStrengthVal', `${strPct}%`);
+
+    const vigPct = Math.round((cfg.effect.vignette || 0) * 100);
+    setVal('mAfEffectVignetteSlider', vigPct);
+    setTxt('mAfEffectVignetteVal', vigPct > 0 ? `+${vigPct}%` : `${vigPct}%`);
+
+    const halPct = Math.round((cfg.effect.halation || 0) * 100);
+    setVal('mAfEffectHalationSlider', halPct);
+    setTxt('mAfEffectHalationVal', `${halPct}%`);
+
+    const radPct = Math.round((cfg.effect.radius ?? 0.32) * 100);
+    setVal('mAfEffectRadiusSlider', radPct);
+    setTxt('mAfEffectRadiusVal', `${radPct}%`);
+
+    const feaPct = Math.round((cfg.effect.feather ?? 0.36) * 100);
+    setVal('mAfEffectFeatherSlider', feaPct);
+    setTxt('mAfEffectFeatherVal', `${feaPct}%`);
+
+    const specPct = Math.round((cfg.effect.specular ?? 0.65) * 100);
+    setVal('mAfEffectSpecularSlider', specPct);
+    setTxt('mAfEffectSpecularVal', `${specPct}%`);
+
+    setTxt('mAfEffectDetailSummary', `径${radPct}% · 位置(${Math.round((cfg.effect.cx ?? 0.5) * 100)}%,${Math.round((cfg.effect.cy ?? 0.5) * 100)}%)`);
+  }
+
   function _pushDecoratorToEditor() {
     if (!editor) return;
+    let mode = 'decorated';
+    if (cfg.step === 0) mode = 'adjust';
+    else if (cfg.step === 1) mode = 'mask';
+    else if (cfg.step === 2) mode = 'effect';
     editor.setDecoratorState({
-      viewMode: cfg.step === 1 ? 'mask' : 'decorated',
+      viewMode: mode,
+      effectConfig: _getEffectiveLensEffectPayload(),
       frameConfig: cfg.frame,
       watermarkConfig: cfg.watermark,
       artPreset: cfg.artPreset,
       logoDataUrl: _resolveActiveWatermarkLogoUrl(),
     });
+    if (typeof editor.setAdjustOverlayState === 'function') {
+      editor.setAdjustOverlayState({
+        showLevelGrid: cfg.step === 0 && step0ShowGrid,
+        fineGrid: cfg.step === 0 && step0ActiveParam === 'fine_angle',
+        isComparingBefore: cfg.step === 0 && step0CompareBefore,
+      });
+    }
   }
 
   function _syncFrameExpanderSummaries() {
@@ -868,6 +1152,7 @@
     const qCol = document.getElementById('mAfQualityCol');
     if (qCol) qCol.style.display = cfg.output.format === 'png' ? 'none' : 'flex';
     setChk('mAfExifRemoveAllCheck', cfg.output.exif_remove_all);
+    _syncEffectControlsUI();
   }
 
   function _applyTargetPreset(presetKey) {
@@ -899,11 +1184,12 @@
     if (!modalEl) return;
     const total = photoQueue.length;
     const isLast = queueIndex >= total - 1;
+    const locked = isBusy || step0Busy;
 
     const prevPhotoBtn = document.getElementById('mAfPrevPhotoBtn');
     const nextPhotoBtn = document.getElementById('mAfNextPhotoBtn');
-    if (prevPhotoBtn) prevPhotoBtn.disabled = isBusy || queueIndex <= 0;
-    if (nextPhotoBtn) nextPhotoBtn.disabled = isBusy || isLast;
+    if (prevPhotoBtn) prevPhotoBtn.disabled = locked || queueIndex <= 0;
+    if (nextPhotoBtn) nextPhotoBtn.disabled = locked || isLast;
 
     const prevStepBtn = document.getElementById('mAfPrevStepBtn');
     const nextStepBtn = document.getElementById('mAfNextStepBtn');
@@ -912,26 +1198,45 @@
     const saveBtn = document.getElementById('mAfSaveQueueBtn');
     const saveLabel = document.getElementById('mAfSaveQueueBtnLabel');
 
-    if (prevStepBtn) prevStepBtn.disabled = isBusy || cfg.step === 1;
+    const apiEffect = _effectApi();
+    const disabledEffect = _isEffectStepDisabled();
+    const nextLogical = apiEffect && typeof apiEffect.getNextStep === 'function'
+      ? apiEffect.getNextStep(cfg.step, disabledEffect)
+      : (cfg.step < 4 ? cfg.step + 1 : null);
+    const stepShortLabel = (s) => {
+      const disp = apiEffect && typeof apiEffect.getDisplayStepNumber === 'function'
+        ? apiEffect.getDisplayStepNumber(s, disabledEffect)
+        : s;
+      if (s === 0) return '0. 調整';
+      if (s === 1) return '1. 修正';
+      if (s === 2) return '2. 演出';
+      if (s === 3) return `${disp}. 額装`;
+      return `${disp}. 出力`;
+    };
+
+    if (prevStepBtn) {
+      prevStepBtn.disabled = locked || cfg.step <= 0;
+      prevStepBtn.textContent = cfg.step === 1 ? '← 0. 調整' : '← 戻る';
+    }
     if (skipBtn) {
       skipBtn.style.display = total > 1 ? 'inline-flex' : 'none';
-      skipBtn.disabled = isBusy;
+      skipBtn.disabled = locked;
     }
-    if (shareBtn) shareBtn.disabled = isBusy;
-    if (saveBtn) saveBtn.disabled = isBusy;
+    if (shareBtn) shareBtn.disabled = locked;
+    if (saveBtn) saveBtn.disabled = locked;
     if (saveLabel) {
       saveLabel.textContent = !isLast && total > 1
         ? `保存して次へ (${queueIndex + 1}/${total})`
         : '保存 (母艦収納キューへ)';
     }
     if (nextStepBtn) {
-      nextStepBtn.disabled = isBusy;
-      if (cfg.step === 1) {
+      nextStepBtn.disabled = locked;
+      if (cfg.step === 0) {
         nextStepBtn.style.display = 'inline-flex';
-        nextStepBtn.textContent = '次へ：枠・透かし →';
-      } else if (cfg.step === 2) {
+        nextStepBtn.textContent = '反映して 1. 修正 →';
+      } else if (nextLogical !== null) {
         nextStepBtn.style.display = 'inline-flex';
-        nextStepBtn.textContent = '次へ：出力・共有 →';
+        nextStepBtn.textContent = `次へ：${stepShortLabel(nextLogical)} →`;
       } else {
         nextStepBtn.style.display = 'none';
       }
@@ -948,6 +1253,7 @@
     const presetEl = document.getElementById('mAfSummaryPresetVal');
     const dimEl = document.getElementById('mAfSummaryDimVal');
     const maskEl = document.getElementById('mAfSummaryMaskVal');
+    const effectEl = document.getElementById('mAfSummaryEffectVal');
     const frameEl = document.getElementById('mAfSummaryFrameVal');
 
     if (presetEl) presetEl.textContent = presetLabels[_getActivePresetPillKey()] || 'for X';
@@ -960,6 +1266,12 @@
       const fCnt = editor.faces.length;
       maskEl.textContent = pCnt === 0 && fCnt === 0 ? 'なし' : `ナンバー:${pCnt} / 顔モヤ:${fCnt}`;
     }
+    if (effectEl) {
+      const apiEffect = _effectApi();
+      effectEl.textContent = _isEffectStepDisabled()
+        ? 'なし（設定OFF）'
+        : (apiEffect && typeof apiEffect.formatEffectSummary === 'function' ? apiEffect.formatEffectSummary(cfg.effect) : 'なし');
+    }
     if (frameEl) {
       const parts = [cfg.frame.enabled ? `枠ON (${cfg.frame.layout})` : '枠OFF'];
       if (cfg.watermark.enabled) parts.push('透かしON');
@@ -967,8 +1279,325 @@
     }
   }
 
+  function _step0Api() {
+    return global.TetheractArtFramerStep0 || null;
+  }
+
+  function _normalizeAdjust(meta) {
+    const api = _step0Api();
+    if (api && typeof api.normalizeAdjustSnapshot === 'function') {
+      return api.normalizeAdjustSnapshot(meta);
+    }
+    const src = meta || {};
+    return {
+      rotation: ((Math.round(Number(src.rotation || 0)) % 360) + 360) % 360,
+      fine_angle: Number(Number(src.fine_angle || 0).toFixed(2)),
+      brightness: Math.round(Number(src.brightness || 0)),
+      contrast: Math.round(Number(src.contrast || 0)),
+      saturation: Math.round(Number(src.saturation || 0)),
+      crop_x: src.crop_x ?? null,
+      crop_y: src.crop_y ?? null,
+      crop_w: src.crop_w ?? null,
+      crop_h: src.crop_h ?? null,
+      crop_aspect: src.crop_aspect ?? null,
+    };
+  }
+
+  function _syncStep0UI() {
+    if (!modalEl) return;
+    const api = _step0Api();
+    const d = step0DraftAdjust || _normalizeAdjust(null);
+
+    const pillPairs = [
+      ['brightness', 'mAfStep0ValBrightness'],
+      ['contrast', 'mAfStep0ValContrast'],
+      ['saturation', 'mAfStep0ValSaturation'],
+      ['fine_angle', 'mAfStep0ValTilt'],
+    ];
+    pillPairs.forEach(([key, valId]) => {
+      const pill = modalEl.querySelector(`.t-af-step0-pill[data-step0-param="${key}"]`);
+      const valEl = document.getElementById(valId);
+      const modified = api ? api.isParamModified(key, d) : false;
+      const formatted = api ? api.formatParamValue(key, d) : String(d[key] || 0);
+      if (valEl) valEl.textContent = formatted;
+      if (pill) {
+        pill.classList.toggle('active', step0ActiveParam === key);
+        pill.classList.toggle('is-modified', modified);
+      }
+    });
+
+    const activeLabelEl = document.getElementById('mAfStep0ActiveLabel');
+    const activeValEl = document.getElementById('mAfStep0ActiveVal');
+    const sliderEl = document.getElementById('mAfStep0Slider');
+    const labelMap = {
+      brightness: '露光量（左右ドラッグでも調整可）',
+      contrast: 'コントラスト（左右ドラッグでも調整可）',
+      saturation: '彩度（左右ドラッグでも調整可）',
+      fine_angle: '水平傾き（左右ドラッグでも調整可）',
+    };
+    if (activeLabelEl) activeLabelEl.textContent = labelMap[step0ActiveParam] || '調整';
+    if (activeValEl && api) activeValEl.textContent = api.formatParamValue(step0ActiveParam, d);
+    if (sliderEl) {
+      if (step0ActiveParam === 'brightness') {
+        sliderEl.min = '-6';
+        sliderEl.max = '6';
+        sliderEl.step = '1';
+        sliderEl.value = String(api ? api.brightnessToDialIndex(d.brightness) : 0);
+      } else if (step0ActiveParam === 'fine_angle') {
+        sliderEl.min = '-15';
+        sliderEl.max = '15';
+        sliderEl.step = '0.1';
+        sliderEl.value = String(Math.max(-15, Math.min(15, Number(d.fine_angle || 0))));
+      } else {
+        sliderEl.min = '-100';
+        sliderEl.max = '100';
+        sliderEl.step = '1';
+        sliderEl.value = String(Math.round(Number(d[step0ActiveParam] || 0)));
+      }
+    }
+
+    document.getElementById('mAfStep0GridBtn')?.classList.toggle('active', Boolean(step0ShowGrid));
+    document.getElementById('mAfStep0CompareBtn')?.classList.toggle('is-holding', Boolean(step0CompareBefore));
+  }
+
+  function _renderStep0Preview() {
+    if (!editor || cfg.step !== 0 || !step0RawImg) return;
+    const meta = photoQueue[queueIndex] || {};
+    const api = _step0Api();
+    const touchUi = global.TetheractTouchUI || {};
+
+    if (step0CompareBefore) {
+      if (step0RawIsUnbaked) {
+        editor.updateSourceImageOnly(step0RawImg, meta);
+      } else if (api && typeof api.renderStep0AdjustedCanvas === 'function') {
+        const origSnap = api.createResetAdjustSnapshot();
+        const resetCanvas = typeof touchUi.renderAdjustedPhotoCanvas === 'function'
+          ? touchUi.renderAdjustedPhotoCanvas(step0RawImg, { ...meta, ...origSnap }, { isUnbaked: false, maxLongEdge: 1600 })
+          : null;
+        editor.updateSourceImageOnly((resetCanvas && resetCanvas.source) || step0RawImg, meta);
+      }
+      return;
+    }
+
+    if (step0RawIsUnbaked && api && typeof api.renderStep0AdjustedCanvas === 'function') {
+      const c = api.renderStep0AdjustedCanvas(step0RawImg, step0DraftAdjust, { maxLongEdge: 1600 });
+      if (c) {
+        editor.updateSourceImageOnly(c, { ...meta, ...step0DraftAdjust });
+        return;
+      }
+    }
+    if (typeof touchUi.renderAdjustedPhotoCanvas === 'function') {
+      const rendered = touchUi.renderAdjustedPhotoCanvas(
+        step0RawImg,
+        { ...meta, ...step0DraftAdjust },
+        { isUnbaked: Boolean(step0RawIsUnbaked), maxLongEdge: 1600 }
+      );
+      if (rendered && rendered.source) {
+        editor.updateSourceImageOnly(rendered.source, { ...meta, ...step0DraftAdjust });
+        return;
+      }
+    }
+    editor.updateSourceImageOnly(step0RawImg, meta);
+  }
+
+  function _ensureStep0RawSource(meta, seqToken) {
+    if (!meta || !meta.id) return;
+    if (step0RawImg && step0RawPhotoId === Number(meta.id) && (step0RawIsUnbaked || !meta.isServerMode)) {
+      _renderStep0Preview();
+      return;
+    }
+    if (meta.isServerMode) {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        if (seqToken !== loadReqSeq) return;
+        step0RawImg = img;
+        step0RawIsUnbaked = true;
+        step0RawPhotoId = Number(meta.id);
+        if (cfg.step === 0) _renderStep0Preview();
+      };
+      img.onerror = () => {
+        if (seqToken !== loadReqSeq) return;
+        _showToast('調整用プレビューの読込に失敗しました');
+      };
+      img.src = `/api/photo/${meta.id}/view?raw=1`;
+      return;
+    }
+    _renderStep0Preview();
+  }
+
+  function _closeStep0MaskImpactSheet(choice = 'cancel') {
+    const sheet = document.getElementById('mAfStep0MaskImpactSheet');
+    if (sheet) sheet.style.display = 'none';
+    const res = step0ImpactResolver;
+    step0ImpactResolver = null;
+    if (typeof res === 'function') res(choice);
+  }
+
+  function _openStep0MaskImpactSheet() {
+    const sheet = document.getElementById('mAfStep0MaskImpactSheet');
+    if (!sheet) return Promise.resolve('redetect');
+    const descEl = document.getElementById('mAfStep0ImpactDesc');
+    if (descEl && editor) {
+      descEl.textContent =
+        `1. 修正 に配置済みのマスク（ナンバー ${editor.plates.length} / 顔 ${editor.faces.length}）は、` +
+        '回転・傾き変更により位置がずれる可能性があります。反映方法を選んでください。';
+    }
+    sheet.style.display = 'flex';
+    return new Promise((resolve) => {
+      step0ImpactResolver = resolve;
+    });
+  }
+
+  function _reloadAdjustedImageIntoEditor(meta, seqToken, preserveMasks, runDetectAfter) {
+    return new Promise((resolve) => {
+      const touchUi = global.TetheractTouchUI || {};
+      const applyRendered = (srcImg, isFallbackSrc) => {
+        if (seqToken !== loadReqSeq) { resolve(false); return; }
+        const isUnbaked = typeof touchUi.resolveImageUnbakedState === 'function'
+          ? touchUi.resolveImageUnbakedState(meta, {
+              isFallback: isFallbackSrc,
+              isServerMode: Boolean(meta && meta.isServerMode),
+            })
+          : false;
+        let effectiveSource = srcImg;
+        if (typeof touchUi.renderAdjustedPhotoCanvas === 'function') {
+          const rendered = touchUi.renderAdjustedPhotoCanvas(srcImg, meta, {
+            isUnbaked,
+            maxLongEdge: 4096,
+          });
+          if (rendered && rendered.source) effectiveSource = rendered.source;
+        }
+        if (preserveMasks && typeof editor.updateSourceImageOnly === 'function') {
+          editor.updateSourceImageOnly(effectiveSource, meta);
+        } else {
+          editor.setPhotoSource(effectiveSource, meta, { plates: [], faces: [] });
+        }
+        _pushDecoratorToEditor();
+        if (runDetectAfter && cfg.autoDetectOnOpen) {
+          _runAiDetectionForCurrentPhoto(true);
+        }
+        resolve(true);
+      };
+
+      if (!meta.isServerMode && step0RawImg && step0RawPhotoId === Number(meta.id)) {
+        applyRendered(step0RawImg, !meta.hdUrl);
+        return;
+      }
+
+      const primaryUrl = meta.hdUrl || meta.thumbUrl || '';
+      if (!primaryUrl) { resolve(false); return; }
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => applyRendered(img, !meta.hdUrl);
+      img.onerror = () => {
+        if (seqToken !== loadReqSeq) { resolve(false); return; }
+        _showToast('調整反映後の画像再読込に失敗しました');
+        resolve(false);
+      };
+      img.src = primaryUrl;
+    });
+  }
+
+  async function _requestStepChange(targetStep) {
+    const parsedTarget = Math.max(0, Math.min(4, Number(targetStep)));
+    const nextStep = _isEffectStepDisabled() && parsedTarget === 2
+      ? (cfg.step < 2 ? 3 : 1)
+      : parsedTarget;
+    if (isBusy || step0Busy) return false;
+    if (nextStep === cfg.step) return true;
+
+    const meta = photoQueue[queueIndex];
+    const seqToken = loadReqSeq;
+
+    if (cfg.step === 0 && nextStep !== 0 && meta) {
+      step0CompareBefore = false;
+      const api = _step0Api();
+      const diff = api && typeof api.classifyAdjustDiff === 'function'
+        ? api.classifyAdjustDiff(step0CommittedAdjust, step0DraftAdjust)
+        : { hasAnyChange: false, toneChanged: false, geometryChanged: false };
+
+      if (!diff.hasAnyChange) {
+        await _reloadAdjustedImageIntoEditor(meta, seqToken, true, false);
+        _setStep(nextStep);
+        return true;
+      }
+
+      const maskCount = editor ? (editor.plates.length + editor.faces.length) : 0;
+      let maskAction = 'keep';
+      if (diff.geometryChanged && maskCount > 0) {
+        const choice = await _openStep0MaskImpactSheet();
+        if (choice === 'cancel' || seqToken !== loadReqSeq) {
+          return false;
+        }
+        maskAction = choice;
+      } else if (diff.geometryChanged && maskCount === 0 && cfg.autoDetectOnOpen) {
+        maskAction = 'redetect';
+      }
+
+      step0Busy = true;
+      _updateFooterButtonsUI();
+      try {
+        const prevRot = Number(step0CommittedAdjust?.rotation || 0);
+        let updatedMeta = { ...meta, ...step0DraftAdjust };
+        if (typeof global.__saveMobileArtFramerStep0Adjustments === 'function') {
+          const saved = await global.__saveMobileArtFramerStep0Adjustments(meta.id, step0DraftAdjust);
+          if (saved) updatedMeta = { ...meta, ...saved };
+        }
+        if (seqToken !== loadReqSeq) return false;
+        photoQueue[queueIndex] = updatedMeta;
+        step0CommittedAdjust = _normalizeAdjust(updatedMeta);
+        step0DraftAdjust = { ...step0CommittedAdjust };
+
+        const nextRot = Number(step0CommittedAdjust.rotation || 0);
+        const apiEffect = _effectApi();
+        if (prevRot !== nextRot && apiEffect && typeof apiEffect.transformSpotByRotation === 'function') {
+          const movedSpot = apiEffect.transformSpotByRotation(cfg.effect.cx, cfg.effect.cy, prevRot, nextRot);
+          cfg.effect.cx = movedSpot.cx;
+          cfg.effect.cy = movedSpot.cy;
+          _syncEffectControlsUI();
+        }
+
+        const preserve = maskAction === 'keep';
+        const redetect = maskAction === 'redetect';
+        await _reloadAdjustedImageIntoEditor(updatedMeta, seqToken, preserve, redetect);
+
+        if (diff.toneChanged && !diff.geometryChanged && maskCount > 0) {
+          _showToast('トーン調整を反映しました（マスク維持）', 2200);
+        } else if (redetect && maskCount > 0) {
+          _showToast('調整を反映しAIマスクを再検出しています', 2600);
+        } else if (diff.geometryChanged && preserve && maskCount > 0) {
+          _showToast('調整を反映しました（マスク位置を確認）', 2600);
+        } else {
+          _showToast('非破壊調整を反映しました', 2000);
+        }
+        _setStep(nextStep);
+        return true;
+      } catch (err) {
+        console.warn('[TOUCH_ART_FRAMER] Step 0 保存失敗:', err);
+        _showToast('調整の保存に失敗しました', 2600);
+        return false;
+      } finally {
+        step0Busy = false;
+        _updateFooterButtonsUI();
+        _syncStep0UI();
+      }
+    }
+
+    _setStep(nextStep);
+    if (nextStep === 0 && meta) {
+      step0CompareBefore = false;
+      _syncStep0UI();
+      _ensureStep0RawSource(meta, seqToken);
+    }
+    return true;
+  }
+
   function _setStep(stepNum) {
-    cfg.step = Math.max(1, Math.min(3, Number(stepNum) || 1));
+    const parsed = Number(stepNum);
+    let next = Math.max(0, Math.min(4, isNaN(parsed) ? 1 : parsed));
+    if (_isEffectStepDisabled() && next === 2) next = 3;
+    cfg.step = next;
     if (!modalEl) return;
 
     modalEl.querySelectorAll('.t-af-step-tab').forEach((tab) => {
@@ -981,12 +1610,16 @@
       ws.scrollTop = 0;
     }
 
+    const p0 = document.getElementById('mAfStep0Panel');
     const p1 = document.getElementById('mAfStep1Panel');
     const p2 = document.getElementById('mAfStep2Panel');
     const p3 = document.getElementById('mAfStep3Panel');
+    const p4 = document.getElementById('mAfStep4Panel');
+    if (p0) p0.classList.toggle('is-active', cfg.step === 0);
     if (p1) p1.classList.toggle('is-active', cfg.step === 1);
     if (p2) p2.classList.toggle('is-active', cfg.step === 2);
     if (p3) p3.classList.toggle('is-active', cfg.step === 3);
+    if (p4) p4.classList.toggle('is-active', cfg.step === 4);
 
     const zoomBar = document.getElementById('mAfZoomToolbar');
     if (zoomBar) zoomBar.style.display = 'flex';
@@ -995,7 +1628,7 @@
     const loupeWrap = document.getElementById('mAfLoupeCheck')?.closest('.t-af-check-mini');
     if (loupeWrap) loupeWrap.style.display = cfg.step === 1 ? 'inline-flex' : 'none';
     const cleanBtn = document.getElementById('mAfHoldCleanBtn');
-    if (cleanBtn) cleanBtn.style.display = cfg.step === 1 ? 'inline-flex' : 'none';
+    if (cleanBtn) cleanBtn.style.display = (cfg.step === 1 || cfg.step === 2) ? 'inline-flex' : 'none';
 
     _updateFooterButtonsUI();
     _updateStep3SummaryUI();
@@ -2396,6 +3029,16 @@
     const mySeq = ++loadReqSeq;
     const meta = photoQueue[queueIndex];
 
+    step0CommittedAdjust = _normalizeAdjust(meta);
+    step0DraftAdjust = { ...step0CommittedAdjust };
+    step0RawImg = null;
+    step0RawIsUnbaked = false;
+    step0RawPhotoId = 0;
+    step0CompareBefore = false;
+    step0Busy = false;
+    _closeStep0MaskImpactSheet('cancel');
+    _syncStep0UI();
+
     const counterEl = document.getElementById('mAfQueueCounterBadge');
     const nameEl = document.getElementById('mAfCurrentFileName');
     const statusEl = document.getElementById('mAfDetectStatusText');
@@ -2432,6 +3075,11 @@
               isServerMode: Boolean(meta && meta.isServerMode),
             })
           : false;
+        if (!meta.isServerMode) {
+          step0RawImg = img;
+          step0RawIsUnbaked = isUnbaked;
+          step0RawPhotoId = Number(meta.id);
+        }
         let effectiveSource = img;
         if (typeof touchUi.renderAdjustedPhotoCanvas === 'function') {
           const rendered = touchUi.renderAdjustedPhotoCanvas(img, meta, {
@@ -2599,31 +3247,137 @@
   }
 
   function _bindModalEvents() {
+    let mAfBackdropPointerDown = false;
     document.getElementById('mAfCloseBtn')?.addEventListener('click', () => close(false));
+    modalEl.addEventListener('pointerdown', (e) => {
+      mAfBackdropPointerDown = (e.target === modalEl);
+    });
     modalEl.addEventListener('click', (e) => {
-      if (e.target === modalEl) close(false);
+      const startedOnBackdrop = mAfBackdropPointerDown;
+      mAfBackdropPointerDown = false;
+      if (startedOnBackdrop && e.target === modalEl) close(false);
     });
 
     modalEl.querySelectorAll('.t-af-preset-pill').forEach((btn) => {
       btn.addEventListener('click', () => _applyTargetPreset(btn.dataset.preset));
     });
     modalEl.querySelectorAll('.t-af-step-tab').forEach((tab) => {
-      tab.addEventListener('click', () => _setStep(parseInt(tab.dataset.step, 10)));
+      tab.addEventListener('click', () => _requestStepChange(parseInt(tab.dataset.step, 10)));
     });
 
     document.getElementById('mAfPrevPhotoBtn')?.addEventListener('click', async () => {
-      if (isBusy || queueIndex <= 0) return;
+      if (isBusy || step0Busy || queueIndex <= 0) return;
       queueIndex -= 1;
       await _loadCurrentQueuePhoto();
     });
     document.getElementById('mAfNextPhotoBtn')?.addEventListener('click', async () => {
-      if (isBusy || queueIndex >= photoQueue.length - 1) return;
+      if (isBusy || step0Busy || queueIndex >= photoQueue.length - 1) return;
       queueIndex += 1;
       await _loadCurrentQueuePhoto();
     });
 
-    document.getElementById('mAfPrevStepBtn')?.addEventListener('click', () => _setStep(cfg.step - 1));
-    document.getElementById('mAfNextStepBtn')?.addEventListener('click', () => _setStep(cfg.step + 1));
+    document.getElementById('mAfPrevStepBtn')?.addEventListener('click', () => {
+      const apiEffect = _effectApi();
+      const prev = apiEffect && typeof apiEffect.getPrevStep === 'function'
+        ? apiEffect.getPrevStep(cfg.step, _isEffectStepDisabled())
+        : Math.max(0, cfg.step - 1);
+      if (prev !== null && prev !== undefined) _requestStepChange(prev);
+    });
+    document.getElementById('mAfNextStepBtn')?.addEventListener('click', () => {
+      const apiEffect = _effectApi();
+      const next = apiEffect && typeof apiEffect.getNextStep === 'function'
+        ? apiEffect.getNextStep(cfg.step, _isEffectStepDisabled())
+        : Math.min(4, cfg.step + 1);
+      if (next !== null && next !== undefined) _requestStepChange(next);
+    });
+
+    // Step 0 幾何変更影響シート
+    document.getElementById('mAfImpactRedetectBtn')?.addEventListener('click', () => _closeStep0MaskImpactSheet('redetect'));
+    document.getElementById('mAfImpactKeepBtn')?.addEventListener('click', () => _closeStep0MaskImpactSheet('keep'));
+    document.getElementById('mAfImpactCancelBtn')?.addEventListener('click', () => _closeStep0MaskImpactSheet('cancel'));
+
+    // Step 0 親指コックピット操作
+    const applyMobileStep0Change = () => {
+      _syncStep0UI();
+      _renderStep0Preview();
+    };
+    document.getElementById('mAfRotLeftBtn')?.addEventListener('click', () => {
+      if (!step0DraftAdjust || step0Busy) return;
+      step0DraftAdjust.rotation = (((Number(step0DraftAdjust.rotation || 0) - 90) % 360) + 360) % 360;
+      applyMobileStep0Change();
+    });
+    document.getElementById('mAfRotRightBtn')?.addEventListener('click', () => {
+      if (!step0DraftAdjust || step0Busy) return;
+      step0DraftAdjust.rotation = (((Number(step0DraftAdjust.rotation || 0) + 90) % 360) + 360) % 360;
+      applyMobileStep0Change();
+    });
+    document.getElementById('mAfStep0GridBtn')?.addEventListener('click', () => {
+      step0ShowGrid = !step0ShowGrid;
+      _syncStep0UI();
+      _pushDecoratorToEditor();
+    });
+    const mCmpBtn = document.getElementById('mAfStep0CompareBtn');
+    if (mCmpBtn) {
+      mCmpBtn.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        step0CompareBefore = true;
+        _syncStep0UI();
+        _renderStep0Preview();
+        _pushDecoratorToEditor();
+      });
+      global.addEventListener('pointerup', () => {
+        if (!step0CompareBefore) return;
+        step0CompareBefore = false;
+        _syncStep0UI();
+        _renderStep0Preview();
+        _pushDecoratorToEditor();
+      });
+    }
+    document.getElementById('mAfStep0ResetBtn')?.addEventListener('click', () => {
+      const api = _step0Api();
+      step0DraftAdjust = api ? api.createResetAdjustSnapshot() : _normalizeAdjust(null);
+      applyMobileStep0Change();
+      _showToast('調整値を初期化しました（「1. 修正」で反映）', 2200);
+    });
+    modalEl.querySelectorAll('.t-af-step0-pill').forEach((pill) => {
+      pill.addEventListener('click', () => {
+        const nextP = pill.dataset.step0Param;
+        if (!nextP) return;
+        step0ActiveParam = nextP;
+        _syncStep0UI();
+        _pushDecoratorToEditor();
+      });
+    });
+    document.getElementById('mAfStep0Slider')?.addEventListener('input', (e) => {
+      if (!step0DraftAdjust) return;
+      const api = _step0Api();
+      if (step0ActiveParam === 'brightness') {
+        const idx = parseInt(e.target.value, 10) || 0;
+        step0DraftAdjust.brightness = api ? api.dialIndexToBrightness(idx) : idx * 3;
+      } else if (step0ActiveParam === 'fine_angle') {
+        const v = Number(e.target.value || 0);
+        step0DraftAdjust.fine_angle = Math.abs(v) <= 0.01 ? 0.0 : Number(v.toFixed(2));
+      } else {
+        step0DraftAdjust[step0ActiveParam] = Math.max(-100, Math.min(100, parseInt(e.target.value, 10) || 0));
+      }
+      applyMobileStep0Change();
+    });
+    const nudgeMobileStep0 = (dir) => {
+      if (!step0DraftAdjust) return;
+      const api = _step0Api();
+      if (step0ActiveParam === 'brightness' && api) {
+        const cur = api.brightnessToDialIndex(step0DraftAdjust.brightness);
+        step0DraftAdjust.brightness = api.dialIndexToBrightness(Math.max(-6, Math.min(6, cur + dir)));
+      } else if (step0ActiveParam === 'fine_angle') {
+        const nextV = Math.max(-15, Math.min(15, Number(step0DraftAdjust.fine_angle || 0) + dir * 0.1));
+        step0DraftAdjust.fine_angle = Math.abs(nextV) <= 0.01 ? 0.0 : Number(nextV.toFixed(2));
+      } else {
+        step0DraftAdjust[step0ActiveParam] = Math.max(-100, Math.min(100, Math.round(Number(step0DraftAdjust[step0ActiveParam] || 0) + dir * 2)));
+      }
+      applyMobileStep0Change();
+    };
+    document.getElementById('mAfStep0NudgeMinus')?.addEventListener('click', () => nudgeMobileStep0(-1));
+    document.getElementById('mAfStep0NudgePlus')?.addEventListener('click', () => nudgeMobileStep0(1));
     document.getElementById('mAfSkipPhotoBtn')?.addEventListener('click', _skipCurrentPhoto);
     document.getElementById('mAfSaveAndShareBtn')?.addEventListener('click', () => _executeSaveOutput(true));
     document.getElementById('mAfSaveQueueBtn')?.addEventListener('click', () => _executeSaveOutput(false));
@@ -2709,7 +3463,81 @@
     });
     document.getElementById('mAfStampStrengthSlider')?.addEventListener('change', _saveSettings);
 
-    // Step 2
+    // Step 2: 光学レンズ演出
+    const applyMobileEffectUpdate = () => {
+      _syncEffectControlsUI();
+      _pushDecoratorToEditor();
+      _updateStep3SummaryUI();
+    };
+    modalEl.querySelectorAll('.t-af-effect-preset-pill').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const key = btn.dataset.effectPreset || 'none';
+        const apiEffect = _effectApi();
+        const preset = apiEffect && apiEffect.EFFECT_PRESETS ? apiEffect.EFFECT_PRESETS[key] : null;
+        if (preset) {
+          cfg.effect.presetKey = preset.key || key;
+          cfg.effect.bokeh_mode = preset.bokeh_mode || 'none';
+          cfg.effect.strength = Number(preset.strength || 0);
+          if (preset.specular !== undefined) cfg.effect.specular = Number(preset.specular);
+          if (preset.radius !== undefined) cfg.effect.radius = Number(preset.radius);
+          if (preset.feather !== undefined) cfg.effect.feather = Number(preset.feather);
+          cfg.effect.vignette = Number(preset.vignette || 0);
+          cfg.effect.halation = Number(preset.halation || 0);
+          applyMobileEffectUpdate();
+        }
+      });
+    });
+    document.getElementById('mAfEffectCenterResetBtn')?.addEventListener('click', () => {
+      cfg.effect.cx = 0.50;
+      cfg.effect.cy = 0.50;
+      applyMobileEffectUpdate();
+    });
+    document.getElementById('mAfEffectBokehSelect')?.addEventListener('change', (e) => {
+      cfg.effect.bokeh_mode = e.target.value;
+      cfg.effect.presetKey = cfg.effect.bokeh_mode === 'none' && Math.abs(cfg.effect.vignette) < 0.01 && cfg.effect.halation < 0.01 ? 'none' : 'custom';
+      if (cfg.effect.bokeh_mode !== 'none' && cfg.effect.strength <= 0.02) {
+        cfg.effect.strength = 0.55;
+      }
+      applyMobileEffectUpdate();
+    });
+    document.getElementById('mAfEffectStrengthSlider')?.addEventListener('input', (e) => {
+      const v = Math.max(0, Math.min(100, parseInt(e.target.value, 10) || 0)) / 100;
+      cfg.effect.strength = v;
+      if (v > 0.01 && cfg.effect.bokeh_mode === 'none') {
+        cfg.effect.bokeh_mode = 'swirl';
+      }
+      cfg.effect.presetKey = 'custom';
+      applyMobileEffectUpdate();
+    });
+    document.getElementById('mAfEffectVignetteSlider')?.addEventListener('input', (e) => {
+      cfg.effect.vignette = Math.max(-100, Math.min(100, parseInt(e.target.value, 10) || 0)) / 100;
+      cfg.effect.presetKey = 'custom';
+      applyMobileEffectUpdate();
+    });
+    document.getElementById('mAfEffectHalationSlider')?.addEventListener('input', (e) => {
+      cfg.effect.halation = Math.max(0, Math.min(100, parseInt(e.target.value, 10) || 0)) / 100;
+      cfg.effect.presetKey = 'custom';
+      applyMobileEffectUpdate();
+    });
+    document.getElementById('mAfEffectRadiusSlider')?.addEventListener('input', (e) => {
+      cfg.effect.radius = Math.max(8, Math.min(80, parseInt(e.target.value, 10) || 32)) / 100;
+      applyMobileEffectUpdate();
+    });
+    document.getElementById('mAfEffectFeatherSlider')?.addEventListener('input', (e) => {
+      cfg.effect.feather = Math.max(10, Math.min(75, parseInt(e.target.value, 10) || 36)) / 100;
+      applyMobileEffectUpdate();
+    });
+    document.getElementById('mAfEffectSpecularSlider')?.addEventListener('input', (e) => {
+      cfg.effect.specular = Math.max(0, Math.min(100, parseInt(e.target.value, 10) || 65)) / 100;
+      applyMobileEffectUpdate();
+    });
+
+    global.addEventListener('tetheract:af-effect-step-pref-change', () => {
+      _syncEffectStepVisibilityUI();
+      _pushDecoratorToEditor();
+    });
+
+    // Step 3
     document.getElementById('mAfFrameEnableCheck')?.addEventListener('change', (e) => {
       cfg.frame.enabled = e.target.checked;
       _syncFormFromState();
@@ -2937,6 +3765,48 @@
         }
         _updateStep3SummaryUI();
       },
+      onEffectSpotChange: (spot) => {
+        if (!spot) return;
+        cfg.effect.cx = Number(spot.cx ?? 0.50);
+        cfg.effect.cy = Number(spot.cy ?? 0.50);
+        if (spot.radius !== undefined) cfg.effect.radius = Number(spot.radius);
+        _syncEffectControlsUI();
+      },
+      onStep0CanvasScrub: (phase, dxPx) => {
+        if (cfg.step !== 0 || !step0DraftAdjust || step0Busy) return;
+        if (phase === 'start') {
+          step0ScrubAccum = 0;
+          return;
+        }
+        if (phase === 'move') {
+          const api = _step0Api();
+          if (step0ActiveParam === 'brightness' && api) {
+            step0ScrubAccum += dxPx;
+            if (Math.abs(step0ScrubAccum) >= 18) {
+              const steps = Math.trunc(step0ScrubAccum / 18);
+              step0ScrubAccum -= steps * 18;
+              const curIdx = api.brightnessToDialIndex(step0DraftAdjust.brightness);
+              step0DraftAdjust.brightness = api.dialIndexToBrightness(Math.max(-6, Math.min(6, curIdx + steps)));
+              _syncStep0UI();
+              _renderStep0Preview();
+            }
+          } else if (step0ActiveParam === 'fine_angle') {
+            const nextV = Math.max(-15, Math.min(15, Number(step0DraftAdjust.fine_angle || 0) + dxPx * 0.045));
+            step0DraftAdjust.fine_angle = Math.abs(nextV) <= 0.01 ? 0.0 : Number(nextV.toFixed(2));
+            _syncStep0UI();
+            _renderStep0Preview();
+          } else {
+            step0ScrubAccum += dxPx * 0.4;
+            if (Math.abs(step0ScrubAccum) >= 1) {
+              const deltaInt = Math.trunc(step0ScrubAccum);
+              step0ScrubAccum -= deltaInt;
+              step0DraftAdjust[step0ActiveParam] = Math.max(-100, Math.min(100, Math.round(Number(step0DraftAdjust[step0ActiveParam] || 0) + deltaInt)));
+              _syncStep0UI();
+              _renderStep0Preview();
+            }
+          }
+        }
+      },
     });
 
     _bindModalEvents();
@@ -2945,8 +3815,21 @@
       global.__extraBackHandlers = global.__extraBackHandlers || [];
       global.__extraBackHandlers.push(() => {
         if (!modalEl || modalEl.style.display !== 'flex') return undefined;
+        const sheet = document.getElementById('mAfStep0MaskImpactSheet');
+        if (sheet && sheet.style.display !== 'none') {
+          _closeStep0MaskImpactSheet('cancel');
+          return 'handled';
+        }
+        if (cfg.step === 0) {
+          _requestStepChange(1);
+          return 'handled';
+        }
         if (cfg.step > 1) {
-          _setStep(cfg.step - 1);
+          const apiEffect = _effectApi();
+          const prev = apiEffect && typeof apiEffect.getPrevStep === 'function'
+            ? apiEffect.getPrevStep(cfg.step, _isEffectStepDisabled())
+            : (cfg.step - 1);
+          _requestStepChange(prev !== null && prev !== undefined ? prev : 1);
           return 'handled';
         }
         close(false);
@@ -2973,12 +3856,16 @@
     if (!_initModalOnce()) return false;
 
     _loadSavedSettings();
+    _resetEffectForSession();
+    _syncEffectStepVisibilityUI();
+    _effectApi()?.syncSettingsCheckboxes?.();
     await _loadWatermarkAssets();
     photoQueue = targets;
     queueIndex = 0;
     exportedCount = 0;
     isBusy = false;
 
+    document.getElementById('mAfEffectDetailExpander')?.removeAttribute('open');
     document.getElementById('mAfFrameSizeExpander')?.removeAttribute('open');
     document.getElementById('mAfCaptionFieldsExpander')?.removeAttribute('open');
     modalEl.style.display = 'flex';
@@ -2989,8 +3876,10 @@
 
   function close(force = false) {
     if (!modalEl) return;
-    if (!force && isBusy) return;
+    if (!force && (isBusy || step0Busy)) return;
     loadReqSeq += 1;
+    step0CompareBefore = false;
+    _closeStep0MaskImpactSheet('cancel');
     modalEl.style.display = 'none';
   }
 

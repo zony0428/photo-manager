@@ -115,8 +115,11 @@ object OnnxPrivacyEngine {
 
         val resized = Bitmap.createScaledBitmap(bmp, nw, nh, true)
         val pixels = IntArray(nw * nh)
-        resized.getPixels(pixels, 0, nw, 0, 0, nw, nh)
-        if (resized !== bmp && !resized.isRecycled) resized.recycle()
+        try {
+            resized.getPixels(pixels, 0, nw, 0, 0, nw, nh)
+        } finally {
+            if (resized !== bmp && !resized.isRecycled) resized.recycle()
+        }
 
         // YuNet 入力は 640x640 レターボックス BGR (0..255 float)
         val canvasData = FloatArray(YUNET_SIZE * YUNET_SIZE * 3)
@@ -259,8 +262,11 @@ object OnnxPrivacyEngine {
             } else {
                 Bitmap.createBitmap(bmp, px1, py1, cw, ch)
             }
-            val hits = runLpdSingleWindow(graph, priors, subBmp, win.th, rejectBorderClipped = win.strict)
-            if (subBmp !== bmp && !subBmp.isRecycled) subBmp.recycle()
+            val hits = try {
+                runLpdSingleWindow(graph, priors, subBmp, win.th, rejectBorderClipped = win.strict)
+            } finally {
+                if (subBmp !== bmp && !subBmp.isRecycled) subBmp.recycle()
+            }
 
             val winW = win.x2 - win.x1
             val winH = win.y2 - win.y1
@@ -289,8 +295,11 @@ object OnnxPrivacyEngine {
             Bitmap.createScaledBitmap(cropBmp, LPD_W, LPD_H, true)
         }
         val pixels = IntArray(LPD_W * LPD_H)
-        resized.getPixels(pixels, 0, LPD_W, 0, 0, LPD_W, LPD_H)
-        if (resized !== cropBmp && !resized.isRecycled) resized.recycle()
+        try {
+            resized.getPixels(pixels, 0, LPD_W, 0, 0, LPD_W, LPD_H)
+        } finally {
+            if (resized !== cropBmp && !resized.isRecycled) resized.recycle()
+        }
 
         val inpData = FloatArray(LPD_W * LPD_H * 3)
         for (i in pixels.indices) {
